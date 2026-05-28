@@ -1,9 +1,33 @@
 const BASE_URL = '/api'
+const TOKEN_KEY = 'sq_token'
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: 'An error occurred' }))
+    throw new Error(error.message || `HTTP ${res.status}`)
+  }
+
+  return res.json()
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+async function authRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...(options?.headers as Record<string, string> | undefined),
+    },
   })
 
   if (!res.ok) {
@@ -21,4 +45,16 @@ export const api = {
   put: <T>(endpoint: string, body: unknown) =>
     request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
+}
+
+export const authApi = {
+  get: <T>(endpoint: string) => authRequest<T>(endpoint),
+  post: <T>(endpoint: string, body?: unknown) =>
+    authRequest<T>(endpoint, {
+      method: 'POST',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
+  put: <T>(endpoint: string, body: unknown) =>
+    authRequest<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: <T>(endpoint: string) => authRequest<T>(endpoint, { method: 'DELETE' }),
 }
