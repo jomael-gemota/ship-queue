@@ -21,6 +21,10 @@ const syncState: SyncState = {
   result: null,
 };
 
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export const syncOrders = async (_req: Request, res: Response): Promise<void> => {
   if (syncState.running) {
     res.json({ message: 'Sync already in progress', data: { ...syncState } });
@@ -78,10 +82,12 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       status,
+      search,
       page = '1',
       pageSize = '50',
     } = req.query as {
       status?: string;
+      search?: string;
       page?: string;
       pageSize?: string;
     };
@@ -97,6 +103,24 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
 
     if (status && ORDER_STATUSES.includes(status as OrderStatus)) {
       filter.orderStatus = status;
+    }
+
+    const searchTerm = search?.trim();
+    if (searchTerm) {
+      const safeSearch = escapeRegExp(searchTerm);
+      const searchRegex = new RegExp(safeSearch, 'i');
+      filter.$or = [
+        { orderNumber: searchRegex },
+        { customerUsername: searchRegex },
+        { customerEmail: searchRegex },
+        { 'shipTo.name': searchRegex },
+        { 'shipTo.street1': searchRegex },
+        { 'shipTo.street2': searchRegex },
+        { 'shipTo.city': searchRegex },
+        { 'shipTo.state': searchRegex },
+        { 'shipTo.postalCode': searchRegex },
+        { 'shipTo.country': searchRegex },
+      ];
     }
 
     const [orders, total] = await Promise.all([
