@@ -4,6 +4,7 @@ import { googleCallback, getMe, logout } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // Redirect to Google consent screen
 router.get(
@@ -14,7 +15,21 @@ router.get(
 // Google OAuth callback
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed` }),
+  (req, res, next) => {
+    passport.authenticate('google', { session: false }, (error: unknown, user: Express.User | false, info?: { message?: string }) => {
+      if (error) {
+        return res.redirect(`${CLIENT_URL}/login?error=auth_failed`);
+      }
+
+      if (!user) {
+        const errorCode = info?.message === 'unauthorized_domain' ? 'unauthorized_domain' : 'auth_failed';
+        return res.redirect(`${CLIENT_URL}/login?error=${errorCode}`);
+      }
+
+      req.user = user;
+      return next();
+    })(req, res, next);
+  },
   googleCallback
 );
 

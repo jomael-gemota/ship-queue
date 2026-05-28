@@ -2,6 +2,13 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import User from '../models/User';
 
+const ALLOWED_EMAIL_DOMAINS = ['outdoorequipped.com', 'channelprecision.com'];
+
+const isAllowedEmailDomain = (email: string): boolean => {
+  const emailDomain = email.split('@')[1]?.toLowerCase();
+  return !!emailDomain && ALLOWED_EMAIL_DOMAINS.includes(emailDomain);
+};
+
 passport.use(
   new GoogleStrategy(
     {
@@ -16,6 +23,10 @@ passport.use(
 
         if (!email) {
           return done(new Error('No email returned from Google'), undefined);
+        }
+
+        if (!isAllowedEmailDomain(email)) {
+          return done(null, false, { message: 'unauthorized_domain' });
         }
 
         let user = await User.findOne({ googleId: profile.id });

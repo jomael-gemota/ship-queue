@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="faviconTitle faviconDesc">
-  <title id="faviconTitle">Ship Queue Favicon</title>
-  <desc id="faviconDesc">A cargo ship over queue lines inside a rounded square.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Ship Queue Logo</title>
+  <desc id="logoDesc">A cargo ship over queue lines inside a rounded square.</desc>
   <defs>
-    <linearGradient id="fav-gradient" x1="16" y1="14" x2="112" y2="114" gradientUnits="userSpaceOnUse">
+    <linearGradient id="sq-gradient" x1="16" y1="14" x2="112" y2="114" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0EA5E9" />
       <stop offset="1" stop-color="#1D4ED8" />
     </linearGradient>
   </defs>
-  <rect x="12" y="12" width="104" height="104" rx="26" fill="url(#fav-gradient)" />
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="url(#sq-gradient)" />
   <path
     d="M30 76h68c0 9.5-7.7 17.2-17.2 17.2H47.2C37.7 93.2 30 85.5 30 76Z"
     fill="#FFFFFF"

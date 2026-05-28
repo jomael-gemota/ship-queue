@@ -4,7 +4,7 @@ import Sidebar from './Sidebar'
 
 export default function Layout() {
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-gray-950">
+    <div className="min-h-screen bg-slate-200/55 dark:bg-gray-950">
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex-1 min-w-0 flex flex-col">

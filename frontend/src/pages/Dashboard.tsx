@@ -1,7 +1,7 @@
 export default function Dashboard() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-5 py-4 shadow-sm">
+      <div className="rounded-xl border border-slate-300/70 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 px-5 py-4 shadow-sm">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Ship Queue Dashboard</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Monitor order flow, fulfillment state, and sync health from one workspace.
@@ -14,7 +14,7 @@ export default function Dashboard() {
         <StatCard label="Shipped" value="0" color="green" />
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+      <div className="bg-slate-50 dark:bg-gray-900 rounded-xl border border-slate-300/70 dark:border-gray-800 p-6">
         <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-12">
           No shipments yet. Add your first shipment to get started.
         </p>

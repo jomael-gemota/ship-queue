@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { authApi } from '../lib/api'
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from '../types/order'
 import type {
@@ -55,12 +55,101 @@ function formatCurrency(amount?: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+function getFirstString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim() !== '') return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+  return null
+}
+
+function getFirstNumber(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value)
+      if (Number.isFinite(parsed)) return parsed
+    }
+  }
+  return null
+}
+
+function formatWeightDetails(record: Record<string, unknown>): string {
+  const weightObject = asRecord(record.weight)
+  const nestedValue = getFirstNumber(weightObject, [
+    'value',
+    'amount',
+    'weight',
+    'oz',
+    'ounces',
+    'lb',
+    'lbs',
+    'pounds',
+  ])
+  const nestedUnit = getFirstString(weightObject, ['units', 'unit', 'uom', 'code'])
+
+  if (nestedValue != null) {
+    return nestedUnit ? `${nestedValue.toLocaleString()} ${nestedUnit}` : nestedValue.toLocaleString()
+  }
+
+  const topLevelValue = getFirstNumber(record, [
+    'weight',
+    'weightValue',
+    'weightOz',
+    'weightOunces',
+    'weightLb',
+    'weightPounds',
+  ])
+  const topLevelUnit = getFirstString(record, ['weightUnits', 'weightUnit'])
+
+  if (topLevelValue != null) {
+    return topLevelUnit
+      ? `${topLevelValue.toLocaleString()} ${topLevelUnit}`
+      : topLevelValue.toLocaleString()
+  }
+
+  if (typeof record.weight === 'string' && record.weight.trim() !== '') {
+    return record.weight
+  }
+
+  return '—'
+}
+
 function StatusBadge({ status }: { status: OrderStatus }) {
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLORS[status]}`}
     >
       {ORDER_STATUS_LABELS[status]}
+    </span>
+  )
+}
+
+function HeaderLabel({
+  label,
+  iconPath,
+  align = 'left',
+}: {
+  label: string
+  iconPath: string
+  align?: 'left' | 'right'
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 ${
+        align === 'right' ? 'justify-end w-full' : ''
+      }`}
+    >
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+      </svg>
+      <span>{label}</span>
     </span>
   )
 }
@@ -133,6 +222,7 @@ function SyncProgressBar({ state }: { state: SyncState }) {
 
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([])
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set())
   const [initialLoading, setInitialLoading] = useState(true)
   const [tableRefreshing, setTableRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -300,6 +390,15 @@ export default function Orders() {
   const handlePageSizeChange = (size: number) => {
     setPageSize(size)
     setPage(1)
+  }
+
+  const toggleOrderItems = (orderId: string) => {
+    setExpandedOrderIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
   }
 
   const startItem = (page - 1) * pageSize + 1
@@ -491,7 +590,7 @@ export default function Orders() {
       )}
 
       {/* Table card */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+      <div className="bg-slate-50 dark:bg-gray-900 rounded-xl border border-slate-300/70 dark:border-gray-800 shadow-sm">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -500,7 +599,7 @@ export default function Orders() {
           <select
             value={selectedStatus}
             onChange={(e) => handleStatusChange(e.target.value as OrderStatus | '')}
-            className="text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="text-sm border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
           >
             <option value="">All Statuses</option>
             {ORDER_STATUSES.map((s) => (
@@ -522,11 +621,11 @@ export default function Orders() {
               </svg>
             </span>
             <input
-              type="search"
+              type="text"
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search order #, customer, ship-to"
-              className="w-full text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-sm border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {searchInput && (
               <button
@@ -570,13 +669,13 @@ export default function Orders() {
 
         {/* Top pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/20">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-slate-200 dark:border-gray-800 bg-slate-100/70 dark:bg-gray-800/20">
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -605,36 +704,62 @@ export default function Orders() {
               </button>
             </div>
           ) : (
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] border-separate border-spacing-0">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800">
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Order #
+                <tr className="bg-slate-200/90 dark:bg-gray-800">
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Order #"
+                      iconPath="M9 12h6m-6 4h6m1-10H8m8 0V5a2 2 0 00-2-2H8a2 2 0 00-2 2v1m10 0a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Order Date
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Order Date"
+                      iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Customer
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Customer"
+                      iconPath="M16 14a4 4 0 10-8 0m8 0a4 4 0 018 0m-8 0H8m8 0v1a3 3 0 01-3 3H11a3 3 0 01-3-3v-1m6-6a4 4 0 11-8 0 4 4 0 018 0z"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Ship To
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Ship To"
+                      iconPath="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Property Type
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Property Type"
+                      iconPath="M3 10l9-7 9 7v10a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2V10z"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Status
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Status"
+                      iconPath="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Items
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Items"
+                      iconPath="M20 13V7a2 2 0 00-2-2h-3V3H9v2H6a2 2 0 00-2 2v6m16 0l-2 7H6l-2-7m16 0H4"
+                      align="right"
+                    />
                   </th>
-                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Order Total
+                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                    <HeaderLabel
+                      label="Order Total"
+                      iconPath="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5S13.657 14 12 14m0-8v2m0 6v2m9-4a9 9 0 11-18 0 9 9 0 0118 0z"
+                      align="right"
+                    />
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-slate-300 dark:divide-gray-800">
                 {initialLoading ? (
                   <tr>
                     <td colSpan={8} className="p-0">
@@ -673,57 +798,320 @@ export default function Orders() {
                     </td>
                   </tr>
                 ) : (
-                  orders.map((order) => (
-                    <tr
-                      key={order._id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-                    >
-                      <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                        {order.orderNumber}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                        {formatDate(order.orderDate)}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[170px] truncate">
-                        {order.shipTo?.name || '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[240px] truncate">
-                        {order.shipTo
-                          ? [
-                              order.shipTo.street1,
-                              order.shipTo.street2 || null,
-                              order.shipTo.city,
-                              order.shipTo.state,
-                              order.shipTo.country,
-                            ]
-                              .filter(Boolean)
-                              .join(', ') || '—'
-                          : '—'}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {order.shipTo?.residential == null ? (
-                          <span className="text-gray-400 dark:text-gray-600">—</span>
-                        ) : order.shipTo.residential ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-                            Residential
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400">
-                            Commercial
-                          </span>
+                  orders.map((order, rowIndex) => {
+                    const itemCount = order.items?.length ?? 0
+                    const isExpanded = expandedOrderIds.has(order._id)
+                    const isEvenRow = rowIndex % 2 === 0
+                    const rowStripedClass = isEvenRow
+                      ? 'bg-slate-100/85 dark:bg-gray-900/40'
+                      : 'bg-slate-200/65 dark:bg-gray-800/30'
+                    const rowHighlightClass = isExpanded
+                      ? 'bg-blue-50 dark:bg-blue-900/20'
+                      : rowStripedClass
+                    const rowHoverClass = isExpanded
+                      ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                      : 'hover:bg-slate-300/75 dark:hover:bg-gray-800/50'
+                    const orderNumberText = order.orderNumber ? String(order.orderNumber) : '—'
+                    const orderDateText = formatDate(order.orderDate)
+                    const customerName = order.shipTo?.name || '—'
+                    const shipToText = order.shipTo
+                      ? [
+                          order.shipTo.street1,
+                          order.shipTo.street2 || null,
+                          order.shipTo.city,
+                          order.shipTo.state,
+                          order.shipTo.country,
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || '—'
+                      : '—'
+                    const propertyTypeText =
+                      order.shipTo?.residential == null
+                        ? '—'
+                        : order.shipTo.residential
+                        ? 'Residential'
+                        : 'Commercial'
+                    const statusText = ORDER_STATUS_LABELS[order.orderStatus]
+                    const itemCountText = itemCount.toLocaleString()
+                    const orderTotalText = formatCurrency(order.orderTotal)
+
+                    return (
+                      <Fragment key={order._id}>
+                        <tr className={`${rowHighlightClass} ${rowHoverClass} transition-colors`}>
+                          <td
+                            className="px-3 py-2.5 font-medium text-gray-900 dark:text-white whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={orderNumberText}
+                          >
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleOrderItems(order._id)}
+                                className="inline-flex items-center justify-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                                aria-expanded={isExpanded}
+                                aria-controls={`order-items-${order._id}`}
+                                aria-label={`${isExpanded ? 'Hide' : 'Show'} items for order ${order.orderNumber}`}
+                              >
+                                <svg
+                                  className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                              </button>
+                              <span>{orderNumberText}</span>
+                            </div>
+                          </td>
+                          <td
+                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={orderDateText}
+                          >
+                            {orderDateText}
+                          </td>
+                          <td
+                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[170px] truncate border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={customerName}
+                          >
+                            {customerName}
+                          </td>
+                          <td
+                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[240px] truncate border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={shipToText}
+                          >
+                            {shipToText}
+                          </td>
+                          <td
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={propertyTypeText}
+                          >
+                            {order.shipTo?.residential == null ? (
+                              <span className="text-gray-400 dark:text-gray-600">—</span>
+                            ) : order.shipTo.residential ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 10l9-7 9 7v10a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V10z"
+                                  />
+                                </svg>
+                                <span>Residential</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400">
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 21h18M5 21V7a1 1 0 011-1h5a1 1 0 011 1v14m0 0h7V4a1 1 0 00-1-1h-5a1 1 0 00-1 1m-4 4h2m-2 4h2m6-6h2m-2 4h2"
+                                  />
+                                </svg>
+                                <span>Commercial</span>
+                              </span>
+                            )}
+                          </td>
+                          <td
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={statusText}
+                          >
+                            <StatusBadge status={order.orderStatus} />
+                          </td>
+                          <td
+                            className="px-3 py-2.5 text-right whitespace-nowrap text-gray-600 dark:text-gray-400 border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={itemCountText}
+                          >
+                            {itemCount}
+                          </td>
+                          <td
+                            className="px-3 py-2.5 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            title={orderTotalText}
+                          >
+                            {orderTotalText}
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr
+                            id={`order-items-${order._id}`}
+                            className="bg-blue-50/60 dark:bg-blue-900/10 border-t border-blue-100 dark:border-blue-800/40"
+                          >
+                            <td colSpan={8} className="px-4 py-3">
+                              {itemCount > 0 ? (
+                                <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-slate-300/70 dark:border-gray-700 bg-slate-50/85 dark:bg-gray-900/60">
+                                  <table className="w-full text-[10px] leading-tight whitespace-nowrap">
+                                    <thead className="bg-slate-200/80 dark:bg-gray-800/80">
+                                      <tr>
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Img"
+                                            iconPath="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-8-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                          />
+                                        </th>
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Title"
+                                            iconPath="M4 6h16M4 10h16M4 14h10"
+                                          />
+                                        </th>
+                                        <th className="text-left px-1.5 pl-20 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="SKU"
+                                            iconPath="M20 7l-8 4-8-4m16 0l-8-4-8 4m16 0v10l-8 4m-8-4V7m8 4v10"
+                                          />
+                                        </th>
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="UPC"
+                                            iconPath="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"
+                                          />
+                                        </th>
+                                        <th className="text-right pl-1.5 pr-20 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Qty"
+                                            iconPath="M7 8h10M7 12h10M7 16h10"
+                                            align="right"
+                                          />
+                                        </th>
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Weight"
+                                            iconPath="M7 4h10l3 6v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8l3-6zm5 3v3"
+                                          />
+                                        </th>
+                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Unit"
+                                            iconPath="M12 8c-1.657 0-3 .448-3 1s1.343 1 3 1 3 .448 3 1-1.343 1-3 1-3 .448-3 1 1.343 1 3 1m0-8V6m0 9v1m8-4a8 8 0 11-16 0 8 8 0 0116 0z"
+                                            align="right"
+                                          />
+                                        </th>
+                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                          <HeaderLabel
+                                            label="Tax"
+                                            iconPath="M9 14l2 2 4-4m1-8H8a2 2 0 00-2 2v12l4-2 4 2 4-2 4 2V6a2 2 0 00-2-2h-4"
+                                            align="right"
+                                          />
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {order.items?.map((item, index) => {
+                                        const itemRecord = asRecord(item)
+                                        const sku =
+                                          item.sku ??
+                                          getFirstString(itemRecord, ['sku', 'SKU']) ??
+                                          '—'
+                                        const upc =
+                                          getFirstString(itemRecord, [
+                                            'upc',
+                                            'upcCode',
+                                            'upc_code',
+                                            'UPC',
+                                          ]) ?? '—'
+                                        const quantity =
+                                          item.quantity ??
+                                          getFirstNumber(itemRecord, ['quantity', 'qty']) ??
+                                          null
+                                        const unitPrice =
+                                          item.unitPrice ??
+                                          getFirstNumber(itemRecord, [
+                                            'unitPrice',
+                                            'unit_price',
+                                            'price',
+                                          ]) ??
+                                          null
+                                        const taxAmount =
+                                          getFirstNumber(itemRecord, [
+                                            'taxAmount',
+                                            'tax_amount',
+                                            'tax',
+                                          ]) ?? null
+                                        const title =
+                                          getFirstString(itemRecord, ['title', 'name', 'productName']) ??
+                                          '—'
+                                        const imageUrl =
+                                          getFirstString(itemRecord, [
+                                            'imageUrl',
+                                            'imageURL',
+                                            'image',
+                                            'thumbnailUrl',
+                                          ]) ?? null
+                                        const weightDetails = formatWeightDetails(itemRecord)
+
+                                        return (
+                                          <tr
+                                            key={
+                                              item.orderItemId ??
+                                              item.lineItemKey ??
+                                              `${item.sku}-${item.name}-${index}`
+                                            }
+                                            className="border-t border-slate-300/70 dark:border-gray-800 first:border-t-0"
+                                          >
+                                            <td className="px-1.5 py-1 align-top">
+                                              <div className="w-8 h-8 rounded border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                                {imageUrl ? (
+                                                  <img
+                                                    src={imageUrl}
+                                                    alt={title}
+                                                    className="w-full h-full object-cover"
+                                                    loading="lazy"
+                                                  />
+                                                ) : (
+                                                  <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400 dark:text-gray-500">
+                                                    —
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td
+                                              className="px-1.5 py-1 align-top text-gray-900 dark:text-gray-100 max-w-[12rem] truncate"
+                                              title={title}
+                                            >
+                                              {title}
+                                            </td>
+                                            <td className="px-1.5 pl-20 py-1 align-top text-gray-700 dark:text-gray-300">
+                                              {sku}
+                                            </td>
+                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-gray-300">
+                                              {upc}
+                                            </td>
+                                            <td className="pl-1.5 pr-20 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                              {quantity != null ? quantity.toLocaleString() : '—'}
+                                            </td>
+                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-gray-300">
+                                              {weightDetails}
+                                            </td>
+                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                              {formatCurrency(unitPrice)}
+                                            </td>
+                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                              {formatCurrency(taxAmount)}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                  No items found for this order.
+                                </p>
+                              )}
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <StatusBadge status={order.orderStatus} />
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                        {order.items?.length ?? 0}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                        {formatCurrency(order.orderTotal)}
-                      </td>
-                    </tr>
-                  ))
+                      </Fragment>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -732,13 +1120,13 @@ export default function Orders() {
 
         {/* Pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-slate-200 dark:border-gray-800">
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>

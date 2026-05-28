@@ -2,20 +2,28 @@ import { useSearchParams } from 'react-router-dom'
 
 export default function Login() {
   const [params] = useSearchParams()
-  const hasError = params.get('error') === 'auth_failed'
+  const errorCode = params.get('error')
+  const errorMessage =
+    errorCode === 'unauthorized_domain'
+      ? 'Access denied. Please sign in with an @outdoorequipped.com or @channelprecision.com account.'
+      : errorCode === 'auth_failed'
+        ? 'Authentication failed. Please try again.'
+        : errorCode
+          ? 'Unable to sign in. Please try again.'
+          : null
 
   const handleGoogleLogin = () => {
     window.location.href = '/api/auth/google'
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-slate-100 dark:bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
 
         {/* Logo + heading */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 text-4xl mb-4">
-            🚢
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-50 dark:bg-gray-900 rounded-2xl shadow-sm border border-slate-300/70 dark:border-gray-800 mb-4 p-2">
+            <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
             Ship Queue
@@ -26,7 +34,7 @@ export default function Login() {
         </div>
 
         {/* Card */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-8">
+        <div className="bg-slate-50 dark:bg-gray-900 rounded-2xl border border-slate-300/70 dark:border-gray-800 shadow-sm p-8">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
             Sign in
           </h2>
@@ -35,12 +43,12 @@ export default function Login() {
           </p>
 
           {/* Error banner */}
-          {hasError && (
+          {errorMessage && (
             <div className="mb-5 flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
               </svg>
-              Authentication failed. Please try again.
+              {errorMessage}
             </div>
           )}
 
@@ -48,7 +56,7 @@ export default function Login() {
           <button
             onClick={handleGoogleLogin}
             type="button"
-            className="w-full flex items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+            className="w-full flex items-center justify-center gap-3 rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-slate-200/80 dark:hover:bg-gray-700 active:scale-[0.98] transition-all duration-150 cursor-pointer"
           >
             <GoogleIcon />
             Sign in with Google
