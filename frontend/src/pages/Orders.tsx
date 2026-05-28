@@ -471,6 +471,9 @@ export default function Orders() {
                     Ship To
                   </th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                    Property Type
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Status
                   </th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
@@ -478,9 +481,6 @@ export default function Orders() {
                   </th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Order Total
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    Requested Shipping
                   </th>
                 </tr>
               </thead>
@@ -531,14 +531,33 @@ export default function Orders() {
                         {formatDate(order.orderDate)}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[180px] truncate">
-                        {order.customerEmail || order.customerUsername || '—'}
+                        {order.shipTo?.name || '—'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[220px]">
                         {order.shipTo
-                          ? [order.shipTo.name, order.shipTo.city, order.shipTo.state]
+                          ? [
+                              order.shipTo.street1,
+                              order.shipTo.street2 || null,
+                              order.shipTo.city,
+                              order.shipTo.state,
+                              order.shipTo.country,
+                            ]
                               .filter(Boolean)
                               .join(', ') || '—'
                           : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {order.shipTo?.residential == null ? (
+                          <span className="text-gray-400 dark:text-gray-600">—</span>
+                        ) : order.shipTo.residential ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            Residential
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400">
+                            Commercial
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={order.orderStatus} />
@@ -548,9 +567,6 @@ export default function Orders() {
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap">
                         {formatCurrency(order.orderTotal)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[180px] truncate">
-                        {order.requestedShippingService || '—'}
                       </td>
                     </tr>
                   ))
