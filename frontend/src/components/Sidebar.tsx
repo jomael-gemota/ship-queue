@@ -37,7 +37,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth()
 
   return (
-    <aside className="w-20 sm:w-64 shrink-0 border-r border-slate-200/80 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+    <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-slate-200/80 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
       <div className="h-16 px-3 sm:px-4 flex items-center gap-3 border-b border-slate-200/80 dark:border-gray-800">
         <span className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg">
           🚢

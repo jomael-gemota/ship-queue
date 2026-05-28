@@ -304,6 +304,78 @@ export default function Orders() {
 
   const startItem = (page - 1) * pageSize + 1
   const endItem = Math.min(page * pageSize, pagination.total)
+  const paginationButtonClass =
+    'p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+
+  const renderPaginationArrows = () => (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => setPage(1)}
+        disabled={page === 1}
+        className={paginationButtonClass}
+        aria-label="First page"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M11 19l-7-7 7-7M19 19l-7-7 7-7"
+          />
+        </svg>
+      </button>
+      <button
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        disabled={page === 1}
+        className={paginationButtonClass}
+        aria-label="Previous page"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 19l-7-7 7-7"
+          />
+        </svg>
+      </button>
+
+      <span className="px-2.5 py-1 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+        Page {page} of {pagination.pages}
+      </span>
+
+      <button
+        onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+        disabled={page === pagination.pages}
+        className={paginationButtonClass}
+        aria-label="Next page"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+      </button>
+      <button
+        onClick={() => setPage(pagination.pages)}
+        disabled={page === pagination.pages}
+        className={paginationButtonClass}
+        aria-label="Last page"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 5l7 7-7 7M5 5l7 7-7 7"
+          />
+        </svg>
+      </button>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
@@ -496,8 +568,32 @@ export default function Orders() {
           </span>
         </div>
 
+        {/* Top pagination */}
+        {!initialLoading && !error && pagination.total > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/20">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                {PAGE_SIZE_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <span className="ml-1">
+                {startItem}–{endItem} of {pagination.total.toLocaleString()}
+              </span>
+            </div>
+            {renderPaginationArrows()}
+          </div>
+        )}
+
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
           {error ? (
             <div className="px-6 py-12 text-center">
               <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
@@ -511,29 +607,29 @@ export default function Orders() {
           ) : (
             <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                <tr className="bg-gray-50 dark:bg-gray-800">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Order #
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Order Date
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Customer
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Ship To
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Property Type
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Status
                   </th>
-                  <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Items
                   </th>
-                  <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400 whitespace-nowrap">
                     Order Total
                   </th>
                 </tr>
@@ -655,73 +751,7 @@ export default function Orders() {
               </span>
             </div>
 
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(1)}
-                disabled={page === 1}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                aria-label="First page"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11 19l-7-7 7-7M19 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                aria-label="Previous page"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-
-              <span className="px-3 py-1 text-sm text-gray-700 dark:text-gray-300">
-                Page {page} of {pagination.pages}
-              </span>
-
-              <button
-                onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-                disabled={page === pagination.pages}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                aria-label="Next page"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setPage(pagination.pages)}
-                disabled={page === pagination.pages}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                aria-label="Last page"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            </div>
+            {renderPaginationArrows()}
           </div>
         )}
       </div>
