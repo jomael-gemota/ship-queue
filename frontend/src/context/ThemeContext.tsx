@@ -21,10 +21,11 @@ const getInitialTheme = (): Theme => {
       return savedTheme
     }
   } catch {
-    // Ignore storage errors and fall back to system preference.
+    // Ignore storage errors and use the default theme.
   }
 
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  // First-time users should start in light mode.
+  return 'light'
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

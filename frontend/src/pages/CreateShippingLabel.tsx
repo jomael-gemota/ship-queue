@@ -292,12 +292,12 @@ export default function CreateShippingLabel() {
       )}
 
       {/* Step 1 — Import & draft (only shown to users with label creation permission) */}
-      {canCreate && <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
+      {canCreate && <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-center gap-2 mb-1">
           <StepBadge n={1} />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Import &amp; Draft</h2>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Import &amp; Draft</h2>
         </div>
-        <p className="text-sm text-slate-500 dark:text-gray-400 mb-4">
+        <p className="text-sm text-slate-500 dark:text-[var(--text-200)] mb-4">
           Upload a CSV with <span className="font-medium">PO#</span> and <span className="font-medium">Order#</span> columns, then draft the batch for review. Labels are only created when you choose to create &amp; print.
         </p>
 
@@ -310,19 +310,19 @@ export default function CreateShippingLabel() {
               const f = e.target.files?.[0]
               if (f) handleFile(f)
             }}
-            className="block text-sm text-slate-600 dark:text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-blue-700 file:cursor-pointer cursor-pointer"
+            className="block text-sm text-slate-600 dark:text-[var(--text-200)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--accent-200)] dark:file:bg-[var(--accent-100)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:opacity-90 file:cursor-pointer cursor-pointer"
           />
           <button
             onClick={downloadTemplate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-200/80 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
             Download template
           </button>
 
           {importRows.length > 0 && (
-            <span className="text-sm text-slate-500 dark:text-gray-400">
-              <span className="font-medium text-slate-700 dark:text-gray-200">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
+            <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+              <span className="font-medium text-slate-700 dark:text-[var(--text-200)]">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
             </span>
           )}
         </div>
@@ -332,23 +332,23 @@ export default function CreateShippingLabel() {
             <button
               onClick={handleDraft}
               disabled={drafting}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               {drafting && <Spinner />}
               {drafting ? 'Drafting…' : 'Draft for Review'}
             </button>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-gray-300 cursor-pointer select-none">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)] cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={testMode}
                 onChange={(e) => setTestMode(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                className="h-4 w-4 rounded border-slate-300 dark:border-[var(--bg-300)] text-[var(--accent-200)] focus:ring-[var(--accent-200)] cursor-pointer"
               />
               Test mode (no charges)
             </label>
             <button
               onClick={handleReset}
-              className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer"
+              className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
             >
               Clear
             </button>
@@ -357,13 +357,13 @@ export default function CreateShippingLabel() {
       </section>}
 
       {/* Batches table */}
-      <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-300/60 dark:border-gray-800">
-          <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
-            <LabelsTableIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+          <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
             <span>Label Batches</span>
           </h3>
-          <Link to="/settings" className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+          <Link to="/settings" className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline">
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 87.3 78" aria-hidden="true">
               <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
               <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44C.4 49.9 0 51.45 0 53h27.5z" fill="#00ac47" />
@@ -378,7 +378,7 @@ export default function CreateShippingLabel() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-100 dark:bg-gray-800/60 text-slate-500 dark:text-gray-400">
+            <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]">
               <tr className="text-left">
                 <Th><HeaderLabel icon={<IdIcon className="h-3.5 w-3.5" />} text="Batch ID" /></Th>
                 <Th><HeaderLabel icon={<ClockIcon className="h-3.5 w-3.5" />} text="Created" /></Th>
@@ -388,7 +388,7 @@ export default function CreateShippingLabel() {
                 <Th><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-gray-800 text-[13px]">
+            <tbody className="divide-y divide-slate-200 dark:divide-[var(--bg-300)] text-[13px]">
               {batchesLoading ? (
                 <tr><Td className="text-slate-400" colSpan={6}>Loading…</Td></tr>
               ) : batches.length === 0 ? (
@@ -396,22 +396,22 @@ export default function CreateShippingLabel() {
               ) : (
                 batches.slice(batchPage * batchPageSize, (batchPage + 1) * batchPageSize).map((b) => (
                   <tr key={b._id}>
-                    <Td compact className="font-medium text-slate-800 dark:text-gray-100">
+                    <Td compact className="font-medium text-slate-800 dark:text-[var(--text-100)]">
                       <span className="inline-flex items-center gap-1.5">
-                        <RowItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gray-500" />
+                        <RowItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
                         <span className="font-mono whitespace-nowrap">{shortBatchId(b._id)}</span>
                         {b.fileName && (
-                          <span className="text-xs text-slate-400 dark:text-gray-500">· {b.fileName}</span>
+                          <span className="text-xs text-slate-400 dark:text-[var(--text-200)]">· {b.fileName}</span>
                         )}
                       </span>
                     </Td>
-                    <Td compact className="text-slate-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
-                    <Td compact className="text-slate-600 dark:text-gray-300">{b.createdBy || '—'}</Td>
+                    <Td compact className="text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
+                    <Td compact className="text-slate-600 dark:text-[var(--text-200)]">{b.createdBy || '—'}</Td>
                     <Td compact><BatchStatusBadge status={b.status} testLabel={b.testLabel} /></Td>
                     <Td compact>
                       <Link
                         to={`/create-label/batches/${b._id}`}
-                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline whitespace-nowrap"
                       >
                         <EyeIcon className="h-3.5 w-3.5" />
                         View items ({b.itemCount})
@@ -445,7 +445,7 @@ export default function CreateShippingLabel() {
                               </button>
                               <button
                                 onClick={() => setConfirmDeleteId(null)}
-                                className="text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer"
+                                className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
                               >
                                 Cancel
                               </button>
@@ -468,18 +468,18 @@ export default function CreateShippingLabel() {
 
         {/* Pagination bar */}
         {!batchesLoading && batches.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-gray-800 px-5 py-3">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent px-5 py-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={batchPageSize}
                 onChange={(e) => { setBatchPageSize(Number(e.target.value)); setBatchPage(0) }}
-                className="rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-slate-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                className="rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1 text-xs text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-gray-400">
+            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
               <span>
                 {batchPage * batchPageSize + 1}–{Math.min((batchPage + 1) * batchPageSize, batches.length)} of {batches.length}
               </span>
@@ -487,7 +487,7 @@ export default function CreateShippingLabel() {
                 <button
                   onClick={() => setBatchPage((p) => Math.max(0, p - 1))}
                   disabled={batchPage === 0}
-                  className="inline-flex items-center justify-center rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-1 text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   aria-label="Previous page"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -495,7 +495,7 @@ export default function CreateShippingLabel() {
                 <button
                   onClick={() => setBatchPage((p) => p + 1)}
                   disabled={(batchPage + 1) * batchPageSize >= batches.length}
-                  className="inline-flex items-center justify-center rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-1 text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   aria-label="Next page"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

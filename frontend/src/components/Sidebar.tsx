@@ -67,14 +67,14 @@ export default function Sidebar() {
   const isAdmin = user?.role === 'admin'
 
   return (
-    <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-slate-300/60 dark:border-gray-800 bg-slate-50/95 dark:bg-gray-900/95 backdrop-blur">
-      <div className="h-16 px-3 sm:px-4 flex items-center gap-3 border-b border-slate-300/60 dark:border-gray-800">
-        <span className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-gray-800 border border-slate-300/70 dark:border-gray-700 p-1 flex items-center justify-center">
+    <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur">
+      <div className="h-16 px-3 sm:px-4 flex items-center gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+        <span className="h-9 w-9 rounded-xl bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border border-[var(--bg-300)] dark:border-[var(--bg-300)] p-1 flex items-center justify-center">
           <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
         </span>
         <div className="hidden sm:block min-w-0">
-          <p className="text-sm font-semibold text-slate-900 dark:text-white leading-5">Ship Queue</p>
-          <p className="text-xs text-slate-500 dark:text-gray-400">Operations Console</p>
+          <p className="text-sm font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] leading-5">Ship Queue</p>
+          <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)]">Operations Console</p>
         </div>
       </div>
 
@@ -89,8 +89,8 @@ export default function Sidebar() {
               className={({ isActive }) =>
                 `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
                   isActive
-                    ? 'bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-medium shadow-sm'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/70 dark:hover:bg-gray-800 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
                 }`
               }
             >
@@ -102,17 +102,17 @@ export default function Sidebar() {
           {isAdmin && (
             <>
               <div className="hidden sm:block pt-2 pb-0.5 px-1">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-gray-600">Admin</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Admin</p>
               </div>
-              <div className="sm:hidden border-t border-slate-200 dark:border-gray-800 my-1" />
+              <div className="sm:hidden border-t border-slate-200 dark:border-[var(--bg-300)] my-1" />
               <NavLink
                 to="/admin/users"
                 title="User Management"
                 className={({ isActive }) =>
                   `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
                     isActive
-                      ? 'bg-purple-100/80 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium shadow-sm'
-                      : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/70 dark:hover:bg-gray-800 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                      : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
                   }`
                 }
               >
@@ -125,7 +125,7 @@ export default function Sidebar() {
           )}
         </nav>
 
-        <div className="mt-auto p-3 border-t border-slate-300/60 dark:border-gray-800">
+        <div className="mt-auto p-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)]">
           {user && (
             <div className="hidden sm:flex items-center gap-2.5 mb-2.5">
               {user.avatar ? (
@@ -141,8 +141,8 @@ export default function Sidebar() {
                 </span>
               )}
               <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-800 dark:text-gray-200 truncate">{user.name}</p>
-                <p className="text-xs text-slate-500 dark:text-gray-400 truncate">{user.email}</p>
+                <p className="text-sm font-medium text-[var(--text-100)] dark:text-[var(--text-200)] truncate">{user.name}</p>
+                <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)] truncate">{user.email}</p>
               </div>
             </div>
           )}

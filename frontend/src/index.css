@@ -2,6 +2,32 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+:root {
+  --primary-100: #d4eaf7;
+  --primary-200: #b6ccd8;
+  --primary-300: #3b3c3d;
+  --accent-100: #71c4ef;
+  --accent-200: #00668c;
+  --text-100: #1d1c1c;
+  --text-200: #313d44;
+  --bg-100: #fffefb;
+  --bg-200: #f5f4f1;
+  --bg-300: #cccbc8;
+}
+
+.dark {
+  --primary-100: #1f3a5f;
+  --primary-200: #4d648d;
+  --primary-300: #acc2ef;
+  --accent-100: #3d5a80;
+  --accent-200: #cee8ff;
+  --text-100: #ffffff;
+  --text-200: #e0e0e0;
+  --bg-100: #0f1c2e;
+  --bg-200: #1f2b3e;
+  --bg-300: #374357;
+}
+
 html,
 body,
 #root {
@@ -11,12 +37,13 @@ body,
 
 body {
   margin: 0;
-  background-color: rgb(241 245 249);
-  color: rgb(15 23 42);
+  background-color: var(--bg-100);
+  color: var(--text-100);
+  line-height: 1.5;
   transition: background-color 160ms ease, color 160ms ease;
 }
 
 .dark body {
-  background-color: rgb(3 7 18);
-  color: rgb(226 232 240);
+  background-color: var(--bg-100);
+  color: var(--text-100);
 }

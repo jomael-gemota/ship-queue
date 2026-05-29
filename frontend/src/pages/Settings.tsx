@@ -126,14 +126,14 @@ export default function Settings() {
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-start gap-3 mb-4">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950/40">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
             <GoogleDriveLogo className="h-6 w-6" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Google Drive</h2>
-            <p className="text-sm text-slate-500 dark:text-gray-400">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Google Drive</h2>
+            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
               Created shipping-label PDFs (named by PO#) are uploaded to your Google Drive.
             </p>
           </div>
@@ -148,7 +148,7 @@ export default function Settings() {
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                   settings?.driveConnected
                     ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                    : 'bg-slate-200 dark:bg-gray-700 text-slate-600 dark:text-gray-300'
+                    : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
                 }`}
               >
                 {settings?.driveConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
@@ -157,7 +157,7 @@ export default function Settings() {
               {!settings?.driveConnected && canCreate && (
                 <a
                   href="/api/auth/google/reconnect"
-                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors"
                 >
                   <GoogleDriveLogo className="h-4 w-4" mono />
                   Connect Google Drive
@@ -167,17 +167,17 @@ export default function Settings() {
 
             {settings?.driveConnected && (
               <>
-                <div className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950/40 p-4 mb-4">
+                <div className="flex items-start gap-3 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-4 mb-4">
                   <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
                     <FolderIcon className="h-5 w-5 text-amber-500" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-gray-500 mb-0.5">Destination folder</p>
-                    <p className="text-sm font-medium text-slate-800 dark:text-gray-100 break-words">
+                    <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Destination folder</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
                       {settings.driveFolderName || 'My Drive (root)'}
                     </p>
                     {settings.driveFolderId && (
-                      <p className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-gray-500 font-mono mt-1 break-all">
+                      <p className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)] font-mono mt-1 break-all">
                         <HashIcon className="h-3 w-3 shrink-0" />
                         {settings.driveFolderId}
                       </p>
@@ -189,7 +189,7 @@ export default function Settings() {
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       onClick={openBrowser}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-200/80 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
                     >
                       <FolderSearchIcon className="h-4 w-4" />
                       Browse folders
@@ -198,7 +198,7 @@ export default function Settings() {
                       <button
                         onClick={() => saveFolder(null)}
                         disabled={saving}
-                        className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 disabled:opacity-50 cursor-pointer"
+                        className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] disabled:opacity-50 cursor-pointer"
                       >
                         Reset to root
                       </button>
@@ -214,12 +214,12 @@ export default function Settings() {
                       value={manualId}
                       onChange={(e) => setManualId(e.target.value)}
                       placeholder="Or paste a Drive folder URL / ID"
-                      className="flex-1 min-w-[240px] rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-950/40 px-3 py-2 text-sm text-slate-700 dark:text-gray-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 min-w-[240px] rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-200)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
                     />
                     <button
                       onClick={() => saveFolder(extractFolderId(manualId))}
                       disabled={saving || !manualId.trim()}
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      className="rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
                     >
                       Save
                     </button>
@@ -228,21 +228,21 @@ export default function Settings() {
 
                 {/* Folder browser */}
                 {canCreate && browserOpen && (
-                  <div className="mt-4 rounded-lg border border-slate-200 dark:border-gray-800 overflow-hidden">
-                    <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-slate-100 dark:bg-gray-800/60 text-sm">
-                      <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+                  <div className="mt-4 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] overflow-hidden">
+                    <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-sm">
+                      <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">
                         <GoogleDriveLogo className="h-3.5 w-3.5" />
                         My Drive
                       </button>
                       {crumbs.map((c, i) => (
                         <span key={c.id} className="flex items-center gap-1">
                           <span className="text-slate-400">/</span>
-                          <button onClick={() => goToCrumb(i)} className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">{c.name}</button>
+                          <button onClick={() => goToCrumb(i)} className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">{c.name}</button>
                         </span>
                       ))}
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-gray-800">
+                    <div className="max-h-64 overflow-y-auto divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
                       {foldersLoading ? (
                         <p className="px-3 py-3 text-sm text-slate-400">Loading folders…</p>
                       ) : folders.length === 0 ? (
@@ -252,7 +252,7 @@ export default function Settings() {
                           <button
                             key={f.id}
                             onClick={() => enterFolder(f)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
                           >
                             <svg className="h-4 w-4 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" /></svg>
                             {f.name}
@@ -261,15 +261,15 @@ export default function Settings() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900">
-                      <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-gray-400 min-w-0">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-100)]">
+                      <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[var(--text-200)] min-w-0">
                         <FolderIcon className="h-4 w-4 shrink-0 text-amber-500" />
                         <span className="truncate">
                           {currentFolderId ? `Current: ${crumbs[crumbs.length - 1].name}` : 'Current: My Drive (root)'}
                         </span>
                       </span>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setBrowserOpen(false)} className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer">Cancel</button>
+                        <button onClick={() => setBrowserOpen(false)} className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer">Cancel</button>
                         <button
                           onClick={() => saveFolder(currentFolderId ?? 'root')}
                           disabled={saving}
@@ -285,7 +285,7 @@ export default function Settings() {
             )}
 
             {!settings?.driveConnected && (
-              <p className="text-xs text-slate-400 dark:text-gray-500">
+              <p className="text-xs text-slate-400 dark:text-[var(--text-200)]">
                 Connecting re-authenticates with Google and grants Drive access so labels can be saved to your Drive.
               </p>
             )}

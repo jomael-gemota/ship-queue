@@ -9,7 +9,7 @@ export default function Layout() {
   const fullWidth = pathname.startsWith('/create-label/batches')
 
   return (
-    <div className="min-h-screen bg-slate-200/55 dark:bg-gray-950">
+    <div className="min-h-screen bg-[var(--bg-200)] dark:bg-[var(--bg-100)]">
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex-1 min-w-0 flex flex-col">

@@ -18,13 +18,13 @@ export default function Login() {
   }
 
   return (
-    <div className="relative isolate min-h-screen overflow-hidden bg-[#01263a] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+    <div className="relative isolate min-h-screen overflow-hidden bg-[var(--bg-200)] px-4 py-8 text-[var(--text-100)] sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[#01263a]" />
-        <div className="absolute inset-0 bg-slate-950/20" />
-        <div className="absolute left-[-9rem] top-16 h-[23rem] w-[23rem] rounded-full border border-cyan-300/15 bg-cyan-300/10" />
-        <div className="absolute right-[-8rem] top-[-6rem] h-[22rem] w-[22rem] rounded-full border border-emerald-300/15 bg-emerald-300/10" />
-        <div className="absolute bottom-[-10rem] left-1/3 h-[24rem] w-[24rem] rounded-full border border-blue-300/10 bg-blue-300/8" />
+        <div className="absolute inset-0 bg-[var(--bg-200)]" />
+        <div className="absolute inset-0 bg-[var(--primary-100)] opacity-40" />
+        <div className="absolute left-[-9rem] top-16 h-[23rem] w-[23rem] rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] opacity-50" />
+        <div className="absolute right-[-8rem] top-[-6rem] h-[22rem] w-[22rem] rounded-full border border-[var(--accent-100)] bg-[var(--primary-100)] opacity-45" />
+        <div className="absolute bottom-[-10rem] left-1/3 h-[24rem] w-[24rem] rounded-full border border-[var(--primary-200)] bg-[var(--accent-100)] opacity-35" />
 
         <DotCluster className="-left-28 top-16 h-80 w-80 opacity-45" />
         <DotCluster className="left-40 -top-24 h-72 w-72 opacity-35" />
@@ -34,7 +34,7 @@ export default function Login() {
 
         <svg
           viewBox="0 0 1200 700"
-          className="absolute inset-0 h-full w-full text-emerald-300/65"
+          className="absolute inset-0 h-full w-full text-[var(--accent-100)] opacity-60"
           preserveAspectRatio="none"
           aria-hidden="true"
         >
@@ -74,76 +74,76 @@ export default function Login() {
       </div>
 
       <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-white/15 bg-slate-950/45 shadow-[0_42px_80px_-42px_rgba(2,6,23,0.9)] backdrop-blur-sm lg:grid-cols-[1.18fr_0.82fr]">
-          <section className="relative overflow-hidden bg-slate-900 p-8 text-slate-100 lg:p-10">
-            <div className="absolute inset-0 bg-slate-900/95" />
-            <div className="absolute -right-24 top-[-4rem] h-72 w-72 rounded-full border border-cyan-200/15 bg-cyan-300/12" />
-            <div className="absolute -left-20 bottom-[-7rem] h-72 w-72 rounded-full border border-indigo-200/15 bg-indigo-300/10" />
+        <div className="grid w-full overflow-hidden rounded-[2rem] border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-[0_30px_60px_-38px_rgba(59,60,61,0.45)] backdrop-blur-sm lg:grid-cols-[1.18fr_0.82fr]">
+          <section className="relative overflow-hidden bg-[var(--bg-100)] p-8 text-[var(--text-100)] lg:p-10">
+            <div className="absolute inset-0 bg-[var(--bg-100)]" />
+            <div className="absolute -right-24 top-[-4rem] h-72 w-72 rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] opacity-45" />
+            <div className="absolute -left-20 bottom-[-7rem] h-72 w-72 rounded-full border border-[var(--accent-100)] bg-[var(--primary-100)] opacity-35" />
             <div className="relative">
-              <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-sky-100/25 bg-sky-200/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
+              <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-200)]">
                 Supplier Management Console
               </div>
 
               <div className="mb-6 flex items-center gap-4">
-                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white p-2 shadow-lg shadow-slate-950/40">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-2 shadow-lg shadow-[rgba(59,60,61,0.2)]">
                   <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Internal Platform</p>
-                  <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Ship Queue</h1>
+                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-200)]">Internal Platform</p>
+                  <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-100)] sm:text-3xl">Ship Queue</h1>
                 </div>
               </div>
 
-              <h2 className="max-w-xl text-2xl font-semibold leading-tight text-slate-100 sm:text-3xl">
+              <h2 className="max-w-xl text-2xl font-semibold leading-tight text-[var(--text-100)] sm:text-3xl">
                 Pull ShipStation orders and generate shipping labels in bulk without workflow chaos.
               </h2>
 
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-300 sm:text-base">
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--text-200)] sm:text-base">
                 Built for Supplier Management Order Takers to queue incoming orders, generate labels at scale, and keep outbound processing consistent.
               </p>
 
-              <div className="mt-8 grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
+              <div className="mt-8 grid gap-3 text-sm text-[var(--text-200)] sm:grid-cols-2">
                 <FeaturePill label="Google-secured access" />
                 <FeaturePill label="ShipStation order sync" />
                 <FeaturePill label="Bulk label generation" />
                 <FeaturePill label="Admin-managed permissions" />
               </div>
 
-              <div className="mt-8 rounded-2xl border border-white/15 bg-white/10 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Workflow Snapshot</p>
+              <div className="mt-8 rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-200)]">Workflow Snapshot</p>
                 <div className="mt-3 grid gap-2 text-sm">
-                  <div className="flex items-center justify-between rounded-lg bg-slate-950/55 px-3 py-2">
-                    <span className="text-slate-300">1. Pull new orders from ShipStation</span>
-                    <span className="rounded-md bg-cyan-300/20 px-2 py-0.5 text-xs text-cyan-100">Sync</span>
+                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
+                    <span className="text-[var(--text-200)]">1. Pull new orders from ShipStation</span>
+                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Sync</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-slate-950/55 px-3 py-2">
-                    <span className="text-slate-300">2. Build bulk batches for labels</span>
-                    <span className="rounded-md bg-amber-300/20 px-2 py-0.5 text-xs text-amber-100">Batch</span>
+                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
+                    <span className="text-[var(--text-200)]">2. Build bulk batches for labels</span>
+                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Batch</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-slate-950/55 px-3 py-2">
-                    <span className="text-slate-300">3. Export and finalize shipments</span>
-                    <span className="rounded-md bg-emerald-300/20 px-2 py-0.5 text-xs text-emerald-100">Ready</span>
+                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
+                    <span className="text-[var(--text-200)]">3. Export and finalize shipments</span>
+                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Ready</span>
                   </div>
                 </div>
               </div>
             </div>
           </section>
 
-          <section className="relative bg-slate-900/25 p-6 sm:p-8 lg:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(45,212,191,0.1),transparent_38%)]" />
+          <section className="relative bg-[var(--bg-200)] p-6 sm:p-8 lg:p-10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(113,196,239,0.16),transparent_40%)]" />
 
-            <div className="relative rounded-2xl border border-emerald-100/20 bg-slate-950/70 p-6 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)] backdrop-blur sm:p-7">
-              <div className="mb-5 h-1 w-14 rounded-full bg-emerald-300/80" />
-              <p className="inline-flex rounded-full border border-emerald-100/25 bg-emerald-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+            <div className="relative rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-[0_24px_50px_-28px_rgba(59,60,61,0.35)] backdrop-blur sm:p-7">
+              <div className="mb-5 h-1 w-14 rounded-full bg-[var(--accent-100)]" />
+              <p className="inline-flex rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-200)]">
                 Sign In
               </p>
-              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-white">Welcome back</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--text-100)]">Welcome back</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--text-200)]">
                 Continue with your company Google account to open the Supplier Management order queue.
               </p>
 
               {errorMessage && (
-                <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
                   </svg>
@@ -154,14 +154,14 @@ export default function Login() {
               <button
                 onClick={handleGoogleLogin}
                 type="button"
-                className="mt-6 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-emerald-200/70 bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-200 hover:shadow-md active:translate-y-0"
+                className="mt-6 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-[var(--accent-200)] bg-[var(--accent-200)] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md active:translate-y-0"
               >
                 <GoogleIcon />
                 Continue with Google
               </button>
 
-              <div className="mt-8 rounded-xl border border-white/15 bg-white/6 p-4 text-xs leading-relaxed text-slate-300">
-                Access is limited to verified team members from <span className="font-semibold text-slate-100">@outdoorequipped.com</span> and <span className="font-semibold text-slate-100">@channelprecision.com</span>.
+              <div className="mt-8 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4 text-xs leading-relaxed text-[var(--text-200)]">
+                Access is limited to verified team members from <span className="font-semibold text-[var(--text-100)]">@outdoorequipped.com</span> and <span className="font-semibold text-[var(--text-100)]">@channelprecision.com</span>.
               </div>
             </div>
           </section>
@@ -173,11 +173,11 @@ export default function Login() {
 
 function FeaturePill({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/12 px-3 py-2">
-      <svg className="h-4 w-4 shrink-0 text-sky-200" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <div className="flex items-center gap-2 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2">
+      <svg className="h-4 w-4 shrink-0 text-[var(--accent-100)]" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.34 7.34a1 1 0 01-1.42 0l-3.648-3.647a1 1 0 011.414-1.414l2.938 2.938 6.633-6.633a1 1 0 011.423-.003z" clipRule="evenodd" />
       </svg>
-      <span className="text-sm text-slate-100">{label}</span>
+      <span className="text-sm text-[var(--text-100)]">{label}</span>
     </div>
   )
 }

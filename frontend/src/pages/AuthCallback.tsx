@@ -21,10 +21,10 @@ export default function AuthCallback() {
   }, [params, login, navigate])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-gray-950">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-200)] dark:bg-[var(--bg-100)]">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-gray-500 dark:text-gray-400">Signing you in…</p>
+        <div className="w-8 h-8 border-4 border-[var(--accent-200)] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500 dark:text-[var(--text-200)]">Signing you in…</p>
       </div>
     </div>
   )

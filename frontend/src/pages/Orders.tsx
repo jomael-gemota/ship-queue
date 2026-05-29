@@ -20,9 +20,9 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   awaiting_payment:
     'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   awaiting_shipment:
-    'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+    'bg-blue-100 text-blue-800 dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)]',
   pending_fulfillment:
-    'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+    'bg-purple-100 text-purple-800 dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)]',
   shipped:
     'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   on_hold:
@@ -163,15 +163,15 @@ function TableSkeleton() {
       {Array.from({ length: 10 }).map((_, i) => (
         <div
           key={i}
-          className="flex gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800"
+          className="flex gap-3 px-4 py-2.5 border-b border-slate-200 dark:border-[var(--bg-300)]"
         >
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-20" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-24" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-36 flex-1" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-28" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-24" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-14" />
-          <div className="h-3.5 bg-gray-200 dark:bg-gray-700 rounded w-16" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-20" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-24" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-36 flex-1" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-28" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-24" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-14" />
+          <div className="h-3.5 bg-gray-200 dark:bg-[var(--bg-300)] rounded w-16" />
         </div>
       ))}
     </div>
@@ -184,9 +184,9 @@ function SyncProgressBar({ state }: { state: SyncState }) {
     progress.total > 0 ? Math.round((progress.synced / progress.total) * 100) : 0
 
   return (
-    <div className="mb-4 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+    <div className="mb-4 px-4 py-3 bg-[var(--bg-200)] dark:bg-[var(--primary-100)] border border-[var(--bg-300)] dark:border-[var(--bg-300)] rounded-lg">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-300">
+        <div className="flex items-center gap-2 text-sm font-medium text-emerald-800 dark:text-[var(--accent-200)]">
           <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
             <circle
               className="opacity-25"
@@ -204,18 +204,18 @@ function SyncProgressBar({ state }: { state: SyncState }) {
           </svg>
           Syncing orders from ShipStation…
         </div>
-        <span className="text-sm text-blue-600 dark:text-blue-400">
+        <span className="text-sm text-[var(--accent-100)] dark:text-[var(--accent-200)]">
           {progress.synced.toLocaleString()} / {progress.total > 0 ? progress.total.toLocaleString() : '?'}
         </span>
       </div>
-      <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5">
+      <div className="w-full bg-emerald-100 dark:bg-[var(--primary-200)] rounded-full h-1.5">
         <div
-          className="bg-blue-600 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-500"
+          className="bg-[var(--accent-200)] dark:bg-[var(--accent-100)] h-1.5 rounded-full transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
       {progress.totalPages > 0 && (
-        <p className="mt-1.5 text-xs text-blue-600 dark:text-blue-400">
+        <p className="mt-1.5 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)]">
           Page {progress.page} of {progress.totalPages} — table updates live as data arrives
         </p>
       )}
@@ -455,7 +455,7 @@ export default function Orders() {
   const startItem = (page - 1) * pageSize + 1
   const endItem = Math.min(page * pageSize, pagination.total)
   const paginationButtonClass =
-    'p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+    'p-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-slate-900 dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
 
   const renderPaginationArrows = () => (
     <div className="flex items-center gap-1">
@@ -490,7 +490,7 @@ export default function Orders() {
         </svg>
       </button>
 
-      <span className="px-2.5 py-1 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+      <span className="px-2.5 py-1 text-sm text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
         Page {page} of {pagination.pages}
       </span>
 
@@ -532,10 +532,10 @@ export default function Orders() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">List of Orders</h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">List of Orders</h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)] mt-0.5">
             Last synced:{' '}
-            <span className="font-medium text-gray-700 dark:text-gray-300">
+            <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">
               {formatDateTime(lastSyncedAt)}
             </span>
           </p>
@@ -544,7 +544,7 @@ export default function Orders() {
           <button
             onClick={handleSync}
             disabled={isSyncing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed shadow-sm"
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-[var(--accent-200)] dark:bg-[var(--accent-100)] hover:opacity-90 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed shadow-sm"
           >
             {isSyncing ? (
               <>
@@ -643,16 +643,16 @@ export default function Orders() {
       )}
 
       {/* Table card */}
-      <div className="bg-slate-50 dark:bg-gray-900 rounded-xl border border-slate-300/70 dark:border-gray-800 shadow-sm">
+      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-100)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm">
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]">
             Status
           </label>
           <select
             value={selectedStatus}
             onChange={(e) => handleStatusChange(e.target.value as OrderStatus | '')}
-            className="text-sm border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="text-sm border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
           >
             <option value="">All Statuses</option>
             {ORDER_STATUSES.map((s) => (
@@ -663,7 +663,7 @@ export default function Orders() {
           </select>
 
           <div className="relative min-w-[220px] flex-1 max-w-md">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-[var(--text-200)]">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -678,12 +678,12 @@ export default function Orders() {
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search order #, customer, ship-to"
-              className="w-full text-sm border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-sm border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
             {searchInput && (
               <button
                 onClick={() => handleSearchChange('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer"
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-[var(--text-100)] cursor-pointer"
                 aria-label="Clear search"
               >
                 <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -697,7 +697,7 @@ export default function Orders() {
             )}
           </div>
 
-          <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+          <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
             {tableRefreshing && (
               <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
                 <circle
@@ -722,13 +722,13 @@ export default function Orders() {
 
         {/* Top pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-slate-200 dark:border-gray-800 bg-slate-100/70 dark:bg-gray-800/20">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -751,7 +751,7 @@ export default function Orders() {
               <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
               <button
                 onClick={() => fetchOrders()}
-                className="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                className="mt-3 text-sm text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
               >
                 Try again
               </button>
@@ -759,51 +759,51 @@ export default function Orders() {
           ) : (
             <table className="w-full text-[13px] border-separate border-spacing-0">
               <thead>
-                <tr className="bg-slate-200/90 dark:bg-gray-800">
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                <tr className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order #"
                       iconPath="M9 12h6m-6 4h6m1-10H8m8 0V5a2 2 0 00-2-2H8a2 2 0 00-2 2v1m10 0a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Date"
                       iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Customer"
                       iconPath="M16 14a4 4 0 10-8 0m8 0a4 4 0 018 0m-8 0H8m8 0v1a3 3 0 01-3 3H11a3 3 0 01-3-3v-1m6-6a4 4 0 11-8 0 4 4 0 018 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Ship To"
                       iconPath="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Property Type"
                       iconPath="M3 10l9-7 9 7v10a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2V10z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Status"
                       iconPath="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Items"
                       iconPath="M20 13V7a2 2 0 00-2-2h-3V3H9v2H6a2 2 0 00-2 2v6m16 0l-2 7H6l-2-7m16 0H4"
                       align="right"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-slate-200/90 dark:bg-gray-800 border-b border-slate-300 dark:border-gray-700 border-r border-slate-300/80 dark:border-r-gray-700/80 last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-gray-300 whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Total"
                       iconPath="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5S13.657 14 12 14m0-8v2m0 6v2m9-4a9 9 0 11-18 0 9 9 0 0118 0z"
@@ -812,7 +812,7 @@ export default function Orders() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-300 dark:divide-gray-800">
+              <tbody className="divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
                 {initialLoading ? (
                   <tr>
                     <td colSpan={8} className="p-0">
@@ -824,7 +824,7 @@ export default function Orders() {
                     <td colSpan={8} className="px-6 py-14 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <svg
-                          className="h-10 w-10 text-gray-300 dark:text-gray-700"
+                          className="h-10 w-10 text-gray-300 dark:text-[var(--text-200)]"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -836,7 +836,7 @@ export default function Orders() {
                             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                           />
                         </svg>
-                        <p className="text-gray-500 dark:text-gray-400">
+                        <p className="text-gray-500 dark:text-[var(--text-200)]">
                           {selectedStatus && debouncedSearch
                             ? `No orders match "${debouncedSearch}" with status "${ORDER_STATUS_LABELS[selectedStatus as OrderStatus]}".`
                             : selectedStatus
@@ -859,14 +859,14 @@ export default function Orders() {
                     const itemsLoadError = itemsError[order._id]
                     const isEvenRow = rowIndex % 2 === 0
                     const rowStripedClass = isEvenRow
-                      ? 'bg-slate-100/85 dark:bg-gray-900/40'
-                      : 'bg-slate-200/65 dark:bg-gray-800/30'
+                      ? 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]'
+                      : 'bg-[var(--bg-200)] dark:bg-[var(--bg-200)]'
                     const rowHighlightClass = isExpanded
-                      ? 'bg-blue-50 dark:bg-blue-900/20'
+                      ? 'bg-emerald-50 dark:bg-[var(--primary-100)]'
                       : rowStripedClass
                     const rowHoverClass = isExpanded
-                      ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
-                      : 'hover:bg-slate-300/75 dark:hover:bg-gray-800/50'
+                      ? 'hover:bg-emerald-100 dark:hover:bg-[var(--primary-200)]'
+                      : 'hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)]'
                     const orderNumberText = order.orderNumber ? String(order.orderNumber) : '—'
                     const orderDateText = formatDate(order.orderDate)
                     const customerName = order.shipTo?.name || '—'
@@ -895,14 +895,14 @@ export default function Orders() {
                       <Fragment key={order._id}>
                         <tr className={`${rowHighlightClass} ${rowHoverClass} transition-colors`}>
                           <td
-                            className="px-3 py-2.5 font-medium text-gray-900 dark:text-white whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 font-medium text-gray-900 dark:text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={orderNumberText}
                           >
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => toggleOrderItems(order._id)}
-                                className="inline-flex items-center justify-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                                className="inline-flex items-center justify-center text-gray-700 dark:text-[var(--text-200)] hover:text-[var(--accent-100)] dark:hover:text-[var(--accent-200)] cursor-pointer"
                                 aria-expanded={isExpanded}
                                 aria-controls={`order-items-${order._id}`}
                                 aria-label={`${isExpanded ? 'Hide' : 'Show'} items for order ${order.orderNumber}`}
@@ -925,29 +925,29 @@ export default function Orders() {
                             </div>
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={orderDateText}
                           >
                             {orderDateText}
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[170px] truncate border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] max-w-[170px] truncate border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={customerName}
                           >
                             {customerName}
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-gray-400 max-w-[240px] truncate border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] max-w-[240px] truncate border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={shipToText}
                           >
                             {shipToText}
                           </td>
                           <td
-                            className="px-3 py-2.5 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={propertyTypeText}
                           >
                             {order.shipTo?.residential == null ? (
-                              <span className="text-gray-400 dark:text-gray-600">—</span>
+                              <span className="text-gray-400 dark:text-[var(--text-200)]">—</span>
                             ) : order.shipTo.residential ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
                                 <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -975,19 +975,19 @@ export default function Orders() {
                             )}
                           </td>
                           <td
-                            className="px-3 py-2.5 whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={statusText}
                           >
                             <StatusBadge status={order.orderStatus} />
                           </td>
                           <td
-                            className="px-3 py-2.5 text-right whitespace-nowrap text-gray-600 dark:text-gray-400 border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 text-right whitespace-nowrap text-gray-600 dark:text-[var(--text-200)] border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={itemCountText}
                           >
                             {itemCount}
                           </td>
                           <td
-                            className="px-3 py-2.5 text-right font-medium text-gray-900 dark:text-white whitespace-nowrap border-r border-slate-300/80 dark:border-gray-800 last:border-r-0"
+                            className="px-3 py-2.5 text-right font-medium text-gray-900 dark:text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
                             title={orderTotalText}
                           >
                             {orderTotalText}
@@ -997,11 +997,11 @@ export default function Orders() {
                         {isExpanded && (
                           <tr
                             id={`order-items-${order._id}`}
-                            className="bg-blue-50/60 dark:bg-blue-900/10 border-t border-blue-100 dark:border-blue-800/40"
+                            className="bg-emerald-50/70 dark:bg-[var(--primary-100)] border-t border-emerald-100 dark:border-[var(--bg-300)]"
                           >
                             <td colSpan={8} className="px-4 py-3">
                               {isItemsLoading ? (
-                                <div className="flex items-center gap-2 px-1 py-2 text-sm text-gray-500 dark:text-gray-400">
+                                <div className="flex items-center gap-2 px-1 py-2 text-sm text-gray-500 dark:text-[var(--text-200)]">
                                   <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                                     <circle
                                       className="opacity-25"
@@ -1024,61 +1024,61 @@ export default function Orders() {
                                   <span>{itemsLoadError}</span>
                                   <button
                                     onClick={() => fetchOrderItems(order._id)}
-                                    className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                    className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
                                   >
                                     Retry
                                   </button>
                                 </div>
                               ) : (loadedItems?.length ?? 0) > 0 ? (
-                                <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-slate-300/70 dark:border-gray-700 bg-slate-50/85 dark:bg-gray-900/60">
+                                <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)]">
                                   <table className="w-full text-[10px] leading-tight whitespace-nowrap">
-                                    <thead className="bg-slate-200/80 dark:bg-gray-800/80">
+                                    <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
                                       <tr>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Img"
                                             iconPath="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-8-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Title"
                                             iconPath="M4 6h16M4 10h16M4 14h10"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 pl-20 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-left px-1.5 pl-20 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="SKU"
                                             iconPath="M20 7l-8 4-8-4m16 0l-8-4-8 4m16 0v10l-8 4m-8-4V7m8 4v10"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="UPC"
                                             iconPath="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"
                                           />
                                         </th>
-                                        <th className="text-right pl-1.5 pr-20 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-right pl-1.5 pr-20 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Qty"
                                             iconPath="M7 8h10M7 12h10M7 16h10"
                                             align="right"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Weight"
                                             iconPath="M7 4h10l3 6v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8l3-6zm5 3v3"
                                           />
                                         </th>
-                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Unit"
                                             iconPath="M12 8c-1.657 0-3 .448-3 1s1.343 1 3 1 3 .448 3 1-1.343 1-3 1-3 .448-3 1 1.343 1 3 1m0-8V6m0 9v1m8-4a8 8 0 11-16 0 8 8 0 0116 0z"
                                             align="right"
                                           />
                                         </th>
-                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-gray-300">
+                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Tax"
                                             iconPath="M9 14l2 2 4-4m1-8H8a2 2 0 00-2 2v12l4-2 4 2 4-2 4 2V6a2 2 0 00-2-2h-4"
@@ -1138,10 +1138,10 @@ export default function Orders() {
                                               item.lineItemKey ??
                                               `${item.sku}-${item.name}-${index}`
                                             }
-                                            className="border-t border-slate-300/70 dark:border-gray-800 first:border-t-0"
+                                            className="border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] first:border-t-0"
                                           >
                                             <td className="px-1.5 py-1 align-top">
-                                              <div className="w-8 h-8 rounded border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                              <div className="w-8 h-8 rounded border border-gray-200 dark:border-[var(--bg-300)] bg-gray-100 dark:bg-[var(--bg-200)] overflow-hidden">
                                                 {imageUrl ? (
                                                   <img
                                                     src={imageUrl}
@@ -1150,34 +1150,34 @@ export default function Orders() {
                                                     loading="lazy"
                                                   />
                                                 ) : (
-                                                  <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400 dark:text-gray-500">
+                                                  <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400 dark:text-[var(--text-200)]">
                                                     —
                                                   </div>
                                                 )}
                                               </div>
                                             </td>
                                             <td
-                                              className="px-1.5 py-1 align-top text-gray-900 dark:text-gray-100 max-w-[12rem] truncate"
+                                              className="px-1.5 py-1 align-top text-gray-900 dark:text-[var(--text-100)] max-w-[12rem] truncate"
                                               title={title}
                                             >
                                               {title}
                                             </td>
-                                            <td className="px-1.5 pl-20 py-1 align-top text-gray-700 dark:text-gray-300">
+                                            <td className="px-1.5 pl-20 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
                                               {sku}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-gray-300">
+                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
                                               {upc}
                                             </td>
-                                            <td className="pl-1.5 pr-20 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                            <td className="pl-1.5 pr-20 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
                                               {quantity != null ? quantity.toLocaleString() : '—'}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-gray-300">
+                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
                                               {weightDetails}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
                                               {formatCurrency(unitPrice)}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-gray-300">
+                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
                                               {formatCurrency(taxAmount)}
                                             </td>
                                           </tr>
@@ -1187,7 +1187,7 @@ export default function Orders() {
                                   </table>
                                 </div>
                               ) : (
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                <p className="text-sm text-gray-500 dark:text-[var(--text-200)]">
                                   No items found for this order.
                                 </p>
                               )}
@@ -1205,13 +1205,13 @@ export default function Orders() {
 
         {/* Pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-slate-200 dark:border-gray-800">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent">
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>

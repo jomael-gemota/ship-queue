@@ -142,22 +142,22 @@ export default function BatchItems() {
 
       <Link
         to="/create-label"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] transition-colors"
       >
         <BackIcon className="h-4 w-4" />
         Back to batches
       </Link>
 
-      <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 overflow-hidden">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] overflow-hidden">
         {/* Batch header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300/60 dark:border-gray-800 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-4">
           <div>
-            <h2 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
-              <LabelsTableIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <h2 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
               <span className="font-mono">{batch ? shortBatchId(batch._id) : shortBatchId(batchId)}</span>
               {batch && <BatchStatusBadge status={batch.status} testLabel={batch.testLabel} />}
             </h2>
-            <p className="text-sm text-slate-500 dark:text-gray-400">
+            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
               {batch ? (
                 <>
                   {batch.itemCount} item{batch.itemCount === 1 ? '' : 's'}
@@ -193,7 +193,7 @@ export default function BatchItems() {
                     </button>
                     <button
                       onClick={() => setConfirmDelete(false)}
-                      className="text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer"
+                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
                     >
                       Cancel
                     </button>

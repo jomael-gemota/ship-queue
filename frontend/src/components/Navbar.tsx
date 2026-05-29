@@ -28,19 +28,19 @@ export default function Navbar() {
   )
 
   return (
-    <header className="h-16 bg-slate-50/90 dark:bg-gray-900/85 border-b border-slate-300/60 dark:border-gray-800 backdrop-blur">
+    <header className="h-16 bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] backdrop-blur">
       <div className="h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-gray-400">
+          <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--text-200)]">
             Enterprise Shipping Platform
           </p>
-          <h1 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white truncate">
+          <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] truncate">
             {pageTitle}
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 px-1 text-slate-600 dark:text-gray-300">
-            <svg className="h-4 w-4 text-slate-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="inline-flex items-center gap-1.5 px-1 text-[var(--text-200)] dark:text-[var(--text-200)]">
+            <svg className="h-4 w-4 text-[var(--primary-200)] dark:text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -55,7 +55,7 @@ export default function Navbar() {
             onClick={toggleTheme}
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300/80 bg-slate-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-200/80 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)] dark:hover:bg-[var(--primary-100)] transition-colors shadow-sm cursor-pointer"
           >
             {isDarkTheme ? (
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
