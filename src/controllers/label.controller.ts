@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
+import { isValidObjectId } from 'mongoose';
 import Order, { IOrder } from '../models/Order';
 import User from '../models/User';
-import Label from '../models/Label';
+import Label, { ILabel } from '../models/Label';
+import LabelBatch from '../models/LabelBatch';
 import {
   createShipStationLabel,
   CreateLabelPayload,
@@ -323,6 +325,316 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
     }
 
     res.json({ data: results });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create labels', error: (error as Error).message });
+  }
+};
+
+interface DriveCreds {
+  refreshToken?: string;
+  accessToken?: string;
+}
+
+async function resolveDriveContext(userId?: string) {
+  const user = userId
+    ? await User.findById(userId).select('+googleRefreshToken +googleAccessToken')
+    : null;
+  return {
+    user,
+    driveCreds: {
+      refreshToken: user?.googleRefreshToken,
+      accessToken: user?.googleAccessToken,
+    } as DriveCreds,
+    driveFolderId: user?.driveFolderId,
+    driveConnected: Boolean(user?.googleRefreshToken),
+  };
+}
+
+/**
+ * Creates the ShipStation label for a single (drafted) Label document, uploads
+ * the renamed PDF to Drive, and persists the result onto the same document.
+ * Returns a per-row result summary.
+ */
+async function createLabelForRecord(
+  label: ILabel,
+  testLabel: boolean,
+  drive: { creds: DriveCreds; folderId?: string; connected: boolean }
+) {
+  const prepared = await prepareRow({
+    poNumber: label.poNumber,
+    orderNumber: label.orderNumber,
+  });
+
+  if (!prepared.found) {
+    label.status = 'failed';
+    label.error = prepared.error;
+    await label.save();
+    return {
+      labelId: label._id,
+      poNumber: label.poNumber,
+      orderNumber: label.orderNumber,
+      status: 'failed' as const,
+      error: prepared.error,
+    };
+  }
+
+  const payload = buildPayload(prepared, testLabel);
+
+  try {
+    const ssResponse = await createShipStationLabel(payload);
+
+    label.orderId = prepared.orderId;
+    label.status = 'created';
+    label.found = true;
+    label.customerName = prepared.customerName;
+    label.qty = prepared.qty;
+    label.shipFrom = prepared.shipFrom;
+    label.shipTo = prepared.shipTo;
+    label.insuranceProvider = prepared.insuranceProvider;
+    label.carrierCode = prepared.carrierCode;
+    label.serviceCode = prepared.serviceCode;
+    label.packageCode = prepared.packageCode;
+    label.shipDate = prepared.shipDate;
+    label.propertyType = prepared.propertyType;
+    label.weight = prepared.weight;
+    label.dimensions = prepared.dimensions;
+    label.testLabel = testLabel;
+    label.requestPayload = payload as unknown as Record<string, unknown>;
+    label.shipmentId = ssResponse.shipmentId;
+    label.shipmentCost = ssResponse.shipmentCost;
+    label.insuranceCost = ssResponse.insuranceCost;
+    label.trackingNumber = ssResponse.trackingNumber;
+    label.labelData = ssResponse.labelData;
+    label.formData = ssResponse.formData;
+    label.error = undefined;
+
+    let driveError: string | undefined;
+    if (ssResponse.labelData) {
+      if (drive.connected) {
+        try {
+          const fileName = `${prepared.poNumber}.pdf`;
+          const uploaded = await uploadPdfToDrive(
+            drive.creds,
+            fileName,
+            ssResponse.labelData,
+            drive.folderId
+          );
+          label.driveFileId = uploaded.id;
+          label.driveFileName = uploaded.name;
+          label.driveFileLink = uploaded.webViewLink || undefined;
+        } catch (e) {
+          driveError = (e as Error).message;
+        }
+      } else {
+        driveError = 'Google Drive is not connected. Configure it in Settings.';
+      }
+    }
+
+    await label.save();
+
+    return {
+      labelId: label._id,
+      poNumber: label.poNumber,
+      orderNumber: label.orderNumber,
+      status: 'created' as const,
+      shipmentId: label.shipmentId,
+      shipmentCost: label.shipmentCost,
+      insuranceCost: label.insuranceCost,
+      trackingNumber: label.trackingNumber,
+      driveFileLink: label.driveFileLink,
+      driveFileName: label.driveFileName,
+      driveError,
+    };
+  } catch (e) {
+    const message = (e as Error).message;
+    label.orderId = prepared.orderId;
+    label.status = 'failed';
+    label.carrierCode = prepared.carrierCode;
+    label.serviceCode = prepared.serviceCode;
+    label.shipDate = prepared.shipDate;
+    label.propertyType = prepared.propertyType;
+    label.weight = prepared.weight;
+    label.dimensions = prepared.dimensions;
+    label.testLabel = testLabel;
+    label.requestPayload = payload as unknown as Record<string, unknown>;
+    label.error = message;
+    await label.save();
+    return {
+      labelId: label._id,
+      poNumber: label.poNumber,
+      orderNumber: label.orderNumber,
+      status: 'failed' as const,
+      error: message,
+    };
+  }
+}
+
+function summarizeBatchStatus(
+  labels: { status: string }[]
+): 'created' | 'partial' | 'failed' {
+  const created = labels.filter((l) => l.status === 'created').length;
+  if (created === labels.length) return 'created';
+  if (created === 0) return 'failed';
+  return 'partial';
+}
+
+/**
+ * Draft step — persists the imported PO#/Order# rows as a batch of "drafted"
+ * labels for later review. No ShipStation calls are made here.
+ */
+export const draftBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const fileName: string | undefined =
+      typeof req.body?.fileName === 'string' ? req.body.fileName : undefined;
+    const testLabel = req.body?.testLabel !== false; // default to test mode
+
+    const cleaned = rows
+      .map((r) => ({
+        poNumber: (r.poNumber || '').trim(),
+        orderNumber: (r.orderNumber || '').trim(),
+      }))
+      .filter((r) => r.poNumber || r.orderNumber);
+
+    if (cleaned.length === 0) {
+      res.status(400).json({ message: 'No rows provided. Import a CSV with PO# and Order# columns.' });
+      return;
+    }
+
+    const userId = req.user?.id;
+    const user = userId ? await User.findById(userId) : null;
+
+    const batch = await LabelBatch.create({
+      status: 'drafted',
+      fileName,
+      itemCount: cleaned.length,
+      testLabel,
+      createdBy: user?.email,
+      createdByUserId: userId,
+    });
+
+    // Resolve a reviewable shipping snapshot for each row (no ShipStation calls).
+    const prepared = await Promise.all(cleaned.map(prepareRow));
+
+    await Label.insertMany(
+      prepared.map((p) => ({
+        batchId: batch._id,
+        poNumber: p.poNumber,
+        orderNumber: p.orderNumber,
+        status: 'drafted',
+        found: p.found,
+        orderId: p.orderId,
+        customerName: p.customerName,
+        qty: p.qty,
+        shipFrom: p.shipFrom,
+        shipTo: p.shipTo,
+        propertyType: p.propertyType,
+        carrierCode: p.carrierCode,
+        serviceCode: p.serviceCode,
+        packageCode: p.packageCode,
+        shipDate: p.shipDate,
+        weight: p.weight,
+        dimensions: p.dimensions,
+        insuranceProvider: p.insuranceProvider,
+        testLabel,
+        error: p.found ? undefined : p.error,
+        createdBy: user?.email,
+        createdByUserId: userId,
+      }))
+    );
+
+    res.status(201).json({ data: batch });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to draft batch', error: (error as Error).message });
+  }
+};
+
+/** Lists label batches (newest first) with their resolved item counts. */
+export const getBatches = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = '1', pageSize = '50' } = req.query as { page?: string; pageSize?: string };
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const allowedSizes = [50, 100, 200, 500];
+    const size = allowedSizes.includes(parseInt(pageSize, 10)) ? parseInt(pageSize, 10) : 50;
+    const skip = (pageNum - 1) * size;
+
+    const [batches, total] = await Promise.all([
+      LabelBatch.find().sort({ createdAt: -1 }).skip(skip).limit(size).lean(),
+      LabelBatch.countDocuments(),
+    ]);
+
+    res.json({
+      data: batches,
+      pagination: { page: pageNum, pageSize: size, total, pages: Math.ceil(total / size) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch batches', error: (error as Error).message });
+  }
+};
+
+/** Returns the labels (items) that belong to a single batch. */
+export const getBatchItems = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id).lean();
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    const items = await Label.find({ batchId: id }).sort({ createdAt: 1 }).lean();
+    res.json({ data: { batch, items } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch batch items', error: (error as Error).message });
+  }
+};
+
+/**
+ * Create + print step — creates the ShipStation labels for every not-yet-created
+ * label in the batch, uploads each renamed PDF to Drive, and updates the batch
+ * status to reflect the outcome.
+ */
+export const createBatchLabels = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id);
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    const userId = req.user?.id;
+    const { driveCreds, driveFolderId, driveConnected } = await resolveDriveContext(userId);
+    const drive = { creds: driveCreds, folderId: driveFolderId, connected: driveConnected };
+
+    const testLabel = batch.testLabel !== false;
+
+    // Process rows that have not been successfully created yet (drafted or failed).
+    const pending = await Label.find({
+      batchId: id,
+      status: { $in: ['drafted', 'failed'] },
+    }).select('+labelData');
+
+    const results = [];
+    for (const label of pending) {
+      results.push(await createLabelForRecord(label, testLabel, drive));
+    }
+
+    const allLabels = await Label.find({ batchId: id }).select('status').lean();
+    batch.status = summarizeBatchStatus(allLabels);
+    await batch.save();
+
+    res.json({ data: { batch, results } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to create labels', error: (error as Error).message });
   }

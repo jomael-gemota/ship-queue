@@ -5,6 +5,10 @@ import {
   createLabels,
   getLabels,
   getLabelPdf,
+  draftBatch,
+  getBatches,
+  getBatchItems,
+  createBatchLabels,
 } from '../controllers/label.controller';
 
 const router = Router();
@@ -14,6 +18,13 @@ router.use(requireAuth);
 router.get('/', getLabels);
 router.post('/prepare', prepareLabels);
 router.post('/create', createLabels);
+
+// Batch-oriented flow: draft → review → create + print
+router.get('/batches', getBatches);
+router.post('/batches', draftBatch);
+router.get('/batches/:id/items', getBatchItems);
+router.post('/batches/:id/create', createBatchLabels);
+
 router.get('/:id/pdf', getLabelPdf);
 
 export default router;

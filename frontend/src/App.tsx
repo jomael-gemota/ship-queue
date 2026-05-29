@@ -8,6 +8,7 @@ import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import CreateShippingLabel from './pages/CreateShippingLabel'
+import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/create-label" element={<CreateShippingLabel />} />
+                <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>
             </Route>

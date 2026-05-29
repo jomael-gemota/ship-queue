@@ -1,6 +1,6 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 
-export type LabelStatus = 'created' | 'failed';
+export type LabelStatus = 'drafted' | 'created' | 'failed';
 
 interface ILabelWeight {
   value?: number;
@@ -14,11 +14,34 @@ interface ILabelDimensions {
   units?: string;
 }
 
+interface ILabelAddress {
+  name?: string;
+  company?: string;
+  street1?: string;
+  street2?: string;
+  street3?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+  residential?: boolean;
+}
+
 export interface ILabel extends Document {
+  batchId?: Types.ObjectId;
   poNumber: string;
   orderNumber: string;
   orderId?: number;
   status: LabelStatus;
+
+  // Reviewable shipping snapshot resolved from the order at draft time
+  found?: boolean;
+  customerName?: string;
+  qty?: number;
+  shipFrom?: ILabelAddress;
+  shipTo?: ILabelAddress;
+  insuranceProvider?: string;
 
   // Resolved request inputs (what we sent to ShipStation)
   carrierCode?: string;
@@ -54,10 +77,42 @@ export interface ILabel extends Document {
 
 const LabelSchema = new Schema<ILabel>(
   {
+    batchId: { type: Schema.Types.ObjectId, ref: 'LabelBatch', index: true },
     poNumber: { type: String, required: true, trim: true, index: true },
     orderNumber: { type: String, required: true, trim: true, index: true },
     orderId: { type: Number, index: true },
-    status: { type: String, enum: ['created', 'failed'], required: true, default: 'created' },
+    status: { type: String, enum: ['drafted', 'created', 'failed'], required: true, default: 'created' },
+
+    found: Boolean,
+    customerName: String,
+    qty: Number,
+    shipFrom: {
+      name: String,
+      company: String,
+      street1: String,
+      street2: String,
+      street3: String,
+      city: String,
+      state: String,
+      postalCode: String,
+      country: String,
+      phone: String,
+      residential: Boolean,
+    },
+    shipTo: {
+      name: String,
+      company: String,
+      street1: String,
+      street2: String,
+      street3: String,
+      city: String,
+      state: String,
+      postalCode: String,
+      country: String,
+      phone: String,
+      residential: Boolean,
+    },
+    insuranceProvider: String,
 
     carrierCode: String,
     serviceCode: String,

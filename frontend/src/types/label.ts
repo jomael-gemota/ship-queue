@@ -72,13 +72,20 @@ export interface CreateLabelResult {
   error?: string
 }
 
-/** A persisted label record (Labels table). */
+/** A persisted label record (an item within a batch). */
 export interface LabelRecord {
   _id: string
+  batchId?: string
   poNumber: string
   orderNumber: string
   orderId?: number
-  status: 'created' | 'failed'
+  status: 'drafted' | 'created' | 'failed'
+  found?: boolean
+  customerName?: string
+  qty?: number
+  shipFrom?: LabelAddress
+  shipTo?: LabelAddress
+  insuranceProvider?: string
   carrierCode?: string
   serviceCode?: string
   packageCode?: string
@@ -98,6 +105,48 @@ export interface LabelRecord {
   createdBy?: string
   createdAt: string
   updatedAt: string
+}
+
+export type LabelBatchStatus = 'drafted' | 'created' | 'partial' | 'failed'
+
+/** A batch of imported rows (one row per uploaded file in the Labels table). */
+export interface LabelBatch {
+  _id: string
+  status: LabelBatchStatus
+  fileName?: string
+  itemCount: number
+  testLabel?: boolean
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DraftBatchResponse {
+  data: LabelBatch
+}
+
+export interface BatchesListResponse {
+  data: LabelBatch[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    pages: number
+  }
+}
+
+export interface BatchItemsResponse {
+  data: {
+    batch: LabelBatch
+    items: LabelRecord[]
+  }
+}
+
+export interface CreateBatchLabelsResponse {
+  data: {
+    batch: LabelBatch
+    results: CreateLabelResult[]
+  }
 }
 
 export interface PrepareResponse {
