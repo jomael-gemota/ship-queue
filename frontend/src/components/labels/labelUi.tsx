@@ -399,16 +399,31 @@ export function CreatePrintButton({ busy, done, onClick, size = 'md' }: { busy: 
 }
 
 export function ExportCsvButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
-  const sizing = size === 'sm' ? 'gap-1.5 px-2.5 py-1.5 text-xs' : 'gap-2 px-3 py-2 text-sm'
+  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
     <button
       onClick={onClick}
       disabled={busy}
-      className={`inline-flex items-center rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${sizing}`}
+      title="Export as CSV"
+      className={`inline-flex items-center justify-center rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <CsvIcon className={iconSize} />}
-      Export as CSV
+    </button>
+  )
+}
+
+export function DeleteBatchButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
+  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      title="Delete batch"
+      className={`inline-flex items-center justify-center rounded-lg border border-red-300 dark:border-red-800 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
+    >
+      {busy ? <Spinner className={iconSize} /> : <TrashIcon className={iconSize} />}
     </button>
   )
 }
@@ -761,6 +776,14 @@ export function BackIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    </svg>
+  )
+}
+
+export function TrashIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
   )
 }

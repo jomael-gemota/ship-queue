@@ -9,6 +9,7 @@ import {
   getBatches,
   getBatchItems,
   createBatchLabels,
+  deleteBatch,
 } from '../controllers/label.controller';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.get('/batches', getBatches);
 router.post('/batches', draftBatch);
 router.get('/batches/:id/items', getBatchItems);
 router.post('/batches/:id/create', createBatchLabels);
+router.delete('/batches/:id', deleteBatch);
 
 router.get('/:id/pdf', getLabelPdf);
 

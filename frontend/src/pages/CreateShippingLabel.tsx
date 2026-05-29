@@ -17,6 +17,7 @@ import {
   BatchStatusBadge,
   CreatePrintButton,
   ExportCsvButton,
+  DeleteBatchButton,
   exportBatchItemsCsv,
   Spinner,
   StepBadge,
@@ -31,6 +32,7 @@ import {
   StatusIcon,
   RowItemIcon,
 } from '../components/labels/labelUi'
+import { useAuth } from '../context/AuthContext'
 
 /** Parses a single CSV row, respecting double-quoted fields. */
 function parseCsvLine(line: string): string[] {
@@ -126,6 +128,8 @@ function downloadTemplate() {
 }
 
 export default function CreateShippingLabel() {
+  const { user } = useAuth()
+
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [fileName, setFileName] = useState<string>('')
   const [drafting, setDrafting] = useState(false)
@@ -136,6 +140,8 @@ export default function CreateShippingLabel() {
   const [batchesLoading, setBatchesLoading] = useState(true)
   const [creatingBatchId, setCreatingBatchId] = useState<string | null>(null)
   const [exportingBatchId, setExportingBatchId] = useState<string | null>(null)
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -234,6 +240,25 @@ export default function CreateShippingLabel() {
       setError(e instanceof Error ? e.message : 'Failed to create labels')
     } finally {
       setCreatingBatchId(null)
+    }
+  }
+
+  const handleDeleteBatch = async (batch: LabelBatch) => {
+    if (confirmDeleteId !== batch._id) {
+      setConfirmDeleteId(batch._id)
+      return
+    }
+    setDeletingBatchId(batch._id)
+    setError(null)
+    try {
+      await authApi.delete(`/labels/batches/${batch._id}`)
+      setConfirmDeleteId(null)
+      await loadBatches()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete batch')
+      setConfirmDeleteId(null)
+    } finally {
+      setDeletingBatchId(null)
     }
   }
 
@@ -367,17 +392,42 @@ export default function CreateShippingLabel() {
                     </Td>
                     <Td compact>
                       <div className="flex items-center justify-end gap-2">
-                        <ExportCsvButton
-                          size="sm"
-                          busy={exportingBatchId === b._id}
-                          onClick={() => handleExportCsv(b)}
-                        />
                         <CreatePrintButton
                           size="sm"
                           busy={creatingBatchId === b._id}
                           done={b.status === 'created'}
                           onClick={() => handleCreateAndPrint(b)}
                         />
+                        <ExportCsvButton
+                          size="sm"
+                          busy={exportingBatchId === b._id}
+                          onClick={() => handleExportCsv(b)}
+                        />
+                        {user && b.createdBy === user.email && (
+                          confirmDeleteId === b._id ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Delete?</span>
+                              <button
+                                onClick={() => handleDeleteBatch(b)}
+                                disabled={deletingBatchId === b._id}
+                                className="rounded-lg bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
+                              >
+                                {deletingBatchId === b._id ? '…' : 'Confirm'}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <DeleteBatchButton
+                              size="sm"
+                              onClick={() => handleDeleteBatch(b)}
+                            />
+                          )
+                        )}
                       </div>
                     </Td>
                   </tr>

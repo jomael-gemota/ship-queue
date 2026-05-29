@@ -640,6 +640,40 @@ export const createBatchLabels = async (req: Request, res: Response): Promise<vo
   }
 };
 
+/**
+ * Delete a batch and all its label items.
+ * Only the user who created the batch is allowed to delete it.
+ */
+export const deleteBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id);
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    if (batch.createdByUserId !== req.user?.id) {
+      res.status(403).json({ message: 'You can only delete batches you created.' });
+      return;
+    }
+
+    await Promise.all([
+      Label.deleteMany({ batchId: id }),
+      LabelBatch.findByIdAndDelete(id),
+    ]);
+
+    res.json({ data: { deleted: true } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete batch', error: (error as Error).message });
+  }
+};
+
 /** Lists previously created labels (newest first), excluding the heavy base64 PDF. */
 export const getLabels = async (req: Request, res: Response): Promise<void> => {
   try {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import type {
   LabelRecord,
@@ -15,20 +15,26 @@ import {
   BatchStatusBadge,
   CreatePrintButton,
   ExportCsvButton,
+  DeleteBatchButton,
   exportBatchItemsCsv,
   LabelsTableIcon,
   BackIcon,
 } from '../components/labels/labelUi'
+import { useAuth } from '../context/AuthContext'
 
 const TOKEN_KEY = 'sq_token'
 
 export default function BatchItems() {
   const { batchId = '' } = useParams<{ batchId: string }>()
+  const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [batch, setBatch] = useState<LabelBatch | null>(null)
   const [items, setItems] = useState<LabelRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -79,6 +85,25 @@ export default function BatchItems() {
   const handleExportCsv = () => {
     const base = batch ? shortBatchId(batch._id) : shortBatchId(batchId)
     exportBatchItemsCsv(items, `${base}-items.csv`)
+  }
+
+  const handleDeleteBatch = async () => {
+    if (!batch) return
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    try {
+      await authApi.delete(`/labels/batches/${batch._id}`)
+      navigate('/create-label')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete batch')
+      setConfirmDelete(false)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleDownloadPdf = async (label: LabelRecord) => {
@@ -147,12 +172,34 @@ export default function BatchItems() {
           </div>
           {batch && (
             <div className="flex items-center gap-2">
-              <ExportCsvButton onClick={handleExportCsv} />
               <CreatePrintButton
                 busy={creating}
                 done={batch.status === 'created'}
                 onClick={handleCreateAndPrint}
               />
+              <ExportCsvButton onClick={handleExportCsv} />
+              {user && batch.createdBy === user.email && (
+                confirmDelete ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Delete batch?</span>
+                    <button
+                      onClick={handleDeleteBatch}
+                      disabled={deleting}
+                      className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
+                    >
+                      {deleting ? 'Deleting…' : 'Confirm'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-xs text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <DeleteBatchButton onClick={handleDeleteBatch} />
+                )
+              )}
             </div>
           )}
         </div>
