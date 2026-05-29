@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { isValidObjectId, PipelineStage } from 'mongoose';
 import Order, { ORDER_STATUSES, OrderStatus } from '../models/Order';
 import { syncOrdersFromShipStation } from '../services/shipstation.service';
 import type { SyncProgress, SyncResult } from '../services/shipstation.service';
@@ -125,12 +126,20 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
 
     const hasFilter = Object.keys(filter).length > 0;
 
+    // Exclude the (potentially large) items array from the list payload — items
+    // are loaded lazily per-order when a row is expanded. We still surface an
+    // itemCount so the table can show the count without shipping every item.
+    const listPipeline: PipelineStage[] = [
+      { $match: filter },
+      { $sort: { orderDate: -1 } },
+      { $skip: skip },
+      { $limit: size },
+      { $addFields: { itemCount: { $size: { $ifNull: ['$items', []] } } } },
+      { $project: { items: 0 } },
+    ];
+
     const [orders, total] = await Promise.all([
-      Order.find(filter)
-        .sort({ orderDate: -1 })
-        .skip(skip)
-        .limit(size)
-        .lean(),
+      Order.aggregate(listPipeline),
       // estimatedDocumentCount uses collection metadata (near-instant) and is
       // safe when there is no filter; fall back to an exact count when filtering.
       hasFilter ? Order.countDocuments(filter) : Order.estimatedDocumentCount(),
@@ -147,5 +156,27 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch orders', error });
+  }
+};
+
+export const getOrderItems = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid order id' });
+      return;
+    }
+
+    const order = await Order.findById(id, { items: 1 }).lean();
+
+    if (!order) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+
+    res.json({ data: order.items ?? [] });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch order items', error });
   }
 };

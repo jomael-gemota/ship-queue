@@ -3,6 +3,8 @@ import { authApi } from '../lib/api'
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from '../types/order'
 import type {
   Order,
+  OrderItem,
+  OrderItemsResponse,
   OrderStatus,
   OrdersResponse,
   SyncResponse,
@@ -223,6 +225,9 @@ function SyncProgressBar({ state }: { state: SyncState }) {
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([])
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set())
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({})
+  const [itemsLoading, setItemsLoading] = useState<Set<string>>(new Set())
+  const [itemsError, setItemsError] = useState<Record<string, string>>({})
   const [initialLoading, setInitialLoading] = useState(true)
   const [tableRefreshing, setTableRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -403,11 +408,42 @@ export default function Orders() {
     setPage(1)
   }
 
+  const fetchOrderItems = useCallback(async (orderId: string) => {
+    setItemsLoading((prev) => new Set(prev).add(orderId))
+    setItemsError((prev) => {
+      const next = { ...prev }
+      delete next[orderId]
+      return next
+    })
+    try {
+      const res = await authApi.get<OrderItemsResponse>(`/orders/${orderId}/items`)
+      setItemsByOrder((prev) => ({ ...prev, [orderId]: res.data }))
+    } catch (err) {
+      setItemsError((prev) => ({
+        ...prev,
+        [orderId]: err instanceof Error ? err.message : 'Failed to load items',
+      }))
+    } finally {
+      setItemsLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(orderId)
+        return next
+      })
+    }
+  }, [])
+
   const toggleOrderItems = (orderId: string) => {
     setExpandedOrderIds((prev) => {
       const next = new Set(prev)
-      if (next.has(orderId)) next.delete(orderId)
-      else next.add(orderId)
+      if (next.has(orderId)) {
+        next.delete(orderId)
+      } else {
+        next.add(orderId)
+        // Fetch items the first time this row is expanded; cached afterwards.
+        if (!itemsByOrder[orderId] && !itemsLoading.has(orderId)) {
+          fetchOrderItems(orderId)
+        }
+      }
       return next
     })
   }
@@ -810,8 +846,11 @@ export default function Orders() {
                   </tr>
                 ) : (
                   orders.map((order, rowIndex) => {
-                    const itemCount = order.items?.length ?? 0
+                    const itemCount = order.itemCount ?? 0
                     const isExpanded = expandedOrderIds.has(order._id)
+                    const loadedItems = itemsByOrder[order._id]
+                    const isItemsLoading = itemsLoading.has(order._id)
+                    const itemsLoadError = itemsError[order._id]
                     const isEvenRow = rowIndex % 2 === 0
                     const rowStripedClass = isEvenRow
                       ? 'bg-slate-100/85 dark:bg-gray-900/40'
@@ -955,7 +994,36 @@ export default function Orders() {
                             className="bg-blue-50/60 dark:bg-blue-900/10 border-t border-blue-100 dark:border-blue-800/40"
                           >
                             <td colSpan={8} className="px-4 py-3">
-                              {itemCount > 0 ? (
+                              {isItemsLoading ? (
+                                <div className="flex items-center gap-2 px-1 py-2 text-sm text-gray-500 dark:text-gray-400">
+                                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    />
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                    />
+                                  </svg>
+                                  Loading items…
+                                </div>
+                              ) : itemsLoadError ? (
+                                <div className="flex items-center gap-3 px-1 py-2 text-sm text-red-600 dark:text-red-400">
+                                  <span>{itemsLoadError}</span>
+                                  <button
+                                    onClick={() => fetchOrderItems(order._id)}
+                                    className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              ) : (loadedItems?.length ?? 0) > 0 ? (
                                 <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-slate-300/70 dark:border-gray-700 bg-slate-50/85 dark:bg-gray-900/60">
                                   <table className="w-full text-[10px] leading-tight whitespace-nowrap">
                                     <thead className="bg-slate-200/80 dark:bg-gray-800/80">
@@ -1014,7 +1082,7 @@ export default function Orders() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {order.items?.map((item, index) => {
+                                      {loadedItems?.map((item, index) => {
                                         const itemRecord = asRecord(item)
                                         const sku =
                                           item.sku ??

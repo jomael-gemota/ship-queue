@@ -23,15 +23,19 @@ interface PreparedRow {
   found: boolean;
   orderId?: number;
   customerName?: string;
+  qty?: number;
+  shipFromSummary?: string;
+  shipFrom?: ShipStationLabelAddress;
   shipToSummary?: string;
+  shipTo?: ShipStationLabelAddress;
   propertyType?: 'residential' | 'commercial';
   carrierCode?: string;
   serviceCode?: string;
   packageCode?: string;
+  insuranceProvider?: string;
   shipDate?: string;
   weight?: ShipStationLabelWeight;
   dimensions?: typeof DEFAULT_DIMENSIONS;
-  shipTo?: ShipStationLabelAddress;
   error?: string;
 }
 
@@ -106,7 +110,12 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
   }
 
   const residential = Boolean(order.shipTo?.residential);
+  const totalQty = (order.items || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const shipFrom = buildShipFrom();
   const shipTo = buildShipTo(order);
+  const shipFromSummary = [shipFrom.city, shipFrom.state, shipFrom.postalCode]
+    .filter(Boolean)
+    .join(', ');
   const shipToSummary = [shipTo.city, shipTo.state, shipTo.postalCode]
     .filter(Boolean)
     .join(', ');
@@ -117,15 +126,19 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
     found: true,
     orderId: order.orderId,
     customerName: order.shipTo?.name,
+    qty: totalQty,
+    shipFromSummary,
+    shipFrom,
     shipToSummary,
+    shipTo,
     propertyType: residential ? 'residential' : 'commercial',
     carrierCode: 'fedex',
     serviceCode: resolveServiceCode(residential),
     packageCode: 'package',
+    insuranceProvider: 'none',
     shipDate: formatShipDate(order.shipByDate),
     weight: resolveWeight(order),
     dimensions: DEFAULT_DIMENSIONS,
-    shipTo,
   };
 }
 

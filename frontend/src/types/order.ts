@@ -49,6 +49,9 @@ export interface OrderItem {
   imageUrl?: string
   quantity?: number
   unitPrice?: number
+  taxAmount?: number
+  upc?: string
+  weight?: { value?: number; units?: string }
   productId?: number
 }
 
@@ -69,6 +72,7 @@ export interface Order {
   billTo?: OrderAddress
   shipTo?: OrderAddress
   items?: OrderItem[]
+  itemCount?: number
   orderTotal?: number
   amountPaid?: number
   taxAmount?: number
@@ -94,6 +98,10 @@ export interface OrdersResponse {
     total: number
     pages: number
   }
+}
+
+export interface OrderItemsResponse {
+  data: OrderItem[]
 }
 
 export interface SyncProgress {

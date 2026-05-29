@@ -10,11 +10,12 @@ export interface LabelDimensions {
   units?: string
 }
 
-export interface LabelShipTo {
+export interface LabelAddress {
   name?: string
   company?: string
   street1?: string
   street2?: string
+  street3?: string
   city?: string
   state?: string
   postalCode?: string
@@ -22,6 +23,9 @@ export interface LabelShipTo {
   phone?: string
   residential?: boolean
 }
+
+/** @deprecated Use LabelAddress */
+export type LabelShipTo = LabelAddress
 
 /** A row imported from the CSV (PO# + Order#). */
 export interface ImportRow {
@@ -36,15 +40,19 @@ export interface PreparedRow {
   found: boolean
   orderId?: number
   customerName?: string
+  qty?: number
+  shipFromSummary?: string
+  shipFrom?: LabelAddress
   shipToSummary?: string
+  shipTo?: LabelAddress
   propertyType?: 'residential' | 'commercial'
   carrierCode?: string
   serviceCode?: string
   packageCode?: string
+  insuranceProvider?: string
   shipDate?: string
   weight?: LabelWeight
   dimensions?: LabelDimensions
-  shipTo?: LabelShipTo
   error?: string
 }
 
