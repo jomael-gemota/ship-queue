@@ -172,11 +172,13 @@ export default function BatchItems() {
           </div>
           {batch && (
             <div className="flex items-center gap-2">
-              <CreatePrintButton
-                busy={creating}
-                done={batch.status === 'created'}
-                onClick={handleCreateAndPrint}
-              />
+              {user?.canCreateLabels && (
+                <CreatePrintButton
+                  busy={creating}
+                  done={batch.status === 'created'}
+                  onClick={handleCreateAndPrint}
+                />
+              )}
               <ExportCsvButton onClick={handleExportCsv} />
               {user && batch.createdBy === user.email && (
                 confirmDelete ? (

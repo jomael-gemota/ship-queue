@@ -10,6 +10,7 @@ import Orders from './pages/Orders'
 import CreateShippingLabel from './pages/CreateShippingLabel'
 import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
+import AdminUsers from './pages/AdminUsers'
 
 function App() {
   return (
@@ -29,6 +30,13 @@ function App() {
                 <Route path="/create-label" element={<CreateShippingLabel />} />
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/settings" element={<Settings />} />
+              </Route>
+            </Route>
+
+            {/* Admin-only routes */}
+            <Route element={<ProtectedRoute adminOnly />}>
+              <Route element={<Layout />}>
+                <Route path="/admin/users" element={<AdminUsers />} />
               </Route>
             </Route>
 

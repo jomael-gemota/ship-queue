@@ -56,5 +56,7 @@ export const authApi = {
     }),
   put: <T>(endpoint: string, body: unknown) =>
     authRequest<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: <T>(endpoint: string, body: unknown) =>
+    authRequest<T>(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(endpoint: string) => authRequest<T>(endpoint, { method: 'DELETE' }),
 }

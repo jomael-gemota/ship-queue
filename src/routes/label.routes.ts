@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireLabelPermission } from '../middleware/auth';
 import {
   prepareLabels,
   createLabels,
@@ -17,16 +17,15 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', getLabels);
-router.post('/prepare', prepareLabels);
-router.post('/create', createLabels);
-
-// Batch-oriented flow: draft → review → create + print
 router.get('/batches', getBatches);
-router.post('/batches', draftBatch);
 router.get('/batches/:id/items', getBatchItems);
-router.post('/batches/:id/create', createBatchLabels);
-router.delete('/batches/:id', deleteBatch);
-
 router.get('/:id/pdf', getLabelPdf);
+
+// Label creation requires explicit permission
+router.post('/prepare', requireLabelPermission, prepareLabels);
+router.post('/create', requireLabelPermission, createLabels);
+router.post('/batches', requireLabelPermission, draftBatch);
+router.post('/batches/:id/create', requireLabelPermission, createBatchLabels);
+router.delete('/batches/:id', deleteBatch);
 
 export default router;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { authApi } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder } from '../types/label'
+import { useAuth } from '../context/AuthContext'
 
 interface FoldersResponse {
   data: DriveFolder[]
@@ -19,6 +20,9 @@ function extractFolderId(input: string): string {
 }
 
 export default function Settings() {
+  const { user } = useAuth()
+  const canCreate = !!user?.canCreateLabels
+
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -111,6 +115,17 @@ export default function Settings() {
         <Banner tone="success" onClose={() => setSuccess(null)}>{success}</Banner>
       )}
 
+      {!canCreate && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 px-4 py-3.5 text-sm text-amber-800 dark:text-amber-300">
+          <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          <span>
+            You have <span className="font-medium">view-only</span> access. Contact an admin to get label creation permission.
+          </span>
+        </div>
+      )}
+
       <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
         <div className="flex items-start gap-3 mb-4">
           <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950/40">
@@ -139,7 +154,7 @@ export default function Settings() {
                 {settings?.driveConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
                 {settings?.driveConnected ? 'Connected' : 'Not connected'}
               </span>
-              {!settings?.driveConnected && (
+              {!settings?.driveConnected && canCreate && (
                 <a
                   href="/api/auth/google/reconnect"
                   className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
@@ -170,45 +185,49 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={openBrowser}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-200/80 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                  >
-                    <FolderSearchIcon className="h-4 w-4" />
-                    Browse folders
-                  </button>
-                  {settings.driveFolderId && (
+                {canCreate && (
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
-                      onClick={() => saveFolder(null)}
-                      disabled={saving}
-                      className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 disabled:opacity-50 cursor-pointer"
+                      onClick={openBrowser}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-200/80 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                     >
-                      Reset to root
+                      <FolderSearchIcon className="h-4 w-4" />
+                      Browse folders
                     </button>
-                  )}
-                </div>
+                    {settings.driveFolderId && (
+                      <button
+                        onClick={() => saveFolder(null)}
+                        disabled={saving}
+                        className="text-sm text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200 disabled:opacity-50 cursor-pointer"
+                      >
+                        Reset to root
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Manual folder ID / URL */}
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    value={manualId}
-                    onChange={(e) => setManualId(e.target.value)}
-                    placeholder="Or paste a Drive folder URL / ID"
-                    className="flex-1 min-w-[240px] rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-950/40 px-3 py-2 text-sm text-slate-700 dark:text-gray-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={() => saveFolder(extractFolderId(manualId))}
-                    disabled={saving || !manualId.trim()}
-                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  >
-                    Save
-                  </button>
-                </div>
+                {canCreate && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={manualId}
+                      onChange={(e) => setManualId(e.target.value)}
+                      placeholder="Or paste a Drive folder URL / ID"
+                      className="flex-1 min-w-[240px] rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-950/40 px-3 py-2 text-sm text-slate-700 dark:text-gray-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={() => saveFolder(extractFolderId(manualId))}
+                      disabled={saving || !manualId.trim()}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
 
                 {/* Folder browser */}
-                {browserOpen && (
+                {canCreate && browserOpen && (
                   <div className="mt-4 rounded-lg border border-slate-200 dark:border-gray-800 overflow-hidden">
                     <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-slate-100 dark:bg-gray-800/60 text-sm">
                       <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">

@@ -266,6 +266,8 @@ export default function CreateShippingLabel() {
     }
   }
 
+  const canCreate = !!user?.canCreateLabels
+
   return (
     <div className="space-y-6">
       {error && (
@@ -278,8 +280,19 @@ export default function CreateShippingLabel() {
         </div>
       )}
 
-      {/* Step 1 — Import & draft */}
-      <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
+      {!canCreate && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 px-4 py-3.5 text-sm text-amber-800 dark:text-amber-300">
+          <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          <span>
+            You have <span className="font-medium">view-only</span> access. Contact an admin to get label creation permission.
+          </span>
+        </div>
+      )}
+
+      {/* Step 1 — Import & draft (only shown to users with label creation permission) */}
+      {canCreate && <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
         <div className="flex items-center gap-2 mb-1">
           <StepBadge n={1} />
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">Import &amp; Draft</h2>
@@ -341,7 +354,7 @@ export default function CreateShippingLabel() {
             </button>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* Batches table */}
       <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 overflow-hidden">
@@ -406,12 +419,14 @@ export default function CreateShippingLabel() {
                     </Td>
                     <Td compact>
                       <div className="flex items-center justify-end gap-2">
-                        <CreatePrintButton
-                          size="sm"
-                          busy={creatingBatchId === b._id}
-                          done={b.status === 'created'}
-                          onClick={() => handleCreateAndPrint(b)}
-                        />
+                        {canCreate && (
+                          <CreatePrintButton
+                            size="sm"
+                            busy={creatingBatchId === b._id}
+                            done={b.status === 'created'}
+                            onClick={() => handleCreateAndPrint(b)}
+                          />
+                        )}
                         <ExportCsvButton
                           size="sm"
                           busy={exportingBatchId === b._id}

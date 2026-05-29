@@ -1,6 +1,6 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import User from '../models/User';
+import User, { ADMIN_EMAILS } from '../models/User';
 
 const ALLOWED_EMAIL_DOMAINS = ['outdoorequipped.com', 'channelprecision.com'];
 
@@ -29,6 +29,8 @@ passport.use(
           return done(null, false, { message: 'unauthorized_domain' });
         }
 
+        const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase());
+
         let user = await User.findOne({ googleId: profile.id });
 
         if (!user) {
@@ -37,7 +39,13 @@ passport.use(
             email,
             name: profile.displayName,
             avatar,
+            role: isAdmin ? 'admin' : 'user',
+            canCreateLabels: isAdmin,
           });
+        } else if (isAdmin && user.role !== 'admin') {
+          // Ensure the designated admin always has the right role
+          user.role = 'admin';
+          user.canCreateLabels = true;
         }
 
         // Persist Drive OAuth credentials. Google only returns a refresh token

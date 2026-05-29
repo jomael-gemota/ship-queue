@@ -1,8 +1,12 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-export default function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth()
+interface Props {
+  adminOnly?: boolean
+}
+
+export default function ProtectedRoute({ adminOnly = false }: Props) {
+  const { isAuthenticated, isLoading, user } = useAuth()
 
   if (isLoading) {
     return (
@@ -12,5 +16,8 @@ export default function ProtectedRoute() {
     )
   }
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (adminOnly && user?.role !== 'admin') return <Navigate to="/" replace />
+
+  return <Outlet />
 }

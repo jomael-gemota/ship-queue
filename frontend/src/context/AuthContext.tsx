@@ -1,11 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
+export type UserRole = 'admin' | 'user'
+
 export interface AuthUser {
   id: string
   email: string
   name: string
   avatar?: string
+  role: UserRole
+  canCreateLabels: boolean
 }
 
 interface AuthState {

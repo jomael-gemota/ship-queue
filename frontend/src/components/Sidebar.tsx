@@ -64,6 +64,7 @@ const MENU_ITEMS = [
 
 export default function Sidebar() {
   const { user, logout } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   return (
     <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-slate-300/60 dark:border-gray-800 bg-slate-50/95 dark:bg-gray-900/95 backdrop-blur">
@@ -97,6 +98,31 @@ export default function Sidebar() {
               <span className="hidden sm:inline">{item.label}</span>
             </NavLink>
           ))}
+
+          {isAdmin && (
+            <>
+              <div className="hidden sm:block pt-2 pb-0.5 px-1">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-gray-600">Admin</p>
+              </div>
+              <div className="sm:hidden border-t border-slate-200 dark:border-gray-800 my-1" />
+              <NavLink
+                to="/admin/users"
+                title="User Management"
+                className={({ isActive }) =>
+                  `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
+                    isActive
+                      ? 'bg-purple-100/80 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium shadow-sm'
+                      : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/70 dark:hover:bg-gray-800 hover:text-slate-900 dark:hover:text-white'
+                  }`
+                }
+              >
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="hidden sm:inline">User Management</span>
+              </NavLink>
+            </>
+          )}
         </nav>
 
         <div className="mt-auto p-3 border-t border-slate-300/60 dark:border-gray-800">
