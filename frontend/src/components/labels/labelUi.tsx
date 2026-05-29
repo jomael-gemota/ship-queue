@@ -161,9 +161,44 @@ const ORDER_STICKY = 'sticky left-[150px] w-[200px] min-w-[150px] max-w-[200px] 
  * - Tracking & Labels keeps PO#/Order# frozen on the left and scrolls
  *   horizontally if needed.
  */
+/** Returns a flat lowercase string of all searchable fields for an item. */
+function itemSearchText(l: LabelRecord): string {
+  const addrText = (a?: LabelAddress) =>
+    a ? [a.name, a.company, a.street1, a.street2, a.street3, a.city, a.state, a.postalCode, a.country, a.phone].filter(Boolean).join(' ') : ''
+  return [
+    l.poNumber,
+    l.orderNumber,
+    l.customerName,
+    addrText(l.shipFrom),
+    addrText(l.shipTo),
+    l.propertyType,
+    l.packageCode,
+    l.serviceCode,
+    l.shipDate,
+    l.qty != null ? String(l.qty) : '',
+    l.weight?.value != null ? `${l.weight.value} ${l.weight.units ?? ''}` : '',
+    l.dimensions ? `${l.dimensions.length} ${l.dimensions.width} ${l.dimensions.height} ${l.dimensions.units ?? ''}` : '',
+    l.insuranceProvider,
+    l.status,
+    l.trackingNumber,
+    l.shipmentId,
+    l.shipmentCost != null ? String(l.shipmentCost) : '',
+    l.insuranceCost != null ? String(l.insuranceCost) : '',
+    l.driveFileLink,
+    l.error,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
 export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }: BatchItemsTableProps) {
   const [tab, setTab] = useState<ItemsTab>('shipping')
+  const [search, setSearch] = useState('')
   const isShipping = tab === 'shipping'
+
+  const query = search.trim().toLowerCase()
+  const filteredItems = query ? items.filter((l) => itemSearchText(l).includes(query)) : items
 
   // 2 lead columns + the active tab's columns (12 shipping, 5 tracking).
   const colCount = 2 + (isShipping ? 12 : 5)
@@ -187,8 +222,8 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
         </div>
       )}
 
-      {/* Tab switcher (aligned to the left of the table) */}
-      <div className="flex items-center justify-start gap-1 border-b border-slate-300/60 dark:border-gray-800 px-5 py-3">
+      {/* Toolbar: tab switcher + search bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300/60 dark:border-gray-800 px-5 py-3">
         <div className="inline-flex rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 p-0.5">
           <TabButton active={isShipping} onClick={() => setTab('shipping')} icon={<BoxIcon className="h-3.5 w-3.5" />}>
             Shipping Details
@@ -196,6 +231,28 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
           <TabButton active={!isShipping} onClick={() => setTab('tracking')} icon={<TrackingIcon className="h-3.5 w-3.5" />}>
             Tracking &amp; Labels
           </TabButton>
+        </div>
+
+        <div className="relative">
+          <svg className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search all fields…"
+            className="h-8 w-100 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-8 pr-3 text-xs text-slate-700 dark:text-gray-200 placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-300 cursor-pointer"
+              aria-label="Clear search"
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -260,8 +317,14 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
               <tr><Td className="text-slate-400" colSpan={colCount}>Loading…</Td></tr>
             ) : items.length === 0 ? (
               <tr><Td className="text-slate-400" colSpan={colCount}>No items in this batch.</Td></tr>
+            ) : filteredItems.length === 0 ? (
+              <tr>
+                <Td className="text-slate-400" colSpan={colCount}>
+                  No items match <span className="font-medium text-slate-600 dark:text-gray-300">"{search}"</span>.
+                </Td>
+              </tr>
             ) : (
-              items.map((l, idx) => {
+              filteredItems.map((l, idx) => {
                 const failed = l.status === 'failed' || l.found === false
                 const zebra = idx % 2 === 1
                 // Alternating row colors with failed rows highlighted in red.
@@ -343,6 +406,13 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
           </tbody>
         </table>
       </div>
+
+      {/* Search result count hint */}
+      {query && filteredItems.length > 0 && (
+        <div className="border-t border-slate-200 dark:border-gray-800 px-5 py-2 text-xs text-slate-400 dark:text-gray-500">
+          {filteredItems.length} of {items.length} item{items.length === 1 ? '' : 's'} match
+        </div>
+      )}
     </div>
   )
 }
