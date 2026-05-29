@@ -1,4 +1,5 @@
 import './config/env';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -28,6 +29,18 @@ app.use('/api', routes);
 // Health check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Serve the built frontend (single-origin deployment).
+// From dist/index.js at runtime, the Vite build lives at ../frontend/dist.
+const clientDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(clientDist));
+
+// SPA fallback: send index.html for any non-API GET route so client-side
+// routing works on page refresh / deep links.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(clientDist, 'index.html'));
 });
 
 const start = async () => {
