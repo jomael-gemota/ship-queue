@@ -253,7 +253,7 @@ export default function CreateShippingLabel() {
       <section className="rounded-xl border border-slate-300/60 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-5">
         <div className="flex items-center gap-2 mb-1">
           <StepBadge n={1} />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Import &amp; draft</h2>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Import &amp; Draft</h2>
         </div>
         <p className="text-sm text-slate-500 dark:text-gray-400 mb-4">
           Upload a CSV with <span className="font-medium">PO#</span> and <span className="font-medium">Order#</span> columns, then draft the batch for review. Labels are only created when you choose to create &amp; print.
@@ -319,7 +319,7 @@ export default function CreateShippingLabel() {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-300/60 dark:border-gray-800">
           <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
             <LabelsTableIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <span>Label batches</span>
+            <span>Label Batches</span>
           </h3>
           <Link to="/settings" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Drive settings</Link>
         </div>
