@@ -5,7 +5,6 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
-import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import CreateShippingLabel from './pages/CreateShippingLabel'
 import BatchItems from './pages/BatchItems'
@@ -25,8 +24,8 @@ function App() {
             {/* Protected routes */}
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="/orders" element={<Orders />} />
+                <Route index element={<Orders />} />
+                <Route path="/orders" element={<Navigate to="/" replace />} />
                 <Route path="/create-label" element={<CreateShippingLabel />} />
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/settings" element={<Settings />} />

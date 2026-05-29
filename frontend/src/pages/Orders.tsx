@@ -532,7 +532,7 @@ export default function Orders() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">List of Orders</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">ShipStation Orders</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)] mt-0.5">
             Last synced:{' '}
             <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">

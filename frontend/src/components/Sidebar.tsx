@@ -3,23 +3,9 @@ import { useAuth } from '../context/AuthContext'
 
 const MENU_ITEMS = [
   {
-    label: 'Dashboard',
+    label: 'ShipStation Orders',
     to: '/',
     end: true,
-    icon: (
-      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M3 11l9-8 9 8M5 10v10h14V10"
-        />
-      </svg>
-    ),
-  },
-  {
-    label: 'Orders',
-    to: '/orders',
     icon: (
       <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -80,6 +66,9 @@ export default function Sidebar() {
 
       <div className="h-[calc(100vh-4rem)] flex flex-col">
         <nav className="p-3 space-y-1.5">
+          <div className="hidden sm:block pt-1 pb-0.5 px-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Operations</p>
+          </div>
           {MENU_ITEMS.map((item) => (
             <NavLink
               key={item.label}

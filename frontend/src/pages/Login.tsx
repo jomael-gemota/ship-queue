@@ -154,7 +154,7 @@ export default function Login() {
               <button
                 onClick={handleGoogleLogin}
                 type="button"
-                className="mt-6 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-[var(--accent-200)] bg-[var(--accent-200)] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md active:translate-y-0"
+                className="mt-6 flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-[var(--accent-200)] bg-[var(--accent-200)] dark:border-[var(--accent-100)] dark:bg-[var(--accent-100)] px-4 py-3 text-sm font-semibold text-white dark:text-[var(--text-100)] shadow-sm transition hover:-translate-y-0.5 hover:opacity-90 hover:shadow-md active:translate-y-0"
               >
                 <GoogleIcon />
                 Continue with Google

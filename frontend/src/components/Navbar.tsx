@@ -9,11 +9,10 @@ export default function Navbar() {
   const themeToggleLabel = isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'
 
   const pageTitle = useMemo(() => {
-    if (pathname === '/orders') return 'Orders'
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/settings') return 'Settings'
-    return 'Dashboard'
+    return 'ShipStation Orders'
   }, [pathname])
 
   const today = useMemo(
