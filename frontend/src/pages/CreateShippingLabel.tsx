@@ -143,12 +143,16 @@ export default function CreateShippingLabel() {
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  const [batchPage, setBatchPage] = useState(0)
+  const [batchPageSize, setBatchPageSize] = useState(10)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadBatches = useCallback(async () => {
     try {
       const res = await authApi.get<BatchesListResponse>('/labels/batches?pageSize=100')
       setBatches(res.data)
+      setBatchPage(0)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load batches')
     } finally {
@@ -346,7 +350,17 @@ export default function CreateShippingLabel() {
             <LabelsTableIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <span>Label Batches</span>
           </h3>
-          <Link to="/settings" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Drive settings</Link>
+          <Link to="/settings" className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+              <path d="M43.65 25L29.9 0c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.5A9 9 0 000 53h27.5z" fill="#00ac47"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.9 10.9z" fill="#ea4335"/>
+              <path d="M43.65 25L57.4 0H29.9z" fill="#00832d"/>
+              <path d="M59.8 53H87.3L73.55 29.5H45.9l13.9 23.5z" fill="#2684fc"/>
+              <path d="M45.9 29.5H73.55L57.4 0H43.65z" fill="#ffba00"/>
+            </svg>
+            Drive settings
+          </Link>
         </div>
 
         <div className="overflow-x-auto">
@@ -367,7 +381,7 @@ export default function CreateShippingLabel() {
               ) : batches.length === 0 ? (
                 <tr><Td className="text-slate-400" colSpan={6}>No batches yet. Upload a file and draft it for review.</Td></tr>
               ) : (
-                batches.map((b) => (
+                batches.slice(batchPage * batchPageSize, (batchPage + 1) * batchPageSize).map((b) => (
                   <tr key={b._id}>
                     <Td compact className="font-medium text-slate-800 dark:text-gray-100">
                       <span className="inline-flex items-center gap-1.5">
@@ -436,6 +450,45 @@ export default function CreateShippingLabel() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination bar */}
+        {!batchesLoading && batches.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-gray-800 px-5 py-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400">
+              <span>Rows per page:</span>
+              <select
+                value={batchPageSize}
+                onChange={(e) => { setBatchPageSize(Number(e.target.value)); setBatchPage(0) }}
+                className="rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-slate-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-gray-400">
+              <span>
+                {batchPage * batchPageSize + 1}–{Math.min((batchPage + 1) * batchPageSize, batches.length)} of {batches.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setBatchPage((p) => Math.max(0, p - 1))}
+                  disabled={batchPage === 0}
+                  className="inline-flex items-center justify-center rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-1 text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  aria-label="Previous page"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <button
+                  onClick={() => setBatchPage((p) => p + 1)}
+                  disabled={(batchPage + 1) * batchPageSize >= batches.length}
+                  className="inline-flex items-center justify-center rounded border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-1 text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  aria-label="Next page"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
