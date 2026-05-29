@@ -6,10 +6,21 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
-// Redirect to Google consent screen
+// Redirect to Google consent screen.
+// `accessType: offline` + `prompt: consent` ensure we receive a refresh token
+// so the server can upload shipping-label PDFs to the user's Google Drive.
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+  passport.authenticate('google', {
+    scope: [
+      'profile',
+      'email',
+      'https://www.googleapis.com/auth/drive',
+    ],
+    accessType: 'offline',
+    prompt: 'consent',
+    session: false,
+  })
 );
 
 // Google OAuth callback

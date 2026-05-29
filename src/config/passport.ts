@@ -16,7 +16,7 @@ passport.use(
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback',
     },
-    async (_accessToken, _refreshToken, profile, done) => {
+    async (accessToken, refreshToken, profile, done) => {
       try {
         const email = profile.emails?.[0]?.value;
         const avatar = profile.photos?.[0]?.value;
@@ -39,6 +39,17 @@ passport.use(
             avatar,
           });
         }
+
+        // Persist Drive OAuth credentials. Google only returns a refresh token
+        // on the first consent (or when prompt=consent), so keep the existing
+        // one if a new one isn't supplied.
+        user.googleAccessToken = accessToken;
+        if (refreshToken) {
+          user.googleRefreshToken = refreshToken;
+          user.driveScopeGranted = true;
+        }
+        if (avatar) user.avatar = avatar;
+        await user.save();
 
         return done(null, user as Express.User);
       } catch (error) {

@@ -240,6 +240,7 @@ export default function Orders() {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 })
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastSyncedCountRef = useRef(0)
   const isSyncing = syncState?.running === true
 
   const fetchOrders = useCallback(
@@ -325,12 +326,21 @@ export default function Orders() {
 
     pollTimerRef.current = setInterval(async () => {
       try {
-        const [status] = await Promise.all([fetchSyncStatus(), fetchOrders(true)])
+        const status = await fetchSyncStatus()
 
         setSyncState(status)
         setLastSyncedAt(status.lastSyncedAt)
 
-        if (!status.running) {
+        // Only refetch the table when new rows have actually been synced, or
+        // when the sync just finished — avoids a full /orders query every tick.
+        const syncedCount = status.progress?.synced ?? 0
+        const finished = !status.running
+        if (syncedCount !== lastSyncedCountRef.current || finished) {
+          lastSyncedCountRef.current = syncedCount
+          await fetchOrders(true)
+        }
+
+        if (finished) {
           stopPolling()
 
           if (status.error) {
@@ -369,6 +379,7 @@ export default function Orders() {
   const handleSync = async () => {
     setSyncError(null)
     setSyncDone(null)
+    lastSyncedCountRef.current = 0
     try {
       const res = await authApi.post<SyncResponse>('/orders/sync')
       setSyncState(res.data)

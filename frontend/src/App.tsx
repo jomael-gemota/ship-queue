@@ -7,6 +7,8 @@ import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
+import CreateShippingLabel from './pages/CreateShippingLabel'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -23,6 +25,8 @@ function App() {
               <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="/orders" element={<Orders />} />
+                <Route path="/create-label" element={<CreateShippingLabel />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
             </Route>
 

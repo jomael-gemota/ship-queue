@@ -1,0 +1,357 @@
+import { Request, Response } from 'express';
+import Order, { IOrder } from '../models/Order';
+import User from '../models/User';
+import Label from '../models/Label';
+import {
+  createShipStationLabel,
+  CreateLabelPayload,
+  ShipStationLabelAddress,
+  ShipStationLabelWeight,
+} from '../services/shipstationLabel.service';
+import { uploadPdfToDrive } from '../services/googleDrive.service';
+
+const DEFAULT_DIMENSIONS = { length: 15, width: 10, height: 5, units: 'inches' };
+
+interface InputRow {
+  poNumber?: string;
+  orderNumber?: string;
+}
+
+interface PreparedRow {
+  poNumber: string;
+  orderNumber: string;
+  found: boolean;
+  orderId?: number;
+  customerName?: string;
+  shipToSummary?: string;
+  propertyType?: 'residential' | 'commercial';
+  carrierCode?: string;
+  serviceCode?: string;
+  packageCode?: string;
+  shipDate?: string;
+  weight?: ShipStationLabelWeight;
+  dimensions?: typeof DEFAULT_DIMENSIONS;
+  shipTo?: ShipStationLabelAddress;
+  error?: string;
+}
+
+function formatShipDate(date?: Date): string {
+  const d = date ? new Date(date) : new Date();
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+function resolveWeight(order: IOrder): ShipStationLabelWeight {
+  // Weight rule: 4 (pounds) × total quantity ordered.
+  // e.g. qty 2 -> value 8, units "pounds". Each order line has at least qty 1.
+  const totalQty = (order.items || []).reduce(
+    (sum, item) => sum + (item.quantity || 1),
+    0
+  );
+  return { value: 4 * totalQty, units: 'pounds' };
+}
+
+function resolveServiceCode(residential: boolean): string {
+  return residential ? 'fedex_home_delivery' : 'fedex_ground';
+}
+
+function buildShipFrom(): ShipStationLabelAddress {
+  return {
+    name: process.env.SHIP_FROM_NAME || '',
+    company: process.env.SHIP_FROM_COMPANY || 'Belleville',
+    street1: process.env.SHIP_FROM_STREET1 || '',
+    street2: process.env.SHIP_FROM_STREET2 || '',
+    city: process.env.SHIP_FROM_CITY || '',
+    state: process.env.SHIP_FROM_STATE || '',
+    postalCode: process.env.SHIP_FROM_POSTAL_CODE || '',
+    country: process.env.SHIP_FROM_COUNTRY || '',
+    phone: process.env.SHIP_FROM_PHONE || '',
+    residential: false,
+  };
+}
+
+function buildShipTo(order: IOrder): ShipStationLabelAddress {
+  const s = order.shipTo || {};
+  return {
+    name: s.name || '',
+    company: s.company || '',
+    street1: s.street1 || '',
+    street2: s.street2 || '',
+    street3: s.street3 || '',
+    city: s.city || '',
+    state: s.state || '',
+    postalCode: s.postalCode || '',
+    country: s.country || 'US',
+    phone: s.phone || '',
+    residential: Boolean(s.residential),
+  };
+}
+
+async function prepareRow(input: InputRow): Promise<PreparedRow> {
+  const poNumber = (input.poNumber || '').trim();
+  const orderNumber = (input.orderNumber || '').trim();
+
+  const base: PreparedRow = { poNumber, orderNumber, found: false };
+
+  if (!poNumber || !orderNumber) {
+    base.error = 'Both PO# and Order# are required.';
+    return base;
+  }
+
+  const order = await Order.findOne({ orderNumber }).sort({ orderDate: -1 });
+
+  if (!order) {
+    base.error = `Order #${orderNumber} not found.`;
+    return base;
+  }
+
+  const residential = Boolean(order.shipTo?.residential);
+  const shipTo = buildShipTo(order);
+  const shipToSummary = [shipTo.city, shipTo.state, shipTo.postalCode]
+    .filter(Boolean)
+    .join(', ');
+
+  return {
+    poNumber,
+    orderNumber,
+    found: true,
+    orderId: order.orderId,
+    customerName: order.shipTo?.name,
+    shipToSummary,
+    propertyType: residential ? 'residential' : 'commercial',
+    carrierCode: 'fedex',
+    serviceCode: resolveServiceCode(residential),
+    packageCode: 'package',
+    shipDate: formatShipDate(order.shipByDate),
+    weight: resolveWeight(order),
+    dimensions: DEFAULT_DIMENSIONS,
+    shipTo,
+  };
+}
+
+function buildPayload(prepared: PreparedRow, testLabel: boolean): CreateLabelPayload {
+  return {
+    carrierCode: prepared.carrierCode || 'fedex',
+    serviceCode: prepared.serviceCode || 'fedex_ground',
+    packageCode: prepared.packageCode || 'package',
+    shipDate: prepared.shipDate || formatShipDate(),
+    weight: prepared.weight || { value: 1, units: 'pounds' },
+    dimensions: prepared.dimensions || DEFAULT_DIMENSIONS,
+    shipFrom: buildShipFrom(),
+    shipTo: prepared.shipTo || {},
+    insuranceOptions: { provider: 'none', insureShipment: false, insuredValue: 0 },
+    testLabel,
+  };
+}
+
+/**
+ * Process 1 — resolve the imported PO#/Order# rows into reviewable label details.
+ */
+export const prepareLabels = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
+
+    if (rows.length === 0) {
+      res.status(400).json({ message: 'No rows provided. Import a CSV with PO# and Order# columns.' });
+      return;
+    }
+
+    const prepared = await Promise.all(rows.map(prepareRow));
+    res.json({ data: prepared });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to prepare labels', error: (error as Error).message });
+  }
+};
+
+/**
+ * Process 2 — create the shipping labels via ShipStation, persist them, and
+ * upload each renamed PDF (PO#.pdf) to the user's Google Drive folder.
+ */
+export const createLabels = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const testLabel = req.body?.testLabel !== false; // default to test mode
+
+    if (rows.length === 0) {
+      res.status(400).json({ message: 'No rows provided.' });
+      return;
+    }
+
+    const userId = req.user?.id;
+    const user = userId
+      ? await User.findById(userId).select('+googleRefreshToken +googleAccessToken')
+      : null;
+
+    const driveCreds = {
+      refreshToken: user?.googleRefreshToken,
+      accessToken: user?.googleAccessToken,
+    };
+    const driveFolderId = user?.driveFolderId;
+    const driveConnected = Boolean(user?.googleRefreshToken);
+
+    const results = [];
+
+    for (const input of rows) {
+      const prepared = await prepareRow(input);
+
+      if (!prepared.found) {
+        const failed = await Label.create({
+          poNumber: prepared.poNumber,
+          orderNumber: prepared.orderNumber,
+          status: 'failed',
+          error: prepared.error,
+          createdBy: user?.email,
+          createdByUserId: userId,
+        });
+        results.push({
+          labelId: failed._id,
+          poNumber: prepared.poNumber,
+          orderNumber: prepared.orderNumber,
+          status: 'failed' as const,
+          error: prepared.error,
+        });
+        continue;
+      }
+
+      const payload = buildPayload(prepared, testLabel);
+
+      try {
+        const ssResponse = await createShipStationLabel(payload);
+
+        const label = new Label({
+          poNumber: prepared.poNumber,
+          orderNumber: prepared.orderNumber,
+          orderId: prepared.orderId,
+          status: 'created',
+          carrierCode: prepared.carrierCode,
+          serviceCode: prepared.serviceCode,
+          packageCode: prepared.packageCode,
+          shipDate: prepared.shipDate,
+          propertyType: prepared.propertyType,
+          weight: prepared.weight,
+          dimensions: prepared.dimensions,
+          testLabel,
+          requestPayload: payload as unknown as Record<string, unknown>,
+          shipmentId: ssResponse.shipmentId,
+          shipmentCost: ssResponse.shipmentCost,
+          insuranceCost: ssResponse.insuranceCost,
+          trackingNumber: ssResponse.trackingNumber,
+          labelData: ssResponse.labelData,
+          formData: ssResponse.formData,
+          createdBy: user?.email,
+          createdByUserId: userId,
+        });
+
+        // Upload renamed PDF (PO#.pdf) to Google Drive.
+        let driveError: string | undefined;
+        if (ssResponse.labelData) {
+          if (driveConnected) {
+            try {
+              const fileName = `${prepared.poNumber}.pdf`;
+              const uploaded = await uploadPdfToDrive(
+                driveCreds,
+                fileName,
+                ssResponse.labelData,
+                driveFolderId
+              );
+              label.driveFileId = uploaded.id;
+              label.driveFileName = uploaded.name;
+              label.driveFileLink = uploaded.webViewLink || undefined;
+            } catch (e) {
+              driveError = (e as Error).message;
+            }
+          } else {
+            driveError = 'Google Drive is not connected. Configure it in Settings.';
+          }
+        }
+
+        await label.save();
+
+        results.push({
+          labelId: label._id,
+          poNumber: label.poNumber,
+          orderNumber: label.orderNumber,
+          status: 'created' as const,
+          shipmentId: label.shipmentId,
+          shipmentCost: label.shipmentCost,
+          insuranceCost: label.insuranceCost,
+          trackingNumber: label.trackingNumber,
+          driveFileLink: label.driveFileLink,
+          driveFileName: label.driveFileName,
+          driveError,
+        });
+      } catch (e) {
+        const message = (e as Error).message;
+        const failed = await Label.create({
+          poNumber: prepared.poNumber,
+          orderNumber: prepared.orderNumber,
+          orderId: prepared.orderId,
+          status: 'failed',
+          carrierCode: prepared.carrierCode,
+          serviceCode: prepared.serviceCode,
+          shipDate: prepared.shipDate,
+          propertyType: prepared.propertyType,
+          weight: prepared.weight,
+          dimensions: prepared.dimensions,
+          testLabel,
+          requestPayload: payload as unknown as Record<string, unknown>,
+          error: message,
+          createdBy: user?.email,
+          createdByUserId: userId,
+        });
+        results.push({
+          labelId: failed._id,
+          poNumber: prepared.poNumber,
+          orderNumber: prepared.orderNumber,
+          status: 'failed' as const,
+          error: message,
+        });
+      }
+    }
+
+    res.json({ data: results });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create labels', error: (error as Error).message });
+  }
+};
+
+/** Lists previously created labels (newest first), excluding the heavy base64 PDF. */
+export const getLabels = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = '1', pageSize = '50' } = req.query as { page?: string; pageSize?: string };
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const allowedSizes = [50, 100, 200, 500];
+    const size = allowedSizes.includes(parseInt(pageSize, 10)) ? parseInt(pageSize, 10) : 50;
+    const skip = (pageNum - 1) * size;
+
+    const [labels, total] = await Promise.all([
+      Label.find().sort({ createdAt: -1 }).skip(skip).limit(size).lean(),
+      Label.countDocuments(),
+    ]);
+
+    res.json({
+      data: labels,
+      pagination: { page: pageNum, pageSize: size, total, pages: Math.ceil(total / size) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch labels', error: (error as Error).message });
+  }
+};
+
+/** Returns the raw base64 PDF for a single label (used for in-app download). */
+export const getLabelPdf = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const label = await Label.findById(req.params.id).select('+labelData');
+    if (!label || !label.labelData) {
+      res.status(404).json({ message: 'Label PDF not found' });
+      return;
+    }
+
+    const pdf = Buffer.from(label.labelData, 'base64');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${label.poNumber}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch label PDF', error: (error as Error).message });
+  }
+};

@@ -208,4 +208,7 @@ const OrderSchema = new Schema<IOrder>(
   { timestamps: true }
 );
 
+// Supports the common "filter by status, sorted by newest" list query.
+OrderSchema.index({ orderStatus: 1, orderDate: -1 });
+
 export default model<IOrder>('Order', OrderSchema);

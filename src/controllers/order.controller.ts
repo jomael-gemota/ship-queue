@@ -123,13 +123,17 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
       ];
     }
 
+    const hasFilter = Object.keys(filter).length > 0;
+
     const [orders, total] = await Promise.all([
       Order.find(filter)
         .sort({ orderDate: -1 })
         .skip(skip)
         .limit(size)
         .lean(),
-      Order.countDocuments(filter),
+      // estimatedDocumentCount uses collection metadata (near-instant) and is
+      // safe when there is no filter; fall back to an exact count when filtering.
+      hasFilter ? Order.countDocuments(filter) : Order.estimatedDocumentCount(),
     ]);
 
     res.json({
