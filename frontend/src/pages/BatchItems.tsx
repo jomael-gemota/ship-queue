@@ -14,6 +14,8 @@ import {
   BatchItemsTable,
   BatchStatusBadge,
   CreatePrintButton,
+  ExportCsvButton,
+  exportBatchItemsCsv,
   LabelsTableIcon,
   BackIcon,
 } from '../components/labels/labelUi'
@@ -72,6 +74,11 @@ export default function BatchItems() {
     } finally {
       setCreating(false)
     }
+  }
+
+  const handleExportCsv = () => {
+    const base = batch ? shortBatchId(batch._id) : shortBatchId(batchId)
+    exportBatchItemsCsv(items, `${base}-items.csv`)
   }
 
   const handleDownloadPdf = async (label: LabelRecord) => {
@@ -139,11 +146,14 @@ export default function BatchItems() {
             </p>
           </div>
           {batch && (
-            <CreatePrintButton
-              busy={creating}
-              done={batch.status === 'created'}
-              onClick={handleCreateAndPrint}
-            />
+            <div className="flex items-center gap-2">
+              <ExportCsvButton onClick={handleExportCsv} />
+              <CreatePrintButton
+                busy={creating}
+                done={batch.status === 'created'}
+                onClick={handleCreateAndPrint}
+              />
+            </div>
           )}
         </div>
 

@@ -16,6 +16,8 @@ import {
   printLabelPdf,
   BatchStatusBadge,
   CreatePrintButton,
+  ExportCsvButton,
+  exportBatchItemsCsv,
   Spinner,
   StepBadge,
   Th,
@@ -133,6 +135,7 @@ export default function CreateShippingLabel() {
   const [batches, setBatches] = useState<LabelBatch[]>([])
   const [batchesLoading, setBatchesLoading] = useState(true)
   const [creatingBatchId, setCreatingBatchId] = useState<string | null>(null)
+  const [exportingBatchId, setExportingBatchId] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -197,6 +200,19 @@ export default function CreateShippingLabel() {
       setError(e instanceof Error ? e.message : 'Failed to draft batch')
     } finally {
       setDrafting(false)
+    }
+  }
+
+  const handleExportCsv = async (batch: LabelBatch) => {
+    setExportingBatchId(batch._id)
+    setError(null)
+    try {
+      const items = await fetchBatchItems(batch._id)
+      exportBatchItemsCsv(items, `${shortBatchId(batch._id)}-items.csv`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to export CSV')
+    } finally {
+      setExportingBatchId(null)
     }
   }
 
@@ -320,7 +336,7 @@ export default function CreateShippingLabel() {
                 <Th><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-gray-800">
+            <tbody className="divide-y divide-slate-200 dark:divide-gray-800 text-[13px]">
               {batchesLoading ? (
                 <tr><Td className="text-slate-400" colSpan={6}>Loading…</Td></tr>
               ) : batches.length === 0 ? (
@@ -328,33 +344,41 @@ export default function CreateShippingLabel() {
               ) : (
                 batches.map((b) => (
                   <tr key={b._id}>
-                    <Td className="font-medium text-slate-800 dark:text-gray-100">
+                    <Td compact className="font-medium text-slate-800 dark:text-gray-100">
                       <span className="inline-flex items-center gap-1.5">
-                        <RowItemIcon className="h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
-                        <span className="font-mono">{shortBatchId(b._id)}</span>
+                        <RowItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gray-500" />
+                        <span className="font-mono whitespace-nowrap">{shortBatchId(b._id)}</span>
                         {b.fileName && (
                           <span className="text-xs text-slate-400 dark:text-gray-500">· {b.fileName}</span>
                         )}
                       </span>
                     </Td>
-                    <Td className="text-slate-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
-                    <Td className="text-slate-600 dark:text-gray-300">{b.createdBy || '—'}</Td>
-                    <Td><BatchStatusBadge status={b.status} testLabel={b.testLabel} /></Td>
-                    <Td>
+                    <Td compact className="text-slate-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
+                    <Td compact className="text-slate-600 dark:text-gray-300">{b.createdBy || '—'}</Td>
+                    <Td compact><BatchStatusBadge status={b.status} testLabel={b.testLabel} /></Td>
+                    <Td compact>
                       <Link
                         to={`/create-label/batches/${b._id}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
                       >
                         <EyeIcon className="h-3.5 w-3.5" />
                         View items ({b.itemCount})
                       </Link>
                     </Td>
-                    <Td>
-                      <CreatePrintButton
-                        busy={creatingBatchId === b._id}
-                        done={b.status === 'created'}
-                        onClick={() => handleCreateAndPrint(b)}
-                      />
+                    <Td compact>
+                      <div className="flex items-center justify-end gap-2">
+                        <ExportCsvButton
+                          size="sm"
+                          busy={exportingBatchId === b._id}
+                          onClick={() => handleExportCsv(b)}
+                        />
+                        <CreatePrintButton
+                          size="sm"
+                          busy={creatingBatchId === b._id}
+                          done={b.status === 'created'}
+                          onClick={() => handleCreateAndPrint(b)}
+                        />
+                      </div>
                     </Td>
                   </tr>
                 ))

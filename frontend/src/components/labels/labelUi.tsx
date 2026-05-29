@@ -29,6 +29,85 @@ export function shortBatchId(id: string): string {
   return `B-${id.slice(-6).toUpperCase()}`
 }
 
+/** Flattens an address into a single-line, human-readable string for CSV. */
+function addressToLine(addr?: LabelAddress): string {
+  if (!addr) return ''
+  return [
+    addr.name,
+    addr.company,
+    addr.street1,
+    addr.street2,
+    addr.street3,
+    [addr.city, addr.state, addr.postalCode].filter(Boolean).join(', '),
+    addr.country,
+    addr.phone,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** Escapes a value for inclusion in a CSV cell. */
+function csvCell(value: unknown): string {
+  if (value == null) return ''
+  const str = String(value)
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+// All columns from both the Shipping Details and Tracking & Labels sections,
+// flattened into a single row per order (no per-section grouping).
+const CSV_COLUMNS: { header: string; value: (l: LabelRecord) => unknown }[] = [
+  { header: 'PO #', value: (l) => l.poNumber },
+  { header: 'Order #', value: (l) => l.orderNumber },
+  { header: 'Customer', value: (l) => l.customerName },
+  { header: 'Ship From', value: (l) => addressToLine(l.shipFrom) },
+  { header: 'Ship To', value: (l) => addressToLine(l.shipTo) },
+  { header: 'Property', value: (l) => l.propertyType },
+  { header: 'Package', value: (l) => l.packageCode },
+  { header: 'Service', value: (l) => l.serviceCode },
+  { header: 'Ship Date', value: (l) => l.shipDate },
+  { header: 'Qty', value: (l) => l.qty },
+  {
+    header: 'Weight',
+    value: (l) => (l.weight?.value ? `${l.weight.value} ${l.weight.units || ''}`.trim() : ''),
+  },
+  {
+    header: 'Dimensions',
+    value: (l) =>
+      l.dimensions
+        ? `${l.dimensions.length}x${l.dimensions.width}x${l.dimensions.height} ${l.dimensions.units || ''}`.trim()
+        : '',
+  },
+  { header: 'Insurance', value: (l) => l.insuranceProvider },
+  { header: 'Status', value: (l) => l.status },
+  { header: 'Tracking', value: (l) => l.trackingNumber },
+  { header: 'Shipment ID', value: (l) => l.shipmentId },
+  { header: 'Cost', value: (l) => (l.shipmentCost != null ? l.shipmentCost : '') },
+  { header: 'Insurance Cost', value: (l) => (l.insuranceCost != null ? l.insuranceCost : '') },
+  { header: 'PDF Link', value: (l) => l.driveFileLink },
+]
+
+/** Builds a CSV string for the given batch items (all columns, one row per order). */
+export function buildBatchItemsCsv(items: LabelRecord[]): string {
+  const headerLine = CSV_COLUMNS.map((c) => csvCell(c.header)).join(',')
+  const rows = items.map((l) => CSV_COLUMNS.map((c) => csvCell(c.value(l))).join(','))
+  return [headerLine, ...rows].join('\r\n')
+}
+
+/** Generates and downloads a CSV file of the batch items. */
+export function exportBatchItemsCsv(items: LabelRecord[], fileName: string): void {
+  const csv = buildBatchItemsCsv(items)
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 /** Loads a label PDF and sends it to the printer via a hidden iframe. */
 export async function printLabelPdf(labelId: string): Promise<void> {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -89,10 +168,27 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
   // 2 lead columns + the active tab's columns (12 shipping, 5 tracking).
   const colCount = 2 + (isShipping ? 12 : 5)
 
+  // Items missing shipping details because their order wasn't found in the
+  // (un-synced) orders table.
+  const unsyncedCount = items.filter((l) => l.found === false).length
+
   return (
     <div>
-      {/* Tab switcher (aligned to the right of the table) */}
-      <div className="flex items-center justify-end gap-1 border-b border-slate-300/60 dark:border-gray-800 px-5 py-3">
+      {/* Unsynced-orders warning — items with no shipping details. */}
+      {!loading && unsyncedCount > 0 && (
+        <div className="flex items-start gap-2 border-b border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-3 text-sm text-amber-800 dark:text-amber-300">
+          <WarningIcon className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <span className="font-semibold">{unsyncedCount}</span> of {items.length} item
+            {items.length === 1 ? '' : 's'} {unsyncedCount === 1 ? 'has' : 'have'} no shipping
+            details because the order{unsyncedCount === 1 ? ' was' : 's were'} not found in the
+            orders table. Sync the orders table to populate {unsyncedCount === 1 ? 'it' : 'them'}.
+          </span>
+        </div>
+      )}
+
+      {/* Tab switcher (aligned to the left of the table) */}
+      <div className="flex items-center justify-start gap-1 border-b border-slate-300/60 dark:border-gray-800 px-5 py-3">
         <div className="inline-flex rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-800 p-0.5">
           <TabButton active={isShipping} onClick={() => setTab('shipping')} icon={<BoxIcon className="h-3.5 w-3.5" />}>
             Shipping Details
@@ -103,7 +199,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
         </div>
       </div>
 
-      <div className={isShipping ? '' : 'overflow-auto'}>
+      <div className="overflow-auto max-h-[70vh]">
         <table className={`w-full ${isShipping ? 'table-fixed' : 'text-[13px]'}`}>
           {isShipping && (
             <colgroup>
@@ -123,11 +219,11 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
               <col className="w-[7%]" />
             </colgroup>
           )}
-          <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-gray-800/95 text-slate-500 dark:text-gray-400">
+          <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-400">
             <tr className="text-left border-b border-slate-200 dark:border-gray-700">
               {isShipping ? (
                 <>
-                  <ThWrap><HeaderLabel icon={<TagIcon className="h-3.5 w-3.5" />} text="PO #" /></ThWrap>
+                  <ThWrap><HeaderLabel icon={<BoxIcon className="h-3.5 w-3.5" />} text="PO #" /></ThWrap>
                   <ThWrap className="border-r border-slate-200 dark:border-gray-700"><HeaderLabel icon={<ClipboardIcon className="h-3.5 w-3.5" />} text="Order #" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<UserIcon className="h-3.5 w-3.5" />} text="Customer" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<StoreIcon className="h-3.5 w-3.5" />} text="Ship From" /></ThWrap>
@@ -145,7 +241,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
               ) : (
                 <>
                   <Th className={`${PO_STICKY} z-30 bg-slate-100 dark:bg-gray-800`}>
-                    <HeaderLabel icon={<TagIcon className="h-3.5 w-5" />} text="PO #" />
+                    <HeaderLabel icon={<BoxIcon className="h-3.5 w-5" />} text="PO #" />
                   </Th>
                   <Th className={`${ORDER_STICKY} z-30 bg-slate-100 dark:bg-gray-800`}>
                     <HeaderLabel icon={<ClipboardIcon className="h-3.5 w-5" />} text="Order #" />
@@ -159,22 +255,34 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-gray-800">
+          <tbody className="divide-y divide-slate-300 dark:divide-gray-700">
             {loading ? (
               <tr><Td className="text-slate-400" colSpan={colCount}>Loading…</Td></tr>
             ) : items.length === 0 ? (
               <tr><Td className="text-slate-400" colSpan={colCount}>No items in this batch.</Td></tr>
             ) : (
-              items.map((l) => {
+              items.map((l, idx) => {
                 const failed = l.status === 'failed' || l.found === false
-                const stickyBg = failed ? 'bg-red-50 dark:bg-red-900/20' : 'bg-slate-50 dark:bg-gray-900'
+                const zebra = idx % 2 === 1
+                // Alternating row colors with failed rows highlighted in red.
+                const rowBg = failed
+                  ? 'bg-red-50/70 dark:bg-red-900/10'
+                  : zebra
+                    ? 'bg-slate-100/70 dark:bg-gray-800/40'
+                    : 'bg-white dark:bg-gray-900'
+                // Sticky lead cells need an opaque background matching the row.
+                const stickyBg = failed
+                  ? 'bg-red-50 dark:bg-red-900/20'
+                  : zebra
+                    ? 'bg-slate-100 dark:bg-gray-800'
+                    : 'bg-white dark:bg-gray-900'
 
                 if (isShipping) {
                   return (
-                    <tr key={l._id} className={`align-top ${failed ? 'bg-red-50/60 dark:bg-red-900/10' : ''}`}>
+                    <tr key={l._id} className={`align-top ${rowBg}`}>
                       <TdWrap className="font-medium text-slate-800 dark:text-gray-100">
                         <span className="inline-flex items-start gap-1.5">
-                          <RowItemIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gray-500" />
+                          <BoxIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gray-500" />
                           <span className="break-words">{l.poNumber}</span>
                         </span>
                       </TdWrap>
@@ -198,11 +306,11 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                 }
 
                 return (
-                  <tr key={l._id} className={failed ? 'bg-red-50/60 dark:bg-red-900/10' : ''}>
+                  <tr key={l._id} className={rowBg}>
                     {/* Frozen lead columns */}
                     <Td className={`${PO_STICKY} z-10 ${stickyBg} font-medium text-slate-800 dark:text-gray-100`}>
-                      <span className="inline-flex items-center gap-1.5 w-5">
-                        <RowItemIcon className="h-3.5 w-5 text-slate-400 dark:text-gray-500" />
+                      <span className="inline-flex items-center gap-1.5">
+                        <BoxIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gray-500" />
                         <span>{l.poNumber}</span>
                       </span>
                     </Td>
@@ -275,16 +383,41 @@ function TabButton({
   )
 }
 
-export function CreatePrintButton({ busy, done, onClick }: { busy: boolean; done: boolean; onClick: () => void }) {
+export function CreatePrintButton({ busy, done, onClick, size = 'md' }: { busy: boolean; done: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
+  const sizing = size === 'sm' ? 'gap-1.5 px-2.5 py-1.5 text-xs' : 'gap-2 px-3 py-2 text-sm'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
     <button
       onClick={onClick}
       disabled={busy}
-      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+      className={`inline-flex items-center rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${sizing}`}
     >
-      {busy ? <Spinner /> : <PrinterIcon className="h-4 w-4" />}
+      {busy ? <Spinner className={iconSize} /> : <PrinterIcon className={iconSize} />}
       {busy ? 'Working…' : done ? 'Reprint Labels' : 'Create + Print Labels'}
     </button>
+  )
+}
+
+export function ExportCsvButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
+  const sizing = size === 'sm' ? 'gap-1.5 px-2.5 py-1.5 text-xs' : 'gap-2 px-3 py-2 text-sm'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className={`inline-flex items-center rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-800 font-medium text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${sizing}`}
+    >
+      {busy ? <Spinner className={iconSize} /> : <CsvIcon className={iconSize} />}
+      Export as CSV
+    </button>
+  )
+}
+
+export function CsvIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+    </svg>
   )
 }
 
@@ -293,26 +426,26 @@ export function BatchStatusBadge({ status, testLabel }: { status: LabelBatchStat
   switch (status) {
     case 'created':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-          <SuccessIcon className="h-3.5 w-3.5" /> Labels Created{suffix}
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+          <SuccessIcon className="h-3.5 w-3.5 shrink-0" /> Labels Created{suffix}
         </span>
       )
     case 'partial':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-          <StatusIcon className="h-3.5 w-3.5" /> Partially Created
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 dark:bg-amber-900/30 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+          <StatusIcon className="h-3.5 w-3.5 shrink-0" /> Partially Created
         </span>
       )
     case 'failed':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
-          <ErrorIcon className="h-3.5 w-3.5" /> Failed
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+          <ErrorIcon className="h-3.5 w-3.5 shrink-0" /> Failed
         </span>
       )
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-gray-700 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-gray-300">
-          <ClockIcon className="h-3.5 w-3.5" /> Drafted for Review
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 dark:bg-gray-700 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-gray-300">
+          <ClockIcon className="h-3.5 w-3.5 shrink-0" /> Drafted for Review
         </span>
       )
   }
@@ -362,8 +495,8 @@ export function HeaderLabel({ icon, text }: { icon: React.ReactNode; text: strin
   )
 }
 
-export function Td({ children, className = '', colSpan }: { children: React.ReactNode; className?: string; colSpan?: number }) {
-  return <td colSpan={colSpan} className={`px-4 py-3 text-slate-600 dark:text-gray-300 ${className}`}>{children}</td>
+export function Td({ children, className = '', colSpan, compact }: { children: React.ReactNode; className?: string; colSpan?: number; compact?: boolean }) {
+  return <td colSpan={colSpan} className={`px-4 ${compact ? 'py-2' : 'py-3'} text-slate-600 dark:text-gray-300 ${className}`}>{children}</td>
 }
 
 export function StepBadge({ n }: { n: number }) {
@@ -511,6 +644,14 @@ export function SuccessIcon({ className = '' }: { className?: string }) {
   )
 }
 
+export function WarningIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+    </svg>
+  )
+}
+
 export function ErrorIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -624,9 +765,9 @@ export function BackIcon({ className = '' }: { className?: string }) {
   )
 }
 
-export function Spinner() {
+export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+    <svg className={`${className} animate-spin`} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
