@@ -16,6 +16,7 @@ import {
   CreatePrintButton,
   ExportCsvButton,
   DeleteBatchButton,
+  ConfirmDeleteBatchModal,
   exportBatchItemsCsv,
   LabelsTableIcon,
   BackIcon,
@@ -87,12 +88,13 @@ export default function BatchItems() {
     exportBatchItemsCsv(items, `${base}-items.csv`)
   }
 
-  const handleDeleteBatch = async () => {
+  const handleDeleteBatch = () => {
     if (!batch) return
-    if (!confirmDelete) {
-      setConfirmDelete(true)
-      return
-    }
+    setConfirmDelete(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!batch) return
     setDeleting(true)
     setError(null)
     try {
@@ -132,6 +134,14 @@ export default function BatchItems() {
 
   return (
     <div className="space-y-6">
+      {confirmDelete && batch && (
+        <ConfirmDeleteBatchModal
+          batchShortId={shortBatchId(batch._id)}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDelete(false)}
+          deleting={deleting}
+        />
+      )}
       {error && (
         <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
           <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
@@ -205,26 +215,7 @@ export default function BatchItems() {
               )}
               <ExportCsvButton onClick={handleExportCsv} />
               {user && batch.createdBy === user.email && (
-                confirmDelete ? (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Delete batch?</span>
-                    <button
-                      onClick={handleDeleteBatch}
-                      disabled={deleting}
-                      className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
-                    >
-                      {deleting ? 'Deleting…' : 'Confirm'}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(false)}
-                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <DeleteBatchButton onClick={handleDeleteBatch} />
-                )
+                <DeleteBatchButton onClick={handleDeleteBatch} />
               )}
             </div>
           )}

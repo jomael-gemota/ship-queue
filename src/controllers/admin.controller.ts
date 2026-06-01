@@ -50,3 +50,30 @@ export const updateUserPermissions = async (req: Request, res: Response): Promis
     res.status(500).json({ message: 'Failed to update user permissions' });
   }
 };
+
+export const deleteUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    if (user.role === 'admin') {
+      res.status(400).json({ message: 'Cannot delete an admin user' });
+      return;
+    }
+
+    if (req.user?.id === id) {
+      res.status(400).json({ message: 'Cannot delete your own account' });
+      return;
+    }
+
+    await user.deleteOne();
+    res.json({ message: 'User deleted successfully' });
+  } catch {
+    res.status(500).json({ message: 'Failed to delete user' });
+  }
+};

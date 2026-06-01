@@ -18,6 +18,7 @@ import {
   CreatePrintButton,
   ExportCsvButton,
   DeleteBatchButton,
+  ConfirmDeleteBatchModal,
   exportBatchItemsCsv,
   Spinner,
   StepBadge,
@@ -247,15 +248,16 @@ export default function CreateShippingLabel() {
     }
   }
 
-  const handleDeleteBatch = async (batch: LabelBatch) => {
-    if (confirmDeleteId !== batch._id) {
-      setConfirmDeleteId(batch._id)
-      return
-    }
-    setDeletingBatchId(batch._id)
+  const handleDeleteBatch = (batch: LabelBatch) => {
+    setConfirmDeleteId(batch._id)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteId) return
+    setDeletingBatchId(confirmDeleteId)
     setError(null)
     try {
-      await authApi.delete(`/labels/batches/${batch._id}`)
+      await authApi.delete(`/labels/batches/${confirmDeleteId}`)
       setConfirmDeleteId(null)
       await loadBatches()
     } catch (e) {
@@ -269,8 +271,18 @@ export default function CreateShippingLabel() {
   const canCreate = !!user?.canCreateLabels
   const driveConnected = !!user?.driveScopeGranted
 
+  const confirmBatch = confirmDeleteId ? batches.find((b) => b._id === confirmDeleteId) : null
+
   return (
     <div className="space-y-6">
+      {confirmBatch && (
+        <ConfirmDeleteBatchModal
+          batchShortId={shortBatchId(confirmBatch._id)}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDeleteId(null)}
+          deleting={deletingBatchId === confirmBatch._id}
+        />
+      )}
       {error && (
         <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
           <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
@@ -457,29 +469,10 @@ export default function CreateShippingLabel() {
                           onClick={() => handleExportCsv(b)}
                         />
                         {user && b.createdBy === user.email && (
-                          confirmDeleteId === b._id ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Delete?</span>
-                              <button
-                                onClick={() => handleDeleteBatch(b)}
-                                disabled={deletingBatchId === b._id}
-                                className="rounded-lg bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
-                              >
-                                {deletingBatchId === b._id ? '…' : 'Confirm'}
-                              </button>
-                              <button
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <DeleteBatchButton
-                              size="sm"
-                              onClick={() => handleDeleteBatch(b)}
-                            />
-                          )
+                          <DeleteBatchButton
+                            size="sm"
+                            onClick={() => handleDeleteBatch(b)}
+                          />
                         )}
                       </div>
                     </Td>

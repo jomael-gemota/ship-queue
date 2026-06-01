@@ -484,6 +484,59 @@ export function ExportCsvButton({ busy, onClick, size = 'md' }: { busy?: boolean
   )
 }
 
+export function ConfirmDeleteBatchModal({
+  batchShortId,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  batchShortId: string
+  onConfirm: () => void
+  onCancel: () => void
+  deleting: boolean
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+            <TrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Delete batch?</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+              Batch <span className="font-mono font-medium text-slate-700 dark:text-[var(--text-100)]">{batchShortId}</span> and all its items will be permanently deleted. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2"
+          >
+            {deleting && (
+              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            )}
+            Delete batch
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function DeleteBatchButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
   const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
