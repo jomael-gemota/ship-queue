@@ -10,6 +10,8 @@ export interface AuthUser {
   avatar?: string
   role: UserRole
   canCreateLabels: boolean
+  driveScopeGranted: boolean
+  driveFolderId?: string
 }
 
 interface AuthState {

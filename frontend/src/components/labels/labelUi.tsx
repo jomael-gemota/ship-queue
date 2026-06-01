@@ -453,13 +453,14 @@ function TabButton({
   )
 }
 
-export function CreatePrintButton({ busy, done, onClick, size = 'md' }: { busy: boolean; done: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
+export function CreatePrintButton({ busy, done, onClick, size = 'md', disabled, title }: { busy: boolean; done: boolean; onClick: () => void; size?: 'sm' | 'md'; disabled?: boolean; title?: string }) {
   const sizing = size === 'sm' ? 'gap-1.5 px-2.5 py-1.5 text-xs' : 'gap-2 px-3 py-2 text-sm'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
     <button
       onClick={onClick}
-      disabled={busy}
+      disabled={busy || disabled}
+      title={title}
       className={`inline-flex items-center rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <PrinterIcon className={iconSize} />}

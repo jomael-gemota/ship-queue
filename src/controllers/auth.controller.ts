@@ -40,6 +40,8 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
         avatar: dbUser.avatar,
         role: dbUser.role,
         canCreateLabels: dbUser.canCreateLabels,
+        driveScopeGranted: dbUser.driveScopeGranted ?? false,
+        driveFolderId: dbUser.driveFolderId,
       },
     });
   } catch {
