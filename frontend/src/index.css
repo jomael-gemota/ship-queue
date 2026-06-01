@@ -48,6 +48,18 @@ body {
   color: var(--text-100);
 }
 
+@keyframes shipqueue-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(150%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
 @layer components {
   .notice-card {
     border-radius: 0.9rem;

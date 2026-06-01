@@ -15,6 +15,15 @@ import type {
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
 const POLL_INTERVAL_MS = 3000
+const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000
+const AUTO_SYNC_INTERVAL_SECONDS = AUTO_SYNC_INTERVAL_MS / 1000
+
+function formatCountdown(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  const minutes = Math.floor(safe / 60)
+  const seconds = safe % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   awaiting_payment:
@@ -262,8 +271,20 @@ export default function Orders() {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 })
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const autoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastSyncedCountRef = useRef(0)
   const isSyncing = syncState?.running === true
+  const [autoSyncing, setAutoSyncing] = useState(false)
+  const [secondsUntilSync, setSecondsUntilSync] = useState(AUTO_SYNC_INTERVAL_SECONDS)
+
+  const isSyncingRef = useRef(isSyncing)
+  useEffect(() => {
+    isSyncingRef.current = isSyncing
+  }, [isSyncing])
+
+  // Tracks whether the in-flight sync was triggered automatically, so the poll
+  // loop can keep background syncs quiet (no success banner spam every cycle).
+  const autoSyncingRef = useRef(false)
 
   const fetchOrders = useCallback(
     async (silent = false) => {
@@ -367,6 +388,9 @@ export default function Orders() {
 
           if (status.error) {
             setSyncError(status.error)
+          } else if (autoSyncingRef.current) {
+            // Background auto-sync finished cleanly — stay quiet, the table just
+            // refreshes silently without a success banner.
           } else if (status.result) {
             const { inserted, updated, fetched, isIncremental } = status.result
             const label = isIncremental ? 'Incremental sync' : 'Full sync'
@@ -398,18 +422,72 @@ export default function Orders() {
 
   useEffect(() => () => stopPolling(), [])
 
-  const handleSync = async () => {
-    setSyncError(null)
-    setSyncDone(null)
+  const handleSync = async (auto = false) => {
+    // Never kick off a second sync while one is already running.
+    if (isSyncingRef.current) return
+
+    autoSyncingRef.current = auto
+    if (auto) {
+      setAutoSyncing(true)
+    } else {
+      setSyncError(null)
+      setSyncDone(null)
+    }
     lastSyncedCountRef.current = 0
     try {
       const res = await authApi.post<SyncResponse>('/orders/sync')
       setSyncState(res.data)
       startPolling()
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : 'Failed to start sync')
+      if (!auto) {
+        setSyncError(err instanceof Error ? err.message : 'Failed to start sync')
+      }
     }
   }
+
+  // Keep a stable reference so the auto-sync interval always calls the latest
+  // handler without needing to be torn down and recreated.
+  const handleSyncRef = useRef(handleSync)
+  useEffect(() => {
+    handleSyncRef.current = handleSync
+  })
+
+  // Reset the auto-sync flag once a (background) sync finishes.
+  useEffect(() => {
+    if (!isSyncing && autoSyncing) {
+      setAutoSyncing(false)
+    }
+  }, [isSyncing, autoSyncing])
+
+  // Drive the auto-sync from a 1s countdown so we can surface "next sync in…"
+  // to the user. The countdown pauses while a sync is running and fires an
+  // automatic resync when it reaches zero.
+  useEffect(() => {
+    autoSyncTimerRef.current = setInterval(() => {
+      if (isSyncingRef.current) return
+      setSecondsUntilSync((prev) => {
+        if (prev <= 1) {
+          handleSyncRef.current(true)
+          return AUTO_SYNC_INTERVAL_SECONDS
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (autoSyncTimerRef.current) {
+        clearInterval(autoSyncTimerRef.current)
+        autoSyncTimerRef.current = null
+      }
+    }
+  }, [])
+
+  // After any sync (manual or auto) finishes, restart the countdown from the top.
+  useEffect(() => {
+    if (!isSyncing) {
+      setSecondsUntilSync(AUTO_SYNC_INTERVAL_SECONDS)
+    }
+  }, [isSyncing])
 
   const handleStatusChange = (status: OrderStatus | '') => {
     setSelectedStatus(status)
@@ -554,9 +632,30 @@ export default function Orders() {
           </p>
         </div>
         {canCreate && (
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)] whitespace-nowrap">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              {isSyncing ? (
+                <span className="font-medium text-sky-700 dark:text-[var(--accent-200)]">Syncing now…</span>
+              ) : (
+                <>
+                  Next sync in{' '}
+                  <span className="font-semibold tabular-nums text-gray-700 dark:text-[var(--text-100)]">
+                    {formatCountdown(secondsUntilSync)}
+                  </span>
+                </>
+              )}
+            </span>
+            <button
+              onClick={() => handleSync()}
+              disabled={isSyncing}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white dark:text-[var(--text-100)] text-sm font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] hover:shadow-[0_18px_26px_-18px_rgba(0,102,140,0.9)] disabled:bg-sky-300 disabled:text-sky-50 disabled:shadow-none disabled:translate-y-0 transition-all cursor-pointer disabled:cursor-not-allowed"
           >
             {isSyncing ? (
@@ -596,7 +695,8 @@ export default function Orders() {
                 Sync Orders
               </>
             )}
-          </button>
+            </button>
+          </div>
         )}
       </div>
 
@@ -656,7 +756,13 @@ export default function Orders() {
       )}
 
       {/* Table card */}
-      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-100)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm">
+      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-100)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm overflow-hidden">
+        {/* Indeterminate loading bar — shown while the table is syncing */}
+        {isSyncing && (
+          <div className="h-0.5 w-full overflow-hidden bg-sky-100 dark:bg-[var(--primary-200)]">
+            <div className="h-full w-1/3 animate-[shipqueue-indeterminate_1.2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-[var(--accent-100)] to-[var(--accent-200)] dark:from-[var(--accent-200)] dark:to-[var(--accent-100)]" />
+          </div>
+        )}
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
           <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]">
@@ -711,22 +817,43 @@ export default function Orders() {
           </div>
 
           <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
-            {tableRefreshing && (
-              <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
+            {isSyncing ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 dark:bg-[var(--primary-200)] px-2.5 py-0.5 font-medium text-sky-700 dark:text-[var(--accent-200)]">
+                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                {autoSyncing ? 'Auto-syncing…' : 'Syncing…'}
+              </span>
+            ) : (
+              tableRefreshing && (
+                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              )
             )}
             {pagination.total > 0 &&
               `${pagination.total.toLocaleString()} order${pagination.total !== 1 ? 's' : ''}`}
