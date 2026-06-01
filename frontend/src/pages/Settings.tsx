@@ -153,7 +153,7 @@ export default function Settings() {
     setSuccess(null)
     try {
       await authApi.delete('/settings/drive')
-      setSettings({ driveConnected: false, driveFolderId: null, driveFolderName: null })
+      setSettings({ driveConnected: false, driveConnectedAt: null, driveAccountEmail: null, driveAccountName: null, driveAccountAvatar: null, driveFolderId: null, driveFolderName: null })
       setConfirmDisconnect(false)
       setBrowserOpen(false)
       await refreshUser()
