@@ -211,7 +211,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
     <div>
       {/* Unsynced-orders warning — items with no shipping details. */}
       {!loading && unsyncedCount > 0 && (
-        <div className="flex items-start gap-2 border-b border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-3 text-sm text-amber-800 dark:text-amber-300">
+        <div className="notice-card notice-card--warning mx-5 mt-4 mb-1 flex items-start gap-2 text-sm">
           <WarningIcon className="h-4 w-4 shrink-0 mt-0.5" />
           <span>
             <span className="font-semibold">{unsyncedCount}</span> of {items.length} item
