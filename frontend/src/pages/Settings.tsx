@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder } from '../types/label'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +11,8 @@ interface FoldersResponse {
 interface Crumb {
   id: string
   name: string
+  /** Set when this crumb is a Shared Drive root or a folder inside one. */
+  driveId?: string
 }
 
 /** Extracts a folder ID from a pasted Drive URL, or returns the raw input. */
@@ -19,15 +22,25 @@ function extractFolderId(input: string): string {
   return match ? match[1] : trimmed
 }
 
+const DRIVE_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Google Drive access was denied. Please try again.',
+  invalid_state: 'The authorisation request expired. Please try again.',
+  user_not_found: 'Your account could not be found. Please refresh and try again.',
+  auth_failed: 'Google Drive authorisation failed. Please try again.',
+}
+
 export default function Settings() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const canCreate = !!user?.canCreateLabels
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   // Folder browser state
   const [crumbs, setCrumbs] = useState<Crumb[]>([])
@@ -51,15 +64,35 @@ export default function Settings() {
     loadSettings()
   }, [loadSettings])
 
-  const loadFolders = useCallback(async (parentId?: string) => {
+  // Handle redirect-back from the Drive OAuth flow
+  useEffect(() => {
+    const driveResult = searchParams.get('drive')
+    const driveError = searchParams.get('drive_error')
+    if (driveResult === 'connected') {
+      setSuccess('Google Drive connected successfully.')
+      loadSettings()
+      refreshUser()
+      setSearchParams({}, { replace: true })
+    } else if (driveError) {
+      setError(DRIVE_ERROR_MESSAGES[driveError] ?? 'Google Drive connection failed.')
+      setSearchParams({}, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const loadFolders = useCallback(async (parentId?: string, driveId?: string) => {
     setFoldersLoading(true)
     setError(null)
     try {
-      const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : ''
-      const res = await authApi.get<FoldersResponse>(`/settings/drive/folders${qs}`)
+      const qs = new URLSearchParams()
+      if (parentId) qs.set('parentId', parentId)
+      if (driveId) qs.set('driveId', driveId)
+      const query = qs.toString() ? `?${qs.toString()}` : ''
+      const res = await authApi.get<FoldersResponse>(`/settings/drive/folders${query}`)
       setFolders(res.data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to list Drive folders')
+      setFolders([])
     } finally {
       setFoldersLoading(false)
     }
@@ -68,22 +101,28 @@ export default function Settings() {
   const openBrowser = () => {
     setBrowserOpen(true)
     setCrumbs([])
-    loadFolders(undefined)
+    loadFolders(undefined, undefined)
   }
 
   const enterFolder = (folder: DriveFolder) => {
-    setCrumbs((prev) => [...prev, folder])
-    loadFolders(folder.id)
+    const currentDriveId = crumbs[crumbs.length - 1]?.driveId
+    // A Shared Drive entry becomes the new driveId; its contents are listed
+    // using its own ID as both parentId and driveId.
+    const nextDriveId = folder.isSharedDrive ? folder.id : currentDriveId
+    const crumb: Crumb = { id: folder.id, name: folder.name, driveId: nextDriveId }
+    setCrumbs((prev) => [...prev, crumb])
+    loadFolders(folder.id, nextDriveId)
   }
 
   const goToCrumb = (index: number) => {
     if (index < 0) {
       setCrumbs([])
-      loadFolders(undefined)
+      loadFolders(undefined, undefined)
     } else {
       const next = crumbs.slice(0, index + 1)
       setCrumbs(next)
-      loadFolders(next[next.length - 1].id)
+      const crumb = next[next.length - 1]
+      loadFolders(crumb.id, crumb.driveId)
     }
   }
 
@@ -101,6 +140,29 @@ export default function Settings() {
       setError(e instanceof Error ? e.message : 'Failed to save folder')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    if (!confirmDisconnect) {
+      setConfirmDisconnect(true)
+      return
+    }
+    setDisconnecting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await authApi.delete('/settings/drive')
+      setSettings({ driveConnected: false, driveFolderId: null, driveFolderName: null })
+      setConfirmDisconnect(false)
+      setBrowserOpen(false)
+      await refreshUser()
+      setSuccess('Google Drive disconnected. You can reconnect at any time.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect Google Drive')
+      setConfirmDisconnect(false)
+    } finally {
+      setDisconnecting(false)
     }
   }
 
@@ -143,7 +205,7 @@ export default function Settings() {
           <p className="text-sm text-slate-400">Loading…</p>
         ) : (
           <>
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                   settings?.driveConnected
@@ -155,33 +217,118 @@ export default function Settings() {
                 {settings?.driveConnected ? 'Connected' : 'Not connected'}
               </span>
               {!settings?.driveConnected && canCreate && (
-                <a
-                  href="/api/auth/google/reconnect"
-                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors"
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await authApi.get<{ url: string }>('/auth/drive/connect')
+                      window.location.href = res.url
+                    } catch {
+                      setError('Failed to start Google Drive authorisation.')
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
                 >
                   <GoogleDriveLogo className="h-4 w-4" mono />
                   Connect Google Drive
-                </a>
+                </button>
+              )}
+              {settings?.driveConnected && canCreate && (
+                confirmDisconnect ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Disconnect Drive?</span>
+                    <button
+                      onClick={handleDisconnect}
+                      disabled={disconnecting}
+                      className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
+                    >
+                      {disconnecting ? 'Disconnecting…' : 'Confirm'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDisconnect(false)}
+                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleDisconnect}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/15 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
+                  >
+                    <UnplugIcon className="h-3.5 w-3.5" />
+                    Disconnect
+                  </button>
+                )
               )}
             </div>
 
             {settings?.driveConnected && (
               <>
-                <div className="flex items-start gap-3 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-4 mb-4">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                    <FolderIcon className="h-5 w-5 text-amber-500" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Destination folder</p>
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
-                      {settings.driveFolderName || 'My Drive (root)'}
-                    </p>
-                    {settings.driveFolderId && (
-                      <p className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)] font-mono mt-1 break-all">
-                        <HashIcon className="h-3 w-3 shrink-0" />
-                        {settings.driveFolderId}
-                      </p>
+                <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)] mb-4">
+                  {/* Connected account row */}
+                  <div className="flex items-center gap-3 p-4">
+                    {settings.driveAccountAvatar ? (
+                      <img
+                        src={settings.driveAccountAvatar}
+                        alt={settings.driveAccountName || ''}
+                        className="h-9 w-9 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-[var(--bg-300)] text-slate-500 dark:text-[var(--text-200)] text-sm font-medium">
+                        {(settings.driveAccountName || '?')[0].toUpperCase()}
+                      </span>
                     )}
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected account</p>
+                      <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">{settings.driveAccountName}</p>
+                      <p className="text-xs text-slate-500 dark:text-[var(--text-200)] truncate">{settings.driveAccountEmail}</p>
+                      {canCreate && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await authApi.get<{ url: string }>('/auth/drive/connect')
+                              window.location.href = res.url
+                            } catch {
+                              setError('Failed to start Google Drive authorisation.')
+                            }
+                          }}
+                          className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                          Switch account
+                        </button>
+                      )}
+                    </div>
+                    {settings.driveConnectedAt && (
+                      <div className="ml-auto shrink-0 text-right">
+                        <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected on</p>
+                        <p className="text-xs font-medium text-slate-600 dark:text-[var(--text-200)] whitespace-nowrap">
+                          {new Date(settings.driveConnectedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </p>
+                        <p className="text-xs text-slate-400 dark:text-[var(--text-200)] whitespace-nowrap">
+                          {new Date(settings.driveConnectedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Destination folder row */}
+                  <div className="flex items-start gap-3 p-4">
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                      <FolderIcon className="h-5 w-5 text-amber-500" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Destination folder</p>
+                      <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+                        {settings.driveFolderName || 'My Drive (root)'}
+                      </p>
+                      {settings.driveFolderId && (
+                        <p className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)] font-mono mt-1 break-all">
+                          <HashIcon className="h-3 w-3 shrink-0" />
+                          {settings.driveFolderId}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -254,8 +401,15 @@ export default function Settings() {
                             onClick={() => enterFolder(f)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
                           >
-                            <svg className="h-4 w-4 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" /></svg>
-                            {f.name}
+                            {f.isSharedDrive ? (
+                              <GoogleDriveLogo className="h-4 w-4 shrink-0" />
+                            ) : (
+                              <svg className="h-4 w-4 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" /></svg>
+                            )}
+                            <span className="truncate">{f.name}</span>
+                            {f.isSharedDrive && (
+                              <span className="ml-auto shrink-0 text-xs text-slate-400 dark:text-[var(--text-200)]">Shared drive</span>
+                            )}
                           </button>
                         ))
                       )}

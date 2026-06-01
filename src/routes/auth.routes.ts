@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import passport from 'passport';
 import { googleCallback, getMe, logout } from '../controllers/auth.controller';
+import { getDriveAuthUrl, handleDriveCallback } from '../controllers/driveAuth.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -60,6 +61,12 @@ router.get(
   },
   googleCallback
 );
+
+// Drive-specific OAuth — allows connecting any Google account for Drive uploads.
+// Uses `select_account consent` so the user can pick a different account from
+// the one they used to log in (e.g. a manager's Drive).
+router.get('/drive/connect', requireAuth, getDriveAuthUrl);
+router.get('/drive/callback', handleDriveCallback);
 
 // Protected — returns the currently authenticated user
 router.get('/me', requireAuth, getMe);

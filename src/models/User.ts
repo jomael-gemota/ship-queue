@@ -13,6 +13,10 @@ export interface IUser extends Document {
   googleAccessToken?: string;
   googleTokenExpiry?: Date;
   driveScopeGranted?: boolean;
+  driveConnectedAt?: Date;
+  driveAccountEmail?: string;
+  driveAccountName?: string;
+  driveAccountAvatar?: string;
   driveFolderId?: string;
   driveFolderName?: string;
   createdAt: Date;
@@ -34,6 +38,10 @@ const UserSchema = new Schema<IUser>(
     googleAccessToken: { type: String, select: false },
     googleTokenExpiry: { type: Date, select: false },
     driveScopeGranted: { type: Boolean, default: false },
+    driveConnectedAt: { type: Date },
+    driveAccountEmail: { type: String },
+    driveAccountName: { type: String },
+    driveAccountAvatar: { type: String },
     driveFolderId: { type: String },
     driveFolderName: { type: String },
   },

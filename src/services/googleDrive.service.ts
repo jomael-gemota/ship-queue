@@ -29,10 +29,15 @@ function buildOAuthClient(creds: DriveCredentials): OAuth2Client {
     throw new Error('Google Drive is not connected. Please sign in again to grant Drive access.');
   }
 
+  // Use the refresh token as the single source of truth. We deliberately do
+  // NOT set a stored access_token here: a bare access_token without an
+  // `expiry_date` makes google-auth-library treat it as valid forever, so it
+  // never refreshes and Drive calls silently break once the (1-hour) token
+  // expires. With only the refresh token set, the library always mints a fresh
+  // access token for the correct account on demand.
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
   oauth2.setCredentials({
     refresh_token: creds.refreshToken,
-    access_token: creds.accessToken || undefined,
   });
   return oauth2;
 }
@@ -77,15 +82,18 @@ export async function uploadPdfToDrive(
 /**
  * Lists folders in the user's Drive. When `parentId` is provided, lists its
  * direct subfolders; otherwise lists folders under "My Drive" root.
+ * When `driveId` is provided the search is scoped to that Shared Drive.
  */
 export async function listDriveFolders(
   creds: DriveCredentials,
-  parentId?: string
+  parentId?: string,
+  driveId?: string
 ): Promise<DriveFolder[]> {
   const auth = buildOAuthClient(creds);
   const drive = google.drive({ version: 'v3', auth });
 
-  const parent = parentId || 'root';
+  const parent = parentId || (driveId ?? 'root');
+
   const res = await drive.files.list({
     q: `mimeType = 'application/vnd.google-apps.folder' and '${parent}' in parents and trashed = false`,
     fields: 'files(id, name)',
@@ -93,11 +101,29 @@ export async function listDriveFolders(
     pageSize: 200,
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
+    ...(driveId ? { corpora: 'drive', driveId } : {}),
   });
 
   return (res.data.files || [])
     .filter((f): f is { id: string; name: string } => Boolean(f.id && f.name))
     .map((f) => ({ id: f.id, name: f.name }));
+}
+
+/**
+ * Lists all Shared Drives the authenticated account has access to.
+ */
+export async function listSharedDrives(creds: DriveCredentials): Promise<DriveFolder[]> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.drives.list({
+    pageSize: 50,
+    fields: 'drives(id, name)',
+  });
+
+  return (res.data.drives || [])
+    .filter((d): d is { id: string; name: string } => Boolean(d.id && d.name))
+    .map((d) => ({ id: d.id, name: d.name }));
 }
 
 /** Fetches a single folder's metadata (used to resolve a pasted folder ID). */

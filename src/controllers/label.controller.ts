@@ -614,6 +614,12 @@ export const createBatchLabels = async (req: Request, res: Response): Promise<vo
     }
 
     const userId = req.user?.id;
+
+    if (batch.createdByUserId && batch.createdByUserId !== userId) {
+      res.status(403).json({ message: 'You can only create labels for batches you uploaded.' });
+      return;
+    }
+
     const { driveCreds, driveFolderId, driveConnected } = await resolveDriveContext(userId);
     const drive = { creds: driveCreds, folderId: driveFolderId, connected: driveConnected };
 

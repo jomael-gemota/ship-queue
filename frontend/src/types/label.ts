@@ -169,6 +169,10 @@ export interface LabelsListResponse {
 
 export interface AppSettings {
   driveConnected: boolean
+  driveConnectedAt: string | null
+  driveAccountEmail: string | null
+  driveAccountName: string | null
+  driveAccountAvatar: string | null
   driveFolderId: string | null
   driveFolderName: string | null
 }
@@ -180,4 +184,5 @@ export interface SettingsResponse {
 export interface DriveFolder {
   id: string
   name: string
+  isSharedDrive?: boolean
 }

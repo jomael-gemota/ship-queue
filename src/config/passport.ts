@@ -55,6 +55,7 @@ passport.use(
         if (refreshToken) {
           user.googleRefreshToken = refreshToken;
           user.driveScopeGranted = true;
+          user.driveConnectedAt = new Date();
         }
         if (avatar) user.avatar = avatar;
         await user.save();

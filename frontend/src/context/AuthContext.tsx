@@ -21,6 +21,7 @@ interface AuthState {
   isAuthenticated: boolean
   login: (token: string) => void
   logout: () => void
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -62,9 +63,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  const refreshUser = async () => {
+    const stored = localStorage.getItem(TOKEN_KEY)
+    if (!stored) return
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${stored}` },
+      })
+      if (res.ok) {
+        const { data } = await res.json()
+        setUser(data)
+      }
+    } catch {
+      // Silently ignore — user state stays as-is
+    }
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, isAuthenticated: !!user, login, logout }}
+      value={{ user, token, isLoading, isAuthenticated: !!user, login, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
