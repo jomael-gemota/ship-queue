@@ -184,7 +184,7 @@ function SyncProgressBar({ state }: { state: SyncState }) {
     progress.total > 0 ? Math.round((progress.synced / progress.total) * 100) : 0
 
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-sky-200/80 dark:border-[var(--bg-300)] bg-gradient-to-br from-sky-50 via-white to-cyan-50 dark:bg-[var(--primary-100)] shadow-[0_14px_30px_-24px_rgba(14,116,144,0.55)] dark:shadow-none">
+    <div className="mb-4 overflow-hidden rounded-xl border border-sky-200/80 dark:border-[var(--bg-300)] bg-gradient-to-br from-sky-50 via-white to-cyan-50 dark:bg-none dark:bg-[var(--primary-100)] shadow-[0_14px_30px_-24px_rgba(14,116,144,0.55)] dark:shadow-none">
       <div className="flex items-start justify-between gap-3 px-4 pt-3.5">
         <div className="flex items-start gap-2.5 text-sm text-sky-900 dark:text-[var(--accent-200)]">
           <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-[var(--primary-200)] dark:text-[var(--accent-200)]">
