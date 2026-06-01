@@ -623,7 +623,7 @@ export default function Orders() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">ShipStation Orders</h1>
+          {/* <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">ShipStation Orders</h1> */}
           <p className="text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)] mt-0.5">
             Last synced:{' '}
             <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">
@@ -885,7 +885,20 @@ export default function Orders() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
+        <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
+          {isSyncing && !initialLoading && orders.length > 0 && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+              <div className="flex items-center gap-2.5 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)]/90 dark:bg-[var(--bg-200)]/90 px-5 py-3 shadow-lg backdrop-blur-sm">
+                <svg className="h-4 w-4 animate-spin text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]">
+                  {autoSyncing ? 'Auto-syncing…' : 'Syncing orders…'}
+                </span>
+              </div>
+            </div>
+          )}
           {error ? (
             <div className="px-6 py-12 text-center">
               <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
@@ -897,7 +910,7 @@ export default function Orders() {
               </button>
             </div>
           ) : (
-            <table className="w-full text-[13px] border-separate border-spacing-0">
+            <table className={`w-full text-[13px] border-separate border-spacing-0 transition-[filter] duration-300 ${isSyncing ? 'blur-[1.5px]' : ''}`}>
               <thead>
                 <tr className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
                   <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">

@@ -12,6 +12,7 @@ export default function Navbar() {
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/settings') return 'Settings'
+    if (pathname === '/admin/users') return 'User Management'
     return 'ShipStation Orders'
   }, [pathname])
 

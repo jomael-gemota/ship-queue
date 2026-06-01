@@ -189,7 +189,7 @@ export default function AdminUsers() {
       )}
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-[var(--text-100)]">User Management</h1>
+        {/* <h1 className="text-xl font-semibold text-slate-900 dark:text-[var(--text-100)]">User Management</h1> */}
         <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
           Grant or revoke label creation access for employees. Admins always have full access.
         </p>
