@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { authApi } from '../lib/api'
+import { authApi, ApiError } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder } from '../types/label'
 import { useAuth } from '../context/AuthContext'
 
@@ -48,6 +48,7 @@ export default function Settings() {
   const [foldersLoading, setFoldersLoading] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [manualId, setManualId] = useState('')
+  const [driveExpired, setDriveExpired] = useState(false)
 
   const loadSettings = useCallback(async () => {
     try {
@@ -70,6 +71,7 @@ export default function Settings() {
     const driveError = searchParams.get('drive_error')
     if (driveResult === 'connected') {
       setSuccess('Google Drive connected successfully.')
+      setDriveExpired(false)
       loadSettings()
       refreshUser()
       setSearchParams({}, { replace: true })
@@ -91,6 +93,10 @@ export default function Settings() {
       const res = await authApi.get<FoldersResponse>(`/settings/drive/folders${query}`)
       setFolders(res.data)
     } catch (e) {
+      if (e instanceof ApiError && e.code === 'drive_token_expired') {
+        setDriveExpired(true)
+        setBrowserOpen(false)
+      }
       setError(e instanceof Error ? e.message : 'Failed to list Drive folders')
       setFolders([])
     } finally {
@@ -156,6 +162,7 @@ export default function Settings() {
       setSettings({ driveConnected: false, driveConnectedAt: null, driveAccountEmail: null, driveAccountName: null, driveAccountAvatar: null, driveFolderId: null, driveFolderName: null })
       setConfirmDisconnect(false)
       setBrowserOpen(false)
+      setDriveExpired(false)
       await refreshUser()
       setSuccess('Google Drive disconnected. You can reconnect at any time.')
     } catch (e) {
@@ -332,11 +339,40 @@ export default function Settings() {
                   </div>
                 </div>
 
+                {driveExpired && canCreate && (
+                  <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 px-4 py-3">
+                    <svg className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Drive access revoked or expired</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                        Google has revoked this connection. Reconnect to browse folders and upload labels.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await authApi.get<{ url: string }>('/auth/drive/connect')
+                          window.location.href = res.url
+                        } catch {
+                          setError('Failed to start Google Drive authorisation.')
+                        }
+                      }}
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer"
+                    >
+                      <GoogleDriveLogo className="h-3.5 w-3.5" mono />
+                      Reconnect
+                    </button>
+                  </div>
+                )}
+
                 {canCreate && (
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       onClick={openBrowser}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
+                      disabled={driveExpired}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <FolderSearchIcon className="h-4 w-4" />
                       Browse folders

@@ -1,6 +1,16 @@
 const BASE_URL = '/api'
 const TOKEN_KEY = 'sq_token'
 
+/** An Error subclass that also carries the `code` field from API error responses. */
+export class ApiError extends Error {
+  code?: string
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+  }
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -9,7 +19,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: 'An error occurred' }))
-    throw new Error(error.message || `HTTP ${res.status}`)
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
   }
 
   return res.json()
@@ -32,7 +42,7 @@ async function authRequest<T>(endpoint: string, options?: RequestInit): Promise<
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: 'An error occurred' }))
-    throw new Error(error.message || `HTTP ${res.status}`)
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
   }
 
   return res.json()

@@ -117,6 +117,12 @@ export const disconnectDrive = async (req: Request, res: Response): Promise<void
   }
 };
 
+/** Returns true when a googleapis/google-auth-library error is a revoked/expired token. */
+function isInvalidGrant(error: unknown): boolean {
+  const msg = ((error as Error)?.message ?? '').toLowerCase();
+  return msg.includes('invalid_grant');
+}
+
 /**
  * Lists Drive folders for the picker.
  * - At root (no parentId, no driveId): returns My Drive folders + Shared Drives.
@@ -161,6 +167,13 @@ export const listFolders = async (req: Request, res: Response): Promise<void> =>
     const folders = await listDriveFolders(creds, parentId, driveId);
     res.json({ data: folders });
   } catch (error) {
+    if (isInvalidGrant(error)) {
+      res.status(401).json({
+        code: 'drive_token_expired',
+        message: 'Your Google Drive connection has been revoked or expired. Please reconnect.',
+      });
+      return;
+    }
     res.status(400).json({ message: (error as Error).message || 'Failed to list Drive folders' });
   }
 };
