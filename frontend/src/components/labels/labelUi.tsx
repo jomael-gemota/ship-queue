@@ -203,6 +203,22 @@ function itemSearchText(l: LabelRecord): string {
     .toLowerCase()
 }
 
+// Renders an order number as a link to its Amazon Seller Central order page.
+function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
+  if (!orderNumber) return <>—</>
+  return (
+    <a
+      href={`https://sellercentral.amazon.com/orders-v3/order/${encodeURIComponent(orderNumber)}`}
+      target="_blank"
+      rel="noreferrer"
+      title="Open in Seller Central"
+      className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline break-words"
+    >
+      {orderNumber}
+    </a>
+  )
+}
+
 export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }: BatchItemsTableProps) {
   const [tab, setTab] = useState<ItemsTab>('shipping')
   const [search, setSearch] = useState('')
@@ -362,7 +378,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                           <span className="min-w-0 break-words">{l.poNumber}</span>
                         </span>
                       </TdWrap>
-                      <TdWrap className="break-words">{l.orderNumber}</TdWrap>
+                      <TdWrap className="break-words"><OrderNumberLink orderNumber={l.orderNumber} /></TdWrap>
                       <TdWrap className="break-words">{l.customerName || '—'}</TdWrap>
                       <TdWrap><AddressCell addr={l.shipFrom} /></TdWrap>
                       <TdWrap><AddressCell addr={l.shipTo} /></TdWrap>
@@ -391,7 +407,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                         <span>{l.poNumber}</span>
                       </span>
                     </Td>
-                    <Td className={`${ORDER_STICKY} z-10 ${stickyBg}`}>{l.orderNumber}</Td>
+                    <Td className={`${ORDER_STICKY} z-10 ${stickyBg}`}><OrderNumberLink orderNumber={l.orderNumber} /></Td>
                     <Td className="font-mono text-[13px]">{l.trackingNumber || '—'}</Td>
                     <Td>{l.shipmentId ?? '—'}</Td>
                     <Td>{formatCurrency(l.shipmentCost)}</Td>
