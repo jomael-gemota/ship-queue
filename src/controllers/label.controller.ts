@@ -73,7 +73,7 @@ function resolveWeight(order: IOrder): ShipStationLabelWeight {
 }
 
 function resolveServiceCode(residential: boolean): string {
-  return residential ? 'fedex_home_delivery' : 'fedex_ground';
+  return residential ? 'amazon_fedex_home_delivery' : 'amazon_fedex_ground';
 }
 
 interface ResolvedShipFrom {
@@ -200,7 +200,7 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
     shipToSummary,
     shipTo,
     propertyType: residential ? 'residential' : 'commercial',
-    carrierCode: 'fedex',
+    carrierCode: 'amazon_shipping',
     serviceCode: resolveServiceCode(residential),
     packageCode: 'package',
     insuranceProvider: 'none',
@@ -218,8 +218,8 @@ function buildPayload(prepared: PreparedRow): CreateLabelPayload {
   // Belleville origin we pass. Sending only the explicit shipFrom (the
   // warehouse's originAddress) keeps the printed Ship From as Belleville.
   return {
-    carrierCode: prepared.carrierCode || 'fedex',
-    serviceCode: prepared.serviceCode || 'fedex_ground',
+    carrierCode: prepared.carrierCode || 'amazon_shipping',
+    serviceCode: prepared.serviceCode || 'amazon_fedex_ground',
     packageCode: prepared.packageCode || 'package',
     shipDate: prepared.shipDate || formatShipDate(),
     weight: prepared.weight || { value: 1, units: 'pounds' },
