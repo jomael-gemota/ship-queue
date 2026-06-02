@@ -134,7 +134,7 @@ export default function CreateShippingLabel() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [fileName, setFileName] = useState<string>('')
   const [drafting, setDrafting] = useState(false)
-  const [testMode, setTestMode] = useState(true)
+  const [testMode] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [batches, setBatches] = useState<LabelBatch[]>([])
@@ -326,9 +326,18 @@ export default function CreateShippingLabel() {
 
       {/* Step 1 — Import & draft (only shown to users with label creation permission) */}
       {canCreate && <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <StepBadge n={1} />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Import &amp; Draft</h2>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2">
+            <StepBadge n={1} />
+            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Import &amp; Draft</h2>
+          </div>
+          <button
+            onClick={downloadTemplate}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+            Download template
+          </button>
         </div>
         <p className="text-sm text-slate-500 dark:text-[var(--text-200)] mb-4">
           Upload a CSV with <span className="font-medium">PO#</span> and <span className="font-medium">Order#</span> columns, then draft the batch for review. Labels are only created when you choose to create &amp; print.
@@ -345,49 +354,30 @@ export default function CreateShippingLabel() {
             }}
             className="block text-sm text-slate-600 dark:text-[var(--text-200)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--accent-200)] dark:file:bg-[var(--accent-100)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:opacity-90 file:cursor-pointer cursor-pointer"
           />
-          <button
-            onClick={downloadTemplate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-            Download template
-          </button>
 
           {importRows.length > 0 && (
-            <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-              <span className="font-medium text-slate-700 dark:text-[var(--text-200)]">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
-            </span>
+            <>
+              <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+                <span className="font-medium text-slate-700 dark:text-[var(--text-200)]">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
+              </span>
+              <button
+                onClick={handleDraft}
+                disabled={drafting || !driveConnected}
+                title={!driveConnected ? 'Connect Google Drive in Settings before drafting' : undefined}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                {drafting && <Spinner />}
+                {drafting ? 'Drafting…' : 'Draft for Review'}
+              </button>
+              <button
+                onClick={handleReset}
+                className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+              >
+                Cancel
+              </button>
+            </>
           )}
         </div>
-
-        {importRows.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleDraft}
-              disabled={drafting || !driveConnected}
-              title={!driveConnected ? 'Connect Google Drive in Settings before drafting' : undefined}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              {drafting && <Spinner />}
-              {drafting ? 'Drafting…' : 'Draft for Review'}
-            </button>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={testMode}
-                onChange={(e) => setTestMode(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 dark:border-[var(--bg-300)] text-[var(--accent-200)] focus:ring-[var(--accent-200)] cursor-pointer"
-              />
-              Test mode (no charges)
-            </label>
-            <button
-              onClick={handleReset}
-              className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-        )}
       </section>}
 
       {/* Batches table */}

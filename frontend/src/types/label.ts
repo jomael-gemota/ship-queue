@@ -24,6 +24,12 @@ export interface LabelAddress {
   residential?: boolean
 }
 
+/** A single order line item: SKU + quantity ordered. */
+export interface LabelSku {
+  sku?: string
+  quantity?: number
+}
+
 /** @deprecated Use LabelAddress */
 export type LabelShipTo = LabelAddress
 
@@ -41,6 +47,7 @@ export interface PreparedRow {
   orderId?: number
   customerName?: string
   qty?: number
+  skus?: LabelSku[]
   shipFromSummary?: string
   shipFrom?: LabelAddress
   shipToSummary?: string
@@ -83,6 +90,7 @@ export interface LabelRecord {
   found?: boolean
   customerName?: string
   qty?: number
+  skus?: LabelSku[]
   shipFrom?: LabelAddress
   shipTo?: LabelAddress
   insuranceProvider?: string

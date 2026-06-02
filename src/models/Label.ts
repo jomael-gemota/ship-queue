@@ -14,6 +14,11 @@ interface ILabelDimensions {
   units?: string;
 }
 
+interface ILabelSku {
+  sku?: string;
+  quantity?: number;
+}
+
 interface ILabelAddress {
   name?: string;
   company?: string;
@@ -39,6 +44,7 @@ export interface ILabel extends Document {
   found?: boolean;
   customerName?: string;
   qty?: number;
+  skus?: ILabelSku[];
   shipFrom?: ILabelAddress;
   shipTo?: ILabelAddress;
   insuranceProvider?: string;
@@ -86,6 +92,7 @@ const LabelSchema = new Schema<ILabel>(
     found: Boolean,
     customerName: String,
     qty: Number,
+    skus: [{ sku: String, quantity: Number, _id: false }],
     shipFrom: {
       name: String,
       company: String,

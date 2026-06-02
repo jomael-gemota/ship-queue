@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { LabelRecord, LabelAddress, LabelBatchStatus } from '../../types/label'
+import type { LabelRecord, LabelAddress, LabelBatchStatus, LabelSku } from '../../types/label'
 
 const TOKEN_KEY = 'sq_token'
 
@@ -22,6 +22,15 @@ export function formatDateTime(dateStr?: string | null): string {
 export function formatWeight(w?: { value?: number; units?: string }): string {
   if (!w?.value) return '—'
   return `${w.value} ${w.units || ''}`.trim()
+}
+
+/** Renders the SKU list of an order into one "SKU ×qty" entry per line. */
+function skusToLines(skus?: LabelSku[] | null): string[] {
+  if (!skus || skus.length === 0) return []
+  return skus.map((s) => {
+    const sku = s.sku || '—'
+    return s.quantity != null ? `${sku} ×${s.quantity}` : sku
+  })
 }
 
 /** Short, human-friendly identifier derived from the batch's ObjectId. */
@@ -68,7 +77,8 @@ const CSV_COLUMNS: { header: string; value: (l: LabelRecord) => unknown }[] = [
   { header: 'Package', value: (l) => l.packageCode },
   { header: 'Service', value: (l) => l.serviceCode },
   { header: 'Ship Date', value: (l) => l.shipDate },
-  { header: 'Qty', value: (l) => l.qty },
+  { header: 'SKUs', value: (l) => skusToLines(l.skus).join('; ') },
+  { header: 'Total Qty', value: (l) => l.qty },
   {
     header: 'Weight',
     value: (l) => (l.weight?.value ? `${l.weight.value} ${l.weight.units || ''}`.trim() : ''),
@@ -175,6 +185,7 @@ function itemSearchText(l: LabelRecord): string {
     l.packageCode,
     l.serviceCode,
     l.shipDate,
+    skusToLines(l.skus).join(' '),
     l.qty != null ? String(l.qty) : '',
     l.weight?.value != null ? `${l.weight.value} ${l.weight.units ?? ''}` : '',
     l.dimensions ? `${l.dimensions.length} ${l.dimensions.width} ${l.dimensions.height} ${l.dimensions.units ?? ''}` : '',
@@ -200,8 +211,8 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
   const query = search.trim().toLowerCase()
   const filteredItems = query ? items.filter((l) => itemSearchText(l).includes(query)) : items
 
-  // 2 lead columns + the active tab's columns (12 shipping, 5 tracking).
-  const colCount = 2 + (isShipping ? 12 : 5)
+  // 2 lead columns + the active tab's columns (13 shipping, 5 tracking).
+  const colCount = 2 + (isShipping ? 13 : 5)
 
   // Items missing shipping details because their order wasn't found in the
   // (un-synced) orders table.
@@ -257,23 +268,24 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
       </div>
 
       <div className="overflow-auto max-h-[70vh]">
-        <table className={`w-full ${isShipping ? 'table-fixed' : 'text-[13px]'}`}>
+        <table className={`w-full ${isShipping ? 'table-fixed min-w-[1180px]' : 'text-[13px]'}`}>
           {isShipping && (
             <colgroup>
               <col className="w-[7%]" />
-              <col className="w-[13%]" />
               <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[11%]" />
-              <col className="w-[9%]" />
               <col className="w-[7%]" />
               <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[7%]" />
+              <col className="w-[6%]" />
+              <col className="w-[5.5%]" />
+              <col className="w-[5.5%]" />
               <col className="w-[8%]" />
               <col className="w-[4%]" />
-              <col className="w-[6%]" />
-              <col className="w-[7%]" />
-              <col className="w-[6%]" />
-              <col className="w-[7%]" />
+              <col className="w-[4.7%]" />
+              <col className="w-[6.5%]" />
+              <col className="w-[5%]" />
+              <col className="w-[5%]" />
             </colgroup>
           )}
           <thead className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]">
@@ -281,7 +293,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
               {isShipping ? (
                 <>
                   <ThWrap><HeaderLabel icon={<BoxIcon className="h-3.5 w-3.5" />} text="PO #" /></ThWrap>
-                  <ThWrap className="border-r border-[var(--bg-300)] dark:border-[var(--bg-300)]"><HeaderLabel icon={<ClipboardIcon className="h-3.5 w-3.5" />} text="Order #" /></ThWrap>
+                  <ThWrap><HeaderLabel icon={<ClipboardIcon className="h-3.5 w-3.5" />} text="Order #" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<UserIcon className="h-3.5 w-3.5" />} text="Customer" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<StoreIcon className="h-3.5 w-3.5" />} text="Ship From" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<PinIcon className="h-3.5 w-3.5" />} text="Ship To" /></ThWrap>
@@ -289,7 +301,8 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                   <ThWrap><HeaderLabel icon={<BoxIcon className="h-3.5 w-3.5" />} text="Package" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<TruckIcon className="h-3.5 w-3.5" />} text="Service" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<CalendarIcon className="h-3.5 w-3.5" />} text="Ship Date" /></ThWrap>
-                  <ThWrap><HeaderLabel icon={<QtyIcon className="h-3.5 w-3.5" />} text="Qty" /></ThWrap>
+                  <ThWrap><HeaderLabel icon={<TagIcon className="h-3.5 w-3.5" />} text="SKU" /></ThWrap>
+                  <ThWrap><HeaderLabel icon={<QtyIcon className="h-3.5 w-3.5" />} text="Total Qty" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<ScaleIcon className="h-3.5 w-3.5" />} text="Weight" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<RulerIcon className="h-3.5 w-3.5" />} text="Dimensions" /></ThWrap>
                   <ThWrap><HeaderLabel icon={<ShieldIcon className="h-3.5 w-3.5" />} text="Insurance" /></ThWrap>
@@ -344,12 +357,12 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                   return (
                     <tr key={l._id} className={`align-top ${rowBg}`}>
                       <TdWrap className="font-medium text-slate-800 dark:text-[var(--text-100)]">
-                        <span className="inline-flex items-start gap-1.5">
+                        <span className="flex items-start gap-1.5">
                           <BoxIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
-                          <span className="break-words">{l.poNumber}</span>
+                          <span className="min-w-0 break-words">{l.poNumber}</span>
                         </span>
                       </TdWrap>
-                      <TdWrap className="break-words border-r border-[var(--bg-300)] dark:border-[var(--bg-300)]">{l.orderNumber}</TdWrap>
+                      <TdWrap className="break-words">{l.orderNumber}</TdWrap>
                       <TdWrap className="break-words">{l.customerName || '—'}</TdWrap>
                       <TdWrap><AddressCell addr={l.shipFrom} /></TdWrap>
                       <TdWrap><AddressCell addr={l.shipTo} /></TdWrap>
@@ -357,7 +370,8 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                       <TdWrap className="font-mono break-words">{l.packageCode || '—'}</TdWrap>
                       <TdWrap className="font-mono break-words">{l.serviceCode || '—'}</TdWrap>
                       <TdWrap className="break-words">{l.shipDate || '—'}</TdWrap>
-                      <TdWrap>{l.qty != null ? l.qty : '—'}</TdWrap>
+                      <TdWrap><SkuCell skus={l.skus} /></TdWrap>
+                      <TdWrap className="font-medium text-slate-800 dark:text-[var(--text-100)]">{l.qty != null ? l.qty : '—'}</TdWrap>
                       <TdWrap className="break-words">{formatWeight(l.weight)}</TdWrap>
                       <TdWrap className="break-words">
                         {l.dimensions ? `${l.dimensions.length}×${l.dimensions.width}×${l.dimensions.height} ${l.dimensions.units}` : '—'}
@@ -419,12 +433,12 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
 
 /** Wrapping header cell used by the width-filling Shipping Details tab. */
 function ThWrap({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2.5 align-bottom text-left text-xs font-medium uppercase tracking-wide ${className}`}>{children}</th>
+  return <th className={`px-2 py-2.5 align-bottom text-left text-xs font-medium uppercase tracking-wide border-r last:border-r-0 border-[var(--bg-300)] dark:border-[var(--bg-300)] ${className}`}>{children}</th>
 }
 
 /** Wrapping body cell used by the width-filling Shipping Details tab. */
 function TdWrap({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2.5 align-top text-[13px] text-slate-700 dark:text-[var(--text-200)] ${className}`}>{children}</td>
+  return <td className={`px-2 py-2.5 align-top text-[13px] text-slate-700 dark:text-[var(--text-200)] border-r last:border-r-0 border-[var(--bg-300)] dark:border-[var(--bg-300)] ${className}`}>{children}</td>
 }
 
 function TabButton({
@@ -627,9 +641,9 @@ export function Th({ children, className = '' }: { children: React.ReactNode; cl
 
 export function HeaderLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="text-slate-400 dark:text-[var(--text-200)]">{icon}</span>
-      <span>{text}</span>
+    <span className="flex items-center gap-1.5 min-w-0">
+      <span className="shrink-0 text-slate-400 dark:text-[var(--text-200)]">{icon}</span>
+      <span className="min-w-0 break-words">{text}</span>
     </span>
   )
 }
@@ -664,16 +678,34 @@ export function AddressCell({ addr }: { addr?: LabelAddress }) {
   )
 }
 
+export function SkuCell({ skus }: { skus?: LabelSku[] }) {
+  const lines = skusToLines(skus)
+  if (lines.length === 0) return <span className="text-slate-500">—</span>
+  return (
+    <div className="space-y-0.5 text-[13px] leading-snug text-slate-700 dark:text-[var(--text-200)]">
+      {skus!.map((s, i) => (
+        <div key={i} className="break-words">
+          <span className="font-mono">{s.sku || '—'}</span>
+          {s.quantity != null && (
+            <span className="ml-1 text-slate-400 dark:text-[var(--text-200)]">×{s.quantity}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function PropertyBadge({ type }: { type: 'residential' | 'commercial' }) {
+  const base = 'inline-flex max-w-full items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium leading-tight'
   return type === 'residential' ? (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-      <HomeIcon className="h-3 w-3" />
-      <span>Residential</span>
+    <span className={`${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400`}>
+      <HomeIcon className="h-3 w-3 shrink-0" />
+      <span className="break-words">Residential</span>
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400">
-      <CommercialIcon className="h-3 w-3" />
-      <span>Commercial</span>
+    <span className={`${base} bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400`}>
+      <CommercialIcon className="h-3 w-3 shrink-0" />
+      <span className="break-words">Commercial</span>
     </span>
   )
 }

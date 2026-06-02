@@ -40,6 +40,10 @@ export interface CreateLabelPayload {
     insureShipment: boolean;
     insuredValue: number;
   };
+  advancedOptions?: {
+    warehouseId?: number;
+    [key: string]: unknown;
+  };
   testLabel?: boolean;
   [key: string]: unknown;
 }

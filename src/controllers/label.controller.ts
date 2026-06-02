@@ -10,13 +10,26 @@ import {
   ShipStationLabelAddress,
   ShipStationLabelWeight,
 } from '../services/shipstationLabel.service';
+import { getWarehouseById, getWarehouseByName } from '../services/shipstationWarehouse.service';
 import { uploadPdfToDrive } from '../services/googleDrive.service';
 
 const DEFAULT_DIMENSIONS = { length: 15, width: 10, height: 5, units: 'inches' };
 
+// Ship From / origin warehouse used on every created label. ShipStation
+// requires a valid origin (FedEx validates it), so we pull the address from the
+// matching warehouse rather than hand-entered env values. Prefer the numeric
+// warehouseId (stable across renames); fall back to matching by name.
+const SHIP_FROM_WAREHOUSE_ID = parseInt(process.env.SHIP_FROM_WAREHOUSE_ID || '', 10);
+const SHIP_FROM_WAREHOUSE_NAME = process.env.SHIP_FROM_WAREHOUSE_NAME || 'Belleville';
+
 interface InputRow {
   poNumber?: string;
   orderNumber?: string;
+}
+
+interface PreparedSku {
+  sku?: string;
+  quantity?: number;
 }
 
 interface PreparedRow {
@@ -26,8 +39,10 @@ interface PreparedRow {
   orderId?: number;
   customerName?: string;
   qty?: number;
+  skus?: PreparedSku[];
   shipFromSummary?: string;
   shipFrom?: ShipStationLabelAddress;
+  warehouseId?: number;
   shipToSummary?: string;
   shipTo?: ShipStationLabelAddress;
   propertyType?: 'residential' | 'commercial';
@@ -61,7 +76,12 @@ function resolveServiceCode(residential: boolean): string {
   return residential ? 'fedex_home_delivery' : 'fedex_ground';
 }
 
-function buildShipFrom(): ShipStationLabelAddress {
+interface ResolvedShipFrom {
+  address: ShipStationLabelAddress;
+  warehouseId?: number;
+}
+
+function buildShipFromFromEnv(): ShipStationLabelAddress {
   return {
     name: process.env.SHIP_FROM_NAME || '',
     company: process.env.SHIP_FROM_COMPANY || 'Belleville',
@@ -74,6 +94,46 @@ function buildShipFrom(): ShipStationLabelAddress {
     phone: process.env.SHIP_FROM_PHONE || '',
     residential: false,
   };
+}
+
+/**
+ * Resolves the Ship From address + warehouseId from the named ShipStation
+ * warehouse (e.g. "Belleville"). Falls back to env-based values if the
+ * warehouse can't be fetched/found so label creation never hard-fails here.
+ */
+async function resolveShipFrom(): Promise<ResolvedShipFrom> {
+  try {
+    const warehouse = Number.isFinite(SHIP_FROM_WAREHOUSE_ID)
+      ? await getWarehouseById(SHIP_FROM_WAREHOUSE_ID)
+      : await getWarehouseByName(SHIP_FROM_WAREHOUSE_NAME);
+    const origin = warehouse?.originAddress;
+    if (warehouse && origin) {
+      return {
+        address: {
+          name: origin.name || '',
+          company: origin.company || '',
+          street1: origin.street1 || '',
+          street2: origin.street2 || '',
+          street3: origin.street3 || '',
+          city: origin.city || '',
+          state: origin.state || '',
+          postalCode: origin.postalCode || '',
+          country: origin.country || 'US',
+          phone: origin.phone || '',
+          residential: false,
+        },
+        warehouseId: warehouse.warehouseId,
+      };
+    }
+  } catch (e) {
+    const selector = Number.isFinite(SHIP_FROM_WAREHOUSE_ID)
+      ? `id ${SHIP_FROM_WAREHOUSE_ID}`
+      : `"${SHIP_FROM_WAREHOUSE_NAME}"`;
+    console.error(
+      `[Labels] Failed to resolve ${selector} warehouse — falling back to env Ship From: ${(e as Error).message}`
+    );
+  }
+  return { address: buildShipFromFromEnv() };
 }
 
 function buildShipTo(order: IOrder): ShipStationLabelAddress {
@@ -113,7 +173,11 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
 
   const residential = Boolean(order.shipTo?.residential);
   const totalQty = (order.items || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
-  const shipFrom = buildShipFrom();
+  const skus = (order.items || []).map((item) => ({
+    sku: item.sku,
+    quantity: item.quantity || 1,
+  }));
+  const { address: shipFrom, warehouseId } = await resolveShipFrom();
   const shipTo = buildShipTo(order);
   const shipFromSummary = [shipFrom.city, shipFrom.state, shipFrom.postalCode]
     .filter(Boolean)
@@ -129,8 +193,10 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
     orderId: order.orderId,
     customerName: order.shipTo?.name,
     qty: totalQty,
+    skus,
     shipFromSummary,
     shipFrom,
+    warehouseId,
     shipToSummary,
     shipTo,
     propertyType: residential ? 'residential' : 'commercial',
@@ -152,9 +218,12 @@ function buildPayload(prepared: PreparedRow, testLabel: boolean): CreateLabelPay
     shipDate: prepared.shipDate || formatShipDate(),
     weight: prepared.weight || { value: 1, units: 'pounds' },
     dimensions: prepared.dimensions || DEFAULT_DIMENSIONS,
-    shipFrom: buildShipFrom(),
+    shipFrom: prepared.shipFrom || buildShipFromFromEnv(),
     shipTo: prepared.shipTo || {},
     insuranceOptions: { provider: 'none', insureShipment: false, insuredValue: 0 },
+    ...(prepared.warehouseId
+      ? { advancedOptions: { warehouseId: prepared.warehouseId } }
+      : {}),
     testLabel,
   };
 }
@@ -238,6 +307,8 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
           orderNumber: prepared.orderNumber,
           orderId: prepared.orderId,
           status: 'created',
+          qty: prepared.qty,
+          skus: prepared.skus,
           carrierCode: prepared.carrierCode,
           serviceCode: prepared.serviceCode,
           packageCode: prepared.packageCode,
@@ -388,6 +459,7 @@ async function createLabelForRecord(
     label.found = true;
     label.customerName = prepared.customerName;
     label.qty = prepared.qty;
+    label.skus = prepared.skus;
     label.shipFrom = prepared.shipFrom;
     label.shipTo = prepared.shipTo;
     label.insuranceProvider = prepared.insuranceProvider;
@@ -526,6 +598,7 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
         orderId: p.orderId,
         customerName: p.customerName,
         qty: p.qty,
+        skus: p.skus,
         shipFrom: p.shipFrom,
         shipTo: p.shipTo,
         propertyType: p.propertyType,
@@ -588,6 +661,18 @@ export const getBatchItems = async (req: Request, res: Response): Promise<void> 
     }
 
     const items = await Label.find({ batchId: id }).sort({ createdAt: 1 }).lean();
+
+    // Ensure the Ship From column reflects the current warehouse origin. Items
+    // drafted before warehouse resolution (or unfound rows) may have an empty
+    // or partial address — backfill those for display from the resolved
+    // warehouse (a single, cached lookup).
+    if (items.some((it) => !it.shipFrom?.street1)) {
+      const { address } = await resolveShipFrom();
+      items.forEach((it) => {
+        if (!it.shipFrom?.street1) it.shipFrom = { ...address };
+      });
+    }
+
     res.json({ data: { batch, items } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch batch items', error: (error as Error).message });
