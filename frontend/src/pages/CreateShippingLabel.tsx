@@ -134,7 +134,6 @@ export default function CreateShippingLabel() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [fileName, setFileName] = useState<string>('')
   const [drafting, setDrafting] = useState(false)
-  const [testMode] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [batches, setBatches] = useState<LabelBatch[]>([])
@@ -203,7 +202,6 @@ export default function CreateShippingLabel() {
       await authApi.post<DraftBatchResponse>('/labels/batches', {
         rows: importRows,
         fileName,
-        testLabel: testMode,
       })
       handleReset()
       await loadBatches()
@@ -431,7 +429,7 @@ export default function CreateShippingLabel() {
                     </Td>
                     <Td compact className="text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
                     <Td compact className="text-slate-600 dark:text-[var(--text-200)]">{b.createdBy || '—'}</Td>
-                    <Td compact><BatchStatusBadge status={b.status} testLabel={b.testLabel} /></Td>
+                    <Td compact><BatchStatusBadge status={b.status} /></Td>
                     <Td compact>
                       <Link
                         to={`/create-label/batches/${b._id}`}

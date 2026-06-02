@@ -101,7 +101,6 @@ export interface LabelRecord {
   propertyType?: 'residential' | 'commercial'
   weight?: LabelWeight
   dimensions?: LabelDimensions
-  testLabel?: boolean
   shipmentId?: number
   shipmentCost?: number
   insuranceCost?: number
@@ -123,7 +122,6 @@ export interface LabelBatch {
   status: LabelBatchStatus
   fileName?: string
   itemCount: number
-  testLabel?: boolean
   createdBy?: string
   createdAt: string
   updatedAt: string

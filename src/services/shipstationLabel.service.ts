@@ -44,7 +44,6 @@ export interface CreateLabelPayload {
     warehouseId?: number;
     [key: string]: unknown;
   };
-  testLabel?: boolean;
   [key: string]: unknown;
 }
 

@@ -210,7 +210,7 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
   };
 }
 
-function buildPayload(prepared: PreparedRow, testLabel: boolean): CreateLabelPayload {
+function buildPayload(prepared: PreparedRow): CreateLabelPayload {
   return {
     carrierCode: prepared.carrierCode || 'fedex',
     serviceCode: prepared.serviceCode || 'fedex_ground',
@@ -224,7 +224,6 @@ function buildPayload(prepared: PreparedRow, testLabel: boolean): CreateLabelPay
     ...(prepared.warehouseId
       ? { advancedOptions: { warehouseId: prepared.warehouseId } }
       : {}),
-    testLabel,
   };
 }
 
@@ -254,7 +253,6 @@ export const prepareLabels = async (req: Request, res: Response): Promise<void> 
 export const createLabels = async (req: Request, res: Response): Promise<void> => {
   try {
     const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
-    const testLabel = req.body?.testLabel !== false; // default to test mode
 
     if (rows.length === 0) {
       res.status(400).json({ message: 'No rows provided.' });
@@ -297,7 +295,7 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
         continue;
       }
 
-      const payload = buildPayload(prepared, testLabel);
+      const payload = buildPayload(prepared);
 
       try {
         const ssResponse = await createShipStationLabel(payload);
@@ -316,7 +314,6 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
           propertyType: prepared.propertyType,
           weight: prepared.weight,
           dimensions: prepared.dimensions,
-          testLabel,
           requestPayload: payload as unknown as Record<string, unknown>,
           shipmentId: ssResponse.shipmentId,
           shipmentCost: ssResponse.shipmentCost,
@@ -379,7 +376,6 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
           propertyType: prepared.propertyType,
           weight: prepared.weight,
           dimensions: prepared.dimensions,
-          testLabel,
           requestPayload: payload as unknown as Record<string, unknown>,
           error: message,
           createdBy: user?.email,
@@ -428,7 +424,6 @@ async function resolveDriveContext(userId?: string) {
  */
 async function createLabelForRecord(
   label: ILabel,
-  testLabel: boolean,
   drive: { creds: DriveCreds; folderId?: string; connected: boolean }
 ) {
   const prepared = await prepareRow({
@@ -449,7 +444,7 @@ async function createLabelForRecord(
     };
   }
 
-  const payload = buildPayload(prepared, testLabel);
+  const payload = buildPayload(prepared);
 
   try {
     const ssResponse = await createShipStationLabel(payload);
@@ -470,7 +465,6 @@ async function createLabelForRecord(
     label.propertyType = prepared.propertyType;
     label.weight = prepared.weight;
     label.dimensions = prepared.dimensions;
-    label.testLabel = testLabel;
     label.requestPayload = payload as unknown as Record<string, unknown>;
     label.shipmentId = ssResponse.shipmentId;
     label.shipmentCost = ssResponse.shipmentCost;
@@ -527,7 +521,6 @@ async function createLabelForRecord(
     label.propertyType = prepared.propertyType;
     label.weight = prepared.weight;
     label.dimensions = prepared.dimensions;
-    label.testLabel = testLabel;
     label.requestPayload = payload as unknown as Record<string, unknown>;
     label.error = message;
     await label.save();
@@ -559,7 +552,6 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
     const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
     const fileName: string | undefined =
       typeof req.body?.fileName === 'string' ? req.body.fileName : undefined;
-    const testLabel = req.body?.testLabel !== false; // default to test mode
 
     const cleaned = rows
       .map((r) => ({
@@ -580,7 +572,6 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
       status: 'drafted',
       fileName,
       itemCount: cleaned.length,
-      testLabel,
       createdBy: user?.email,
       createdByUserId: userId,
     });
@@ -609,7 +600,6 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
         weight: p.weight,
         dimensions: p.dimensions,
         insuranceProvider: p.insuranceProvider,
-        testLabel,
         error: p.found ? undefined : p.error,
         createdBy: user?.email,
         createdByUserId: userId,
@@ -708,8 +698,6 @@ export const createBatchLabels = async (req: Request, res: Response): Promise<vo
     const { driveCreds, driveFolderId, driveConnected } = await resolveDriveContext(userId);
     const drive = { creds: driveCreds, folderId: driveFolderId, connected: driveConnected };
 
-    const testLabel = batch.testLabel !== false;
-
     // Process rows that have not been successfully created yet (drafted or failed).
     const pending = await Label.find({
       batchId: id,
@@ -718,7 +706,7 @@ export const createBatchLabels = async (req: Request, res: Response): Promise<vo
 
     const results = [];
     for (const label of pending) {
-      results.push(await createLabelForRecord(label, testLabel, drive));
+      results.push(await createLabelForRecord(label, drive));
     }
 
     const allLabels = await Label.find({ batchId: id }).select('status').lean();

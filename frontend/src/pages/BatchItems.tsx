@@ -187,7 +187,7 @@ export default function BatchItems() {
             <h2 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
               <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
               <span className="font-mono">{batch ? shortBatchId(batch._id) : shortBatchId(batchId)}</span>
-              {batch && <BatchStatusBadge status={batch.status} testLabel={batch.testLabel} />}
+              {batch && <BatchStatusBadge status={batch.status} />}
             </h2>
             <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
               {batch ? (

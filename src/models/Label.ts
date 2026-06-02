@@ -57,7 +57,6 @@ export interface ILabel extends Document {
   propertyType?: 'residential' | 'commercial';
   weight?: ILabelWeight;
   dimensions?: ILabelDimensions;
-  testLabel?: boolean;
   requestPayload?: Record<string, unknown>;
 
   // ShipStation createlabel response
@@ -128,7 +127,6 @@ const LabelSchema = new Schema<ILabel>(
     propertyType: { type: String, enum: ['residential', 'commercial'] },
     weight: { value: Number, units: String },
     dimensions: { length: Number, width: Number, height: Number, units: String },
-    testLabel: Boolean,
     requestPayload: { type: Schema.Types.Mixed },
 
     shipmentId: Number,

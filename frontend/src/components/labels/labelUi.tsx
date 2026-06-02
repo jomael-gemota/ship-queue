@@ -377,7 +377,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                         {l.dimensions ? `${l.dimensions.length}×${l.dimensions.width}×${l.dimensions.height} ${l.dimensions.units}` : '—'}
                       </TdWrap>
                       <TdWrap className="capitalize break-words">{l.insuranceProvider || '—'}</TdWrap>
-                      <TdWrap><ItemStatusBadge status={l.status} testLabel={l.testLabel} error={l.error} found={l.found} /></TdWrap>
+                      <TdWrap><ItemStatusBadge status={l.status} error={l.error} found={l.found} /></TdWrap>
                     </tr>
                   )
                 }
@@ -574,13 +574,12 @@ export function CsvIcon({ className = '' }: { className?: string }) {
   )
 }
 
-export function BatchStatusBadge({ status, testLabel }: { status: LabelBatchStatus; testLabel?: boolean }) {
-  const suffix = testLabel ? ' (test)' : ''
+export function BatchStatusBadge({ status }: { status: LabelBatchStatus }) {
   switch (status) {
     case 'created':
       return (
         <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-          <SuccessIcon className="h-3.5 w-3.5 shrink-0" /> Labels Created{suffix}
+          <SuccessIcon className="h-3.5 w-3.5 shrink-0" /> Labels Created
         </span>
       )
     case 'partial':
@@ -604,11 +603,11 @@ export function BatchStatusBadge({ status, testLabel }: { status: LabelBatchStat
   }
 }
 
-export function ItemStatusBadge({ status, testLabel, error, found }: { status: LabelRecord['status']; testLabel?: boolean; error?: string; found?: boolean }) {
+export function ItemStatusBadge({ status, error, found }: { status: LabelRecord['status']; error?: string; found?: boolean }) {
   if (status === 'created') {
     return (
       <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400 text-xs font-medium">
-        <SuccessIcon className="h-3.5 w-3.5" /> Created{testLabel ? ' (test)' : ''}
+        <SuccessIcon className="h-3.5 w-3.5" /> Created
       </span>
     )
   }

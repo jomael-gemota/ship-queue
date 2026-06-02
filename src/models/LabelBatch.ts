@@ -6,7 +6,6 @@ export interface ILabelBatch extends Document {
   status: LabelBatchStatus;
   fileName?: string;
   itemCount: number;
-  testLabel?: boolean;
 
   createdBy?: string; // user email
   createdByUserId?: string;
@@ -26,7 +25,6 @@ const LabelBatchSchema = new Schema<ILabelBatch>(
     },
     fileName: String,
     itemCount: { type: Number, default: 0 },
-    testLabel: Boolean,
 
     createdBy: String,
     createdByUserId: String,
