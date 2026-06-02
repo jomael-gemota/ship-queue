@@ -65,6 +65,26 @@ function csvCell(value: unknown): string {
   return str
 }
 
+// Maps ShipStation service codes to human-readable names. Falls back to
+// prettifying the code (drop a leading "amazon_", title-case, fix FedEx casing).
+const SERVICE_NAMES: Record<string, string> = {
+  amazon_fedex_home_delivery: 'FedEx Home Delivery',
+  amazon_fedex_ground: 'FedEx Ground',
+  fedex_home_delivery: 'FedEx Home Delivery',
+  fedex_ground: 'FedEx Ground',
+}
+
+export function serviceName(code?: string): string {
+  if (!code) return ''
+  if (SERVICE_NAMES[code]) return SERVICE_NAMES[code]
+  return code
+    .replace(/^amazon_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w+/g, (w) =>
+      w.toLowerCase() === 'fedex' ? 'FedEx' : w.charAt(0).toUpperCase() + w.slice(1)
+    )
+}
+
 // All columns from both the Shipping Details and Tracking & Labels sections,
 // flattened into a single row per order (no per-section grouping).
 const CSV_COLUMNS: { header: string; value: (l: LabelRecord) => unknown }[] = [
@@ -76,6 +96,7 @@ const CSV_COLUMNS: { header: string; value: (l: LabelRecord) => unknown }[] = [
   { header: 'Property', value: (l) => l.propertyType },
   { header: 'Package', value: (l) => l.packageCode },
   { header: 'Service', value: (l) => l.serviceCode },
+  { header: 'Service Name', value: (l) => serviceName(l.serviceCode) },
   { header: 'Ship Date', value: (l) => l.shipDate },
   { header: 'SKUs', value: (l) => skusToLines(l.skus).join('; ') },
   { header: 'Total Qty', value: (l) => l.qty },
@@ -384,7 +405,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
                       <TdWrap><AddressCell addr={l.shipTo} /></TdWrap>
                       <TdWrap>{l.propertyType ? <PropertyBadge type={l.propertyType} /> : '—'}</TdWrap>
                       <TdWrap className="font-mono break-words">{l.packageCode || '—'}</TdWrap>
-                      <TdWrap className="font-mono break-words">{l.serviceCode || '—'}</TdWrap>
+                      <TdWrap className="break-words">{l.serviceCode ? serviceName(l.serviceCode) : '—'}</TdWrap>
                       <TdWrap className="break-words">{l.shipDate || '—'}</TdWrap>
                       <TdWrap><SkuCell skus={l.skus} /></TdWrap>
                       <TdWrap className="font-medium text-slate-800 dark:text-[var(--text-100)]">{l.qty != null ? l.qty : '—'}</TdWrap>
