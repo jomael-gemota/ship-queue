@@ -614,17 +614,19 @@ export function ItemStatusBadge({ status, testLabel, error, found }: { status: L
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-xs" title={error}>
+      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-xs">
         <ErrorIcon className="h-3.5 w-3.5" />
         <span>Failed</span>
+        <ErrorInfo error={error} />
       </span>
     )
   }
   if (found === false) {
     return (
-      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-xs" title={error}>
+      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-xs">
         <ErrorIcon className="h-3.5 w-3.5" />
-        <span>{error || 'Not found'}</span>
+        <span>Not found</span>
+        <ErrorInfo error={error || 'Order not found in the orders table.'} />
       </span>
     )
   }
@@ -828,6 +830,33 @@ export function ErrorIcon({ className = '' }: { className?: string }) {
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
+  )
+}
+
+export function InfoIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+/**
+ * Small info icon that reveals the underlying error message on hover/focus.
+ * Uses the native tooltip (title) so it isn't clipped by the table's
+ * overflow-auto scroll container.
+ */
+export function ErrorInfo({ error }: { error?: string }) {
+  if (!error) return null
+  return (
+    <button
+      type="button"
+      title={error}
+      aria-label={`Error details: ${error}`}
+      className="inline-flex shrink-0 cursor-help text-red-500 hover:text-red-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-red-400 rounded-full dark:text-red-400 dark:hover:text-red-300"
+    >
+      <InfoIcon className="h-3.5 w-3.5" />
+    </button>
   )
 }
 
