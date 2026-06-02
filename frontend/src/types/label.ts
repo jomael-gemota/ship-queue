@@ -173,6 +173,47 @@ export interface LabelsListResponse {
   }
 }
 
+/** A single row in the pre-submit preflight (live order vs enforced values). */
+export interface PreflightItem {
+  labelId: string
+  poNumber: string
+  orderNumber: string
+  customerName?: string
+  found: boolean
+  orderId?: number
+  expectedWarehouseId?: number
+  expectedWarehouseName?: string
+  expectedInsuranceProvider: string
+  liveWarehouseId?: number
+  liveWarehouseName?: string
+  liveInsuranceProvider?: string
+  liveInsuredValue?: number
+  willCorrectWarehouse: boolean
+  willCorrectInsurance: boolean
+  status: 'ok' | 'will_correct' | 'not_found' | 'error'
+  error?: string
+}
+
+export interface PreflightSummary {
+  total: number
+  creatable: number
+  notFound: number
+  willCorrect: number
+  errors: number
+  expectedWarehouseId?: number
+  expectedWarehouseName?: string
+  expectedShipFrom: LabelAddress
+  expectedInsuranceProvider: string
+}
+
+export interface PreflightResponse {
+  data: {
+    batch: LabelBatch
+    summary: PreflightSummary
+    items: PreflightItem[]
+  }
+}
+
 export interface AppSettings {
   driveConnected: boolean
   driveConnectedAt: string | null

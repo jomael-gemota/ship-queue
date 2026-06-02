@@ -9,6 +9,9 @@ import type {
   BatchesListResponse,
   BatchItemsResponse,
   CreateBatchLabelsResponse,
+  PreflightResponse,
+  PreflightSummary,
+  PreflightItem,
 } from '../types/label'
 import {
   formatDateTime,
@@ -19,6 +22,7 @@ import {
   ExportCsvButton,
   DeleteBatchButton,
   ConfirmDeleteBatchModal,
+  ConfirmCreateLabelsModal,
   exportBatchItemsCsv,
   Spinner,
   StepBadge,
@@ -142,6 +146,11 @@ export default function CreateShippingLabel() {
   const [exportingBatchId, setExportingBatchId] = useState<string | null>(null)
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmCreateId, setConfirmCreateId] = useState<string | null>(null)
+  const [preflightLoading, setPreflightLoading] = useState(false)
+  const [preflightSummary, setPreflightSummary] = useState<PreflightSummary | null>(null)
+  const [preflightItems, setPreflightItems] = useState<PreflightItem[]>([])
+  const [preflightError, setPreflightError] = useState<string | null>(null)
 
   const [batchPage, setBatchPage] = useState(0)
   const [batchPageSize, setBatchPageSize] = useState(10)
@@ -225,15 +234,37 @@ export default function CreateShippingLabel() {
     }
   }
 
-  const handleCreateAndPrint = async (batch: LabelBatch) => {
-    setCreatingBatchId(batch._id)
+  // Opens the confirmation modal for a batch and runs a read-only preflight so
+  // the operator can verify enforced Ship From + Insurance before purchasing.
+  const handleOpenConfirm = async (batch: LabelBatch) => {
+    setConfirmCreateId(batch._id)
+    setPreflightLoading(true)
+    setPreflightError(null)
+    setPreflightSummary(null)
+    setPreflightItems([])
+    try {
+      const res = await authApi.post<PreflightResponse>(`/labels/batches/${batch._id}/preflight`)
+      setPreflightSummary(res.data.summary)
+      setPreflightItems(res.data.items)
+    } catch (e) {
+      setPreflightError(e instanceof Error ? e.message : 'Failed to verify orders')
+    } finally {
+      setPreflightLoading(false)
+    }
+  }
+
+  const handleConfirmCreate = async () => {
+    if (!confirmCreateId) return
+    const batchId = confirmCreateId
+    setCreatingBatchId(batchId)
     setError(null)
     try {
-      await authApi.post<CreateBatchLabelsResponse>(`/labels/batches/${batch._id}/create`)
+      await authApi.post<CreateBatchLabelsResponse>(`/labels/batches/${batchId}/create`)
+      setConfirmCreateId(null)
 
       // Refresh the table and print every created label in the batch.
       await loadBatches()
-      const items = await fetchBatchItems(batch._id)
+      const items = await fetchBatchItems(batchId)
       for (const item of items) {
         if (item.status === 'created') {
           await printLabelPdf(item._id)
@@ -241,6 +272,7 @@ export default function CreateShippingLabel() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create labels')
+      setConfirmCreateId(null)
     } finally {
       setCreatingBatchId(null)
     }
@@ -279,6 +311,17 @@ export default function CreateShippingLabel() {
           onConfirm={handleConfirmDelete}
           onCancel={() => setConfirmDeleteId(null)}
           deleting={deletingBatchId === confirmBatch._id}
+        />
+      )}
+      {confirmCreateId && (
+        <ConfirmCreateLabelsModal
+          loading={preflightLoading}
+          creating={creatingBatchId === confirmCreateId}
+          summary={preflightSummary}
+          items={preflightItems}
+          error={preflightError}
+          onConfirm={handleConfirmCreate}
+          onCancel={() => setConfirmCreateId(null)}
         />
       )}
       {error && (
@@ -448,7 +491,7 @@ export default function CreateShippingLabel() {
                             done={b.status === 'created'}
                             disabled={!driveConnected}
                             title={!driveConnected ? 'Connect Google Drive in Settings first' : undefined}
-                            onClick={() => handleCreateAndPrint(b)}
+                            onClick={() => handleOpenConfirm(b)}
                           />
                         )}
                         <ExportCsvButton

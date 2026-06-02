@@ -6,11 +6,17 @@ import Label, { ILabel } from '../models/Label';
 import LabelBatch from '../models/LabelBatch';
 import {
   createShipStationLabelForOrder,
+  applyShipFromAndInsuranceToOrder,
+  getShipStationOrder,
   CreateLabelForOrderPayload,
   ShipStationLabelAddress,
   ShipStationLabelWeight,
 } from '../services/shipstationLabel.service';
-import { getWarehouseById, getWarehouseByName } from '../services/shipstationWarehouse.service';
+import {
+  getWarehouseById,
+  getWarehouseByName,
+  listWarehouses,
+} from '../services/shipstationWarehouse.service';
 import { uploadPdfToDrive } from '../services/googleDrive.service';
 
 const DEFAULT_DIMENSIONS = { length: 15, width: 10, height: 5, units: 'inches' };
@@ -79,6 +85,7 @@ function resolveServiceCode(residential: boolean): string {
 interface ResolvedShipFrom {
   address: ShipStationLabelAddress;
   warehouseId?: number;
+  warehouseName?: string;
 }
 
 function buildShipFromFromEnv(): ShipStationLabelAddress {
@@ -123,6 +130,7 @@ async function resolveShipFrom(): Promise<ResolvedShipFrom> {
           residential: false,
         },
         warehouseId: warehouse.warehouseId,
+        warehouseName: warehouse.warehouseName,
       };
     }
   } catch (e) {
@@ -210,12 +218,18 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
   };
 }
 
+const NO_INSURANCE = { provider: 'none', insureShipment: false, insuredValue: 0 } as const;
+
 /**
  * Builds the body for POST /orders/createlabelfororder. We buy the label
  * against the existing Amazon order (prepared.orderId) — this is required for
  * Amazon Buy Shipping ("amazon_shipping"), which only works when the label is
- * tied to a real Amazon order. The Ship From is set via the Belleville
- * warehouse (advancedOptions.warehouseId) so the order ships from Belleville.
+ * tied to a real Amazon order.
+ *
+ * NOTE: createlabelfororder ignores advancedOptions/insuranceOptions sent here —
+ * it uses whatever is saved on the order. We still include them for clarity and
+ * record-keeping, but the actual Ship From (Belleville) and "no insurance" are
+ * enforced by syncOrderShippingDefaults() *before* this label is purchased.
  */
 function buildOrderPayload(prepared: PreparedRow): CreateLabelForOrderPayload {
   return {
@@ -227,12 +241,26 @@ function buildOrderPayload(prepared: PreparedRow): CreateLabelForOrderPayload {
     shipDate: prepared.shipDate || formatShipDate(),
     weight: prepared.weight || { value: 1, units: 'pounds' },
     dimensions: prepared.dimensions || DEFAULT_DIMENSIONS,
-    insuranceOptions: { provider: 'none', insureShipment: false, insuredValue: 0 },
+    insuranceOptions: { ...NO_INSURANCE },
     internationalOptions: null,
     ...(prepared.warehouseId
       ? { advancedOptions: { warehouseId: prepared.warehouseId } }
       : {}),
   };
+}
+
+/**
+ * Forces the order's Ship From warehouse (Belleville) and disables insurance
+ * directly on the ShipStation order, because createlabelfororder reads those
+ * from the saved order rather than from the label request. Must run before
+ * buying the label. Throws on failure so we never silently buy a label that
+ * ships from the wrong origin or carries unwanted insurance.
+ */
+async function syncOrderShippingDefaults(prepared: PreparedRow): Promise<void> {
+  if (!prepared.orderId) return;
+  await applyShipFromAndInsuranceToOrder(prepared.orderId, prepared.warehouseId, {
+    ...NO_INSURANCE,
+  });
 }
 
 /**
@@ -306,6 +334,7 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
       const payload = buildOrderPayload(prepared);
 
       try {
+        await syncOrderShippingDefaults(prepared);
         const ssResponse = await createShipStationLabelForOrder(payload);
 
         const label = new Label({
@@ -455,6 +484,7 @@ async function createLabelForRecord(
   const payload = buildOrderPayload(prepared);
 
   try {
+    await syncOrderShippingDefaults(prepared);
     const ssResponse = await createShipStationLabelForOrder(payload);
 
     label.orderId = prepared.orderId;
@@ -674,6 +704,161 @@ export const getBatchItems = async (req: Request, res: Response): Promise<void> 
     res.json({ data: { batch, items } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch batch items', error: (error as Error).message });
+  }
+};
+
+interface PreflightItem {
+  labelId: string;
+  poNumber: string;
+  orderNumber: string;
+  customerName?: string;
+  found: boolean;
+  orderId?: number;
+  // What the system will enforce on the order before buying the label.
+  expectedWarehouseId?: number;
+  expectedWarehouseName?: string;
+  expectedInsuranceProvider: string;
+  // What the live ShipStation order currently has (null when unreadable).
+  liveWarehouseId?: number;
+  liveWarehouseName?: string;
+  liveInsuranceProvider?: string;
+  liveInsuredValue?: number;
+  // Whether the live order differs from the enforced values (will be corrected).
+  willCorrectWarehouse: boolean;
+  willCorrectInsurance: boolean;
+  status: 'ok' | 'will_correct' | 'not_found' | 'error';
+  error?: string;
+}
+
+interface PreflightSummary {
+  total: number;
+  creatable: number;
+  notFound: number;
+  willCorrect: number;
+  errors: number;
+  expectedWarehouseId?: number;
+  expectedWarehouseName?: string;
+  expectedShipFrom: ShipStationLabelAddress;
+  expectedInsuranceProvider: string;
+}
+
+/**
+ * Read-only preflight for the "Create + Print" confirmation modal. For every
+ * pending (drafted/failed) item it resolves what the system *will enforce*
+ * (Belleville Ship From + no insurance) and compares it against what the live
+ * ShipStation order currently has, so the operator can confirm before any
+ * billable label is bought. Makes no changes — purely informational.
+ */
+export const preflightBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id).lean();
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    // Only items that "Create + Print" would actually process.
+    const items = await Label.find({
+      batchId: id,
+      status: { $in: ['drafted', 'failed'] },
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const expected = await resolveShipFrom();
+    const expectedInsuranceProvider = NO_INSURANCE.provider;
+
+    // id -> warehouseName map so we can label the live order's warehouse.
+    let warehouseNames = new Map<number, string>();
+    try {
+      const warehouses = await listWarehouses();
+      warehouseNames = new Map(
+        warehouses.map((w) => [w.warehouseId, w.warehouseName || String(w.warehouseId)])
+      );
+    } catch {
+      // Non-fatal — we just won't have friendly names for live warehouses.
+    }
+
+    const results: PreflightItem[] = [];
+    for (const item of items) {
+      const base: PreflightItem = {
+        labelId: String(item._id),
+        poNumber: item.poNumber,
+        orderNumber: item.orderNumber,
+        customerName: item.customerName,
+        found: Boolean(item.found) && typeof item.orderId === 'number',
+        orderId: item.orderId,
+        expectedWarehouseId: expected.warehouseId,
+        expectedWarehouseName: expected.warehouseName,
+        expectedInsuranceProvider,
+        willCorrectWarehouse: false,
+        willCorrectInsurance: false,
+        status: 'ok',
+      };
+
+      if (!base.found || typeof item.orderId !== 'number') {
+        results.push({
+          ...base,
+          status: 'not_found',
+          error: item.error || 'Order not found in the orders table.',
+        });
+        continue;
+      }
+
+      try {
+        const order = await getShipStationOrder(item.orderId);
+        const liveWarehouseId = order.advancedOptions?.warehouseId;
+        const liveProvider = order.insuranceOptions?.provider ?? 'none';
+        const liveInsured = Boolean(order.insuranceOptions?.insureShipment);
+        const liveInsuredValue = order.insuranceOptions?.insuredValue;
+
+        const willCorrectWarehouse =
+          typeof expected.warehouseId === 'number' &&
+          liveWarehouseId !== expected.warehouseId;
+        const willCorrectInsurance =
+          liveProvider !== expectedInsuranceProvider || liveInsured;
+
+        results.push({
+          ...base,
+          liveWarehouseId,
+          liveWarehouseName:
+            typeof liveWarehouseId === 'number' ? warehouseNames.get(liveWarehouseId) : undefined,
+          liveInsuranceProvider: liveProvider,
+          liveInsuredValue,
+          willCorrectWarehouse,
+          willCorrectInsurance,
+          status: willCorrectWarehouse || willCorrectInsurance ? 'will_correct' : 'ok',
+        });
+      } catch (e) {
+        results.push({
+          ...base,
+          status: 'error',
+          error: `Could not read live order: ${(e as Error).message}`,
+        });
+      }
+    }
+
+    const summary: PreflightSummary = {
+      total: results.length,
+      creatable: results.filter((r) => r.status === 'ok' || r.status === 'will_correct').length,
+      notFound: results.filter((r) => r.status === 'not_found').length,
+      willCorrect: results.filter((r) => r.status === 'will_correct').length,
+      errors: results.filter((r) => r.status === 'error').length,
+      expectedWarehouseId: expected.warehouseId,
+      expectedWarehouseName: expected.warehouseName,
+      expectedShipFrom: expected.address,
+      expectedInsuranceProvider,
+    };
+
+    res.json({ data: { batch, summary, items: results } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to preflight batch', error: (error as Error).message });
   }
 };
 

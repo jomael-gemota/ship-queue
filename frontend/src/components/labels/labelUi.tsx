@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import type { LabelRecord, LabelAddress, LabelBatchStatus, LabelSku } from '../../types/label'
+import type {
+  LabelRecord,
+  LabelAddress,
+  LabelBatchStatus,
+  LabelSku,
+  PreflightItem,
+  PreflightSummary,
+} from '../../types/label'
 
 const TOKEN_KEY = 'sq_token'
 
@@ -586,6 +593,202 @@ export function ConfirmDeleteBatchModal({
       </div>
     </div>
   )
+}
+
+/**
+ * Pre-submit confirmation for "Create + Print Labels". Runs a read-only
+ * preflight (live ShipStation order vs the values the system enforces) so the
+ * operator can verify Ship From + Insurance before any billable label is bought.
+ */
+export function ConfirmCreateLabelsModal({
+  loading,
+  creating,
+  summary,
+  items,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  loading: boolean
+  creating: boolean
+  summary: PreflightSummary | null
+  items: PreflightItem[]
+  error: string | null
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const shipFromLine = summary ? addressToLine(summary.expectedShipFrom) : ''
+  const attention = items.filter((i) => i.status !== 'ok')
+  const canCreate = !!summary && summary.creatable > 0 && !loading && !creating
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={creating ? undefined : onCancel} />
+      <div className="relative z-10 w-full max-w-lg rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+            <PrinterIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Create + Print labels?</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+              Review the enforced shipping settings below. This buys real, billable labels.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
+            <ErrorIcon className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center gap-2 py-6 text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <Spinner className="h-4 w-4" />
+            Checking live orders in ShipStation…
+          </div>
+        ) : summary ? (
+          <>
+            {/* Enforced settings */}
+            <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-3 space-y-2 text-sm">
+              <div className="flex items-start gap-2">
+                <StoreIcon className="h-4 w-4 shrink-0 mt-0.5 text-slate-400 dark:text-[var(--text-200)]" />
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)]">Ship From</div>
+                  <div className="font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+                    {summary.expectedWarehouseName || 'Belleville'}
+                  </div>
+                  {shipFromLine && (
+                    <div className="text-xs text-slate-500 dark:text-[var(--text-200)] break-words">{shipFromLine}</div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <ShieldIcon className="h-4 w-4 shrink-0 mt-0.5 text-slate-400 dark:text-[var(--text-200)]" />
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)]">Insurance</div>
+                  <div className="font-medium capitalize text-slate-800 dark:text-[var(--text-100)]">
+                    {summary.expectedInsuranceProvider} (no insurance)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Counts */}
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2.5 py-1 font-medium text-emerald-700 dark:text-emerald-400">
+                <SuccessIcon className="h-3.5 w-3.5" /> {summary.creatable} to create
+              </span>
+              {summary.willCorrect > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2.5 py-1 font-medium text-amber-700 dark:text-amber-400">
+                  <WarningIcon className="h-3.5 w-3.5" /> {summary.willCorrect} will be corrected
+                </span>
+              )}
+              {summary.notFound > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-1 font-medium text-red-700 dark:text-red-400">
+                  <ErrorIcon className="h-3.5 w-3.5" /> {summary.notFound} not found
+                </span>
+              )}
+              {summary.errors > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-1 font-medium text-red-700 dark:text-red-400">
+                  <ErrorIcon className="h-3.5 w-3.5" /> {summary.errors} error{summary.errors === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+
+            {/* Per-row attention list */}
+            {attention.length > 0 && (
+              <div className="max-h-48 overflow-auto rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+                {attention.map((i) => (
+                  <div key={i.labelId} className="px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-medium text-slate-700 dark:text-[var(--text-100)] break-words">{i.poNumber}</span>
+                      <PreflightStatusBadge status={i.status} />
+                    </div>
+                    {i.status === 'will_correct' && (
+                      <ul className="mt-1 space-y-0.5 text-slate-500 dark:text-[var(--text-200)]">
+                        {i.willCorrectWarehouse && (
+                          <li>
+                            Ship From: <span className="text-amber-700 dark:text-amber-400">{i.liveWarehouseName || i.liveWarehouseId || 'unknown'}</span>
+                            {' → '}<span className="text-emerald-700 dark:text-emerald-400">{i.expectedWarehouseName}</span>
+                          </li>
+                        )}
+                        {i.willCorrectInsurance && (
+                          <li>
+                            Insurance: <span className="text-amber-700 dark:text-amber-400">
+                              {i.liveInsuranceProvider}{i.liveInsuredValue ? ` ($${i.liveInsuredValue})` : ''}
+                            </span>{' → '}<span className="text-emerald-700 dark:text-emerald-400">none</span>
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                    {(i.status === 'not_found' || i.status === 'error') && i.error && (
+                      <div className="mt-1 text-red-600 dark:text-red-400 break-words">{i.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {summary.creatable === 0 && (
+              <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+                No labels can be created for this batch.
+              </p>
+            )}
+          </>
+        ) : null}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={creating}
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!canCreate}
+            className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {creating && <Spinner className="h-3.5 w-3.5" />}
+            {creating ? 'Creating…' : summary ? `Create ${summary.creatable} label${summary.creatable === 1 ? '' : 's'}` : 'Create labels'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PreflightStatusBadge({ status }: { status: PreflightItem['status'] }) {
+  switch (status) {
+    case 'will_correct':
+      return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-amber-700 dark:text-amber-400 font-medium">
+          <WarningIcon className="h-3.5 w-3.5" /> Will correct
+        </span>
+      )
+    case 'not_found':
+      return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-red-600 dark:text-red-400 font-medium">
+          <ErrorIcon className="h-3.5 w-3.5" /> Not found
+        </span>
+      )
+    case 'error':
+      return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-red-600 dark:text-red-400 font-medium">
+          <ErrorIcon className="h-3.5 w-3.5" /> Error
+        </span>
+      )
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-700 dark:text-emerald-400 font-medium">
+          <SuccessIcon className="h-3.5 w-3.5" /> OK
+        </span>
+      )
+  }
 }
 
 export function DeleteBatchButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {

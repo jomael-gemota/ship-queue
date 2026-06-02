@@ -8,6 +8,7 @@ import {
   draftBatch,
   getBatches,
   getBatchItems,
+  preflightBatch,
   createBatchLabels,
   deleteBatch,
 } from '../controllers/label.controller';
@@ -25,6 +26,7 @@ router.get('/:id/pdf', getLabelPdf);
 router.post('/prepare', requireLabelPermission, prepareLabels);
 router.post('/create', requireLabelPermission, createLabels);
 router.post('/batches', requireLabelPermission, draftBatch);
+router.post('/batches/:id/preflight', requireLabelPermission, preflightBatch);
 router.post('/batches/:id/create', requireLabelPermission, createBatchLabels);
 router.delete('/batches/:id', deleteBatch);
 

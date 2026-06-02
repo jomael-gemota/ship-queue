@@ -6,6 +6,9 @@ import type {
   LabelBatch,
   BatchItemsResponse,
   CreateBatchLabelsResponse,
+  PreflightResponse,
+  PreflightSummary,
+  PreflightItem,
 } from '../types/label'
 import {
   formatDateTime,
@@ -17,6 +20,7 @@ import {
   ExportCsvButton,
   DeleteBatchButton,
   ConfirmDeleteBatchModal,
+  ConfirmCreateLabelsModal,
   exportBatchItemsCsv,
   LabelsTableIcon,
   BackIcon,
@@ -36,6 +40,11 @@ export default function BatchItems() {
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmCreate, setConfirmCreate] = useState(false)
+  const [preflightLoading, setPreflightLoading] = useState(false)
+  const [preflightSummary, setPreflightSummary] = useState<PreflightSummary | null>(null)
+  const [preflightItems, setPreflightItems] = useState<PreflightItem[]>([])
+  const [preflightError, setPreflightError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,7 +65,27 @@ export default function BatchItems() {
     loadBatch()
   }, [loadBatch])
 
-  const handleCreateAndPrint = async () => {
+  // Opens the confirmation modal and runs a read-only preflight so the operator
+  // can verify the enforced Ship From + Insurance before any billable purchase.
+  const handleOpenConfirm = async () => {
+    if (!batch) return
+    setConfirmCreate(true)
+    setPreflightLoading(true)
+    setPreflightError(null)
+    setPreflightSummary(null)
+    setPreflightItems([])
+    try {
+      const res = await authApi.post<PreflightResponse>(`/labels/batches/${batch._id}/preflight`)
+      setPreflightSummary(res.data.summary)
+      setPreflightItems(res.data.items)
+    } catch (e) {
+      setPreflightError(e instanceof Error ? e.message : 'Failed to verify orders')
+    } finally {
+      setPreflightLoading(false)
+    }
+  }
+
+  const handleConfirmCreate = async () => {
     if (!batch) return
     setCreating(true)
     setError(null)
@@ -69,6 +98,7 @@ export default function BatchItems() {
       const itemsRes = await authApi.get<BatchItemsResponse>(`/labels/batches/${batch._id}/items`)
       setBatch(updatedBatch)
       setItems(itemsRes.data.items)
+      setConfirmCreate(false)
 
       // Print every created label in the batch.
       for (const item of itemsRes.data.items) {
@@ -78,6 +108,7 @@ export default function BatchItems() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create labels')
+      setConfirmCreate(false)
     } finally {
       setCreating(false)
     }
@@ -140,6 +171,17 @@ export default function BatchItems() {
           onConfirm={handleConfirmDelete}
           onCancel={() => setConfirmDelete(false)}
           deleting={deleting}
+        />
+      )}
+      {confirmCreate && (
+        <ConfirmCreateLabelsModal
+          loading={preflightLoading}
+          creating={creating}
+          summary={preflightSummary}
+          items={preflightItems}
+          error={preflightError}
+          onConfirm={handleConfirmCreate}
+          onCancel={() => setConfirmCreate(false)}
         />
       )}
       {error && (
@@ -210,7 +252,7 @@ export default function BatchItems() {
                   done={batch.status === 'created'}
                   disabled={!driveConnected}
                   title={!driveConnected ? 'Connect Google Drive in Settings first' : undefined}
-                  onClick={handleCreateAndPrint}
+                  onClick={handleOpenConfirm}
                 />
               )}
               <ExportCsvButton onClick={handleExportCsv} />
