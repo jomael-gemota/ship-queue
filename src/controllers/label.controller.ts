@@ -211,6 +211,12 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
 }
 
 function buildPayload(prepared: PreparedRow): CreateLabelPayload {
+  // NOTE: We intentionally do NOT send advancedOptions.warehouseId. When a
+  // warehouseId is provided, ShipStation overrides the explicit shipFrom with
+  // the warehouse's own configured location (which resolves to the Belleville
+  // warehouse's *return* address in Wilmington, NC) instead of honoring the
+  // Belleville origin we pass. Sending only the explicit shipFrom (the
+  // warehouse's originAddress) keeps the printed Ship From as Belleville.
   return {
     carrierCode: prepared.carrierCode || 'fedex',
     serviceCode: prepared.serviceCode || 'fedex_ground',
@@ -221,9 +227,6 @@ function buildPayload(prepared: PreparedRow): CreateLabelPayload {
     shipFrom: prepared.shipFrom || buildShipFromFromEnv(),
     shipTo: prepared.shipTo || {},
     insuranceOptions: { provider: 'none', insureShipment: false, insuredValue: 0 },
-    ...(prepared.warehouseId
-      ? { advancedOptions: { warehouseId: prepared.warehouseId } }
-      : {}),
   };
 }
 
