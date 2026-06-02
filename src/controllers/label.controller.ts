@@ -5,8 +5,8 @@ import User from '../models/User';
 import Label, { ILabel } from '../models/Label';
 import LabelBatch from '../models/LabelBatch';
 import {
-  createShipStationLabel,
-  CreateLabelPayload,
+  createShipStationLabelForOrder,
+  CreateLabelForOrderPayload,
   ShipStationLabelAddress,
   ShipStationLabelWeight,
 } from '../services/shipstationLabel.service';
@@ -210,23 +210,28 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
   };
 }
 
-function buildPayload(prepared: PreparedRow): CreateLabelPayload {
-  // NOTE: We intentionally do NOT send advancedOptions.warehouseId. When a
-  // warehouseId is provided, ShipStation overrides the explicit shipFrom with
-  // the warehouse's own configured location (which resolves to the Belleville
-  // warehouse's *return* address in Wilmington, NC) instead of honoring the
-  // Belleville origin we pass. Sending only the explicit shipFrom (the
-  // warehouse's originAddress) keeps the printed Ship From as Belleville.
+/**
+ * Builds the body for POST /orders/createlabelfororder. We buy the label
+ * against the existing Amazon order (prepared.orderId) — this is required for
+ * Amazon Buy Shipping ("amazon_shipping"), which only works when the label is
+ * tied to a real Amazon order. The Ship From is set via the Belleville
+ * warehouse (advancedOptions.warehouseId) so the order ships from Belleville.
+ */
+function buildOrderPayload(prepared: PreparedRow): CreateLabelForOrderPayload {
   return {
+    orderId: prepared.orderId as number,
     carrierCode: prepared.carrierCode || 'amazon_shipping',
     serviceCode: prepared.serviceCode || 'amazon_fedex_ground',
     packageCode: prepared.packageCode || 'package',
+    confirmation: 'none',
     shipDate: prepared.shipDate || formatShipDate(),
     weight: prepared.weight || { value: 1, units: 'pounds' },
     dimensions: prepared.dimensions || DEFAULT_DIMENSIONS,
-    shipFrom: prepared.shipFrom || buildShipFromFromEnv(),
-    shipTo: prepared.shipTo || {},
     insuranceOptions: { provider: 'none', insureShipment: false, insuredValue: 0 },
+    internationalOptions: null,
+    ...(prepared.warehouseId
+      ? { advancedOptions: { warehouseId: prepared.warehouseId } }
+      : {}),
   };
 }
 
@@ -298,10 +303,10 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
         continue;
       }
 
-      const payload = buildPayload(prepared);
+      const payload = buildOrderPayload(prepared);
 
       try {
-        const ssResponse = await createShipStationLabel(payload);
+        const ssResponse = await createShipStationLabelForOrder(payload);
 
         const label = new Label({
           poNumber: prepared.poNumber,
@@ -447,10 +452,10 @@ async function createLabelForRecord(
     };
   }
 
-  const payload = buildPayload(prepared);
+  const payload = buildOrderPayload(prepared);
 
   try {
-    const ssResponse = await createShipStationLabel(payload);
+    const ssResponse = await createShipStationLabelForOrder(payload);
 
     label.orderId = prepared.orderId;
     label.status = 'created';

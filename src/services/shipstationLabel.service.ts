@@ -47,6 +47,36 @@ export interface CreateLabelPayload {
   [key: string]: unknown;
 }
 
+/**
+ * Body for POST /orders/createlabelfororder. Buys a label *against an existing
+ * ShipStation order* (referenced by its numeric orderId). This is required for
+ * Amazon Buy Shipping (carrierCode "amazon_shipping"), which only works when the
+ * label is tied to a real Amazon order — the standalone /shipments/createlabel
+ * endpoint has no order context and Amazon rejects it.
+ */
+export interface CreateLabelForOrderPayload {
+  orderId: number;
+  carrierCode: string;
+  serviceCode: string;
+  packageCode: string;
+  confirmation: string;
+  shipDate: string;
+  weight: ShipStationLabelWeight;
+  dimensions: ShipStationLabelDimensions;
+  insuranceOptions?: {
+    provider: string;
+    insureShipment: boolean;
+    insuredValue: number;
+  } | null;
+  internationalOptions?: unknown | null;
+  advancedOptions?: {
+    warehouseId?: number;
+    [key: string]: unknown;
+  } | null;
+  testLabel?: boolean;
+  [key: string]: unknown;
+}
+
 export interface CreateLabelResponse {
   shipmentId?: number;
   shipmentCost?: number;
@@ -69,17 +99,21 @@ function getAuthHeader(): string {
 }
 
 /**
- * Calls ShipStation POST /shipments/createlabel.
- * Resolves with the parsed label response, rejects with a descriptive error
- * (including ShipStation's error message body when available).
+ * Low-level POST helper for ShipStation label endpoints. Resolves with the
+ * parsed response on 2xx, rejects with ShipStation's error message otherwise,
+ * and transparently retries on 429 (rate limit) after the Retry-After delay.
  */
-export function createShipStationLabel(payload: CreateLabelPayload): Promise<CreateLabelResponse> {
+function postShipStationLabel<T>(
+  path: string,
+  payload: T,
+  endpointLabel: string
+): Promise<CreateLabelResponse> {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
 
     const options: https.RequestOptions = {
       hostname: 'ssapi.shipstation.com',
-      path: '/shipments/createlabel',
+      path,
       method: 'POST',
       headers: {
         Authorization: getAuthHeader(),
@@ -99,7 +133,7 @@ export function createShipStationLabel(payload: CreateLabelPayload): Promise<Cre
         if (status === 429) {
           const retryAfter = parseInt((res.headers['retry-after'] as string) || '60', 10);
           setTimeout(() => {
-            createShipStationLabel(payload).then(resolve).catch(reject);
+            postShipStationLabel(path, payload, endpointLabel).then(resolve).catch(reject);
           }, retryAfter * 1000);
           return;
         }
@@ -121,7 +155,7 @@ export function createShipStationLabel(payload: CreateLabelPayload): Promise<Cre
           (parsed as { ExceptionMessage?: string; Message?: string; message?: string })?.ExceptionMessage ||
           (parsed as { Message?: string })?.Message ||
           (parsed as { message?: string })?.message ||
-          `ShipStation createlabel failed (HTTP ${status})`;
+          `ShipStation ${endpointLabel} failed (HTTP ${status})`;
         reject(new Error(message));
       });
       res.on('error', reject);
@@ -131,4 +165,23 @@ export function createShipStationLabel(payload: CreateLabelPayload): Promise<Cre
     req.write(body);
     req.end();
   });
+}
+
+/**
+ * Calls ShipStation POST /shipments/createlabel (standalone shipment, no order
+ * context). Note: this cannot be used with Amazon Buy Shipping.
+ */
+export function createShipStationLabel(payload: CreateLabelPayload): Promise<CreateLabelResponse> {
+  return postShipStationLabel('/shipments/createlabel', payload, 'createlabel');
+}
+
+/**
+ * Calls ShipStation POST /orders/createlabelfororder — buys a label for an
+ * existing order (required for Amazon Buy Shipping). This marks the order as
+ * shipped in ShipStation and pushes tracking back to the order source (Amazon).
+ */
+export function createShipStationLabelForOrder(
+  payload: CreateLabelForOrderPayload
+): Promise<CreateLabelResponse> {
+  return postShipStationLabel('/orders/createlabelfororder', payload, 'createlabelfororder');
 }
