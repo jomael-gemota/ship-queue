@@ -19,6 +19,7 @@ import {
   BatchStatusBadge,
   CreatePrintButton,
   ExportCsvButton,
+  ExportZipButton,
   DeleteBatchButton,
   ConfirmDeleteBatchModal,
   ConfirmCreateLabelsModal,
@@ -49,6 +50,7 @@ export default function BatchItems() {
   const [preflightItems, setPreflightItems] = useState<PreflightItem[]>([])
   const [preflightError, setPreflightError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [zipping, setZipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadBatch = useCallback(async () => {
@@ -151,6 +153,40 @@ export default function BatchItems() {
     exportBatchItemsCsv(items, `${base}-items.csv`)
   }
 
+  // Downloads every created label's PDF in this batch as a single zip archive.
+  const handleExportZip = async () => {
+    if (!batch) return
+    setZipping(true)
+    setError(null)
+    try {
+      const token = localStorage.getItem(TOKEN_KEY)
+      const res = await fetch(`/api/labels/batches/${batch._id}/labels.zip`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        let message = 'Failed to export label PDFs'
+        try {
+          const body = await res.json()
+          if (body?.message) message = body.message
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(message)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${shortBatchId(batch._id)}-labels.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to export label PDFs')
+    } finally {
+      setZipping(false)
+    }
+  }
+
   const handleDeleteBatch = () => {
     if (!batch) return
     setConfirmDelete(true)
@@ -194,6 +230,7 @@ export default function BatchItems() {
   }
 
   const driveConnected = !!user?.driveScopeGranted
+  const hasCreatedLabels = items.some((l) => l.status === 'created')
 
   return (
     <div className="space-y-6">
@@ -300,6 +337,12 @@ export default function BatchItems() {
                 />
               )}
               <ExportCsvButton onClick={handleExportCsv} />
+              <ExportZipButton
+                busy={zipping}
+                disabled={!hasCreatedLabels}
+                title={hasCreatedLabels ? 'Export label PDFs (.zip)' : 'No created label PDFs to export yet'}
+                onClick={handleExportZip}
+              />
               {user && batch.createdBy === user.email && (
                 <DeleteBatchButton onClick={handleDeleteBatch} />
               )}

@@ -556,6 +556,21 @@ export function ExportCsvButton({ busy, onClick, size = 'md' }: { busy?: boolean
   )
 }
 
+export function ExportZipButton({ busy, onClick, size = 'md', disabled, title = 'Export label PDFs (.zip)' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md'; disabled?: boolean; title?: string }) {
+  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy || disabled}
+      title={title}
+      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
+    >
+      {busy ? <Spinner className={iconSize} /> : <ZipIcon className={iconSize} />}
+    </button>
+  )
+}
+
 export function ConfirmDeleteBatchModal({
   batchShortId,
   onConfirm,
@@ -824,6 +839,15 @@ export function CsvIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+    </svg>
+  )
+}
+
+export function ZipIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7l2-3h6l2 3m8 0H3m18 0v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7m18 0V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 11h2m-2 3h2m-2 3h2" />
     </svg>
   )
 }
