@@ -338,24 +338,24 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
       </div>
 
       <div className="overflow-auto max-h-[70vh]">
-        <table className={`w-full ${isShipping ? 'table-fixed min-w-[1180px]' : 'text-[13px]'}`}>
+        <table className={`w-full ${isShipping ? 'table-fixed min-w-[1280px]' : 'text-[13px]'}`}>
           {isShipping && (
             <colgroup>
               <col className="w-[7%]" />
-              <col className="w-[8%]" />
+              <col className="w-[7.5%]" />
+              <col className="w-[6.5%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
               <col className="w-[7%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[7%]" />
-              <col className="w-[6%]" />
               <col className="w-[5.5%]" />
               <col className="w-[5.5%]" />
-              <col className="w-[8%]" />
+              <col className="w-[5.5%]" />
+              <col className="w-[7%]" />
               <col className="w-[4%]" />
               <col className="w-[4.7%]" />
-              <col className="w-[6.5%]" />
+              <col className="w-[6%]" />
               <col className="w-[5%]" />
-              <col className="w-[5%]" />
+              <col className="w-[10%]" />
             </colgroup>
           )}
           <thead className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]">
@@ -1080,7 +1080,7 @@ function RecreateLabelButton({ busy, disabled, title, onClick }: { busy: boolean
       className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
     >
       {busy ? <Spinner className="h-3 w-3" /> : <PrinterIcon className="h-3 w-3" />}
-      {busy ? 'Working…' : 'Recreate label'}
+      {busy ? 'Working…' : 'Recreate'}
     </button>
   )
 }
