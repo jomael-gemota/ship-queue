@@ -15,6 +15,7 @@ import {
   deleteBatch,
   updateLabelItem,
   recreateLabelItem,
+  preflightLabelItem,
 } from '../controllers/label.controller';
 
 const router = Router();
@@ -35,6 +36,7 @@ router.post('/batches', requireLabelPermission, draftBatch);
 router.post('/batches/:id/preflight', requireLabelPermission, preflightBatch);
 router.post('/batches/:id/create', requireLabelPermission, createBatchLabels);
 router.patch('/:id', requireLabelPermission, updateLabelItem);
+router.post('/:id/preflight', requireLabelPermission, preflightLabelItem);
 router.post('/:id/recreate', requireLabelPermission, recreateLabelItem);
 router.delete('/batches/:id', deleteBatch);
 

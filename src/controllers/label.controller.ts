@@ -1067,6 +1067,110 @@ interface PreflightSummary {
   expectedInsuranceProvider: string;
 }
 
+/** The minimal label fields a preflight needs (works with lean documents). */
+type PreflightLabelInput = Pick<
+  ILabel,
+  'poNumber' | 'orderNumber' | 'customerName' | 'found' | 'orderId' | 'error'
+> & { _id: unknown };
+
+/**
+ * Builds the read-only preflight (summary + per-item enforcement preview) for a
+ * set of labels. For each item it resolves what the system *will enforce*
+ * (Belleville Ship From + no insurance) and compares it against what the live
+ * ShipStation order currently has. Makes no changes — purely informational.
+ * Shared by the batch ("Create + Print") and single-item ("Recreate") flows.
+ */
+async function computePreflight(
+  labels: PreflightLabelInput[]
+): Promise<{ summary: PreflightSummary; items: PreflightItem[] }> {
+  const expected = await resolveShipFrom();
+  const expectedInsuranceProvider = NO_INSURANCE.provider;
+
+  // id -> warehouseName map so we can label the live order's warehouse.
+  let warehouseNames = new Map<number, string>();
+  try {
+    const warehouses = await listWarehouses();
+    warehouseNames = new Map(
+      warehouses.map((w) => [w.warehouseId, w.warehouseName || String(w.warehouseId)])
+    );
+  } catch {
+    // Non-fatal — we just won't have friendly names for live warehouses.
+  }
+
+  const results: PreflightItem[] = [];
+  for (const item of labels) {
+    const base: PreflightItem = {
+      labelId: String(item._id),
+      poNumber: item.poNumber,
+      orderNumber: item.orderNumber,
+      customerName: item.customerName,
+      found: Boolean(item.found) && typeof item.orderId === 'number',
+      orderId: item.orderId,
+      expectedWarehouseId: expected.warehouseId,
+      expectedWarehouseName: expected.warehouseName,
+      expectedInsuranceProvider,
+      willCorrectWarehouse: false,
+      willCorrectInsurance: false,
+      status: 'ok',
+    };
+
+    if (!base.found || typeof item.orderId !== 'number') {
+      results.push({
+        ...base,
+        status: 'not_found',
+        error: item.error || 'Order not found in the orders table.',
+      });
+      continue;
+    }
+
+    try {
+      const order = await getShipStationOrder(item.orderId);
+      const liveWarehouseId = order.advancedOptions?.warehouseId;
+      const liveProvider = order.insuranceOptions?.provider ?? 'none';
+      const liveInsured = Boolean(order.insuranceOptions?.insureShipment);
+      const liveInsuredValue = order.insuranceOptions?.insuredValue;
+
+      const willCorrectWarehouse =
+        typeof expected.warehouseId === 'number' &&
+        liveWarehouseId !== expected.warehouseId;
+      const willCorrectInsurance =
+        liveProvider !== expectedInsuranceProvider || liveInsured;
+
+      results.push({
+        ...base,
+        liveWarehouseId,
+        liveWarehouseName:
+          typeof liveWarehouseId === 'number' ? warehouseNames.get(liveWarehouseId) : undefined,
+        liveInsuranceProvider: liveProvider,
+        liveInsuredValue,
+        willCorrectWarehouse,
+        willCorrectInsurance,
+        status: willCorrectWarehouse || willCorrectInsurance ? 'will_correct' : 'ok',
+      });
+    } catch (e) {
+      results.push({
+        ...base,
+        status: 'error',
+        error: `Could not read live order: ${(e as Error).message}`,
+      });
+    }
+  }
+
+  const summary: PreflightSummary = {
+    total: results.length,
+    creatable: results.filter((r) => r.status === 'ok' || r.status === 'will_correct').length,
+    notFound: results.filter((r) => r.status === 'not_found').length,
+    willCorrect: results.filter((r) => r.status === 'will_correct').length,
+    errors: results.filter((r) => r.status === 'error').length,
+    expectedWarehouseId: expected.warehouseId,
+    expectedWarehouseName: expected.warehouseName,
+    expectedShipFrom: expected.address,
+    expectedInsuranceProvider,
+  };
+
+  return { summary, items: results };
+}
+
 /**
  * Read-only preflight for the "Create + Print" confirmation modal. For every
  * pending (drafted/failed) item it resolves what the system *will enforce*
@@ -1096,94 +1200,38 @@ export const preflightBatch = async (req: Request, res: Response): Promise<void>
       .sort({ createdAt: 1 })
       .lean();
 
-    const expected = await resolveShipFrom();
-    const expectedInsuranceProvider = NO_INSURANCE.provider;
-
-    // id -> warehouseName map so we can label the live order's warehouse.
-    let warehouseNames = new Map<number, string>();
-    try {
-      const warehouses = await listWarehouses();
-      warehouseNames = new Map(
-        warehouses.map((w) => [w.warehouseId, w.warehouseName || String(w.warehouseId)])
-      );
-    } catch {
-      // Non-fatal — we just won't have friendly names for live warehouses.
-    }
-
-    const results: PreflightItem[] = [];
-    for (const item of items) {
-      const base: PreflightItem = {
-        labelId: String(item._id),
-        poNumber: item.poNumber,
-        orderNumber: item.orderNumber,
-        customerName: item.customerName,
-        found: Boolean(item.found) && typeof item.orderId === 'number',
-        orderId: item.orderId,
-        expectedWarehouseId: expected.warehouseId,
-        expectedWarehouseName: expected.warehouseName,
-        expectedInsuranceProvider,
-        willCorrectWarehouse: false,
-        willCorrectInsurance: false,
-        status: 'ok',
-      };
-
-      if (!base.found || typeof item.orderId !== 'number') {
-        results.push({
-          ...base,
-          status: 'not_found',
-          error: item.error || 'Order not found in the orders table.',
-        });
-        continue;
-      }
-
-      try {
-        const order = await getShipStationOrder(item.orderId);
-        const liveWarehouseId = order.advancedOptions?.warehouseId;
-        const liveProvider = order.insuranceOptions?.provider ?? 'none';
-        const liveInsured = Boolean(order.insuranceOptions?.insureShipment);
-        const liveInsuredValue = order.insuranceOptions?.insuredValue;
-
-        const willCorrectWarehouse =
-          typeof expected.warehouseId === 'number' &&
-          liveWarehouseId !== expected.warehouseId;
-        const willCorrectInsurance =
-          liveProvider !== expectedInsuranceProvider || liveInsured;
-
-        results.push({
-          ...base,
-          liveWarehouseId,
-          liveWarehouseName:
-            typeof liveWarehouseId === 'number' ? warehouseNames.get(liveWarehouseId) : undefined,
-          liveInsuranceProvider: liveProvider,
-          liveInsuredValue,
-          willCorrectWarehouse,
-          willCorrectInsurance,
-          status: willCorrectWarehouse || willCorrectInsurance ? 'will_correct' : 'ok',
-        });
-      } catch (e) {
-        results.push({
-          ...base,
-          status: 'error',
-          error: `Could not read live order: ${(e as Error).message}`,
-        });
-      }
-    }
-
-    const summary: PreflightSummary = {
-      total: results.length,
-      creatable: results.filter((r) => r.status === 'ok' || r.status === 'will_correct').length,
-      notFound: results.filter((r) => r.status === 'not_found').length,
-      willCorrect: results.filter((r) => r.status === 'will_correct').length,
-      errors: results.filter((r) => r.status === 'error').length,
-      expectedWarehouseId: expected.warehouseId,
-      expectedWarehouseName: expected.warehouseName,
-      expectedShipFrom: expected.address,
-      expectedInsuranceProvider,
-    };
+    const { summary, items: results } = await computePreflight(items);
 
     res.json({ data: { batch, summary, items: results } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to preflight batch', error: (error as Error).message });
+  }
+};
+
+/**
+ * Read-only preflight for the single-item "Recreate" confirmation modal. Mirrors
+ * preflightBatch for one failed label so the operator can confirm the enforced
+ * Ship From + insurance before re-buying. Makes no changes.
+ */
+export const preflightLabelItem = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid label id' });
+      return;
+    }
+
+    const label = await Label.findById(id).lean();
+    if (!label) {
+      res.status(404).json({ message: 'Label item not found' });
+      return;
+    }
+
+    const { summary, items } = await computePreflight([label]);
+
+    res.json({ data: { summary, items } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to preflight label item', error: (error as Error).message });
   }
 };
 
