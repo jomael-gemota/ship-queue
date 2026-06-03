@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import archiver from 'archiver';
 import { isValidObjectId } from 'mongoose';
 import Order, { IOrder } from '../models/Order';
 import User from '../models/User';
@@ -1059,5 +1060,74 @@ export const getLabelPdf = async (req: Request, res: Response): Promise<void> =>
     res.send(pdf);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch label PDF', error: (error as Error).message });
+  }
+};
+
+/** Strips characters that are unsafe in a zip entry / file name. */
+function safePdfName(poNumber: string): string {
+  const base = (poNumber || 'label').replace(/[\\/:*?"<>|]/g, '_').trim() || 'label';
+  return `${base}.pdf`;
+}
+
+/**
+ * Streams a single zip archive containing the PDFs of every created label in a
+ * batch. Each entry is named after its PO# (PO#.pdf); duplicate PO#s get a
+ * numeric suffix so no entry is overwritten.
+ */
+export const getBatchLabelsZip = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id).lean();
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    const labels = await Label.find({ batchId: id, status: 'created' })
+      .select('+labelData')
+      .sort({ createdAt: 1 });
+
+    const withPdf = labels.filter((l) => l.labelData);
+    if (withPdf.length === 0) {
+      res.status(404).json({ message: 'No label PDFs available for this batch.' });
+      return;
+    }
+
+    const shortId = `B-${String(batch._id).slice(-6).toUpperCase()}`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${shortId}-labels.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => {
+      // Headers are already sent once data flows, so just destroy the stream.
+      res.destroy(err);
+    });
+    archive.pipe(res);
+
+    const usedNames = new Map<string, number>();
+    for (const label of withPdf) {
+      let name = safePdfName(label.poNumber);
+      const seen = usedNames.get(name);
+      if (seen != null) {
+        usedNames.set(name, seen + 1);
+        name = name.replace(/\.pdf$/i, `-${seen + 1}.pdf`);
+      } else {
+        usedNames.set(name, 0);
+      }
+      archive.append(Buffer.from(label.labelData as string, 'base64'), { name });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to export label PDFs', error: (error as Error).message });
+    } else {
+      res.destroy();
+    }
   }
 };

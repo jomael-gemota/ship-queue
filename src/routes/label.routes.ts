@@ -8,6 +8,7 @@ import {
   draftBatch,
   getBatches,
   getBatchItems,
+  getBatchLabelsZip,
   refreshBatchItems,
   preflightBatch,
   createBatchLabels,
@@ -21,6 +22,7 @@ router.use(requireAuth);
 router.get('/', getLabels);
 router.get('/batches', getBatches);
 router.get('/batches/:id/items', getBatchItems);
+router.get('/batches/:id/labels.zip', getBatchLabelsZip);
 router.post('/batches/:id/refresh', refreshBatchItems);
 router.get('/:id/pdf', getLabelPdf);
 
