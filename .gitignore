@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Generated label/packing-slip artifacts from scripts/ verification tooling
+/test-label-sample.pdf
+/slip-*.pdf
