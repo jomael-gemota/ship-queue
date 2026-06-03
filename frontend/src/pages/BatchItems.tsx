@@ -7,6 +7,8 @@ import type {
   BatchItemsResponse,
   CreateBatchLabelsResponse,
   RefreshBatchItemsResponse,
+  UpdateLabelItemResponse,
+  RecreateLabelItemResponse,
   PreflightResponse,
   PreflightSummary,
   PreflightItem,
@@ -51,6 +53,8 @@ export default function BatchItems() {
   const [preflightError, setPreflightError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [zipping, setZipping] = useState(false)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [recreatingId, setRecreatingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadBatch = useCallback(async () => {
@@ -230,8 +234,71 @@ export default function BatchItems() {
     }
   }
 
+  // Edits a single item's Property and re-derives its Service. Optimistically
+  // updates the cell (so Service flips in real-time), then reconciles with the
+  // server's authoritative item. Reverts on failure.
+  const handleUpdateProperty = async (
+    labelId: string,
+    propertyType: 'residential' | 'commercial',
+  ) => {
+    const snapshot = items.find((it) => it._id === labelId)
+    setUpdatingId(labelId)
+    setError(null)
+    const derivedService =
+      propertyType === 'residential' ? 'amazon_fedex_home_delivery' : 'amazon_fedex_ground'
+    setItems((prev) =>
+      prev.map((it) =>
+        it._id === labelId
+          ? { ...it, propertyType, propertyOverride: propertyType, serviceCode: derivedService }
+          : it,
+      ),
+    )
+    try {
+      const res = await authApi.patch<UpdateLabelItemResponse>(`/labels/${labelId}`, {
+        propertyType,
+      })
+      setItems((prev) => prev.map((it) => (it._id === labelId ? res.data.item : it)))
+    } catch (e) {
+      if (snapshot) {
+        setItems((prev) => prev.map((it) => (it._id === labelId ? snapshot : it)))
+      }
+      setError(e instanceof Error ? e.message : 'Failed to update property')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  // Re-attempts a single failed item with its corrected Property/Service, then
+  // prints the new label if the purchase succeeded.
+  const handleRecreate = async (labelId: string) => {
+    if (!driveConnected) {
+      setError('Google Drive is not connected. Connect it in Settings before recreating labels.')
+      return
+    }
+    setRecreatingId(labelId)
+    setError(null)
+    try {
+      const res = await authApi.post<RecreateLabelItemResponse>(`/labels/${labelId}/recreate`)
+      const updated = res.data.item
+      // Re-pull batch + items so the batch status badge stays in sync.
+      const refreshed = await authApi.get<BatchItemsResponse>(`/labels/batches/${batchId}/items`)
+      setBatch(refreshed.data.batch)
+      setItems(refreshed.data.items)
+      if (updated.status === 'created') {
+        await printLabelPdf(updated._id)
+      } else if (updated.error) {
+        setError(`Recreate failed: ${updated.error}`)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to recreate label')
+    } finally {
+      setRecreatingId(null)
+    }
+  }
+
   const driveConnected = !!user?.driveScopeGranted
   const hasCreatedLabels = items.some((l) => l.status === 'created')
+  const canEdit = !!(user?.canCreateLabels && batch?.createdBy === user?.email)
 
   return (
     <div className="space-y-6">
@@ -359,6 +426,12 @@ export default function BatchItems() {
           onDownloadPdf={handleDownloadPdf}
           onRefresh={handleRefresh}
           refreshing={refreshing}
+          canEdit={canEdit}
+          onUpdateProperty={handleUpdateProperty}
+          onRecreate={handleRecreate}
+          updatingId={updatingId}
+          recreatingId={recreatingId}
+          driveConnected={driveConnected}
         />
       </section>
     </div>

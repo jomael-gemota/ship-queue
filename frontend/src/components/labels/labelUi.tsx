@@ -182,6 +182,18 @@ interface BatchItemsTableProps {
   /** Re-checks "Not found" items against the (newly synced) orders table. */
   onRefresh?: () => void
   refreshing?: boolean
+  /** When true, the Property cell is editable and failed rows can be recreated. */
+  canEdit?: boolean
+  /** Persist a new Property (address type) for an item; Service re-derives. */
+  onUpdateProperty?: (labelId: string, propertyType: 'residential' | 'commercial') => void
+  /** Re-attempt a single failed item with its current Property/Service. */
+  onRecreate?: (labelId: string) => void
+  /** Id of the item whose Property is currently being saved. */
+  updatingId?: string | null
+  /** Id of the item currently being recreated. */
+  recreatingId?: string | null
+  /** Whether Google Drive is connected — required to recreate (buy) a label. */
+  driveConnected?: boolean
 }
 
 type ItemsTab = 'shipping' | 'tracking'
@@ -250,7 +262,7 @@ function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
   )
 }
 
-export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, onRefresh, refreshing }: BatchItemsTableProps) {
+export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, onRefresh, refreshing, canEdit = false, onUpdateProperty, onRecreate, updatingId, recreatingId, driveConnected = true }: BatchItemsTableProps) {
   const [tab, setTab] = useState<ItemsTab>('shipping')
   const [search, setSearch] = useState('')
   const isShipping = tab === 'shipping'
@@ -424,7 +436,14 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                       <TdWrap className="break-words">{l.customerName || '—'}</TdWrap>
                       <TdWrap><AddressCell addr={l.shipFrom} /></TdWrap>
                       <TdWrap><AddressCell addr={l.shipTo} /></TdWrap>
-                      <TdWrap>{l.propertyType ? <PropertyBadge type={l.propertyType} /> : '—'}</TdWrap>
+                      <TdWrap>
+                        <PropertyCell
+                          item={l}
+                          editable={canEdit && l.status !== 'created'}
+                          saving={updatingId === l._id}
+                          onChange={(value) => onUpdateProperty?.(l._id, value)}
+                        />
+                      </TdWrap>
                       <TdWrap className="font-mono break-words">{l.packageCode || '—'}</TdWrap>
                       <TdWrap className="break-words">{l.serviceCode ? serviceName(l.serviceCode) : '—'}</TdWrap>
                       <TdWrap className="break-words">{l.shipDate || '—'}</TdWrap>
@@ -435,7 +454,19 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                         {l.dimensions ? `${l.dimensions.length}×${l.dimensions.width}×${l.dimensions.height} ${l.dimensions.units}` : '—'}
                       </TdWrap>
                       <TdWrap className="capitalize break-words">{l.insuranceProvider || '—'}</TdWrap>
-                      <TdWrap><ItemStatusBadge status={l.status} error={l.error} found={l.found} /></TdWrap>
+                      <TdWrap>
+                        <div className="flex flex-col items-start gap-1.5">
+                          <ItemStatusBadge status={l.status} error={l.error} found={l.found} />
+                          {canEdit && l.status === 'failed' && l.propertyOverride && l.found !== false && onRecreate && (
+                            <RecreateLabelButton
+                              busy={recreatingId === l._id}
+                              disabled={!driveConnected}
+                              title={!driveConnected ? 'Connect Google Drive in Settings first' : undefined}
+                              onClick={() => onRecreate(l._id)}
+                            />
+                          )}
+                        </div>
+                      </TdWrap>
                     </tr>
                   )
                 }
@@ -986,6 +1017,71 @@ export function PropertyBadge({ type }: { type: 'residential' | 'commercial' }) 
       <CommercialIcon className="h-3 w-3 shrink-0" />
       <span className="break-words">Commercial</span>
     </span>
+  )
+}
+
+/**
+ * Property (address type) cell. Read-only mode shows the colored badge; editable
+ * mode shows a dropdown so the operator can correct a Residential/Commercial
+ * mismatch. The effective value prefers the operator override over the synced
+ * propertyType, and an asterisk marks rows that have been manually overridden.
+ */
+function PropertyCell({
+  item,
+  editable,
+  saving,
+  onChange,
+}: {
+  item: LabelRecord
+  editable: boolean
+  saving: boolean
+  onChange: (value: 'residential' | 'commercial') => void
+}) {
+  const value = item.propertyOverride ?? item.propertyType
+
+  if (!editable) {
+    return value ? <PropertyBadge type={value} /> : <>—</>
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <select
+        value={value ?? ''}
+        disabled={saving}
+        onChange={(e) => {
+          const next = e.target.value as 'residential' | 'commercial'
+          if (next && next !== value) onChange(next)
+        }}
+        title={item.propertyOverride ? 'Manually overridden' : 'Change address type'}
+        className="h-7 max-w-full rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-1.5 text-[12px] text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+      >
+        {!value && <option value="" disabled>—</option>}
+        <option value="residential">Residential</option>
+        <option value="commercial">Commercial</option>
+      </select>
+      {saving ? (
+        <Spinner className="h-3 w-3 shrink-0 text-slate-400" />
+      ) : (
+        item.propertyOverride && (
+          <span className="text-[11px] font-semibold text-amber-500" title="Manually overridden">*</span>
+        )
+      )}
+    </div>
+  )
+}
+
+/** Small per-row button to re-attempt a single failed (edited) label. */
+function RecreateLabelButton({ busy, disabled, title, onClick }: { busy: boolean; disabled?: boolean; title?: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy || disabled}
+      title={title ?? 'Recreate and reprint this label with the corrected Property/Service'}
+      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+    >
+      {busy ? <Spinner className="h-3 w-3" /> : <PrinterIcon className="h-3 w-3" />}
+      {busy ? 'Working…' : 'Recreate label'}
+    </button>
   )
 }
 

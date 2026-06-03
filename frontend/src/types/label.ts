@@ -99,6 +99,8 @@ export interface LabelRecord {
   packageCode?: string
   shipDate?: string
   propertyType?: 'residential' | 'commercial'
+  /** Operator override of the address type; when set, drives the service. */
+  propertyOverride?: 'residential' | 'commercial'
   weight?: LabelWeight
   dimensions?: LabelDimensions
   shipmentId?: number
@@ -163,6 +165,21 @@ export interface CreateBatchLabelsResponse {
   data: {
     batch: LabelBatch
     results: CreateLabelResult[]
+  }
+}
+
+/** Response from editing a single item's Property (and re-derived Service). */
+export interface UpdateLabelItemResponse {
+  data: {
+    item: LabelRecord
+  }
+}
+
+/** Response from re-attempting a single failed item. */
+export interface RecreateLabelItemResponse {
+  data: {
+    item: LabelRecord
+    result: CreateLabelResult
   }
 }
 
