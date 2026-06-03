@@ -9,6 +9,7 @@ import {
   createShipStationLabelForOrder,
   applyShipFromAndInsuranceToOrder,
   getShipStationOrder,
+  resolveTestLabelCarrierService,
   CreateLabelForOrderPayload,
   ShipStationLabelAddress,
   ShipStationLabelWeight,
@@ -19,6 +20,7 @@ import {
   listWarehouses,
 } from '../services/shipstationWarehouse.service';
 import { uploadPdfToDrive } from '../services/googleDrive.service';
+import { appendTestLabelSlip, buildLabelWithPackingSlip } from '../services/packingSlip.service';
 
 const DEFAULT_DIMENSIONS = { length: 15, width: 10, height: 5, units: 'inches' };
 
@@ -265,6 +267,82 @@ async function syncOrderShippingDefaults(prepared: PreparedRow): Promise<void> {
 }
 
 /**
+ * Mints a NON-billable USPS test label for the order purely to obtain
+ * ShipStation's native packing slip. With the account's "… + Packing Slip"
+ * label layout, the test label PDF comes back as [sample label, packing slip].
+ *
+ * ShipStation only allows test labels for USPS, so we use a USPS service even
+ * though the real label ships via Amazon/FedEx — the packing slip is built from
+ * order data (and its barcode is an order-level reference), so it's correct
+ * regardless of the carrier used to mint it. Must run BEFORE the real label is
+ * purchased, since the order can't be re-labeled once it's marked shipped.
+ *
+ * Returns the test label's base64 PDF, or undefined if no USPS carrier is
+ * connected / the call fails (caller falls back to a generated slip).
+ */
+async function mintPackingSlipTestLabel(prepared: PreparedRow): Promise<string | undefined> {
+  if (!prepared.orderId) return undefined;
+
+  const carrier = await resolveTestLabelCarrierService();
+  if (!carrier) return undefined;
+
+  const testPayload: CreateLabelForOrderPayload = {
+    orderId: prepared.orderId,
+    carrierCode: carrier.carrierCode,
+    serviceCode: carrier.serviceCode,
+    packageCode: 'package',
+    confirmation: 'none',
+    shipDate: prepared.shipDate || formatShipDate(),
+    weight: prepared.weight || { value: 1, units: 'pounds' },
+    dimensions: prepared.dimensions || DEFAULT_DIMENSIONS,
+    insuranceOptions: { ...NO_INSURANCE },
+    testLabel: true,
+    ...(prepared.warehouseId ? { advancedOptions: { warehouseId: prepared.warehouseId } } : {}),
+  };
+
+  const res = await createShipStationLabelForOrder(testPayload);
+  return res.labelData;
+}
+
+/**
+ * Produces the final label PDF (base64) with a packing slip appended. Prefers
+ * ShipStation's native slip taken from the pre-fetched test label; falls back to
+ * a generated slip if the native one is unavailable. Never throws — a slip
+ * failure must not discard a (billable) label that was already purchased.
+ */
+async function composeLabelWithSlip(
+  prepared: PreparedRow,
+  realLabelData: string,
+  testLabelData: string | undefined,
+  trackingNumber: string | undefined
+): Promise<string> {
+  if (testLabelData) {
+    try {
+      const merged = await appendTestLabelSlip(realLabelData, testLabelData);
+      if (merged) return merged;
+    } catch (e) {
+      console.error(
+        '[Labels] Failed to append ShipStation packing slip; using generated slip:',
+        (e as Error).message
+      );
+    }
+  }
+
+  return buildLabelWithPackingSlip(realLabelData, {
+    poNumber: prepared.poNumber,
+    orderNumber: prepared.orderNumber,
+    customerName: prepared.customerName,
+    shipDate: prepared.shipDate,
+    trackingNumber,
+    carrierCode: prepared.carrierCode,
+    serviceCode: prepared.serviceCode,
+    shipFrom: prepared.shipFrom,
+    shipTo: prepared.shipTo,
+    skus: prepared.skus,
+  });
+}
+
+/**
  * Process 1 — resolve the imported PO#/Order# rows into reviewable label details.
  */
 export const prepareLabels = async (req: Request, res: Response): Promise<void> => {
@@ -336,7 +414,26 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
 
       try {
         await syncOrderShippingDefaults(prepared);
+
+        // Mint the ShipStation packing slip (USPS test label) BEFORE buying the
+        // real label — the order can't be re-labeled once it's marked shipped.
+        let testLabelData: string | undefined;
+        try {
+          testLabelData = await mintPackingSlipTestLabel(prepared);
+        } catch (e) {
+          console.error('[Labels] Could not mint packing-slip test label:', (e as Error).message);
+        }
+
         const ssResponse = await createShipStationLabelForOrder(payload);
+
+        const labelPdf = ssResponse.labelData
+          ? await composeLabelWithSlip(
+              prepared,
+              ssResponse.labelData,
+              testLabelData,
+              ssResponse.trackingNumber
+            )
+          : ssResponse.labelData;
 
         const label = new Label({
           poNumber: prepared.poNumber,
@@ -357,7 +454,7 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
           shipmentCost: ssResponse.shipmentCost,
           insuranceCost: ssResponse.insuranceCost,
           trackingNumber: ssResponse.trackingNumber,
-          labelData: ssResponse.labelData,
+          labelData: labelPdf,
           formData: ssResponse.formData,
           createdBy: user?.email,
           createdByUserId: userId,
@@ -365,14 +462,14 @@ export const createLabels = async (req: Request, res: Response): Promise<void> =
 
         // Upload renamed PDF (PO#.pdf) to Google Drive.
         let driveError: string | undefined;
-        if (ssResponse.labelData) {
+        if (labelPdf) {
           if (driveConnected) {
             try {
               const fileName = `${prepared.poNumber}.pdf`;
               const uploaded = await uploadPdfToDrive(
                 driveCreds,
                 fileName,
-                ssResponse.labelData,
+                labelPdf,
                 driveFolderId
               );
               label.driveFileId = uploaded.id;
@@ -486,7 +583,26 @@ async function createLabelForRecord(
 
   try {
     await syncOrderShippingDefaults(prepared);
+
+    // Mint the ShipStation packing slip (USPS test label) BEFORE buying the real
+    // label — the order can't be re-labeled once it's marked shipped.
+    let testLabelData: string | undefined;
+    try {
+      testLabelData = await mintPackingSlipTestLabel(prepared);
+    } catch (e) {
+      console.error('[Labels] Could not mint packing-slip test label:', (e as Error).message);
+    }
+
     const ssResponse = await createShipStationLabelForOrder(payload);
+
+    const labelPdf = ssResponse.labelData
+      ? await composeLabelWithSlip(
+          prepared,
+          ssResponse.labelData,
+          testLabelData,
+          ssResponse.trackingNumber
+        )
+      : ssResponse.labelData;
 
     label.orderId = prepared.orderId;
     label.status = 'created';
@@ -509,19 +625,19 @@ async function createLabelForRecord(
     label.shipmentCost = ssResponse.shipmentCost;
     label.insuranceCost = ssResponse.insuranceCost;
     label.trackingNumber = ssResponse.trackingNumber;
-    label.labelData = ssResponse.labelData;
+    label.labelData = labelPdf;
     label.formData = ssResponse.formData;
     label.error = undefined;
 
     let driveError: string | undefined;
-    if (ssResponse.labelData) {
+    if (labelPdf) {
       if (drive.connected) {
         try {
           const fileName = `${prepared.poNumber}.pdf`;
           const uploaded = await uploadPdfToDrive(
             drive.creds,
             fileName,
-            ssResponse.labelData,
+            labelPdf,
             drive.folderId
           );
           label.driveFileId = uploaded.id;
