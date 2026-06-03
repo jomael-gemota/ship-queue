@@ -168,6 +168,7 @@ export default function BatchItems() {
         try {
           const body = await res.json()
           if (body?.message) message = body.message
+          if (body?.error) message = `${message} (${body.error})`
         } catch {
           /* non-JSON error body */
         }
