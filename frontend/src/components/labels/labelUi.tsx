@@ -179,6 +179,9 @@ interface BatchItemsTableProps {
   loading: boolean
   downloadingId: string | null
   onDownloadPdf: (label: LabelRecord) => void
+  /** Re-checks "Not found" items against the (newly synced) orders table. */
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 type ItemsTab = 'shipping' | 'tracking'
@@ -247,7 +250,7 @@ function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
   )
 }
 
-export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }: BatchItemsTableProps) {
+export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, onRefresh, refreshing }: BatchItemsTableProps) {
   const [tab, setTab] = useState<ItemsTab>('shipping')
   const [search, setSearch] = useState('')
   const isShipping = tab === 'shipping'
@@ -268,12 +271,23 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf }
       {!loading && unsyncedCount > 0 && (
         <div className="notice-card notice-card--warning mx-5 mt-4 mb-1 flex items-start gap-2 text-sm">
           <WarningIcon className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>
+          <span className="flex-1">
             <span className="font-semibold">{unsyncedCount}</span> of {items.length} item
             {items.length === 1 ? '' : 's'} {unsyncedCount === 1 ? 'has' : 'have'} no shipping
             details because the order{unsyncedCount === 1 ? ' was' : 's were'} not found in the
-            orders table. Sync the orders table to populate {unsyncedCount === 1 ? 'it' : 'them'}.
+            orders table. Sync the orders table, then re-check to populate{' '}
+            {unsyncedCount === 1 ? 'it' : 'them'}.
           </span>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-amber-300 dark:border-amber-700/60 bg-white/70 dark:bg-amber-900/20 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-200 hover:bg-white dark:hover:bg-amber-900/40 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              <RefreshIcon className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Re-checking…' : 'Re-check orders'}
+            </button>
+          )}
         </div>
       )}
 
@@ -1068,6 +1082,14 @@ export function ErrorIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+export function RefreshIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )
 }

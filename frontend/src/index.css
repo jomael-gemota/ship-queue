@@ -87,6 +87,12 @@ body {
     color: rgb(146 64 14);
   }
 
+  .notice-card--info {
+    border-color: rgb(191 219 254);
+    background-image: linear-gradient(135deg, rgb(239 246 255) 0%, rgb(255 255 255) 100%);
+    color: rgb(30 64 175);
+  }
+
   .dark .notice-card {
     box-shadow: none;
     backdrop-filter: none;
@@ -111,5 +117,12 @@ body {
     background-image: none;
     background-color: rgb(146 64 14 / 0.2);
     color: rgb(253 186 116);
+  }
+
+  .dark .notice-card--info {
+    border-color: rgb(30 58 138 / 0.6);
+    background-image: none;
+    background-color: rgb(30 58 138 / 0.2);
+    color: rgb(147 197 253);
   }
 }

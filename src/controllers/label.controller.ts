@@ -707,6 +707,81 @@ export const getBatchItems = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+/**
+ * Re-resolves shipping details for a batch's not-yet-created "Not found" items
+ * by re-running the order lookup against the (now possibly synced) orders table.
+ *
+ * Use case: rows drafted before the ShipStation orders sync finished are tagged
+ * "Not found". After syncing, the operator can refresh the batch to pull in the
+ * newly available order details — no labels are created here. Only items that
+ * haven't been purchased and aren't already resolved are touched, so created
+ * labels keep the snapshot they were bought with.
+ */
+export const refreshBatchItems = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id);
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    // Only re-check rows that are still unresolved and not yet purchased.
+    const pending = await Label.find({
+      batchId: id,
+      status: { $ne: 'created' },
+      found: { $ne: true },
+    });
+
+    let resolved = 0;
+
+    await Promise.all(
+      pending.map(async (label) => {
+        const prepared = await prepareRow({
+          poNumber: label.poNumber,
+          orderNumber: label.orderNumber,
+        });
+
+        label.found = prepared.found;
+        label.orderId = prepared.orderId;
+        label.customerName = prepared.customerName;
+        label.qty = prepared.qty;
+        label.skus = prepared.skus;
+        if (prepared.shipFrom) label.shipFrom = prepared.shipFrom;
+        if (prepared.shipTo) label.shipTo = prepared.shipTo;
+        label.propertyType = prepared.propertyType;
+        label.carrierCode = prepared.carrierCode;
+        label.serviceCode = prepared.serviceCode;
+        label.packageCode = prepared.packageCode;
+        label.shipDate = prepared.shipDate;
+        label.weight = prepared.weight;
+        label.dimensions = prepared.dimensions;
+        label.insuranceProvider = prepared.insuranceProvider;
+        label.error = prepared.found ? undefined : prepared.error;
+
+        if (prepared.found) resolved += 1;
+        await label.save();
+      })
+    );
+
+    const [updatedBatch, items] = await Promise.all([
+      LabelBatch.findById(id).lean(),
+      Label.find({ batchId: id }).sort({ createdAt: 1 }).lean(),
+    ]);
+
+    res.json({
+      data: { batch: updatedBatch, items, checked: pending.length, resolved },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to refresh batch items', error: (error as Error).message });
+  }
+};
+
 interface PreflightItem {
   labelId: string;
   poNumber: string;

@@ -148,6 +148,17 @@ export interface BatchItemsResponse {
   }
 }
 
+export interface RefreshBatchItemsResponse {
+  data: {
+    batch: LabelBatch
+    items: LabelRecord[]
+    /** How many "Not found" items were re-checked. */
+    checked: number
+    /** How many of the re-checked items now resolve to an order. */
+    resolved: number
+  }
+}
+
 export interface CreateBatchLabelsResponse {
   data: {
     batch: LabelBatch

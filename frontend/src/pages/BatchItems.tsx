@@ -6,6 +6,7 @@ import type {
   LabelBatch,
   BatchItemsResponse,
   CreateBatchLabelsResponse,
+  RefreshBatchItemsResponse,
   PreflightResponse,
   PreflightSummary,
   PreflightItem,
@@ -37,6 +38,8 @@ export default function BatchItems() {
   const [batch, setBatch] = useState<LabelBatch | null>(null)
   const [items, setItems] = useState<LabelRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -64,6 +67,35 @@ export default function BatchItems() {
   useEffect(() => {
     loadBatch()
   }, [loadBatch])
+
+  // Re-resolve "Not found" items against the (newly synced) orders table. Pulls
+  // in shipping details for orders that became available after the batch was
+  // drafted — no labels are created here.
+  const handleRefresh = async () => {
+    if (!batchId) return
+    setRefreshing(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await authApi.post<RefreshBatchItemsResponse>(
+        `/labels/batches/${batchId}/refresh`,
+      )
+      setBatch(res.data.batch)
+      setItems(res.data.items)
+      const { checked, resolved } = res.data
+      if (checked === 0) {
+        setNotice('No "Not found" items to re-check.')
+      } else if (resolved === 0) {
+        setNotice(`Re-checked ${checked} item${checked === 1 ? '' : 's'} — still not found in the orders table. Sync the orders table and try again.`)
+      } else {
+        setNotice(`Resolved ${resolved} of ${checked} item${checked === 1 ? '' : 's'} from the orders table.`)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to re-check orders')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   // Opens the confirmation modal and runs a read-only preflight so the operator
   // can verify the enforced Ship From + Insurance before any billable purchase.
@@ -199,6 +231,18 @@ export default function BatchItems() {
         </div>
       )}
 
+      {notice && (
+        <div className="notice-card notice-card--info flex items-start gap-2 text-sm">
+          <span className="flex-1">{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="rounded-md p-0.5 text-slate-500/70 hover:bg-slate-200/60 hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:bg-[var(--bg-300)] transition-colors cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {user?.canCreateLabels && batch?.createdBy === user?.email && !driveConnected && (
         <div className="notice-card notice-card--warning flex items-start gap-3 text-sm">
           <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
@@ -269,6 +313,8 @@ export default function BatchItems() {
           loading={loading}
           downloadingId={downloadingId}
           onDownloadPdf={handleDownloadPdf}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
         />
       </section>
     </div>
