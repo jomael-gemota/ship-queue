@@ -278,6 +278,93 @@ export function getShipStationOrder(orderId: number): Promise<ShipStationOrderRe
   );
 }
 
+export interface ShipStationCarrier {
+  name?: string;
+  code?: string; // carrierCode (e.g. "stamps_com", "amazon_shipping")
+  accountNumber?: string;
+  requiresFundedAccount?: boolean;
+  primary?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ShipStationCarrierService {
+  carrierCode?: string;
+  code?: string; // serviceCode (e.g. "usps_ground_advantage")
+  name?: string;
+  domestic?: boolean;
+  international?: boolean;
+  [key: string]: unknown;
+}
+
+/** Lists the carriers connected to the ShipStation account (GET /carriers). */
+export function listShipStationCarriers(): Promise<ShipStationCarrier[]> {
+  return shipStationOrderRequest<ShipStationCarrier[]>('GET', '/carriers', 'listCarriers');
+}
+
+/** Lists the services available for a given carrierCode (GET /carriers/listservices). */
+export function listShipStationCarrierServices(
+  carrierCode: string
+): Promise<ShipStationCarrierService[]> {
+  return shipStationOrderRequest<ShipStationCarrierService[]>(
+    'GET',
+    `/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`,
+    'listServices'
+  );
+}
+
+export interface TestLabelCarrierService {
+  carrierCode: string;
+  serviceCode: string;
+}
+
+function isUspsCarrier(name?: string, code?: string): boolean {
+  const hay = `${name || ''} ${code || ''}`.toLowerCase();
+  return hay.includes('usps') || hay.includes('stamps');
+}
+
+function pickDomesticService(services: ShipStationCarrierService[]): string | undefined {
+  const domestic = services.filter((s) => s.domestic !== false && !s.international);
+  const preferred = domestic.find((s) =>
+    /ground_advantage|first|priority/i.test(`${s.code} ${s.name}`)
+  );
+  return (preferred || domestic[0] || services[0])?.code;
+}
+
+// Resolving the USPS carrier/service requires up to two extra API calls, so the
+// successful result is cached for the lifetime of the process. A failure is not
+// cached, so transient errors can be retried on the next label.
+let cachedTestLabelCarrierService: TestLabelCarrierService | null = null;
+
+/**
+ * Resolves the carrier/service used to mint a non-billable *test label* for the
+ * sole purpose of generating a ShipStation packing slip. ShipStation only allows
+ * test labels for USPS, so we use a USPS service. Prefers explicit env values
+ * (SHIPSTATION_TEST_CARRIER_CODE / SHIPSTATION_TEST_SERVICE_CODE), otherwise
+ * auto-discovers a connected USPS carrier + domestic service. Returns null when
+ * no USPS carrier is connected (caller should fall back to a generated slip).
+ */
+export async function resolveTestLabelCarrierService(): Promise<TestLabelCarrierService | null> {
+  if (cachedTestLabelCarrierService) return cachedTestLabelCarrierService;
+
+  const envCarrier = process.env.SHIPSTATION_TEST_CARRIER_CODE;
+  const envService = process.env.SHIPSTATION_TEST_SERVICE_CODE;
+  if (envCarrier && envService) {
+    cachedTestLabelCarrierService = { carrierCode: envCarrier, serviceCode: envService };
+    return cachedTestLabelCarrierService;
+  }
+
+  const carriers = await listShipStationCarriers();
+  const usps = carriers.find((c) => isUspsCarrier(c.name, c.code));
+  if (!usps?.code) return null;
+
+  const services = await listShipStationCarrierServices(usps.code);
+  const serviceCode = envService || pickDomesticService(services);
+  if (!serviceCode) return null;
+
+  cachedTestLabelCarrierService = { carrierCode: usps.code, serviceCode };
+  return cachedTestLabelCarrierService;
+}
+
 /**
  * Upserts an order via POST /orders/createorder. ShipStation matches on
  * orderId/orderKey, so re-submitting a previously-fetched order updates it in
