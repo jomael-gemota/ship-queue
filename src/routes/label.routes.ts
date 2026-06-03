@@ -13,6 +13,8 @@ import {
   preflightBatch,
   createBatchLabels,
   deleteBatch,
+  updateLabelItem,
+  recreateLabelItem,
 } from '../controllers/label.controller';
 
 const router = Router();
@@ -32,6 +34,8 @@ router.post('/create', requireLabelPermission, createLabels);
 router.post('/batches', requireLabelPermission, draftBatch);
 router.post('/batches/:id/preflight', requireLabelPermission, preflightBatch);
 router.post('/batches/:id/create', requireLabelPermission, createBatchLabels);
+router.patch('/:id', requireLabelPermission, updateLabelItem);
+router.post('/:id/recreate', requireLabelPermission, recreateLabelItem);
 router.delete('/batches/:id', deleteBatch);
 
 export default router;

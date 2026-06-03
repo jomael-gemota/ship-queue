@@ -34,6 +34,10 @@ const SHIP_FROM_WAREHOUSE_NAME = process.env.SHIP_FROM_WAREHOUSE_NAME || 'Bellev
 interface InputRow {
   poNumber?: string;
   orderNumber?: string;
+  // Operator override of the address type. When set, the resolved propertyType
+  // and serviceCode are derived from this instead of the order's residential
+  // flag (lets the user fix Commercial/Residential mismatches before reprint).
+  propertyOverride?: 'residential' | 'commercial';
 }
 
 interface PreparedSku {
@@ -182,7 +186,11 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
     return base;
   }
 
-  const residential = Boolean(order.shipTo?.residential);
+  // An operator override (if present) wins over the order's residential flag so
+  // a manually corrected Property reliably drives the FedEx service selection.
+  const residential = input.propertyOverride
+    ? input.propertyOverride === 'residential'
+    : Boolean(order.shipTo?.residential);
   const totalQty = (order.items || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
   const skus = (order.items || []).map((item) => ({
     sku: item.sku,
@@ -564,6 +572,7 @@ async function createLabelForRecord(
   const prepared = await prepareRow({
     poNumber: label.poNumber,
     orderNumber: label.orderNumber,
+    propertyOverride: label.propertyOverride,
   });
 
   if (!prepared.found) {
@@ -896,6 +905,130 @@ export const refreshBatchItems = async (req: Request, res: Response): Promise<vo
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to refresh batch items', error: (error as Error).message });
+  }
+};
+
+/**
+ * Confirms the requester owns the batch a label belongs to. Mirrors the
+ * ownership rule used by createBatchLabels: only the uploader may mutate a
+ * batch's items. Returns an error message string when not allowed, else null.
+ */
+async function assertLabelEditable(label: ILabel, userId?: string): Promise<string | null> {
+  if (!label.batchId) return null;
+  const batch = await LabelBatch.findById(label.batchId).select('createdByUserId').lean();
+  if (batch?.createdByUserId && batch.createdByUserId !== userId) {
+    return 'You can only edit items in batches you uploaded.';
+  }
+  return null;
+}
+
+/**
+ * Updates the Property (address type) of a single not-yet-created label item and
+ * re-derives its FedEx service in lock-step. Persists the choice as an override
+ * so it survives re-resolution when the label is (re)created. Lets operators fix
+ * Commercial/Residential mismatches between ShipStation and Seller Central that
+ * would otherwise pick the wrong service and fail at purchase.
+ */
+export const updateLabelItem = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid label id' });
+      return;
+    }
+
+    const propertyType = req.body?.propertyType;
+    if (propertyType !== 'residential' && propertyType !== 'commercial') {
+      res.status(400).json({ message: "propertyType must be 'residential' or 'commercial'." });
+      return;
+    }
+
+    const label = await Label.findById(id);
+    if (!label) {
+      res.status(404).json({ message: 'Label item not found' });
+      return;
+    }
+
+    if (label.status === 'created') {
+      res.status(409).json({
+        message: 'This label has already been created and can no longer be edited.',
+      });
+      return;
+    }
+
+    const ownershipError = await assertLabelEditable(label, req.user?.id);
+    if (ownershipError) {
+      res.status(403).json({ message: ownershipError });
+      return;
+    }
+
+    const residential = propertyType === 'residential';
+    label.propertyOverride = propertyType;
+    label.propertyType = propertyType;
+    label.serviceCode = resolveServiceCode(residential);
+    await label.save();
+
+    const item = await Label.findById(id).lean();
+    res.json({ data: { item } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update label item', error: (error as Error).message });
+  }
+};
+
+/**
+ * Re-attempts a single errored label using its current (possibly overridden)
+ * Property/service. Only failed items are eligible — created labels are already
+ * purchased, and drafted items are handled by the normal batch create flow.
+ * Recomputes the parent batch status afterward.
+ */
+export const recreateLabelItem = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid label id' });
+      return;
+    }
+
+    const label = await Label.findById(id).select('+labelData');
+    if (!label) {
+      res.status(404).json({ message: 'Label item not found' });
+      return;
+    }
+
+    if (label.status !== 'failed') {
+      res.status(409).json({
+        message: 'Only failed items can be recreated.',
+      });
+      return;
+    }
+
+    const ownershipError = await assertLabelEditable(label, req.user?.id);
+    if (ownershipError) {
+      res.status(403).json({ message: ownershipError });
+      return;
+    }
+
+    const { driveCreds, driveFolderId, driveConnected } = await resolveDriveContext(req.user?.id);
+    const result = await createLabelForRecord(label, {
+      creds: driveCreds,
+      folderId: driveFolderId,
+      connected: driveConnected,
+    });
+
+    // Keep the parent batch status in sync with the recreated item.
+    if (label.batchId) {
+      const batch = await LabelBatch.findById(label.batchId);
+      if (batch) {
+        const allLabels = await Label.find({ batchId: label.batchId }).select('status').lean();
+        batch.status = summarizeBatchStatus(allLabels);
+        await batch.save();
+      }
+    }
+
+    const item = await Label.findById(id).lean();
+    res.json({ data: { item, result } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to recreate label item', error: (error as Error).message });
   }
 };
 

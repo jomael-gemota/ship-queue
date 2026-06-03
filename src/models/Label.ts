@@ -55,6 +55,11 @@ export interface ILabel extends Document {
   packageCode?: string;
   shipDate?: string;
   propertyType?: 'residential' | 'commercial';
+  // Operator-set override of the address type. When present it takes precedence
+  // over the order's residential flag, so the derived serviceCode survives
+  // re-resolution at label-purchase time. Used to correct ShipStation/Seller
+  // Central mismatches that otherwise pick the wrong FedEx service.
+  propertyOverride?: 'residential' | 'commercial';
   weight?: ILabelWeight;
   dimensions?: ILabelDimensions;
   requestPayload?: Record<string, unknown>;
@@ -125,6 +130,7 @@ const LabelSchema = new Schema<ILabel>(
     packageCode: String,
     shipDate: String,
     propertyType: { type: String, enum: ['residential', 'commercial'] },
+    propertyOverride: { type: String, enum: ['residential', 'commercial'] },
     weight: { value: Number, units: String },
     dimensions: { length: Number, width: Number, height: Number, units: String },
     requestPayload: { type: Schema.Types.Mixed },
