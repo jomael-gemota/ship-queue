@@ -668,6 +668,10 @@ export function ConfirmCreateLabelsModal({
   error,
   onConfirm,
   onCancel,
+  title = 'Create + Print labels?',
+  subtitle = 'Review the enforced shipping settings below. This buys real, billable labels.',
+  confirmLabel,
+  creatingLabel = 'Creating…',
 }: {
   loading: boolean
   creating: boolean
@@ -676,6 +680,14 @@ export function ConfirmCreateLabelsModal({
   error: string | null
   onConfirm: () => void
   onCancel: () => void
+  /** Modal heading. Defaults to the batch "Create + Print" wording. */
+  title?: string
+  /** Sub-heading under the title. */
+  subtitle?: string
+  /** Confirm button label. Defaults to "Create N label(s)" from the summary. */
+  confirmLabel?: string
+  /** Confirm button label while the action is in progress. */
+  creatingLabel?: string
 }) {
   const shipFromLine = summary ? addressToLine(summary.expectedShipFrom) : ''
   const attention = items.filter((i) => i.status !== 'ok')
@@ -690,9 +702,9 @@ export function ConfirmCreateLabelsModal({
             <PrinterIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Create + Print labels?</h3>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-              Review the enforced shipping settings below. This buys real, billable labels.
+              {subtitle}
             </p>
           </div>
         </div>
@@ -794,7 +806,7 @@ export function ConfirmCreateLabelsModal({
 
             {summary.creatable === 0 && (
               <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-                No labels can be created for this batch.
+                No labels can be created.
               </p>
             )}
           </>
@@ -814,7 +826,12 @@ export function ConfirmCreateLabelsModal({
             className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {creating && <Spinner className="h-3.5 w-3.5" />}
-            {creating ? 'Creating…' : summary ? `Create ${summary.creatable} label${summary.creatable === 1 ? '' : 's'}` : 'Create labels'}
+            {creating
+              ? creatingLabel
+              : confirmLabel ??
+                (summary
+                  ? `Create ${summary.creatable} label${summary.creatable === 1 ? '' : 's'}`
+                  : 'Create labels')}
           </button>
         </div>
       </div>

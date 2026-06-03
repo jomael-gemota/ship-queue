@@ -242,6 +242,14 @@ export interface PreflightResponse {
   }
 }
 
+/** Single-item preflight (for the Recreate confirmation modal). */
+export interface PreflightItemResponse {
+  data: {
+    summary: PreflightSummary
+    items: PreflightItem[]
+  }
+}
+
 export interface AppSettings {
   driveConnected: boolean
   driveConnectedAt: string | null

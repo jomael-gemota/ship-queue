@@ -10,6 +10,7 @@ import type {
   UpdateLabelItemResponse,
   RecreateLabelItemResponse,
   PreflightResponse,
+  PreflightItemResponse,
   PreflightSummary,
   PreflightItem,
 } from '../types/label'
@@ -55,6 +56,11 @@ export default function BatchItems() {
   const [zipping, setZipping] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [recreatingId, setRecreatingId] = useState<string | null>(null)
+  const [confirmRecreateId, setConfirmRecreateId] = useState<string | null>(null)
+  const [recreatePreflightLoading, setRecreatePreflightLoading] = useState(false)
+  const [recreatePreflightSummary, setRecreatePreflightSummary] = useState<PreflightSummary | null>(null)
+  const [recreatePreflightItems, setRecreatePreflightItems] = useState<PreflightItem[]>([])
+  const [recreatePreflightError, setRecreatePreflightError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadBatch = useCallback(async () => {
@@ -268,11 +274,38 @@ export default function BatchItems() {
     }
   }
 
-  // Re-attempts a single failed item with its corrected Property/Service, then
-  // prints the new label if the purchase succeeded.
-  const handleRecreate = async (labelId: string) => {
+  // Opens the recreate confirmation modal for a single failed item and runs a
+  // read-only preflight so the operator can verify the enforced Ship From +
+  // Insurance before the billable re-purchase.
+  const handleOpenRecreateConfirm = async (labelId: string) => {
     if (!driveConnected) {
       setError('Google Drive is not connected. Connect it in Settings before recreating labels.')
+      return
+    }
+    setConfirmRecreateId(labelId)
+    setRecreatePreflightLoading(true)
+    setRecreatePreflightError(null)
+    setRecreatePreflightSummary(null)
+    setRecreatePreflightItems([])
+    try {
+      const res = await authApi.post<PreflightItemResponse>(`/labels/${labelId}/preflight`)
+      setRecreatePreflightSummary(res.data.summary)
+      setRecreatePreflightItems(res.data.items)
+    } catch (e) {
+      setRecreatePreflightError(e instanceof Error ? e.message : 'Failed to verify order')
+    } finally {
+      setRecreatePreflightLoading(false)
+    }
+  }
+
+  // Re-attempts the confirmed failed item with its corrected Property/Service,
+  // then prints the new label if the purchase succeeded.
+  const handleConfirmRecreate = async () => {
+    const labelId = confirmRecreateId
+    if (!labelId) return
+    if (!driveConnected) {
+      setError('Google Drive is not connected. Connect it in Settings before recreating labels.')
+      setConfirmRecreateId(null)
       return
     }
     setRecreatingId(labelId)
@@ -284,6 +317,7 @@ export default function BatchItems() {
       const refreshed = await authApi.get<BatchItemsResponse>(`/labels/batches/${batchId}/items`)
       setBatch(refreshed.data.batch)
       setItems(refreshed.data.items)
+      setConfirmRecreateId(null)
       if (updated.status === 'created') {
         await printLabelPdf(updated._id)
       } else if (updated.error) {
@@ -291,6 +325,7 @@ export default function BatchItems() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to recreate label')
+      setConfirmRecreateId(null)
     } finally {
       setRecreatingId(null)
     }
@@ -319,6 +354,21 @@ export default function BatchItems() {
           error={preflightError}
           onConfirm={handleConfirmCreate}
           onCancel={() => setConfirmCreate(false)}
+        />
+      )}
+      {confirmRecreateId && (
+        <ConfirmCreateLabelsModal
+          loading={recreatePreflightLoading}
+          creating={!!recreatingId}
+          summary={recreatePreflightSummary}
+          items={recreatePreflightItems}
+          error={recreatePreflightError}
+          title="Recreate this label?"
+          subtitle="Review the enforced shipping settings below. This buys a new, billable label."
+          confirmLabel="Recreate label"
+          creatingLabel="Recreating…"
+          onConfirm={handleConfirmRecreate}
+          onCancel={() => setConfirmRecreateId(null)}
         />
       )}
       {error && (
@@ -428,7 +478,7 @@ export default function BatchItems() {
           refreshing={refreshing}
           canEdit={canEdit}
           onUpdateProperty={handleUpdateProperty}
-          onRecreate={handleRecreate}
+          onRecreate={handleOpenRecreateConfirm}
           updatingId={updatingId}
           recreatingId={recreatingId}
           driveConnected={driveConnected}
