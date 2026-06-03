@@ -1094,20 +1094,27 @@ export const getBatchLabelsZip = async (req: Request, res: Response): Promise<vo
 
     const withPdf = labels.filter((l) => l.labelData);
     if (withPdf.length === 0) {
-      res.status(404).json({ message: 'No label PDFs available for this batch.' });
+      // Created labels exist but none retained a stored PDF (e.g. older records
+      // uploaded only to Drive). Surface a clear, actionable message.
+      const createdCount = labels.length;
+      const message = createdCount > 0
+        ? 'No stored PDFs found for this batch. These labels were created before PDFs were retained for download — open them from the Drive links instead.'
+        : 'No created labels in this batch yet.';
+      res.status(404).json({ message });
       return;
     }
 
-    const shortId = `B-${String(batch._id).slice(-6).toUpperCase()}`;
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${shortId}-labels.zip"`);
-
+    // Build the whole archive in memory before responding. Shipping-label PDFs
+    // are small, and buffering means any failure surfaces as a clean JSON error
+    // instead of a half-written, aborted download.
     const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.on('error', (err) => {
-      // Headers are already sent once data flows, so just destroy the stream.
-      res.destroy(err);
+    const chunks: Buffer[] = [];
+    const built = new Promise<Buffer>((resolve, reject) => {
+      archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+      archive.on('warning', (err) => reject(err));
+      archive.on('error', (err) => reject(err));
+      archive.on('end', () => resolve(Buffer.concat(chunks)));
     });
-    archive.pipe(res);
 
     const usedNames = new Map<string, number>();
     for (const label of withPdf) {
@@ -1122,8 +1129,18 @@ export const getBatchLabelsZip = async (req: Request, res: Response): Promise<vo
       archive.append(Buffer.from(label.labelData as string, 'base64'), { name });
     }
 
-    await archive.finalize();
+    archive.finalize().catch(() => {
+      /* error surfaces via the 'error' event handled by `built` */
+    });
+    const zipBuffer = await built;
+
+    const shortId = `B-${String(batch._id).slice(-6).toUpperCase()}`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${shortId}-labels.zip"`);
+    res.setHeader('Content-Length', String(zipBuffer.length));
+    res.send(zipBuffer);
   } catch (error) {
+    console.error('[Labels] Failed to export batch label PDFs:', error);
     if (!res.headersSent) {
       res.status(500).json({ message: 'Failed to export label PDFs', error: (error as Error).message });
     } else {
