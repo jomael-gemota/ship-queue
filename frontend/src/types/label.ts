@@ -125,6 +125,10 @@ export interface LabelBatch {
   fileName?: string
   itemCount: number
   createdBy?: string
+  /** Uploader's display name, resolved from their account by email. */
+  createdByName?: string
+  /** Uploader's avatar URL, resolved from their account by email. */
+  createdByAvatar?: string
   createdAt: string
   updatedAt: string
 }

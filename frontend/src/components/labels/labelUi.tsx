@@ -45,6 +45,42 @@ export function shortBatchId(id: string): string {
   return `B-${id.slice(-6).toUpperCase()}`
 }
 
+/**
+ * Small circular avatar for a batch uploader. Renders the account photo when
+ * available, otherwise a neutral initial derived from the name/email.
+ */
+export function UploaderAvatar({
+  email,
+  name,
+  avatar,
+  size = 'sm',
+}: {
+  email?: string
+  name?: string
+  avatar?: string
+  size?: 'sm' | 'md'
+}) {
+  const dim = size === 'md' ? 'w-6 h-6 text-xs' : 'w-5 h-5 text-[10px]'
+  const label = name || email || ''
+  if (avatar) {
+    return (
+      <img
+        src={avatar}
+        alt={label}
+        referrerPolicy="no-referrer"
+        className={`${dim} rounded-full object-cover shrink-0`}
+      />
+    )
+  }
+  return (
+    <span
+      className={`${dim} rounded-full bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)] font-semibold flex items-center justify-center shrink-0 select-none`}
+    >
+      {(label || '?').charAt(0).toUpperCase()}
+    </span>
+  )
+}
+
 /** Flattens an address into a single-line, human-readable string for CSV. */
 function addressToLine(addr?: LabelAddress): string {
   if (!addr) return ''

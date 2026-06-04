@@ -776,6 +776,30 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
+/**
+ * Attaches the uploader's display name + avatar (looked up by email) onto lean
+ * batch objects, so the UI can show an avatar next to "Uploaded by" without a
+ * separate user lookup per row.
+ */
+async function attachUploaderInfo<T extends { createdBy?: string }>(
+  batches: T[]
+): Promise<(T & { createdByName?: string; createdByAvatar?: string })[]> {
+  const emails = Array.from(
+    new Set(batches.map((b) => b.createdBy).filter((e): e is string => Boolean(e)))
+  );
+  if (emails.length === 0) return batches.map((b) => ({ ...b }));
+
+  const users = await User.find({ email: { $in: emails } })
+    .select('email name avatar')
+    .lean();
+  const byEmail = new Map(users.map((u) => [u.email, u]));
+
+  return batches.map((b) => {
+    const u = b.createdBy ? byEmail.get(b.createdBy) : undefined;
+    return { ...b, createdByName: u?.name, createdByAvatar: u?.avatar };
+  });
+}
+
 /** Lists label batches (newest first) with their resolved item counts. */
 export const getBatches = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -790,8 +814,10 @@ export const getBatches = async (req: Request, res: Response): Promise<void> => 
       LabelBatch.countDocuments(),
     ]);
 
+    const enriched = await attachUploaderInfo(batches);
+
     res.json({
-      data: batches,
+      data: enriched,
       pagination: { page: pageNum, pageSize: size, total, pages: Math.ceil(total / size) },
     });
   } catch (error) {
@@ -814,6 +840,8 @@ export const getBatchItems = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const [batchWithUploader] = await attachUploaderInfo([batch]);
+
     const items = await Label.find({ batchId: id }).sort({ createdAt: 1 }).lean();
 
     // Ensure the Ship From column reflects the current warehouse origin. Items
@@ -827,7 +855,7 @@ export const getBatchItems = async (req: Request, res: Response): Promise<void> 
       });
     }
 
-    res.json({ data: { batch, items } });
+    res.json({ data: { batch: batchWithUploader, items } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch batch items', error: (error as Error).message });
   }
@@ -1279,7 +1307,9 @@ export const createBatchLabels = async (req: Request, res: Response): Promise<vo
     batch.status = summarizeBatchStatus(allLabels);
     await batch.save();
 
-    res.json({ data: { batch, results } });
+    const [batchWithUploader] = await attachUploaderInfo([batch.toObject()]);
+
+    res.json({ data: { batch: batchWithUploader, results } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to create labels', error: (error as Error).message });
   }

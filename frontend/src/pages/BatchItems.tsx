@@ -27,6 +27,7 @@ import {
   ConfirmDeleteBatchModal,
   ConfirmCreateLabelsModal,
   exportBatchItemsCsv,
+  UploaderAvatar,
   LabelsTableIcon,
   BackIcon,
 } from '../components/labels/labelUi'
@@ -430,13 +431,21 @@ export default function BatchItems() {
               <span className="font-mono">{batch ? shortBatchId(batch._id) : shortBatchId(batchId)}</span>
               {batch && <BatchStatusBadge status={batch.status} />}
             </h2>
-            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <p className="inline-flex flex-wrap items-center gap-x-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
               {batch ? (
                 <>
-                  {batch.itemCount} item{batch.itemCount === 1 ? '' : 's'}
-                  {batch.fileName ? ` · ${batch.fileName}` : ''}
-                  {` · ${formatDateTime(batch.createdAt)}`}
-                  {batch.createdBy ? ` · ${batch.createdBy}` : ''}
+                  <span>
+                    {batch.itemCount} item{batch.itemCount === 1 ? '' : 's'}
+                    {batch.fileName ? ` · ${batch.fileName}` : ''}
+                    {` · ${formatDateTime(batch.createdAt)}`}
+                  </span>
+                  {batch.createdBy && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>·</span>
+                      <UploaderAvatar email={batch.createdBy} name={batch.createdByName} avatar={batch.createdByAvatar} />
+                      <span>{batch.createdBy}</span>
+                    </span>
+                  )}
                 </>
               ) : (
                 'Loading batch…'

@@ -20,6 +20,8 @@ import {
   BatchStatusBadge,
   CreatePrintButton,
   ExportCsvButton,
+  ExportZipButton,
+  UploaderAvatar,
   DeleteBatchButton,
   ConfirmDeleteBatchModal,
   ConfirmCreateLabelsModal,
@@ -38,6 +40,8 @@ import {
   RowItemIcon,
 } from '../components/labels/labelUi'
 import { useAuth } from '../context/AuthContext'
+
+const TOKEN_KEY = 'sq_token'
 
 /** Parses a single CSV row, respecting double-quoted fields. */
 function parseCsvLine(line: string): string[] {
@@ -144,6 +148,7 @@ export default function CreateShippingLabel() {
   const [batchesLoading, setBatchesLoading] = useState(true)
   const [creatingBatchId, setCreatingBatchId] = useState<string | null>(null)
   const [exportingBatchId, setExportingBatchId] = useState<string | null>(null)
+  const [zippingBatchId, setZippingBatchId] = useState<string | null>(null)
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmCreateId, setConfirmCreateId] = useState<string | null>(null)
@@ -231,6 +236,40 @@ export default function CreateShippingLabel() {
       setError(e instanceof Error ? e.message : 'Failed to export CSV')
     } finally {
       setExportingBatchId(null)
+    }
+  }
+
+  // Downloads every created label's PDF in a batch as a single zip archive.
+  const handleExportZip = async (batch: LabelBatch) => {
+    setZippingBatchId(batch._id)
+    setError(null)
+    try {
+      const token = localStorage.getItem(TOKEN_KEY)
+      const res = await fetch(`/api/labels/batches/${batch._id}/labels.zip`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        let message = 'Failed to export label PDFs'
+        try {
+          const body = await res.json()
+          if (body?.message) message = body.message
+          if (body?.error) message = `${message} (${body.error})`
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(message)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${shortBatchId(batch._id)}-labels.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to export label PDFs')
+    } finally {
+      setZippingBatchId(null)
     }
   }
 
@@ -471,7 +510,16 @@ export default function CreateShippingLabel() {
                       </span>
                     </Td>
                     <Td compact className="text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
-                    <Td compact className="text-slate-600 dark:text-[var(--text-200)]">{b.createdBy || '—'}</Td>
+                    <Td compact className="text-slate-600 dark:text-[var(--text-200)]">
+                      {b.createdBy ? (
+                        <span className="inline-flex items-center gap-2">
+                          <UploaderAvatar email={b.createdBy} name={b.createdByName} avatar={b.createdByAvatar} />
+                          <span className="whitespace-nowrap">{b.createdBy}</span>
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </Td>
                     <Td compact><BatchStatusBadge status={b.status} /></Td>
                     <Td compact>
                       <Link
@@ -498,6 +546,17 @@ export default function CreateShippingLabel() {
                           size="sm"
                           busy={exportingBatchId === b._id}
                           onClick={() => handleExportCsv(b)}
+                        />
+                        <ExportZipButton
+                          size="sm"
+                          busy={zippingBatchId === b._id}
+                          disabled={b.status !== 'created' && b.status !== 'partial'}
+                          title={
+                            b.status === 'created' || b.status === 'partial'
+                              ? 'Export label PDFs (.zip)'
+                              : 'No created label PDFs to export yet'
+                          }
+                          onClick={() => handleExportZip(b)}
                         />
                         {user && b.createdBy === user.email && (
                           <DeleteBatchButton
