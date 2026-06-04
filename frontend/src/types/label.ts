@@ -264,6 +264,8 @@ export interface SettingsResponse {
   data: AppSettings
 }
 
+export type { SyncConfig, SyncConfigResponse } from './order'
+
 export interface DriveFolder {
   id: string
   name: string

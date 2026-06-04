@@ -132,6 +132,16 @@ export interface SyncStatusResponse {
   data: SyncState & { lastSyncedAt: string | null }
 }
 
+/** Global background order-sync configuration (admin-managed). */
+export interface SyncConfig {
+  enabled: boolean
+  intervalMs: number
+}
+
+export interface SyncConfigResponse {
+  data: SyncConfig
+}
+
 export interface SyncResponse {
   message: string
   data: SyncState
