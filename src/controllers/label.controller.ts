@@ -720,6 +720,10 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
     const rows: InputRow[] = Array.isArray(req.body?.rows) ? req.body.rows : [];
     const fileName: string | undefined =
       typeof req.body?.fileName === 'string' ? req.body.fileName : undefined;
+    // The client sends its local upload date (YYYY-MM-DD) so "the day the batch
+    // was uploaded" reflects the operator's timezone rather than the server's.
+    const requestedShipDate =
+      typeof req.body?.shipDate === 'string' ? req.body.shipDate.trim() : '';
 
     const cleaned = rows
       .map((r) => ({
@@ -747,6 +751,18 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
     // Resolve a reviewable shipping snapshot for each row (no ShipStation calls).
     const prepared = await Promise.all(cleaned.map(prepareRow));
 
+    // Default every item's ship date to the day the batch was uploaded. Prefer
+    // the client's local date; fall back to the batch's server timestamp if it's
+    // missing/invalid. Stored as a shipDateOverride so it survives re-resolution
+    // and is the date the label is actually purchased with, while remaining
+    // editable via the batch-wide Ship Date picker.
+    const isValidShipDate =
+      SHIP_DATE_RE.test(requestedShipDate) &&
+      !Number.isNaN(new Date(`${requestedShipDate}T00:00:00Z`).getTime());
+    const uploadShipDate = isValidShipDate
+      ? requestedShipDate
+      : formatShipDate(batch.createdAt);
+
     await Label.insertMany(
       prepared.map((p) => ({
         batchId: batch._id,
@@ -764,7 +780,8 @@ export const draftBatch = async (req: Request, res: Response): Promise<void> => 
         carrierCode: p.carrierCode,
         serviceCode: p.serviceCode,
         packageCode: p.packageCode,
-        shipDate: p.shipDate,
+        shipDate: uploadShipDate,
+        shipDateOverride: uploadShipDate,
         weight: p.weight,
         dimensions: p.dimensions,
         insuranceProvider: p.insuranceProvider,
