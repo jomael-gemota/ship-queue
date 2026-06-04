@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { authApi, ApiError } from '../lib/api'
-import type { AppSettings, SettingsResponse, DriveFolder } from '../types/label'
+import type { AppSettings, SettingsResponse, DriveFolder, SyncConfigResponse } from '../types/label'
 import { useAuth } from '../context/AuthContext'
 
 interface FoldersResponse {
@@ -32,7 +32,14 @@ const DRIVE_ERROR_MESSAGES: Record<string, string> = {
 export default function Settings() {
   const { user, refreshUser } = useAuth()
   const canCreate = !!user?.canCreateLabels
+  const isAdmin = user?.role === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Auto-sync (admin-only) configuration
+  const [syncEnabled, setSyncEnabled] = useState(true)
+  const [syncMinutes, setSyncMinutes] = useState('5')
+  const [syncLoaded, setSyncLoaded] = useState(false)
+  const [syncSaving, setSyncSaving] = useState(false)
 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,6 +71,47 @@ export default function Settings() {
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  // Load the global auto-sync config (admins only).
+  useEffect(() => {
+    if (!isAdmin) return
+    authApi
+      .get<SyncConfigResponse>('/settings/sync')
+      .then((res) => {
+        setSyncEnabled(res.data.enabled)
+        setSyncMinutes(String(Math.max(1, Math.round(res.data.intervalMs / 60000))))
+        setSyncLoaded(true)
+      })
+      .catch(() => setSyncLoaded(true))
+  }, [isAdmin])
+
+  const saveSyncConfig = async () => {
+    const minutes = Number(syncMinutes)
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+      setError('Sync interval must be between 1 and 1440 minutes.')
+      return
+    }
+    setSyncSaving(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const res = await authApi.put<SyncConfigResponse>('/settings/sync', {
+        enabled: syncEnabled,
+        intervalMs: Math.round(minutes * 60000),
+      })
+      setSyncEnabled(res.data.enabled)
+      setSyncMinutes(String(Math.max(1, Math.round(res.data.intervalMs / 60000))))
+      setSuccess(
+        res.data.enabled
+          ? `Auto-sync enabled — syncing every ${Math.round(res.data.intervalMs / 60000)} min.`
+          : 'Auto-sync disabled.'
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save auto-sync settings')
+    } finally {
+      setSyncSaving(false)
+    }
+  }
 
   // Handle redirect-back from the Drive OAuth flow
   useEffect(() => {
@@ -482,6 +530,86 @@ export default function Settings() {
           </>
         )}
       </section>
+
+      {isAdmin && (
+        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+              <SyncIcon className="h-6 w-6 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Automatic order syncing</h2>
+              <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+                Pull new ShipStation orders on the server on a schedule — runs even when nobody has the app open.
+              </p>
+            </div>
+          </div>
+
+          {!syncLoaded ? (
+            <p className="text-sm text-slate-400">Loading…</p>
+          ) : (
+            <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+              {/* Enable toggle */}
+              <div className="flex items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Background auto-sync</p>
+                  <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    When on, the server keeps orders up to date automatically.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={syncEnabled}
+                  onClick={() => setSyncEnabled((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                    syncEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      syncEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Interval */}
+              <div className="flex items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Sync interval</p>
+                  <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    How often the server checks for new orders (1–1440 minutes).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={syncMinutes}
+                    onChange={(e) => setSyncMinutes(e.target.value)}
+                    disabled={!syncEnabled}
+                    className="w-20 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-100)] text-right focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
+                  />
+                  <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">min</span>
+                </div>
+              </div>
+
+              {/* Save */}
+              <div className="flex items-center justify-end gap-2 p-4">
+                <button
+                  onClick={saveSyncConfig}
+                  disabled={syncSaving}
+                  className="rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  {syncSaving ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }
@@ -542,6 +670,14 @@ function UnplugIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10" />
+    </svg>
+  )
+}
+
+function SyncIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   )
 }
