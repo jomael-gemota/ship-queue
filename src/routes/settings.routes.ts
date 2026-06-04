@@ -1,6 +1,13 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
-import { getSettings, updateSettings, listFolders, disconnectDrive } from '../controllers/settings.controller';
+import { requireAuth, requireAdmin } from '../middleware/auth';
+import {
+  getSettings,
+  updateSettings,
+  listFolders,
+  disconnectDrive,
+  getSyncConfig,
+  updateSyncConfig,
+} from '../controllers/settings.controller';
 
 const router = Router();
 
@@ -10,5 +17,8 @@ router.get('/', getSettings);
 router.put('/', updateSettings);
 router.get('/drive/folders', listFolders);
 router.delete('/drive', disconnectDrive);
+
+router.get('/sync', getSyncConfig);
+router.put('/sync', requireAdmin, updateSyncConfig);
 
 export default router;

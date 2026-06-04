@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 import { listDriveFolders, listSharedDrives, getDriveFolder } from '../services/googleDrive.service';
+import { getSyncConfigDoc, MIN_INTERVAL_MS, MAX_INTERVAL_MS } from '../models/SyncConfig';
+import { applySyncConfig } from '../services/syncScheduler';
+import { triggerSync } from './order.controller';
 
 function getCreds(refreshToken?: string | null, accessToken?: string | null) {
   return { refreshToken, accessToken };
@@ -114,6 +117,64 @@ export const disconnectDrive = async (req: Request, res: Response): Promise<void
     res.json({ data: { disconnected: true } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to disconnect Google Drive', error: (error as Error).message });
+  }
+};
+
+/**
+ * Returns the global background-sync configuration (enabled + interval). Any
+ * authenticated user may read it; only admins can change it.
+ */
+export const getSyncConfig = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const doc = await getSyncConfigDoc();
+    res.json({ data: { enabled: doc.enabled, intervalMs: doc.intervalMs } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load sync configuration', error: (error as Error).message });
+  }
+};
+
+/**
+ * Updates the global background-sync configuration and applies it to the running
+ * scheduler immediately (no server restart needed). Admin-only.
+ */
+export const updateSyncConfig = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { enabled, intervalMs } = req.body as { enabled?: boolean; intervalMs?: number };
+
+    const doc = await getSyncConfigDoc();
+
+    if (typeof enabled === 'boolean') {
+      doc.enabled = enabled;
+    }
+
+    if (intervalMs !== undefined) {
+      const next = Number(intervalMs);
+      if (!Number.isFinite(next) || next < MIN_INTERVAL_MS || next > MAX_INTERVAL_MS) {
+        res.status(400).json({
+          message: `Interval must be between ${MIN_INTERVAL_MS / 1000} and ${MAX_INTERVAL_MS / 1000} seconds`,
+        });
+        return;
+      }
+      doc.intervalMs = Math.round(next);
+    }
+
+    doc.updatedByName = req.user?.name;
+    await doc.save();
+
+    // Reconfigure the live scheduler so the change takes effect right away.
+    applySyncConfig({ enabled: doc.enabled, intervalMs: doc.intervalMs });
+
+    // Give the admin immediate feedback that auto-sync works by kicking off one
+    // sync now (no-op if a sync is already running). The recurring schedule then
+    // continues from here.
+    let syncStarted = false;
+    if (doc.enabled) {
+      syncStarted = triggerSync();
+    }
+
+    res.json({ data: { enabled: doc.enabled, intervalMs: doc.intervalMs, syncStarted } });
+  } catch (error) {
+    res.status(400).json({ message: (error as Error).message || 'Failed to update sync configuration' });
   }
 };
 
