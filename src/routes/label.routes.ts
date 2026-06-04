@@ -10,6 +10,7 @@ import {
   getBatchItems,
   getBatchLabelsZip,
   refreshBatchItems,
+  updateBatchShipDate,
   preflightBatch,
   createBatchLabels,
   deleteBatch,
@@ -33,6 +34,7 @@ router.get('/:id/pdf', getLabelPdf);
 router.post('/prepare', requireLabelPermission, prepareLabels);
 router.post('/create', requireLabelPermission, createLabels);
 router.post('/batches', requireLabelPermission, draftBatch);
+router.patch('/batches/:id/ship-date', requireLabelPermission, updateBatchShipDate);
 router.post('/batches/:id/preflight', requireLabelPermission, preflightBatch);
 router.post('/batches/:id/create', requireLabelPermission, createBatchLabels);
 router.patch('/:id', requireLabelPermission, updateLabelItem);

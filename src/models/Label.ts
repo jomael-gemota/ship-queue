@@ -54,6 +54,10 @@ export interface ILabel extends Document {
   serviceCode?: string;
   packageCode?: string;
   shipDate?: string;
+  // Operator-set override of the ship date (YYYY-MM-DD). When present it takes
+  // precedence over the order's shipByDate, so a batch-wide ship date chosen by
+  // the operator survives re-resolution at label-purchase time.
+  shipDateOverride?: string;
   propertyType?: 'residential' | 'commercial';
   // Operator-set override of the address type. When present it takes precedence
   // over the order's residential flag, so the derived serviceCode survives
@@ -129,6 +133,7 @@ const LabelSchema = new Schema<ILabel>(
     serviceCode: String,
     packageCode: String,
     shipDate: String,
+    shipDateOverride: String,
     propertyType: { type: String, enum: ['residential', 'commercial'] },
     propertyOverride: { type: String, enum: ['residential', 'commercial'] },
     weight: { value: Number, units: String },

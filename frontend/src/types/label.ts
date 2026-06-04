@@ -98,6 +98,8 @@ export interface LabelRecord {
   serviceCode?: string
   packageCode?: string
   shipDate?: string
+  /** Operator override of the ship date (YYYY-MM-DD); used when (re)creating. */
+  shipDateOverride?: string
   propertyType?: 'residential' | 'commercial'
   /** Operator override of the address type; when set, drives the service. */
   propertyOverride?: 'residential' | 'commercial'
@@ -162,6 +164,18 @@ export interface RefreshBatchItemsResponse {
     checked: number
     /** How many of the re-checked items now resolve to an order. */
     resolved: number
+  }
+}
+
+/** Response from applying a ship date to all not-yet-created items in a batch. */
+export interface UpdateBatchShipDateResponse {
+  data: {
+    batch: LabelBatch
+    items: LabelRecord[]
+    /** The applied ship date (YYYY-MM-DD). */
+    shipDate: string
+    /** How many items were updated. */
+    updated: number
   }
 }
 

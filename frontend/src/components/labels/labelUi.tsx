@@ -236,6 +236,12 @@ interface BatchItemsTableProps {
   recreatingId?: string | null
   /** Whether Google Drive is connected — required to recreate (buy) a label. */
   driveConnected?: boolean
+  /** Current batch ship date (YYYY-MM-DD) shown in the picker. */
+  shipDate?: string
+  /** Apply a ship date to all not-yet-created items in the batch. */
+  onApplyShipDate?: (shipDate: string) => void
+  /** Whether a batch ship-date update is currently in flight. */
+  applyingShipDate?: boolean
 }
 
 type ItemsTab = 'shipping' | 'tracking'
@@ -304,7 +310,43 @@ function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
   )
 }
 
-export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, onRefresh, refreshing, canEdit = false, onUpdateProperty, onRecreate, updatingId, recreatingId, driveConnected = true }: BatchItemsTableProps) {
+/**
+ * Batch-wide Ship Date picker. Selecting a date immediately applies it to every
+ * not-yet-created item in the batch (the parent persists it and refreshes the
+ * column). Created labels keep the date they were purchased with.
+ */
+function BatchShipDatePicker({
+  value,
+  applying,
+  onApply,
+}: {
+  value?: string
+  applying: boolean
+  onApply: (shipDate: string) => void
+}) {
+  return (
+    <label
+      title="Set the ship date for all items in this batch that have not been created yet"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1"
+    >
+      <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
+      <span className="text-xs font-medium text-slate-500 dark:text-[var(--text-200)]">Ship Date</span>
+      <input
+        type="date"
+        value={value ?? ''}
+        disabled={applying}
+        onChange={(e) => {
+          const next = e.target.value
+          if (next && next !== value) onApply(next)
+        }}
+        className="h-7 rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-1.5 text-xs text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+      />
+      {applying && <Spinner className="h-3 w-3 shrink-0 text-slate-400" />}
+    </label>
+  )
+}
+
+export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, onRefresh, refreshing, canEdit = false, onUpdateProperty, onRecreate, updatingId, recreatingId, driveConnected = true, shipDate, onApplyShipDate, applyingShipDate = false }: BatchItemsTableProps) {
   const [tab, setTab] = useState<ItemsTab>('shipping')
   const [search, setSearch] = useState('')
   const isShipping = tab === 'shipping'
@@ -345,15 +387,24 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
         </div>
       )}
 
-      {/* Toolbar: tab switcher + search bar */}
+      {/* Toolbar: tab switcher + ship-date picker + search bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-3">
-        <div className="inline-flex rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-0.5">
-          <TabButton active={isShipping} onClick={() => setTab('shipping')} icon={<BoxIcon className="h-3.5 w-3.5" />}>
-            Shipping Details
-          </TabButton>
-          <TabButton active={!isShipping} onClick={() => setTab('tracking')} icon={<TrackingIcon className="h-3.5 w-3.5" />}>
-            Tracking &amp; Labels
-          </TabButton>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-0.5">
+            <TabButton active={isShipping} onClick={() => setTab('shipping')} icon={<BoxIcon className="h-3.5 w-3.5" />}>
+              Shipping Details
+            </TabButton>
+            <TabButton active={!isShipping} onClick={() => setTab('tracking')} icon={<TrackingIcon className="h-3.5 w-3.5" />}>
+              Tracking &amp; Labels
+            </TabButton>
+          </div>
+          {canEdit && onApplyShipDate && (
+            <BatchShipDatePicker
+              value={shipDate}
+              applying={applyingShipDate}
+              onApply={onApplyShipDate}
+            />
+          )}
         </div>
 
         <div className="relative">

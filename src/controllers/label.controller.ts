@@ -38,6 +38,9 @@ interface InputRow {
   // and serviceCode are derived from this instead of the order's residential
   // flag (lets the user fix Commercial/Residential mismatches before reprint).
   propertyOverride?: 'residential' | 'commercial';
+  // Operator override of the ship date (YYYY-MM-DD). When set, it is used instead
+  // of the order's shipByDate so a batch-wide ship date survives re-resolution.
+  shipDateOverride?: string;
 }
 
 interface PreparedSku {
@@ -223,7 +226,7 @@ async function prepareRow(input: InputRow): Promise<PreparedRow> {
     serviceCode: resolveServiceCode(residential),
     packageCode: 'package',
     insuranceProvider: 'none',
-    shipDate: formatShipDate(order.shipByDate),
+    shipDate: input.shipDateOverride || formatShipDate(order.shipByDate),
     weight: resolveWeight(order),
     dimensions: DEFAULT_DIMENSIONS,
   };
@@ -573,6 +576,7 @@ async function createLabelForRecord(
     poNumber: label.poNumber,
     orderNumber: label.orderNumber,
     propertyOverride: label.propertyOverride,
+    shipDateOverride: label.shipDateOverride,
   });
 
   if (!prepared.found) {
@@ -899,6 +903,7 @@ export const refreshBatchItems = async (req: Request, res: Response): Promise<vo
         const prepared = await prepareRow({
           poNumber: label.poNumber,
           orderNumber: label.orderNumber,
+          shipDateOverride: label.shipDateOverride,
         });
 
         label.found = prepared.found;
@@ -928,11 +933,77 @@ export const refreshBatchItems = async (req: Request, res: Response): Promise<vo
       Label.find({ batchId: id }).sort({ createdAt: 1 }).lean(),
     ]);
 
+    const batchWithUploader = updatedBatch
+      ? (await attachUploaderInfo([updatedBatch]))[0]
+      : updatedBatch;
+
     res.json({
-      data: { batch: updatedBatch, items, checked: pending.length, resolved },
+      data: { batch: batchWithUploader, items, checked: pending.length, resolved },
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to refresh batch items', error: (error as Error).message });
+  }
+};
+
+const SHIP_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Applies an operator-chosen ship date to every not-yet-created item in a batch.
+ * Persists it as both the display `shipDate` and a `shipDateOverride` so it
+ * survives re-resolution and is used when the label is (re)created. Created
+ * labels are left untouched — they were already purchased with a fixed date.
+ */
+export const updateBatchShipDate = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid batch id' });
+      return;
+    }
+
+    const shipDate = typeof req.body?.shipDate === 'string' ? req.body.shipDate.trim() : '';
+    if (!SHIP_DATE_RE.test(shipDate) || Number.isNaN(new Date(`${shipDate}T00:00:00Z`).getTime())) {
+      res.status(400).json({ message: 'shipDate must be a valid date in YYYY-MM-DD format.' });
+      return;
+    }
+
+    const batch = await LabelBatch.findById(id);
+    if (!batch) {
+      res.status(404).json({ message: 'Batch not found' });
+      return;
+    }
+
+    if (batch.createdByUserId && batch.createdByUserId !== req.user?.id) {
+      res.status(403).json({ message: 'You can only edit items in batches you uploaded.' });
+      return;
+    }
+
+    // Only items that haven't been purchased yet — a created label's ship date is
+    // already locked in with the carrier and must not be rewritten.
+    const updateResult = await Label.updateMany(
+      { batchId: id, status: { $ne: 'created' } },
+      { $set: { shipDate, shipDateOverride: shipDate } }
+    );
+
+    const [updatedBatch, items] = await Promise.all([
+      LabelBatch.findById(id).lean(),
+      Label.find({ batchId: id }).sort({ createdAt: 1 }).lean(),
+    ]);
+
+    const batchWithUploader = updatedBatch
+      ? (await attachUploaderInfo([updatedBatch]))[0]
+      : updatedBatch;
+
+    res.json({
+      data: {
+        batch: batchWithUploader,
+        items,
+        shipDate,
+        updated: updateResult.modifiedCount ?? 0,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update ship date', error: (error as Error).message });
   }
 };
 

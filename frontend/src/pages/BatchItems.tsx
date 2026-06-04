@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import type {
@@ -7,6 +7,7 @@ import type {
   BatchItemsResponse,
   CreateBatchLabelsResponse,
   RefreshBatchItemsResponse,
+  UpdateBatchShipDateResponse,
   UpdateLabelItemResponse,
   RecreateLabelItemResponse,
   PreflightResponse,
@@ -56,6 +57,7 @@ export default function BatchItems() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [zipping, setZipping] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [applyingShipDate, setApplyingShipDate] = useState(false)
   const [recreatingId, setRecreatingId] = useState<string | null>(null)
   const [confirmRecreateId, setConfirmRecreateId] = useState<string | null>(null)
   const [recreatePreflightLoading, setRecreatePreflightLoading] = useState(false)
@@ -275,6 +277,40 @@ export default function BatchItems() {
     }
   }
 
+  // Applies an operator-chosen Ship Date to every not-yet-created item in the
+  // batch. Optimistically updates the Ship Date column in real time, persists it
+  // (so it's used when creating/printing labels), then reconciles with the
+  // server's authoritative items. Reverts on failure.
+  const handleApplyShipDate = async (shipDate: string) => {
+    if (!batch) return
+    const snapshot = items
+    setApplyingShipDate(true)
+    setError(null)
+    setNotice(null)
+    setItems((prev) =>
+      prev.map((it) =>
+        it.status !== 'created' ? { ...it, shipDate, shipDateOverride: shipDate } : it,
+      ),
+    )
+    try {
+      const res = await authApi.patch<UpdateBatchShipDateResponse>(
+        `/labels/batches/${batch._id}/ship-date`,
+        { shipDate },
+      )
+      setItems(res.data.items)
+      if (res.data.batch) setBatch(res.data.batch)
+      const { updated } = res.data
+      setNotice(
+        `Ship date set to ${shipDate} for ${updated} item${updated === 1 ? '' : 's'}.`,
+      )
+    } catch (e) {
+      setItems(snapshot)
+      setError(e instanceof Error ? e.message : 'Failed to update ship date')
+    } finally {
+      setApplyingShipDate(false)
+    }
+  }
+
   // Opens the recreate confirmation modal for a single failed item and runs a
   // read-only preflight so the operator can verify the enforced Ship From +
   // Insurance before the billable re-purchase.
@@ -335,6 +371,13 @@ export default function BatchItems() {
   const driveConnected = !!user?.driveScopeGranted
   const hasCreatedLabels = items.some((l) => l.status === 'created')
   const canEdit = !!(user?.canCreateLabels && batch?.createdBy === user?.email)
+
+  // Value shown in the Ship Date picker — prefer a pending (editable) item's
+  // date, falling back to any item's date.
+  const batchShipDate = useMemo(() => {
+    const pending = items.find((it) => it.status !== 'created' && it.shipDate)
+    return pending?.shipDate ?? items.find((it) => it.shipDate)?.shipDate ?? ''
+  }, [items])
 
   return (
     <div className="space-y-6">
@@ -491,6 +534,9 @@ export default function BatchItems() {
           updatingId={updatingId}
           recreatingId={recreatingId}
           driveConnected={driveConnected}
+          shipDate={batchShipDate}
+          onApplyShipDate={handleApplyShipDate}
+          applyingShipDate={applyingShipDate}
         />
       </section>
     </div>
