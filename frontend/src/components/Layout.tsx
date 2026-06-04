@@ -4,9 +4,15 @@ import Sidebar from './Sidebar'
 
 export default function Layout() {
   const { pathname } = useLocation()
-  // Data-dense pages (e.g. batch items) use the full content width so wide
-  // tables can breathe; everything else stays centered at a comfortable cap.
-  const fullWidth = pathname.startsWith('/create-label/batches')
+  // Data-dense pages (ShipStation Orders, the Label Batches list + batch items,
+  // Settings, and User Management) use the full content width so wide tables and
+  // sections can breathe without horizontal scrolling; everything else stays
+  // centered at a comfortable cap.
+  const fullWidth =
+    pathname === '/' ||
+    pathname.startsWith('/create-label') ||
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/admin')
 
   return (
     <div className="min-h-screen bg-[var(--bg-200)] dark:bg-[var(--bg-100)]">

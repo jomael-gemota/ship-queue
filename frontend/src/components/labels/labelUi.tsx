@@ -294,6 +294,15 @@ function itemSearchText(l: LabelRecord): string {
     .toLowerCase()
 }
 
+/** Official Amazon brand mark (orange smile), shown beside Amazon order numbers. */
+export function AmazonIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="#FF9900" aria-hidden="true">
+      <path d="M.045 18.02c.072-.116.187-.124.348-.022 3.636 2.11 7.594 3.166 11.87 3.166 2.852 0 5.668-.533 8.447-1.595l.315-.14c.138-.06.234-.1.293-.13.226-.088.39-.046.525.13.12.174.09.336-.12.48-.256.19-.6.41-1.006.654-1.244.743-2.64 1.316-4.185 1.726-1.53.406-3.045.61-4.516.61-2.265 0-4.41-.396-6.435-1.187-2.02-.794-3.82-1.91-5.43-3.35-.1-.074-.15-.15-.15-.22 0-.047.02-.09.05-.13zm6.565-6.218c0-1.005.247-1.863.743-2.577.495-.71 1.17-1.25 2.04-1.615.796-.335 1.756-.575 2.912-.72.39-.046 1.033-.103 1.92-.174v-.37c0-.93-.105-1.558-.3-1.875-.302-.43-.78-.65-1.44-.65h-.182c-.48.046-.896.196-1.246.46-.35.27-.575.63-.675 1.096-.06.3-.206.465-.435.51l-2.52-.315c-.248-.06-.372-.18-.372-.39 0-.046.007-.09.022-.15.247-1.29.855-2.25 1.82-2.88.976-.616 2.1-.975 3.39-1.05h.54c1.65 0 2.957.434 3.888 1.29.135.15.27.3.405.48.12.165.224.314.283.45.075.134.15.33.195.57.06.254.105.42.135.51.03.104.062.3.076.615.01.313.02.493.02.553v5.28c0 .376.06.72.165 1.036.105.313.21.54.315.674l.51.674c.09.136.136.256.136.36 0 .12-.06.226-.18.314-1.2 1.05-1.86 1.62-1.963 1.71-.165.135-.375.15-.63.045-.195-.166-.375-.332-.526-.496l-.31-.347c-.06-.074-.166-.21-.317-.42l-.3-.435c-.81.886-1.603 1.44-2.4 1.665-.494.15-1.093.227-1.83.227-1.11 0-2.04-.343-2.76-1.034-.72-.69-1.08-1.665-1.08-2.94l-.05-.076zm3.753-.438c0 .566.14 1.02.425 1.364.285.34.675.512 1.155.512.045 0 .106-.007.195-.02.09-.016.134-.023.166-.023.614-.16 1.08-.553 1.424-1.178.165-.28.285-.58.36-.91.09-.32.12-.59.135-.8.015-.195.015-.54.015-1.005v-.54c-.84 0-1.484.06-1.92.18-1.275.36-1.92 1.17-1.92 2.43l-.035-.02zm9.162 7.027c.03-.06.075-.11.132-.17.362-.243.714-.41 1.05-.5.55-.133 1.09-.222 1.612-.24.14-.012.28 0 .41.03.65.06 1.05.168 1.172.33.063.09.09.228.09.39v.15c0 .51-.14 1.11-.415 1.8-.278.69-.664 1.248-1.156 1.68-.073.06-.14.09-.197.09-.03 0-.06 0-.09-.012-.09-.044-.107-.12-.064-.24.54-1.26.806-2.143.806-2.64 0-.15-.03-.27-.087-.344-.145-.166-.55-.257-1.224-.257-.243 0-.533.016-.87.046-.363.045-.7.09-1 .135-.09 0-.148-.014-.18-.044-.03-.03-.036-.047-.02-.077 0-.017.006-.03.02-.063v-.06z" />
+    </svg>
+  )
+}
+
 // Renders an order number as a link to its Amazon Seller Central order page.
 function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
   if (!orderNumber) return <>—</>
@@ -303,9 +312,10 @@ function OrderNumberLink({ orderNumber }: { orderNumber?: string }) {
       target="_blank"
       rel="noreferrer"
       title="Open in Seller Central"
-      className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline break-words"
+      className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline break-words"
     >
-      {orderNumber}
+      <AmazonIcon className="h-3.5 w-3.5 shrink-0" />
+      <span className="break-words">{orderNumber}</span>
     </a>
   )
 }
@@ -324,13 +334,25 @@ function BatchShipDatePicker({
   applying: boolean
   onApply: (shipDate: string) => void
 }) {
+  const isSet = !!value
+  // Unset state grabs attention (amber + ring + pulse) so operators don't forget
+  // to set a ship date; once set it relaxes into an on-theme confirmed state.
+  const wrapClass = isSet
+    ? 'border-[var(--accent-200)] bg-[var(--primary-100)] dark:bg-[var(--primary-100)]'
+    : 'border-amber-400 dark:border-amber-500/70 bg-amber-50 dark:bg-amber-900/20 ring-2 ring-amber-300/70 dark:ring-amber-500/30'
   return (
     <label
       title="Set the ship date for all items in this batch that have not been created yet"
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1"
+      className={`inline-flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 shadow-sm transition-colors ${wrapClass}`}
     >
-      <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
-      <span className="text-xs font-medium text-slate-500 dark:text-[var(--text-200)]">Ship Date</span>
+      <CalendarIcon
+        className={`h-4 w-4 shrink-0 ${isSet ? 'text-[var(--accent-200)]' : 'text-amber-500 dark:text-amber-400'}`}
+      />
+      <span
+        className={`text-xs font-semibold uppercase tracking-wide ${isSet ? 'text-slate-700 dark:text-[var(--text-100)]' : 'text-amber-700 dark:text-amber-300'}`}
+      >
+        Ship Date
+      </span>
       <input
         type="date"
         value={value ?? ''}
@@ -339,9 +361,16 @@ function BatchShipDatePicker({
           const next = e.target.value
           if (next && next !== value) onApply(next)
         }}
-        className="h-7 rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-1.5 text-xs text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+        className={`h-8 rounded-md border bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-2 text-xs font-medium text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${isSet ? 'border-[var(--bg-300)] dark:border-[var(--bg-300)]' : 'border-amber-400 dark:border-amber-500/70'}`}
       />
-      {applying && <Spinner className="h-3 w-3 shrink-0 text-slate-400" />}
+      {applying ? (
+        <Spinner className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      ) : !isSet ? (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Required
+        </span>
+      ) : null}
     </label>
   )
 }
@@ -579,18 +608,29 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                     <Td>{formatCurrency(l.shipmentCost)}</Td>
                     <Td>{formatCurrency(l.insuranceCost)}</Td>
                     <Td>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {l.status === 'created' && (
                           <button
                             onClick={() => onDownloadPdf(l)}
                             disabled={downloadingId === l._id}
-                            className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline disabled:opacity-50 cursor-pointer"
+                            title="Download label PDF"
+                            className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline disabled:opacity-50 cursor-pointer"
                           >
+                            {downloadingId === l._id ? <Spinner className="h-3.5 w-3.5 shrink-0" /> : <PdfIcon className="h-4 w-4 shrink-0" />}
                             {downloadingId === l._id ? '…' : 'Download'}
                           </button>
                         )}
                         {l.driveFileLink && (
-                          <a href={l.driveFileLink} target="_blank" rel="noreferrer" className="text-slate-500 dark:text-[var(--text-200)] hover:underline">Drive</a>
+                          <a
+                            href={l.driveFileLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Open in Google Drive"
+                            className="inline-flex items-center gap-1 text-slate-500 dark:text-[var(--text-200)] hover:underline"
+                          >
+                            <GoogleDriveIcon className="h-3.5 w-3.5 shrink-0" />
+                            Drive
+                          </a>
                         )}
                         {l.status !== 'created' && !l.driveFileLink && <span className="text-slate-400">—</span>}
                       </div>
@@ -652,12 +692,17 @@ function TabButton({
 export function CreatePrintButton({ busy, done, onClick, size = 'md', disabled, title }: { busy: boolean; done: boolean; onClick: () => void; size?: 'sm' | 'md'; disabled?: boolean; title?: string }) {
   const sizing = size === 'sm' ? 'gap-1.5 px-2.5 py-1.5 text-xs' : 'gap-2 px-3 py-2 text-sm'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  // Reprint uses a complementing indigo so it reads distinctly from the green
+  // "Create + Print" primary action.
+  const colorClass = done
+    ? 'bg-indigo-600 hover:bg-indigo-700'
+    : 'bg-emerald-600 hover:bg-emerald-700'
   return (
     <button
       onClick={onClick}
       disabled={busy || disabled}
       title={title}
-      className={`inline-flex items-center rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${sizing}`}
+      className={`inline-flex items-center rounded-lg font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap ${colorClass} ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <PrinterIcon className={iconSize} />}
       {busy ? 'Working…' : done ? 'Reprint Labels' : 'Create + Print Labels'}
@@ -961,14 +1006,14 @@ function PreflightStatusBadge({ status }: { status: PreflightItem['status'] }) {
   }
 }
 
-export function DeleteBatchButton({ busy, onClick, size = 'md' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md' }) {
+export function DeleteBatchButton({ busy, onClick, size = 'md', disabled, title = 'Delete batch' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md'; disabled?: boolean; title?: string }) {
   const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
     <button
       onClick={onClick}
-      disabled={busy}
-      title="Delete batch"
+      disabled={busy || disabled}
+      title={title}
       className={`inline-flex items-center justify-center rounded-lg border border-red-300 dark:border-red-800 bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <TrashIcon className={iconSize} />}
@@ -1292,6 +1337,25 @@ export function RowItemIcon({ className = '' }: { className?: string }) {
   )
 }
 
+/** Stacked layers glyph used to represent a batch. */
+export function LayersIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12l10 5 10-5M2 17l10 5 10-5" />
+    </svg>
+  )
+}
+
+/** Windows-style folder glyph shown beside a batch's source filename. */
+export function FolderIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293H19a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+    </svg>
+  )
+}
+
 export function SuccessIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1427,6 +1491,31 @@ export function DocumentIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6M8 3h7l5 5v13a1 1 0 01-1 1H8a2 2 0 01-2-2V5a2 2 0 012-2z" />
+    </svg>
+  )
+}
+
+/** Red PDF document glyph with a "PDF" badge. */
+export function PdfIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M6 2h7l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#E2574C" />
+      <path d="M13 2l5 5h-5V2z" fill="#B53629" />
+      <text x="11" y="17" textAnchor="middle" fontSize="7" fontWeight="700" fontFamily="Arial, Helvetica, sans-serif" fill="#ffffff">PDF</text>
+    </svg>
+  )
+}
+
+/** Official multi-color Google Drive logo. */
+export function GoogleDriveIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 87.3 78" aria-hidden="true">
+      <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+      <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44C.4 49.9 0 51.45 0 53h27.5z" fill="#00ac47" />
+      <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.798l5.852 11.5z" fill="#ea4335" />
+      <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+      <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+      <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
     </svg>
   )
 }

@@ -37,7 +37,8 @@ import {
   ClockIcon,
   UserIcon,
   StatusIcon,
-  RowItemIcon,
+  LayersIcon,
+  FolderIcon,
 } from '../components/labels/labelUi'
 import { useAuth } from '../context/AuthContext'
 
@@ -123,6 +124,15 @@ function parseCsv(text: string): ParseResult {
 
   if (rows.length === 0) return { rows: [], error: 'No PO#/Order# rows found in the file.' }
   return { rows }
+}
+
+/** Today's date in the operator's local timezone as YYYY-MM-DD. */
+function todayLocalDate(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function downloadTemplate() {
@@ -216,6 +226,7 @@ export default function CreateShippingLabel() {
       await authApi.post<DraftBatchResponse>('/labels/batches', {
         rows: importRows,
         fileName,
+        shipDate: todayLocalDate(),
       })
       handleReset()
       await loadBatches()
@@ -405,7 +416,7 @@ export default function CreateShippingLabel() {
       )}
 
       {/* Step 1 — Import & draft (only shown to users with label creation permission) */}
-      {canCreate && <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      {canCreate && <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--primary-100)] p-5">
         <div className="flex items-center justify-between gap-3 mb-1">
           <div className="flex items-center gap-2">
             <StepBadge n={1} />
@@ -498,23 +509,33 @@ export default function CreateShippingLabel() {
               ) : batches.length === 0 ? (
                 <tr><Td className="text-slate-400" colSpan={6}>No batches yet. Upload a file and draft it for review.</Td></tr>
               ) : (
-                batches.slice(batchPage * batchPageSize, (batchPage + 1) * batchPageSize).map((b) => (
-                  <tr key={b._id}>
+                batches.slice(batchPage * batchPageSize, (batchPage + 1) * batchPageSize).map((b, idx) => {
+                  const zebra = idx % 2 === 1
+                  const rowBg = zebra
+                    ? 'bg-[var(--bg-200)] dark:bg-[var(--bg-200)]'
+                    : 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]'
+                  const canDelete = !!(user && b.createdBy === user.email)
+                  return (
+                  <tr key={b._id} className={rowBg}>
                     <Td compact className="font-medium text-slate-800 dark:text-[var(--text-100)]">
                       <span className="inline-flex items-center gap-1.5">
-                        <RowItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
+                        <LayersIcon className="h-3.5 w-3.5 shrink-0 text-[var(--accent-200)] dark:text-[var(--accent-200)]" />
                         <span className="font-mono whitespace-nowrap">{shortBatchId(b._id)}</span>
                         {b.fileName && (
-                          <span className="text-xs text-slate-400 dark:text-[var(--text-200)]">· {b.fileName}</span>
+                          <span className="inline-flex min-w-0 items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)]">
+                            <span>·</span>
+                            <FolderIcon className="h-3.5 w-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
+                            <span className="truncate max-w-[220px]" title={b.fileName}>{b.fileName}</span>
+                          </span>
                         )}
                       </span>
                     </Td>
                     <Td compact className="text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
-                    <Td compact className="text-slate-600 dark:text-[var(--text-200)]">
+                    <Td compact className="text-slate-600 dark:text-[var(--text-200)] max-w-[260px]">
                       {b.createdBy ? (
-                        <span className="inline-flex items-center gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
                           <UploaderAvatar email={b.createdBy} name={b.createdByName} avatar={b.createdByAvatar} />
-                          <span className="whitespace-nowrap">{b.createdBy}</span>
+                          <span className="truncate" title={b.createdBy}>{b.createdBy}</span>
                         </span>
                       ) : (
                         '—'
@@ -558,16 +579,17 @@ export default function CreateShippingLabel() {
                           }
                           onClick={() => handleExportZip(b)}
                         />
-                        {user && b.createdBy === user.email && (
-                          <DeleteBatchButton
-                            size="sm"
-                            onClick={() => handleDeleteBatch(b)}
-                          />
-                        )}
+                        <DeleteBatchButton
+                          size="sm"
+                          disabled={!canDelete}
+                          title={canDelete ? 'Delete batch' : 'Only the batch owner can delete this batch'}
+                          onClick={() => handleDeleteBatch(b)}
+                        />
                       </div>
                     </Td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
