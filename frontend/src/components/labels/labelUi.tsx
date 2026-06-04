@@ -103,7 +103,13 @@ const CSV_COLUMNS: { header: string; value: (l: LabelRecord) => unknown }[] = [
   { header: 'Property', value: (l) => l.propertyType },
   { header: 'Package', value: (l) => l.packageCode },
   { header: 'Service', value: (l) => l.serviceCode },
-  { header: 'Service Name', value: (l) => serviceName(l.serviceCode) },
+  {
+    header: 'Service Name',
+    value: (l) => {
+      const name = serviceName(l.serviceCode)
+      return name ? `${name}-PRIME` : ''
+    },
+  },
   { header: 'Ship Date', value: (l) => l.shipDate },
   { header: 'SKUs', value: (l) => skusToLines(l.skus).join('; ') },
   { header: 'Total Qty', value: (l) => l.qty },
