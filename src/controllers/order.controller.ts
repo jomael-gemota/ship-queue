@@ -26,10 +26,17 @@ function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const syncOrders = async (_req: Request, res: Response): Promise<void> => {
+/**
+ * Kicks off a ShipStation sync if one isn't already running. Shared by the
+ * HTTP endpoint and the background scheduler so both paths reuse the exact same
+ * in-memory state machine. Fire-and-forget: returns immediately and updates
+ * `syncState` as the sync progresses.
+ *
+ * @returns `true` when a new sync was started, `false` if one was already running.
+ */
+export function triggerSync(): boolean {
   if (syncState.running) {
-    res.json({ message: 'Sync already in progress', data: { ...syncState } });
-    return;
+    return false;
   }
 
   const previousCompletedAt = syncState.completedAt;
@@ -56,7 +63,20 @@ export const syncOrders = async (_req: Request, res: Response): Promise<void> =>
       syncState.error = err instanceof Error ? err.message : 'Unknown error during sync';
     });
 
-  res.json({ message: 'Sync started', data: { ...syncState } });
+  return true;
+}
+
+export function isSyncRunning(): boolean {
+  return syncState.running;
+}
+
+export const syncOrders = async (_req: Request, res: Response): Promise<void> => {
+  const started = triggerSync();
+
+  res.json({
+    message: started ? 'Sync started' : 'Sync already in progress',
+    data: { ...syncState },
+  });
 };
 
 export const getSyncStatus = async (_req: Request, res: Response): Promise<void> => {
