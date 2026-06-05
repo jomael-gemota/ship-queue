@@ -57,8 +57,53 @@ export const api = {
   delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
 }
 
+/**
+ * POSTs `body` and yields each newline-delimited JSON (NDJSON) object the server
+ * streams back. Used for long-running operations that report live progress.
+ * Throws an `ApiError` if the request fails before the stream starts.
+ */
+async function* authPostStream<T>(endpoint: string, body?: unknown): AsyncGenerator<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: 'An error occurred' }))
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
+  }
+  if (!res.body) {
+    throw new ApiError('Streaming is not supported by this browser.')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const flushLines = function* (chunk: string): Generator<T> {
+    buffer += chunk
+    let newline = buffer.indexOf('\n')
+    while (newline !== -1) {
+      const line = buffer.slice(0, newline).trim()
+      buffer = buffer.slice(newline + 1)
+      if (line) yield JSON.parse(line) as T
+      newline = buffer.indexOf('\n')
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    yield* flushLines(decoder.decode(value, { stream: true }))
+  }
+  const tail = (buffer + decoder.decode()).trim()
+  if (tail) yield JSON.parse(tail) as T
+}
+
 export const authApi = {
   get: <T>(endpoint: string) => authRequest<T>(endpoint),
+  postStream: authPostStream,
   post: <T>(endpoint: string, body?: unknown) =>
     authRequest<T>(endpoint, {
       method: 'POST',

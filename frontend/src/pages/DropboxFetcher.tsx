@@ -7,13 +7,23 @@ interface FoldersResponse {
   data: DropboxFolder[]
 }
 
-interface LinksResponse {
-  data: DropboxLinksResult
-}
-
 interface Crumb {
   path: string
   name: string
+}
+
+/** Live progress emitted by the streaming extract endpoint. */
+type ExtractEvent =
+  | { type: 'listing' }
+  | { type: 'counted'; total: number }
+  | { type: 'progress'; processed: number; total: number }
+  | { type: 'done'; data: DropboxLinksResult }
+  | { type: 'error'; code?: string; message: string }
+
+interface ExtractProgress {
+  phase: 'listing' | 'processing'
+  processed: number
+  total: number
 }
 
 /** File-type catalog. `extensions` is matched (case-insensitive) against file names. */
@@ -57,6 +67,7 @@ export default function DropboxFetcher() {
   const [fileTypeId, setFileTypeId] = useState('all')
   const [recursive, setRecursive] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [progress, setProgress] = useState<ExtractProgress | null>(null)
   const [result, setResult] = useState<DropboxLinksResult | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -164,14 +175,31 @@ export default function DropboxFetcher() {
     setError(null)
     setResult(null)
     setCopied(false)
+    setProgress({ phase: 'listing', processed: 0, total: 0 })
     try {
       const extensions = FILE_TYPES.find((t) => t.id === fileTypeId)?.extensions ?? []
-      const res = await authApi.post<LinksResponse>('/dropbox/links', {
+      let streamError: { code?: string; message: string } | null = null
+      for await (const event of authApi.postStream<ExtractEvent>('/dropbox/links/stream', {
         path: currentPath,
         extensions,
         recursive,
-      })
-      setResult(res.data)
+      })) {
+        if (event.type === 'listing') {
+          setProgress({ phase: 'listing', processed: 0, total: 0 })
+        } else if (event.type === 'counted') {
+          setProgress({ phase: 'processing', processed: 0, total: event.total })
+        } else if (event.type === 'progress') {
+          setProgress({ phase: 'processing', processed: event.processed, total: event.total })
+        } else if (event.type === 'done') {
+          setResult(event.data)
+        } else if (event.type === 'error') {
+          streamError = { code: event.code, message: event.message }
+        }
+      }
+      if (streamError) {
+        if (streamError.code === 'dropbox_token_expired') setTokenExpired(true)
+        setError(streamError.message || 'Failed to extract links')
+      }
     } catch (e) {
       if (e instanceof ApiError && e.code === 'dropbox_token_expired') {
         setTokenExpired(true)
@@ -179,12 +207,13 @@ export default function DropboxFetcher() {
       setError(e instanceof Error ? e.message : 'Failed to extract links')
     } finally {
       setExtracting(false)
+      setProgress(null)
     }
   }
 
   const handleCopyAll = async () => {
     if (!result || result.links.length === 0) return
-    const text = result.links.map((l) => l.url).join('\n')
+    const text = result.links.map((l) => `${l.name},${l.url}`).join('\n')
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -196,7 +225,7 @@ export default function DropboxFetcher() {
 
   const handleExport = () => {
     if (!result || result.links.length === 0) return
-    const text = result.links.map((l) => l.url).join('\r\n')
+    const text = result.links.map((l) => `${l.name},${l.url}`).join('\r\n')
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -234,7 +263,7 @@ export default function DropboxFetcher() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       {error && (
         <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
           <span className="flex-1">{error}</span>
@@ -256,6 +285,9 @@ export default function DropboxFetcher() {
         </div>
       )}
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+        {/* Left column — setup */}
+        <div className="space-y-6 lg:col-span-5">
       {/* Step 1 — choose a folder */}
       <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -364,10 +396,42 @@ export default function DropboxFetcher() {
             )}
           </button>
         </div>
-      </section>
 
-      {/* Step 3 — results */}
-      {result && (
+        {extracting && progress && (
+          <div className="mt-4 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)]/60 dark:bg-[var(--bg-200)]/40 px-4 py-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-slate-700 dark:text-[var(--text-100)]">
+                <Spinner className="h-4 w-4 text-[#0061FF]" />
+                {progress.phase === 'listing'
+                  ? 'Finding matching files…'
+                  : `Creating links — ${progress.processed} of ${progress.total} file${progress.total === 1 ? '' : 's'}`}
+              </span>
+              {progress.phase === 'processing' && progress.total > 0 && (
+                <span className="font-medium tabular-nums text-slate-500 dark:text-[var(--text-200)]">
+                  {Math.round((progress.processed / progress.total) * 100)}%
+                </span>
+              )}
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--bg-300)] dark:bg-[var(--bg-300)]">
+              <div
+                className={`h-full rounded-full bg-[#0061FF] transition-all duration-300 ${
+                  progress.phase === 'listing' ? 'animate-pulse w-1/3' : ''
+                }`}
+                style={
+                  progress.phase === 'processing' && progress.total > 0
+                    ? { width: `${(progress.processed / progress.total) * 100}%` }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
+        )}
+      </section>
+        </div>
+
+        {/* Right column — results */}
+        <div className="lg:col-span-7">
+      {result ? (
         <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <StepBadge n={3} />
@@ -399,6 +463,7 @@ export default function DropboxFetcher() {
             {result.failures.length > 0 && (
               <span className="text-amber-600 dark:text-amber-400"> {result.failures.length} could not be linked (skipped).</span>
             )}
+            <span className="block mt-0.5 text-slate-400">Copy &amp; export use <span className="font-mono">filename,link</span> per line.</span>
           </p>
 
           {result.links.length === 0 ? (
@@ -434,7 +499,19 @@ export default function DropboxFetcher() {
             </div>
           )}
         </section>
+      ) : (
+        <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0061FF]/10 dark:bg-[#0061FF]/20 mb-3">
+            <LinkIcon className="h-6 w-6 text-[#0061FF]" />
+          </span>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Extracted links will appear here</h2>
+          <p className="mt-1 max-w-xs text-sm text-slate-500 dark:text-[var(--text-200)]">
+            Pick a folder and file type, then click <span className="font-medium">Extract links</span> to pull together shareable links for every matching file.
+          </p>
+        </section>
       )}
+        </div>
+      </div>
     </div>
   )
 }
