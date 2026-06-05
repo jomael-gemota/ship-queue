@@ -104,6 +104,10 @@ dist
 # vitepress cache directory
 **/.vitepress/cache
 
+# Generated user guide (built from docs/ into the frontend public dir, then
+# copied into the frontend build output by Vite)
+frontend/public/docs
+
 # Docusaurus cache and generated files
 .docusaurus
 

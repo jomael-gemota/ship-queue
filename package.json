@@ -5,9 +5,12 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc && npm --prefix frontend ci --include=dev && npm --prefix frontend run build",
+    "build": "tsc && npm --prefix frontend ci --include=dev && npm run docs:build && npm --prefix frontend run build",
     "start": "node dist/index.js",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs && node -e \"const fs=require('fs');fs.rmSync('frontend/public/docs',{recursive:true,force:true});fs.cpSync('docs/.vitepress/dist','frontend/public/docs',{recursive:true})\"",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [],
   "author": "",
@@ -40,6 +43,7 @@
     "@types/passport-google-oauth20": "^2.0.17",
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitepress": "^1.6.4"
   }
 }
