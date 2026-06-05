@@ -11,6 +11,7 @@ export default function Layout() {
   const fullWidth =
     pathname === '/' ||
     pathname.startsWith('/create-label') ||
+    pathname.startsWith('/dropbox-fetcher') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/admin')
 

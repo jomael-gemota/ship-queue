@@ -11,6 +11,7 @@ export default function Navbar() {
   const pageTitle = useMemo(() => {
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
+    if (pathname === '/dropbox-fetcher') return 'Dropbox Fetcher'
     if (pathname === '/settings') return 'Settings'
     if (pathname === '/admin/users') return 'User Management'
     return 'ShipStation Orders'

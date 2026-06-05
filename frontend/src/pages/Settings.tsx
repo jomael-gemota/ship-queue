@@ -29,6 +29,13 @@ const DRIVE_ERROR_MESSAGES: Record<string, string> = {
   auth_failed: 'Google Drive authorisation failed. Please try again.',
 }
 
+const DROPBOX_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Dropbox access was denied. Please try again.',
+  invalid_state: 'The authorisation request expired. Please try again.',
+  user_not_found: 'Your account could not be found. Please refresh and try again.',
+  auth_failed: 'Dropbox authorisation failed. Please try again.',
+}
+
 export default function Settings() {
   const { user, refreshUser } = useAuth()
   const canCreate = !!user?.canCreateLabels
@@ -48,6 +55,10 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+
+  // Dropbox connection state
+  const [dropboxDisconnecting, setDropboxDisconnecting] = useState(false)
+  const [dropboxConfirmDisconnect, setDropboxConfirmDisconnect] = useState(false)
 
   // Folder browser state
   const [crumbs, setCrumbs] = useState<Crumb[]>([])
@@ -125,6 +136,18 @@ export default function Settings() {
       setSearchParams({}, { replace: true })
     } else if (driveError) {
       setError(DRIVE_ERROR_MESSAGES[driveError] ?? 'Google Drive connection failed.')
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    const dropboxResult = searchParams.get('dropbox')
+    const dropboxError = searchParams.get('dropbox_error')
+    if (dropboxResult === 'connected') {
+      setSuccess('Dropbox connected successfully.')
+      loadSettings()
+      setSearchParams({}, { replace: true })
+    } else if (dropboxError) {
+      setError(DROPBOX_ERROR_MESSAGES[dropboxError] ?? 'Dropbox connection failed.')
       setSearchParams({}, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +230,7 @@ export default function Settings() {
     setSuccess(null)
     try {
       await authApi.delete('/settings/drive')
-      setSettings({ driveConnected: false, driveConnectedAt: null, driveAccountEmail: null, driveAccountName: null, driveAccountAvatar: null, driveFolderId: null, driveFolderName: null })
+      setSettings((prev) => prev ? { ...prev, driveConnected: false, driveConnectedAt: null, driveAccountEmail: null, driveAccountName: null, driveAccountAvatar: null, driveFolderId: null, driveFolderName: null } : prev)
       setConfirmDisconnect(false)
       setBrowserOpen(false)
       setDriveExpired(false)
@@ -218,6 +241,36 @@ export default function Settings() {
       setConfirmDisconnect(false)
     } finally {
       setDisconnecting(false)
+    }
+  }
+
+  const connectDropbox = async () => {
+    try {
+      const res = await authApi.get<{ url: string }>('/auth/dropbox/connect')
+      window.location.href = res.url
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start Dropbox authorisation.')
+    }
+  }
+
+  const handleDropboxDisconnect = async () => {
+    if (!dropboxConfirmDisconnect) {
+      setDropboxConfirmDisconnect(true)
+      return
+    }
+    setDropboxDisconnecting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      await authApi.delete('/settings/dropbox')
+      setSettings((prev) => prev ? { ...prev, dropboxConnected: false, dropboxConnectedAt: null, dropboxAccountEmail: null, dropboxAccountName: null } : prev)
+      setDropboxConfirmDisconnect(false)
+      setSuccess('Dropbox disconnected. You can reconnect at any time.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect Dropbox')
+      setDropboxConfirmDisconnect(false)
+    } finally {
+      setDropboxDisconnecting(false)
     }
   }
 
@@ -531,6 +584,116 @@ export default function Settings() {
         )}
       </section>
 
+      {/* Dropbox connection — powers the Dropbox Fetcher page */}
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+        <div className="flex items-start gap-3 mb-4">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+            <DropboxLogo className="h-6 w-6" />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Dropbox</h2>
+            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+              Connect your Dropbox to use the Dropbox Fetcher — browse folders and extract shareable links for files.
+            </p>
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-400">Loading…</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  settings?.dropboxConnected
+                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
+                }`}
+              >
+                {settings?.dropboxConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
+                {settings?.dropboxConnected ? 'Connected' : 'Not connected'}
+              </span>
+              {!settings?.dropboxConnected && (
+                <button
+                  onClick={connectDropbox}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#0061FF] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
+                >
+                  <DropboxLogo className="h-4 w-4" mono />
+                  Connect Dropbox
+                </button>
+              )}
+              {settings?.dropboxConnected && (
+                dropboxConfirmDisconnect ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Disconnect Dropbox?</span>
+                    <button
+                      onClick={handleDropboxDisconnect}
+                      disabled={dropboxDisconnecting}
+                      className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors cursor-pointer"
+                    >
+                      {dropboxDisconnecting ? 'Disconnecting…' : 'Confirm'}
+                    </button>
+                    <button
+                      onClick={() => setDropboxConfirmDisconnect(false)}
+                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleDropboxDisconnect}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/15 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
+                  >
+                    <UnplugIcon className="h-3.5 w-3.5" />
+                    Disconnect
+                  </button>
+                )
+              )}
+            </div>
+
+            {settings?.dropboxConnected ? (
+              <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+                <div className="flex items-center gap-3 p-4">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0061FF]/10 dark:bg-[#0061FF]/20">
+                    <DropboxLogo className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected account</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">{settings.dropboxAccountName || 'Dropbox account'}</p>
+                    {settings.dropboxAccountEmail && (
+                      <p className="text-xs text-slate-500 dark:text-[var(--text-200)] truncate">{settings.dropboxAccountEmail}</p>
+                    )}
+                    <button
+                      onClick={connectDropbox}
+                      className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
+                    >
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      Switch account
+                    </button>
+                  </div>
+                  {settings.dropboxConnectedAt && (
+                    <div className="ml-auto shrink-0 text-right">
+                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected on</p>
+                      <p className="text-xs font-medium text-slate-600 dark:text-[var(--text-200)] whitespace-nowrap">
+                        {new Date(settings.dropboxConnectedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-[var(--text-200)] whitespace-nowrap">
+                        {new Date(settings.dropboxConnectedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 dark:text-[var(--text-200)]">
+                Connecting authorises Ship Queue to read your Dropbox folders and create shareable file links on your behalf.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
       {isAdmin && (
         <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
           <div className="flex items-start gap-3 mb-4">
@@ -636,6 +799,16 @@ function GoogleDriveLogo({ className = '', mono = false }: { className?: string;
       <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
       <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
       <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+    </svg>
+  )
+}
+
+/** Dropbox logo. Pass `mono` for a single-color (white) version on colored buttons. */
+function DropboxLogo({ className = '', mono = false }: { className?: string; mono?: boolean }) {
+  const fill = mono ? 'currentColor' : '#0061FF'
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill={fill} aria-hidden="true">
+      <path d="M6 2 0 5.9l6 3.9 6-3.9L6 2Zm12 0-6 3.9 6 3.9 6-3.9L18 2ZM0 13.7l6 3.9 6-3.9-6-3.9-6 3.9Zm18-3.9-6 3.9 6 3.9 6-3.9-6-3.9ZM6 18.9l6 3.9 6-3.9-6-3.9-6 3.9Z" />
     </svg>
   )
 }

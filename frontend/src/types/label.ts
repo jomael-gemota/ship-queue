@@ -276,6 +276,37 @@ export interface AppSettings {
   driveAccountAvatar: string | null
   driveFolderId: string | null
   driveFolderName: string | null
+  dropboxConnected: boolean
+  dropboxConnectedAt: string | null
+  dropboxAccountEmail: string | null
+  dropboxAccountName: string | null
+  dropboxPrefs: DropboxPrefs | null
+}
+
+export interface DropboxPrefs {
+  folderPath: string
+  crumbs: { path: string; name: string }[]
+  fileType: string
+  recursive: boolean
+}
+
+export interface DropboxFolder {
+  id: string
+  name: string
+  path: string
+}
+
+export interface DropboxFileLink {
+  name: string
+  path: string
+  url: string
+  size?: number
+}
+
+export interface DropboxLinksResult {
+  links: DropboxFileLink[]
+  scanned: number
+  failures: { name: string; path: string }[]
 }
 
 export interface SettingsResponse {

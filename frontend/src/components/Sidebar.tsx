@@ -32,6 +32,15 @@ const MENU_ITEMS = [
     ),
   },
   {
+    label: 'Dropbox Fetcher',
+    to: '/dropbox-fetcher',
+    icon: (
+      <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 2 0 5.9l6 3.9 6-3.9L6 2Zm12 0-6 3.9 6 3.9 6-3.9L18 2ZM0 13.7l6 3.9 6-3.9-6-3.9-6 3.9Zm18-3.9-6 3.9 6 3.9 6-3.9-6-3.9ZM6 18.9l6 3.9 6-3.9-6-3.9-6 3.9Z" />
+      </svg>
+    ),
+  },
+  {
     label: 'Settings',
     to: '/settings',
     icon: (
