@@ -10,6 +10,7 @@ interface ManagedUser {
   role: 'admin' | 'user'
   canCreateLabels: boolean
   createdAt: string
+  lastLoginAt?: string
 }
 
 function UserAvatar({ user }: { user: ManagedUser }) {
@@ -178,6 +179,7 @@ function ConfirmRoleModal({
 
 export default function AdminUsers() {
   const { user: currentUser } = useAuth()
+  const isAdmin = currentUser?.role === 'admin'
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -204,8 +206,11 @@ export default function AdminUsers() {
   }, [])
 
   useEffect(() => {
-    loadUsers()
-  }, [loadUsers])
+    // Non-admins can reach this page but only see a blocking note; the user
+    // list endpoint is admin-only server-side, so skip the request entirely.
+    if (isAdmin) loadUsers()
+    else setLoading(false)
+  }, [isAdmin, loadUsers])
 
   const handleToggle = async (user: ManagedUser, value: boolean) => {
     setTogglingId(user._id)
@@ -274,6 +279,28 @@ export default function AdminUsers() {
 
   const adminCount = users.filter((u) => u.role === 'admin').length
   const permittedCount = users.filter((u) => u.canCreateLabels).length
+
+  // Non-admins may open this page from the sidebar but cannot view or manage
+  // any user data — show a clear blocking note instead.
+  if (!isAdmin) {
+    return (
+      <div className="max-w-2xl">
+        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+          <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30 mb-4">
+            <svg className="h-7 w-7 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-[var(--text-100)]">Admins only</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)] max-w-md mx-auto">
+            User Management is restricted. Only administrators have view and edit
+            access to user accounts, roles, and label permissions. Contact an
+            admin if you need a change made to your access.
+          </p>
+        </section>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -359,6 +386,7 @@ export default function AdminUsers() {
                 <th className="px-4 py-2 font-medium">User</th>
                 <th className="px-4 py-2 font-medium">Role</th>
                 <th className="px-4 py-2 font-medium">Joined</th>
+                <th className="px-4 py-2 font-medium">Last Login</th>
                 <th className="px-4 py-2 font-medium text-right">Create Labels</th>
                 <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
@@ -366,13 +394,13 @@ export default function AdminUsers() {
             <tbody className="divide-y divide-slate-200 dark:divide-[var(--bg-300)]">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-400 dark:text-[var(--text-200)]">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400 dark:text-[var(--text-200)]">
                     Loading users…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-400 dark:text-[var(--text-200)]">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400 dark:text-[var(--text-200)]">
                     {search ? 'No users match your search.' : 'No users found.'}
                   </td>
                 </tr>
@@ -441,6 +469,27 @@ export default function AdminUsers() {
                           minute: '2-digit',
                         })}
                       </span>
+                    </td>
+                    <td className="px-4 py-2 text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap text-xs">
+                      {u.lastLoginAt ? (
+                        <>
+                          <span className="block text-slate-600 dark:text-[var(--text-100)]">
+                            {new Date(u.lastLoginAt).toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </span>
+                          <span className="block text-[11px] text-slate-400 dark:text-[var(--text-200)]">
+                            {new Date(u.lastLoginAt).toLocaleTimeString(undefined, {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400 dark:text-[var(--text-200)] italic">Never</span>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center justify-end gap-2">
