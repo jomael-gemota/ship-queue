@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { authApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 
 interface ManagedUser {
   _id: string
@@ -112,7 +113,71 @@ function ConfirmDeleteModal({
   )
 }
 
+function ConfirmRoleModal({
+  user,
+  newRole,
+  onConfirm,
+  onCancel,
+  saving,
+}: {
+  user: ManagedUser
+  newRole: 'admin' | 'user'
+  onConfirm: () => void
+  onCancel: () => void
+  saving: boolean
+}) {
+  const promoting = newRole === 'admin'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${promoting ? 'bg-purple-100 dark:bg-purple-900/30' : 'bg-amber-100 dark:bg-amber-900/30'}`}>
+            <svg className={`w-5 h-5 ${promoting ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'}`} viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM10 7a3 3 0 100 6 3 3 0 000-6zM3.25 10a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H4a.75.75 0 01-.75-.75zm11 0a.75.75 0 01.75-.75H16a.75.75 0 010 1.5h-1a.75.75 0 01-.75-.75zM10 16.75a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1a.75.75 0 01.75-.75z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              {promoting ? 'Upgrade to Admin?' : 'Downgrade to User?'}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+              <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{user.name}</span> ({user.email}){' '}
+              {promoting
+                ? 'will gain full admin access, including managing users and creating labels.'
+                : 'will lose admin access and become a regular user.'}
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            className={`rounded-lg px-3.5 py-2 text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2 ${promoting ? 'bg-purple-600 hover:bg-purple-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+          >
+            {saving && (
+              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            )}
+            {promoting ? 'Make Admin' : 'Make User'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminUsers() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -120,6 +185,10 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<ManagedUser | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmRole, setConfirmRole] = useState<{ user: ManagedUser; newRole: 'admin' | 'user' } | null>(null)
+  const [changingRoleId, setChangingRoleId] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -153,6 +222,23 @@ export default function AdminUsers() {
     }
   }
 
+  const handleRoleChange = async (user: ManagedUser, newRole: 'admin' | 'user') => {
+    setChangingRoleId(user._id)
+    setError(null)
+    try {
+      const res = await authApi.patch<{ data: ManagedUser }>(`/admin/users/${user._id}/role`, {
+        role: newRole,
+      })
+      setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, ...res.data } : u)))
+      setConfirmRole(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update role')
+      setConfirmRole(null)
+    } finally {
+      setChangingRoleId(null)
+    }
+  }
+
   const handleDelete = async (user: ManagedUser) => {
     setDeletingId(user._id)
     setError(null)
@@ -168,10 +254,22 @@ export default function AdminUsers() {
     }
   }
 
-  const filtered = users.filter(
-    (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(
+    () =>
+      users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(search.toLowerCase()) ||
+          u.email.toLowerCase().includes(search.toLowerCase()),
+      ),
+    [users, search],
+  )
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, pageCount - 1)
+
+  const paginated = useMemo(
+    () => filtered.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [filtered, safePage, pageSize],
   )
 
   const adminCount = users.filter((u) => u.role === 'admin').length
@@ -185,6 +283,15 @@ export default function AdminUsers() {
           onConfirm={() => handleDelete(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
           deleting={deletingId === confirmDelete._id}
+        />
+      )}
+      {confirmRole && (
+        <ConfirmRoleModal
+          user={confirmRole.user}
+          newRole={confirmRole.newRole}
+          onConfirm={() => handleRoleChange(confirmRole.user, confirmRole.newRole)}
+          onCancel={() => setConfirmRole(null)}
+          saving={changingRoleId === confirmRole.user._id}
         />
       )}
       {/* Header */}
@@ -237,7 +344,10 @@ export default function AdminUsers() {
             type="search"
             placeholder="Search by name or email…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(0)
+            }}
             className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-1.5 text-sm text-slate-700 dark:text-[var(--text-200)] placeholder-slate-400 dark:placeholder-[var(--primary-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] w-full sm:w-64"
           />
         </div>
@@ -267,8 +377,14 @@ export default function AdminUsers() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((u) => (
-                  <tr key={u._id} className="hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors">
+                paginated.map((u, rowIndex) => {
+                  const isEvenRow = rowIndex % 2 === 0
+                  const rowStripedClass = isEvenRow
+                    ? 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]'
+                    : 'bg-[var(--bg-200)] dark:bg-[var(--bg-200)]'
+                  const isSelf = currentUser?.id === u._id
+                  return (
+                  <tr key={u._id} className={`${rowStripedClass} hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors`}>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <UserAvatar user={u} />
@@ -279,25 +395,52 @@ export default function AdminUsers() {
                       </div>
                     </td>
                     <td className="px-4 py-2">
-                      {u.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-[var(--primary-100)] text-purple-700 dark:text-[var(--accent-200)] px-2 py-0.5 text-xs font-medium">
-                          <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM5.05 3.05a.75.75 0 011.06 0l1.062 1.06A.75.75 0 116.11 5.173L5.05 4.11a.75.75 0 010-1.06zm9.9 0a.75.75 0 010 1.06l-1.06 1.062a.75.75 0 01-1.062-1.061l1.061-1.06a.75.75 0 011.06 0zM10 7a3 3 0 100 6 3 3 0 000-6zM3.25 10a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H4a.75.75 0 01-.75-.75zm11 0a.75.75 0 01.75-.75H16a.75.75 0 010 1.5h-1a.75.75 0 01-.75-.75zM5.05 15.89a.75.75 0 01.001-1.06l1.06-1.062a.75.75 0 011.062 1.061l-1.061 1.06a.75.75 0 01-1.06.001zm9.9-.001a.75.75 0 01-1.061 0l-1.06-1.062a.75.75 0 011.06-1.061l1.062 1.06a.75.75 0 01-.001 1.063zM10 16.75a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1a.75.75 0 01.75-.75z" clipRule="evenodd" />
-                          </svg>
-                          Admin
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] dark:bg-[var(--bg-200)] text-slate-600 dark:text-[var(--text-200)] px-2 py-0.5 text-xs font-medium">
-                          User
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {u.role === 'admin' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-[var(--primary-100)] text-purple-700 dark:text-[var(--accent-200)] px-2 py-0.5 text-xs font-medium">
+                            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 1zM5.05 3.05a.75.75 0 011.06 0l1.062 1.06A.75.75 0 116.11 5.173L5.05 4.11a.75.75 0 010-1.06zm9.9 0a.75.75 0 010 1.06l-1.06 1.062a.75.75 0 01-1.062-1.061l1.061-1.06a.75.75 0 011.06 0zM10 7a3 3 0 100 6 3 3 0 000-6zM3.25 10a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H4a.75.75 0 01-.75-.75zm11 0a.75.75 0 01.75-.75H16a.75.75 0 010 1.5h-1a.75.75 0 01-.75-.75zM5.05 15.89a.75.75 0 01.001-1.06l1.06-1.062a.75.75 0 011.062 1.061l-1.061 1.06a.75.75 0 01-1.06.001zm9.9-.001a.75.75 0 01-1.061 0l-1.06-1.062a.75.75 0 011.06-1.061l1.062 1.06a.75.75 0 01-.001 1.063zM10 16.75a.75.75 0 01.75.75v1a.75.75 0 01-1.5 0v-1a.75.75 0 01.75-.75z" clipRule="evenodd" />
+                            </svg>
+                            Admin
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] dark:bg-[var(--bg-200)] text-slate-600 dark:text-[var(--text-200)] px-2 py-0.5 text-xs font-medium">
+                            User
+                          </span>
+                        )}
+                        {isSelf ? (
+                          <span className="text-[11px] text-slate-400 dark:text-[var(--text-200)] italic">you</span>
+                        ) : (
+                          <select
+                            aria-label={`Change role for ${u.name}`}
+                            value={u.role}
+                            disabled={changingRoleId === u._id}
+                            onChange={(e) => {
+                              const newRole = e.target.value as 'admin' | 'user'
+                              if (newRole !== u.role) setConfirmRole({ user: u, newRole })
+                            }}
+                            className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1 text-xs text-slate-600 dark:text-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap text-xs">
-                      {new Date(u.createdAt).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      <span className="block text-slate-600 dark:text-[var(--text-100)]">
+                        {new Date(u.createdAt).toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      <span className="block text-[11px] text-slate-400 dark:text-[var(--text-200)]">
+                        {new Date(u.createdAt).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </span>
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center justify-end gap-2">
@@ -332,11 +475,54 @@ export default function AdminUsers() {
                       )}
                     </td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination bar */}
+        {!loading && filtered.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent px-5 py-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setPage(0)
+                }}
+                className="rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1 text-xs text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] cursor-pointer"
+              >
+                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
+              <span>
+                {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(Math.max(0, safePage - 1))}
+                  disabled={safePage === 0}
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  aria-label="Previous page"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <button
+                  onClick={() => setPage(safePage + 1)}
+                  disabled={(safePage + 1) * pageSize >= filtered.length}
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  aria-label="Next page"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
