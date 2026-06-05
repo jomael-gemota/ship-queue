@@ -92,6 +92,75 @@ export const extractLinks = async (req: Request, res: Response): Promise<void> =
 };
 
 /**
+ * Streaming variant of {@link extractLinks}. Returns newline-delimited JSON
+ * (NDJSON) so the frontend can show live progress: a `listing` event, a
+ * `counted` event with the total, a `progress` event per file, and a final
+ * `done` event carrying the same payload as the non-streaming endpoint. Errors
+ * raised mid-stream are emitted as an `error` event (the HTTP status is already
+ * 200 once streaming has started).
+ */
+export const extractLinksStream = async (req: Request, res: Response): Promise<void> => {
+  const { path, extensions, recursive } = req.body as {
+    path?: string;
+    extensions?: string[];
+    recursive?: boolean;
+  };
+
+  // Validation + auth checks happen before we commit to a 200 stream.
+  if (path === undefined || path === null) {
+    res.status(400).json({ message: 'A Dropbox folder path is required.' });
+    return;
+  }
+
+  const user = await loadUserWithTokens(req.user?.id);
+  if (!user) {
+    res.status(404).json({ message: 'User not found' });
+    return;
+  }
+  if (!user.dropboxRefreshToken) {
+    res.status(400).json({ code: 'dropbox_not_connected', message: 'Dropbox is not connected. Connect it in Settings.' });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const send = (event: Record<string, unknown>): void => {
+    res.write(`${JSON.stringify(event)}\n`);
+  };
+
+  try {
+    const accessToken = await ensureAccessToken(user);
+    send({ type: 'listing' });
+    const result = await extractFileLinks(
+      accessToken,
+      path,
+      Array.isArray(extensions) ? extensions : [],
+      Boolean(recursive),
+      {
+        onListed: (total) => send({ type: 'counted', total }),
+        onProgress: (processed, total) => send({ type: 'progress', processed, total }),
+      }
+    );
+    send({ type: 'done', data: result });
+  } catch (error) {
+    if (error instanceof DropboxAuthError) {
+      send({
+        type: 'error',
+        code: 'dropbox_token_expired',
+        message: 'Your Dropbox connection has been revoked or expired. Please reconnect in Settings.',
+      });
+    } else {
+      send({ type: 'error', message: (error as Error).message || 'Dropbox request failed' });
+    }
+  } finally {
+    res.end();
+  }
+};
+
+/**
  * Persists the user's Dropbox Fetcher setup (selected folder + breadcrumb trail,
  * file type, and recursion) so it survives refresh and logout.
  */

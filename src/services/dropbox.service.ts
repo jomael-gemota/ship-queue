@@ -356,19 +356,31 @@ export interface ExtractLinksResult {
   failures: { name: string; path: string }[];
 }
 
+/** Optional progress hooks for streaming extraction feedback. */
+export interface ExtractProgress {
+  /** Fired once the matching file list is resolved, with the total to process. */
+  onListed?: (total: number) => void;
+  /** Fired after each file's link attempt completes (success or failure). */
+  onProgress?: (processed: number, total: number) => void;
+}
+
 /**
  * Extracts shared-link URLs for every file in `path` matching `extensions`.
- * When `recursive` is true, files in sub-folders are included too.
+ * When `recursive` is true, files in sub-folders are included too. An optional
+ * `progress` object receives live updates as files are listed and linked.
  */
 export async function extractFileLinks(
   accessToken: string,
   path: string,
   extensions: string[],
-  recursive: boolean
+  recursive: boolean,
+  progress?: ExtractProgress
 ): Promise<ExtractLinksResult> {
   const files = await listMatchingFiles(accessToken, normalizePath(path), extensions, recursive);
+  progress?.onListed?.(files.length);
 
   const failures: { name: string; path: string }[] = [];
+  let processed = 0;
   const linked = await mapWithConcurrency(files, 5, async (file) => {
     try {
       const url = await createOrReuseSharedLink(accessToken, file.path_lower as string);
@@ -381,6 +393,9 @@ export async function extractFileLinks(
     } catch {
       failures.push({ name: file.name, path: file.path_display || (file.path_lower as string) });
       return null;
+    } finally {
+      processed += 1;
+      progress?.onProgress?.(processed, files.length);
     }
   });
 
