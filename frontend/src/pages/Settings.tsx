@@ -693,7 +693,7 @@ export default function Settings() {
       <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
           <div className="flex items-start gap-3 mb-4">
             <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
-              <SyncIcon className="h-6 w-6 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
+              <ShipStationMark className="h-6 w-6 text-[#003311] dark:text-emerald-400" />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -859,10 +859,12 @@ function UnplugIcon({ className = '' }: { className?: string }) {
   )
 }
 
-function SyncIcon({ className = '' }: { className?: string }) {
+/** ShipStation brand mark (the 2024 gear-and-cube symbol), drawn from the
+ * official logo. Uses `currentColor` so the caller controls the fill. */
+function ShipStationMark({ className = '' }: { className?: string }) {
   return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    <svg className={className} viewBox="0 0 40.776 40" fill="currentColor" fillRule="evenodd" clipRule="evenodd" aria-hidden="true">
+      <path d="m40.776 16.934v6.131c-2.938 0-5.32 2.336-5.32 5.218 0 1.44.595 2.745 1.557 3.689l-4.42 4.335c-.962-.944-2.292-1.527-3.76-1.527-2.938 0-5.32 2.337-5.32 5.22h-6.248c0-2.882-2.382-5.218-5.32-5.218-1.468 0-2.798.583-3.76 1.526l-4.42-4.335c.961-.944 1.557-2.248 1.557-3.688 0-2.882-2.384-5.219-5.322-5.219l.002-6.131c2.938 0 5.32-2.336 5.32-5.218 0-1.44-.595-2.745-1.557-3.689l4.42-4.335c.962.942 2.292 1.527 3.76 1.527 2.938 0 5.32-2.336 5.32-5.22h6.248c0 2.882 2.382 5.218 5.32 5.218 1.468 0 2.798-.583 3.76-1.526l4.42 4.335c-.961.944-1.557 2.248-1.557 3.688 0 2.882 2.382 5.219 5.32 5.219zm-10.148 8.866v-11.6l-10.241-5.799-10.24 5.799v11.6l10.24 5.799z" />
     </svg>
   )
 }
