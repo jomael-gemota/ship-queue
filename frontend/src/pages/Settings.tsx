@@ -83,9 +83,9 @@ export default function Settings() {
     loadSettings()
   }, [loadSettings])
 
-  // Load the global auto-sync config (admins only).
+  // Load the global auto-sync config. Visible to everyone (read-only for
+  // non-admins); only admins can change it via PUT.
   useEffect(() => {
-    if (!isAdmin) return
     authApi
       .get<SyncConfigResponse>('/settings/sync')
       .then((res) => {
@@ -94,7 +94,7 @@ export default function Settings() {
         setSyncLoaded(true)
       })
       .catch(() => setSyncLoaded(true))
-  }, [isAdmin])
+  }, [])
 
   const saveSyncConfig = async () => {
     const minutes = Number(syncMinutes)
@@ -277,7 +277,7 @@ export default function Settings() {
   const currentFolderId = crumbs.length > 0 ? crumbs[crumbs.length - 1].id : null
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-6xl space-y-6">
       {error && (
         <Banner tone="error" onClose={() => setError(null)}>{error}</Banner>
       )}
@@ -296,6 +296,7 @@ export default function Settings() {
         </div>
       )}
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-start gap-3 mb-4">
           <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
@@ -324,7 +325,7 @@ export default function Settings() {
                 {settings?.driveConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
                 {settings?.driveConnected ? 'Connected' : 'Not connected'}
               </span>
-              {!settings?.driveConnected && canCreate && (
+              {!settings?.driveConnected && (
                 <button
                   onClick={async () => {
                     try {
@@ -340,7 +341,7 @@ export default function Settings() {
                   Connect Google Drive
                 </button>
               )}
-              {settings?.driveConnected && canCreate && (
+              {settings?.driveConnected && (
                 confirmDisconnect ? (
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-red-600 dark:text-red-400 whitespace-nowrap">Disconnect Drive?</span>
@@ -390,22 +391,20 @@ export default function Settings() {
                       <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected account</p>
                       <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">{settings.driveAccountName}</p>
                       <p className="text-xs text-slate-500 dark:text-[var(--text-200)] truncate">{settings.driveAccountEmail}</p>
-                      {canCreate && (
-                        <button
-                          onClick={async () => {
-                            try {
-                              const res = await authApi.get<{ url: string }>('/auth/drive/connect')
-                              window.location.href = res.url
-                            } catch {
-                              setError('Failed to start Google Drive authorisation.')
-                            }
-                          }}
-                          className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
-                        >
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                          Switch account
-                        </button>
-                      )}
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await authApi.get<{ url: string }>('/auth/drive/connect')
+                            window.location.href = res.url
+                          } catch {
+                            setError('Failed to start Google Drive authorisation.')
+                          }
+                        }}
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                        Switch account
+                      </button>
                     </div>
                     {settings.driveConnectedAt && (
                       <div className="ml-auto shrink-0 text-right">
@@ -440,7 +439,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {driveExpired && canCreate && (
+                {driveExpired && (
                   <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/15 px-4 py-3">
                     <svg className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
@@ -468,8 +467,7 @@ export default function Settings() {
                   </div>
                 )}
 
-                {canCreate && (
-                  <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <button
                       onClick={openBrowser}
                       disabled={driveExpired}
@@ -488,11 +486,9 @@ export default function Settings() {
                       </button>
                     )}
                   </div>
-                )}
 
                 {/* Manual folder ID / URL */}
-                {canCreate && (
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       value={manualId}
@@ -508,10 +504,9 @@ export default function Settings() {
                       Save
                     </button>
                   </div>
-                )}
 
                 {/* Folder browser */}
-                {canCreate && browserOpen && (
+                {browserOpen && (
                   <div className="mt-4 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] overflow-hidden">
                     <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-sm">
                       <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">
@@ -584,6 +579,7 @@ export default function Settings() {
         )}
       </section>
 
+      <div className="space-y-6">
       {/* Dropbox connection — powers the Dropbox Fetcher page */}
       <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-start gap-3 mb-4">
@@ -694,14 +690,20 @@ export default function Settings() {
         )}
       </section>
 
-      {isAdmin && (
-        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
           <div className="flex items-start gap-3 mb-4">
             <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
               <SyncIcon className="h-6 w-6 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
             </span>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Automatic order syncing</h2>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Automatic order syncing</h2>
+                {!isAdmin && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-[var(--text-200)]">
+                    Read-only
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
                 Pull new ShipStation orders on the server on a schedule — runs even when nobody has the app open.
               </p>
@@ -725,7 +727,10 @@ export default function Settings() {
                   role="switch"
                   aria-checked={syncEnabled}
                   onClick={() => setSyncEnabled((v) => !v)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                  disabled={!isAdmin}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                  } ${
                     syncEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
                   }`}
                 >
@@ -752,27 +757,34 @@ export default function Settings() {
                     max={1440}
                     value={syncMinutes}
                     onChange={(e) => setSyncMinutes(e.target.value)}
-                    disabled={!syncEnabled}
+                    disabled={!isAdmin || !syncEnabled}
                     className="w-20 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-100)] text-right focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
                   />
                   <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">min</span>
                 </div>
               </div>
 
-              {/* Save */}
-              <div className="flex items-center justify-end gap-2 p-4">
-                <button
-                  onClick={saveSyncConfig}
-                  disabled={syncSaving}
-                  className="rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                >
-                  {syncSaving ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
+              {/* Save (admins only) */}
+              {isAdmin ? (
+                <div className="flex items-center justify-end gap-2 p-4">
+                  <button
+                    onClick={saveSyncConfig}
+                    disabled={syncSaving}
+                    className="rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  >
+                    {syncSaving ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              ) : (
+                <p className="p-4 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  Only an admin can change these settings.
+                </p>
+              )}
             </div>
           )}
         </section>
-      )}
+      </div>
+      </div>
     </div>
   )
 }
