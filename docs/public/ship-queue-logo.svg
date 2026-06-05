@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="logoTitle logoDesc">
+  <title id="logoTitle">Ship Queue Logo</title>
+  <desc id="logoDesc">A cargo ship over queue lines inside a rounded square.</desc>
+  <defs>
+    <linearGradient id="sq-gradient" x1="16" y1="14" x2="112" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9" />
+      <stop offset="1" stop-color="#1D4ED8" />
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="url(#sq-gradient)" />
+  <path
+    d="M30 76h68c0 9.5-7.7 17.2-17.2 17.2H47.2C37.7 93.2 30 85.5 30 76Z"
+    fill="#FFFFFF"
+    opacity="0.95"
+  />
+  <path
+    d="M45.5 74.5V55.8c0-1.2 0.9-2.1 2.1-2.1h11.7v-5.3c0-1.2 0.9-2.1 2.1-2.1h20.4c1.2 0 2.1 0.9 2.1 2.1v5.3H95.6c1.2 0 2.1 0.9 2.1 2.1v18.7Z"
+    fill="#DBEAFE"
+  />
+  <path
+    d="M63.8 56.4h15.6v-4.9H63.8Zm-13.8 6.8h41.6v8.7H50Z"
+    fill="#FFFFFF"
+    opacity="0.98"
+  />
+  <rect x="34" y="98" width="60" height="4.2" rx="2.1" fill="#93C5FD" />
+  <rect x="42" y="105.5" width="44" height="4.2" rx="2.1" fill="#93C5FD" opacity="0.9" />
+</svg>

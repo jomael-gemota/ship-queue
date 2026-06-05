@@ -1,0 +1,16 @@
+/* Larger, modern feature-card icons on the home page. The default VitePress
+   icon box is a small 48px tile with a soft background; our icons are gradient
+   "app tiles", so we drop the box background and let the tile show full-size. */
+.VPFeatures .VPFeature .icon {
+  width: 56px;
+  height: 56px;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  margin-bottom: 20px;
+}
+
+.VPFeatures .VPFeature .icon img {
+  width: 56px;
+  height: 56px;
+}
