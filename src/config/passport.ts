@@ -58,6 +58,7 @@ passport.use(
           user.driveConnectedAt = new Date();
         }
         if (avatar) user.avatar = avatar;
+        user.lastLoginAt = new Date();
         await user.save();
 
         return done(null, user as Express.User);

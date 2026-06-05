@@ -36,6 +36,8 @@ export interface IUser extends Document {
   dropboxAccountEmail?: string;
   dropboxAccountName?: string;
   dropboxFetcherPrefs?: DropboxFetcherPrefs;
+  /** Updated on every successful Google sign-in. */
+  lastLoginAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +81,8 @@ const UserSchema = new Schema<IUser>(
       },
       default: undefined,
     },
+    // Timestamp of the most recent successful Google sign-in.
+    lastLoginAt: { type: Date },
   },
   { timestamps: true }
 );

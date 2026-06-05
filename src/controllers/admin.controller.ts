@@ -4,7 +4,7 @@ import User, { ADMIN_EMAILS } from '../models/User';
 export const listUsers = async (_req: Request, res: Response): Promise<void> => {
   try {
     const users = await User.find({})
-      .select('email name avatar role canCreateLabels createdAt')
+      .select('email name avatar role canCreateLabels createdAt lastLoginAt')
       .sort({ createdAt: 1 });
 
     res.json({ data: users });
