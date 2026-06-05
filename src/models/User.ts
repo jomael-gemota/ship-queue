@@ -2,6 +2,14 @@ import { Schema, model, Document } from 'mongoose';
 
 export type UserRole = 'admin' | 'user';
 
+/** Persisted Dropbox Fetcher setup so users return to their last folder/file-type. */
+export interface DropboxFetcherPrefs {
+  folderPath?: string;
+  crumbs?: { path: string; name: string }[];
+  fileType?: string;
+  recursive?: boolean;
+}
+
 export interface IUser extends Document {
   googleId: string;
   email: string;
@@ -19,6 +27,15 @@ export interface IUser extends Document {
   driveAccountAvatar?: string;
   driveFolderId?: string;
   driveFolderName?: string;
+  // OAuth credentials for the Dropbox Fetcher — never returned by default
+  dropboxRefreshToken?: string;
+  dropboxAccessToken?: string;
+  dropboxTokenExpiry?: Date;
+  dropboxConnectedAt?: Date;
+  dropboxAccountId?: string;
+  dropboxAccountEmail?: string;
+  dropboxAccountName?: string;
+  dropboxFetcherPrefs?: DropboxFetcherPrefs;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +61,24 @@ const UserSchema = new Schema<IUser>(
     driveAccountAvatar: { type: String },
     driveFolderId: { type: String },
     driveFolderName: { type: String },
+    // Dropbox OAuth credentials (secrets hidden by default; loaded with .select('+...'))
+    dropboxRefreshToken: { type: String, select: false },
+    dropboxAccessToken: { type: String, select: false },
+    dropboxTokenExpiry: { type: Date, select: false },
+    dropboxConnectedAt: { type: Date },
+    dropboxAccountId: { type: String },
+    dropboxAccountEmail: { type: String },
+    dropboxAccountName: { type: String },
+    // Persisted Dropbox Fetcher setup (last folder, breadcrumb, file type, recursion)
+    dropboxFetcherPrefs: {
+      type: {
+        folderPath: { type: String },
+        crumbs: { type: [{ path: String, name: String, _id: false }], default: undefined },
+        fileType: { type: String },
+        recursive: { type: Boolean },
+      },
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

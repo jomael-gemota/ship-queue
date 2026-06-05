@@ -2,6 +2,7 @@ import { Router } from 'express';
 import passport from 'passport';
 import { googleCallback, getMe, logout } from '../controllers/auth.controller';
 import { getDriveAuthUrl, handleDriveCallback } from '../controllers/driveAuth.controller';
+import { getDropboxAuthUrl, handleDropboxCallback } from '../controllers/dropboxAuth.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -67,6 +68,10 @@ router.get(
 // the one they used to log in (e.g. a manager's Drive).
 router.get('/drive/connect', requireAuth, getDriveAuthUrl);
 router.get('/drive/callback', handleDriveCallback);
+
+// Dropbox OAuth — connects a user's Dropbox account for the Dropbox Fetcher.
+router.get('/dropbox/connect', requireAuth, getDropboxAuthUrl);
+router.get('/dropbox/callback', handleDropboxCallback);
 
 // Protected — returns the currently authenticated user
 router.get('/me', requireAuth, getMe);

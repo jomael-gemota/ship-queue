@@ -5,6 +5,7 @@ import orderRoutes from './order.routes';
 import labelRoutes from './label.routes';
 import settingsRoutes from './settings.routes';
 import adminRoutes from './admin.routes';
+import dropboxRoutes from './dropbox.routes';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/orders', orderRoutes);
 router.use('/labels', labelRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/admin', adminRoutes);
+router.use('/dropbox', dropboxRoutes);
 
 export default router;

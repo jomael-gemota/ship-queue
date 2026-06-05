@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 import { listDriveFolders, listSharedDrives, getDriveFolder } from '../services/googleDrive.service';
+import { revokeToken as revokeDropboxToken } from '../services/dropbox.service';
 import { getSyncConfigDoc, MIN_INTERVAL_MS, MAX_INTERVAL_MS } from '../models/SyncConfig';
 import { applySyncConfig } from '../services/syncScheduler';
 import { triggerSync } from './order.controller';
@@ -18,13 +19,25 @@ function buildSettingsPayload(user: InstanceType<typeof User>) {
     driveAccountAvatar: user.driveAccountAvatar || user.avatar || null,
     driveFolderId: user.driveFolderId || null,
     driveFolderName: user.driveFolderName || null,
+    dropboxConnected: Boolean(user.dropboxRefreshToken),
+    dropboxConnectedAt: user.dropboxConnectedAt || null,
+    dropboxAccountEmail: user.dropboxAccountEmail || null,
+    dropboxAccountName: user.dropboxAccountName || null,
+    dropboxPrefs: user.dropboxFetcherPrefs
+      ? {
+          folderPath: user.dropboxFetcherPrefs.folderPath ?? '',
+          crumbs: (user.dropboxFetcherPrefs.crumbs ?? []).map((c) => ({ path: c.path, name: c.name })),
+          fileType: user.dropboxFetcherPrefs.fileType ?? 'all',
+          recursive: Boolean(user.dropboxFetcherPrefs.recursive),
+        }
+      : null,
   };
 }
 
 /** Returns the user's Drive connection status and selected destination folder. */
 export const getSettings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.user?.id).select('+googleRefreshToken');
+    const user = await User.findById(req.user?.id).select('+googleRefreshToken +dropboxRefreshToken');
     if (!user) {
       res.status(404).json({ message: 'User not found' });
       return;
@@ -41,7 +54,7 @@ export const updateSettings = async (req: Request, res: Response): Promise<void>
   try {
     const { driveFolderId } = req.body as { driveFolderId?: string };
 
-    const user = await User.findById(req.user?.id).select('+googleRefreshToken +googleAccessToken');
+    const user = await User.findById(req.user?.id).select('+googleRefreshToken +googleAccessToken +dropboxRefreshToken');
     if (!user) {
       res.status(404).json({ message: 'User not found' });
       return;
@@ -117,6 +130,38 @@ export const disconnectDrive = async (req: Request, res: Response): Promise<void
     res.json({ data: { disconnected: true } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to disconnect Google Drive', error: (error as Error).message });
+  }
+};
+
+/**
+ * Revokes the user's Dropbox connection by clearing all stored OAuth credentials
+ * and account metadata. The user must reconnect (and grant consent) before the
+ * Dropbox Fetcher can be used again.
+ */
+export const disconnectDropbox = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.user?.id).select('+dropboxRefreshToken +dropboxAccessToken');
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    if (user.dropboxAccessToken) {
+      await revokeDropboxToken(user.dropboxAccessToken);
+    }
+
+    user.dropboxRefreshToken = undefined;
+    user.dropboxAccessToken = undefined;
+    user.dropboxTokenExpiry = undefined;
+    user.dropboxConnectedAt = undefined;
+    user.dropboxAccountId = undefined;
+    user.dropboxAccountEmail = undefined;
+    user.dropboxAccountName = undefined;
+    await user.save();
+
+    res.json({ data: { disconnected: true } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to disconnect Dropbox', error: (error as Error).message });
   }
 };
 
