@@ -31,12 +31,8 @@ function App() {
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/settings" element={<Settings />} />
-              </Route>
-            </Route>
-
-            {/* Admin-only routes */}
-            <Route element={<ProtectedRoute adminOnly />}>
-              <Route element={<Layout />}>
+                {/* Reachable by all authenticated users; the page itself shows a
+                    blocking note and skips data loading for non-admins. */}
                 <Route path="/admin/users" element={<AdminUsers />} />
               </Route>
             </Route>

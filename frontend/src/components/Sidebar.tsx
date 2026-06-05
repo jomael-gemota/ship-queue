@@ -40,6 +40,12 @@ const MENU_ITEMS = [
       </svg>
     ),
   },
+]
+
+/** Items under the "Admin" header. Visible to everyone in the sidebar; each
+ * destination enforces its own access (Settings is open to all, User
+ * Management is admin-only and shows a blocking note to non-admins). */
+const ADMIN_ITEMS = [
   {
     label: 'Settings',
     to: '/settings',
@@ -55,11 +61,19 @@ const MENU_ITEMS = [
       </svg>
     ),
   },
+  {
+    label: 'User Management',
+    to: '/admin/users',
+    icon: (
+      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
 ]
 
 export default function Sidebar() {
   const { user, logout } = useAuth()
-  const isAdmin = user?.role === 'admin'
 
   return (
     <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur">
@@ -97,30 +111,27 @@ export default function Sidebar() {
             </NavLink>
           ))}
 
-          {isAdmin && (
-            <>
-              <div className="hidden sm:block pt-2 pb-0.5 px-1">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Admin</p>
-              </div>
-              <div className="sm:hidden border-t border-slate-200 dark:border-[var(--bg-300)] my-1" />
-              <NavLink
-                to="/admin/users"
-                title="User Management"
-                className={({ isActive }) =>
-                  `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
-                    isActive
-                      ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
-                      : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                  }`
-                }
-              >
-                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="hidden sm:inline">User Management</span>
-              </NavLink>
-            </>
-          )}
+          <div className="hidden sm:block pt-2 pb-0.5 px-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Admin</p>
+          </div>
+          <div className="sm:hidden border-t border-slate-200 dark:border-[var(--bg-300)] my-1" />
+          {ADMIN_ITEMS.map((item) => (
+            <NavLink
+              key={item.label}
+              to={item.to}
+              title={item.label}
+              className={({ isActive }) =>
+                `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
+                  isActive
+                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
+                }`
+              }
+            >
+              {item.icon}
+              <span className="hidden sm:inline">{item.label}</span>
+            </NavLink>
+          ))}
         </nav>
 
         <div className="mt-auto p-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)]">
