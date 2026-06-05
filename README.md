@@ -12,6 +12,20 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
 
+## User Guide
+
+A non-technical, end-user guide is built with [VitePress](https://vitepress.dev/)
+from the `docs/` folder. `docs:build` outputs it into `frontend/public/docs`, so
+it is served at **`/docs/index.html`** in the Vite dev server, `vite preview`,
+and the Express production server alike (Vite copies `public/` into the build
+output). A **Guide** link in the app header opens it in a new tab.
+
+```bash
+npm run docs:dev      # author the guide with live reload (separate dev server)
+npm run docs:build    # build the guide into frontend/public/docs (runs as part of `npm run build`, before the frontend build)
+npm run docs:preview  # preview the standalone VitePress build
+```
+
 ## Tech Stack
 
 | Layer    | Technology                                              |
