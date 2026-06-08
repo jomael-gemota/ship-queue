@@ -14,14 +14,37 @@ const PORT = Number(process.env.PORT) || 5000;
 const HOST = '0.0.0.0';
 
 // Middleware
-app.use(helmet({
+const baseCspDirectives = {
+  ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+  'img-src': ["'self'", 'data:', 'https:'],
+};
+
+// Strict CSP for the app itself.
+const appHelmet = helmet({
+  contentSecurityPolicy: { directives: baseCspDirectives },
+});
+
+// Relaxed CSP for the static VitePress guide under /docs. The build bootstraps
+// the Vue app from inline <script> blocks (window.__VP_SITE_DATA__ and
+// window.__VP_HASH_MAP__ for client-side navigation, plus appearance checks).
+// The default `script-src 'self'` blocks those inline scripts, which leaves the
+// docs un-hydrated so every link and button is dead. Allow inline scripts here
+// only; the docs are public, non-sensitive, and contain only build output.
+const docsHelmet = helmet({
   contentSecurityPolicy: {
     directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      'img-src': ["'self'", 'data:', 'https:'],
+      ...baseCspDirectives,
+      'script-src': ["'self'", "'unsafe-inline'"],
     },
   },
-}));
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/docs' || req.path.startsWith('/docs/')) {
+    return docsHelmet(req, res, next);
+  }
+  return appHelmet(req, res, next);
+});
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true,
