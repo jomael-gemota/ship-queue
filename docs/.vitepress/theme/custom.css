@@ -14,3 +14,18 @@
   width: 56px;
   height: 56px;
 }
+
+/* Click-to-zoom screenshots (medium-zoom). Hint that content images are
+   interactive, and keep the fullscreen overlay above VitePress's sticky nav. */
+.vp-doc img:not(a img) {
+  cursor: zoom-in;
+}
+
+.medium-zoom-overlay,
+.medium-zoom-image--opened {
+  z-index: 100;
+}
+
+.medium-zoom-overlay {
+  backdrop-filter: blur(2px);
+}
