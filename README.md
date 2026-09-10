@@ -11,6 +11,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google Drive uploads** — Optionally archive generated labels to Google Drive (any connected Google account, not just the login account).
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
+- **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table.
 
 ## User Guide
 
@@ -25,6 +26,54 @@ npm run docs:dev      # author the guide with live reload (separate dev server)
 npm run docs:build    # build the guide into frontend/public/docs (runs as part of `npm run build`, before the frontend build)
 npm run docs:preview  # preview the standalone VitePress build
 ```
+
+## Doc Tidy
+
+Doc Tidy reads a **single shared mailbox** (e.g. `invoice@outdoorequipped.com`)
+and extracts messages matching user-defined rules, copying their attachments to
+Google Drive. Rules and results are shared by the whole team; the connection is
+configured once by an admin.
+
+**One-time setup**
+
+1. In Google Cloud Console, enable the **Gmail API** for the existing OAuth
+   client and add the `gmail.readonly` scope to the consent screen.
+2. Add `DOC_TIDY_CALLBACK_URL` to the client's authorised redirect URIs.
+3. Make sure the address you connect is a **real mailbox** (see below).
+4. In **Settings → Doc Tidy mailbox**, click *Connect mailbox*, sign in as that
+   account, and pick the Drive folder attachments should land in (it can be a
+   Shared Drive, separate from the label-upload folder). Double-check the
+   address shown afterwards — Google's account chooser will happily connect
+   whichever account you are already signed in as.
+
+### Reading a Google Group (e.g. `invoice@outdoorequipped.com`)
+
+The Gmail API can only read real mailboxes. A Google Group has no mailbox to
+authorise and its archive is not exposed by any API, so it cannot be connected
+directly. Instead:
+
+1. Add a real Workspace account to the group as a member, with **"Each email"**
+   delivery, so the group's mail lands in a readable mailbox.
+2. Connect **that** account in Settings.
+3. On each rule, set **Delivered to** to the group address
+   (`invoice@outdoorequipped.com`). This scopes the rule to mail that arrived
+   via the group — matching on `To`, `Cc`, `Bcc`, `Delivered-To` and the
+   `List-ID`/`List-Post` headers that Google Groups stamps on every message.
+
+Without a *Delivered to* value, a rule searches the entire connected mailbox,
+which will include the member's unrelated personal mail.
+
+If extraction returns nothing, run the diagnostic — it reports which account is
+actually connected, whether the group's mail is present, and which clause of a
+rule is eliminating every result:
+
+```bash
+npx ts-node -T scripts/diagnose-doc-tidy.ts
+```
+
+Access is read-only: Doc Tidy can never modify or delete mail. Extraction is
+manual (*Run* per rule, or *Run all enabled rules*), capped at 250 messages per
+run, and re-running a rule refreshes existing rows instead of duplicating them.
 
 ## Tech Stack
 
@@ -95,6 +144,7 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `JWT_SECRET` / `JWT_EXPIRES_IN`           | JWT signing secret and lifetime                        |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials                             |
 | `GOOGLE_CALLBACK_URL` / `DRIVE_CALLBACK_URL` | OAuth redirect URIs (login + Drive picker)          |
+| `DOC_TIDY_CALLBACK_URL`                   | OAuth redirect URI for the Doc Tidy shared mailbox     |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
@@ -198,6 +248,23 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | GET    | `/users`                 | List users                   |
 | PATCH  | `/users/:id/permissions` | Update user permissions      |
 | DELETE | `/users/:id`             | Delete a user                |
+
+### Doc Tidy — `/api/doc-tidy`
+
+Extraction rules and results are shared team-wide; the mailbox connection and
+attachment destination are admin-only.
+
+| Method | Path                    | Description                                        |
+| ------ | ----------------------- | -------------------------------------------------- |
+| GET/POST | `/rules`              | List / create extraction rules                     |
+| PUT/DELETE | `/rules/:id`        | Update / delete a rule                             |
+| POST   | `/rules/:id/run`        | Run extraction for one rule                        |
+| POST   | `/run`                  | Run every enabled rule                             |
+| GET    | `/messages`             | Extracted messages (paginated, searchable, filterable) |
+| GET    | `/messages/:id`         | Message detail including body                      |
+| GET/PUT | `/config`              | Get / set the Drive destination (PUT = admin)      |
+| DELETE | `/config/mailbox`       | Disconnect the mailbox (admin)                     |
+| GET    | `/config/folders`       | Drive folder picker for the mailbox account (admin) |
 
 ### Shipments — `/api/shipments`
 
