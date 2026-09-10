@@ -75,11 +75,8 @@ ship-queue/
 ### 1. Clone & install
 
 ```bash
-# Backend (from repo root)
-npm install
-
-# Frontend
-cd frontend && npm install
+# Installs both backend and frontend dependencies
+npm run install:all
 ```
 
 ### 2. Configure environment
@@ -105,12 +102,14 @@ Key variables (see `.env.example` for the full list and inline notes):
 ### 3. Run in development
 
 ```bash
-# Terminal 1 — Backend (http://localhost:5000)
+# Starts both the backend (http://localhost:5000) and frontend
+# (http://localhost:5173) together in one terminal
 npm run dev
-
-# Terminal 2 — Frontend (http://localhost:5173)
-cd frontend && npm run dev
 ```
+
+Prefer to run them separately (e.g. to isolate log output)? Use
+`npm run dev:server` (backend only) or `npm run dev:client` (frontend only,
+equivalent to `cd frontend && npm run dev`).
 
 ### 4. Build for production
 
@@ -127,7 +126,10 @@ npm start       # serves API + built frontend from http://localhost:5000
 
 | Script          | Description                                        |
 | --------------- | -------------------------------------------------- |
-| `npm run dev`   | Start backend with hot reload (nodemon)            |
+| `npm run dev`   | Start backend + frontend together (hot reload for both) |
+| `npm run dev:server` | Start backend only, with hot reload (nodemon) |
+| `npm run dev:client` | Start frontend only (equivalent to `cd frontend && npm run dev`) |
+| `npm run install:all` | Install backend and frontend dependencies |
 | `npm run build` | Compile backend (tsc) and build the frontend       |
 | `npm start`     | Run the compiled server (serves API + frontend)    |
 | `npm run lint`  | Lint backend TypeScript                            |
