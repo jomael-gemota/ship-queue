@@ -75,7 +75,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        // Pin IPv4. On Windows, Node resolves `localhost` to ::1 first, but
+        // Express listens on 0.0.0.0 (IPv4 only), which produces Vite 502s.
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
       },
     },

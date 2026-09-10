@@ -12,6 +12,13 @@ export default function Navbar() {
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/dropbox-fetcher') return 'Dropbox Fetcher'
+    if (pathname.includes('/ordering/hh-sportswear/') && pathname.includes('/orders/')) {
+      return 'HH Sportswear Items'
+    }
+    if (pathname.startsWith('/ordering/hh-sportswear/') && pathname !== '/ordering/hh-sportswear/') {
+      return 'HH Sportswear Orders'
+    }
+    if (pathname.startsWith('/ordering/hh-sportswear')) return 'HH Sportswear'
     if (pathname === '/settings') return 'Settings'
     if (pathname === '/admin/users') return 'User Management'
     return 'ShipStation Orders'

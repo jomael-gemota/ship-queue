@@ -42,6 +42,23 @@ const MENU_ITEMS = [
   },
 ]
 
+const ORDERING_ITEMS = [
+  {
+    label: 'HH Sportswear',
+    to: '/ordering/hh-sportswear',
+    icon: (
+      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+        />
+      </svg>
+    ),
+  },
+]
+
 /** Items under the "Admin" header. Visible to everyone in the sidebar; each
  * destination enforces its own access (Settings is open to all, User
  * Management is admin-only and shows a blocking note to non-admins). */
@@ -97,6 +114,28 @@ export default function Sidebar() {
               key={item.label}
               to={item.to}
               end={item.end}
+              title={item.label}
+              className={({ isActive }) =>
+                `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
+                  isActive
+                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
+                }`
+              }
+            >
+              {item.icon}
+              <span className="hidden sm:inline">{item.label}</span>
+            </NavLink>
+          ))}
+
+          <div className="hidden sm:block pt-2 pb-0.5 px-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Ordering</p>
+          </div>
+          <div className="sm:hidden border-t border-slate-200 dark:border-[var(--bg-300)] my-1" />
+          {ORDERING_ITEMS.map((item) => (
+            <NavLink
+              key={item.label}
+              to={item.to}
               title={item.label}
               className={({ isActive }) =>
                 `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${

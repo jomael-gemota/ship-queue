@@ -12,6 +12,7 @@ export default function Layout() {
     pathname === '/' ||
     pathname.startsWith('/create-label') ||
     pathname.startsWith('/dropbox-fetcher') ||
+    pathname.startsWith('/ordering') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/admin')
 

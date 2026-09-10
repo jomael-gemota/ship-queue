@@ -1104,9 +1104,9 @@ export function Th({ children, className = '' }: { children: React.ReactNode; cl
   return <th className={`px-4 py-2.5 font-medium whitespace-nowrap text-xs uppercase tracking-wide ${className}`}>{children}</th>
 }
 
-export function HeaderLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
+export function HeaderLabel({ icon, text, className = '' }: { icon: React.ReactNode; text: string; className?: string }) {
   return (
-    <span className="flex items-center gap-1.5 min-w-0">
+    <span className={`flex items-center gap-1.5 min-w-0 ${className}`}>
       <span className="shrink-0 text-slate-400 dark:text-[var(--text-200)]">{icon}</span>
       <span className="min-w-0 break-words">{text}</span>
     </span>
