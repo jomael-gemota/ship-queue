@@ -9,6 +9,7 @@ import {
   runAllRules,
   getMessages,
   getMessageById,
+  streamEvents,
   getConfig,
   updateConfig,
   disconnectMailbox,
@@ -30,6 +31,9 @@ router.post('/run', runAllRules);
 
 router.get('/messages', getMessages);
 router.get('/messages/:id', getMessageById);
+
+// Long-lived SSE stream: tells open results tables when to refetch.
+router.get('/stream', streamEvents);
 
 // The mailbox connection and attachment destination are admin-managed.
 router.get('/config', getConfig);

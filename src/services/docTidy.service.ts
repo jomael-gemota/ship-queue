@@ -1,7 +1,8 @@
 import DocTidyMessage from '../models/DocTidyMessage';
 import type { IDocTidyAttachment } from '../models/DocTidyMessage';
-import type { IDocTidyRule } from '../models/DocTidyRule';
+import DocTidyRule, { type IDocTidyRule } from '../models/DocTidyRule';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
+import { broadcast } from './docTidyEvents';
 import {
   buildGmailQuery,
   getAttachmentBuffer,
@@ -19,6 +20,27 @@ export interface RunRuleResult {
   attachmentsUploaded: number;
   attachmentErrors: number;
   query: string;
+}
+
+export interface RunRuleOptions {
+  /**
+   * Skip Gmail ids that are already stored, without fetching them. Keeps the
+   * background poller cheap: a tick then costs one `messages.list` per rule
+   * plus a `messages.get` only for genuinely new mail, instead of
+   * re-downloading every message in the rule's lookback window every time.
+   */
+  skipKnown?: boolean;
+}
+
+export interface RunAllRulesResult {
+  results: {
+    ruleId: string;
+    name: string;
+    matched?: number;
+    imported?: number;
+    error?: string;
+  }[];
+  imported: number;
 }
 
 /** Lowercase extension without the dot, or '' when the name has none. */
@@ -114,7 +136,7 @@ function buildDriveFileName(msg: ParsedGmailMessage, filename: string): string {
  * imported messages are refreshed rather than duplicated, and their
  * attachments are not re-uploaded.
  */
-export async function runRule(rule: IDocTidyRule): Promise<RunRuleResult> {
+export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}): Promise<RunRuleResult> {
   const config = await getDocTidyConfigDoc(true);
   const refreshToken = config.gmailRefreshToken;
 
@@ -135,7 +157,7 @@ export async function runRule(rule: IDocTidyRule): Promise<RunRuleResult> {
     requireAttachment: rule.requireAttachment,
   });
 
-  const ids = await listMessageIds(refreshToken, query, MAX_MESSAGES_PER_RUN);
+  const allIds = await listMessageIds(refreshToken, query, MAX_MESSAGES_PER_RUN);
 
   const result: RunRuleResult = {
     matched: 0,
@@ -145,6 +167,16 @@ export async function runRule(rule: IDocTidyRule): Promise<RunRuleResult> {
     attachmentErrors: 0,
     query,
   };
+
+  // One indexed lookup for the whole batch, rather than a round trip per id.
+  let ids = allIds;
+  if (options.skipKnown && allIds.length) {
+    const known = await DocTidyMessage.find({ gmailMessageId: { $in: allIds } })
+      .select('gmailMessageId')
+      .lean();
+    const seen = new Set(known.map((doc) => doc.gmailMessageId));
+    ids = allIds.filter((id) => !seen.has(id));
+  }
 
   for (const id of ids) {
     const msg = await getMessage(refreshToken, id);
@@ -223,4 +255,67 @@ export async function runRule(rule: IDocTidyRule): Promise<RunRuleResult> {
   }
 
   return result;
+}
+
+/**
+ * Guards against two extractions overlapping. Both would look up a message,
+ * find it missing, and upload its attachments — leaving Drive with duplicates
+ * that nothing downstream cleans up.
+ */
+let running = false;
+
+export function isExtractionRunning(): boolean {
+  return running;
+}
+
+/**
+ * Runs every enabled rule and records the outcome on each one. Shared by the
+ * HTTP endpoint and the background poller so both report identically.
+ *
+ * Returns `null` when a run is already in progress, rather than queueing.
+ */
+export async function runEnabledRules(options: RunRuleOptions = {}): Promise<RunAllRulesResult | null> {
+  if (running) return null;
+  running = true;
+
+  try {
+    const rules = await DocTidyRule.find({ enabled: true });
+    const result: RunAllRulesResult = { results: [], imported: 0 };
+
+    for (const rule of rules) {
+      try {
+        const runResult = await runRule(rule, options);
+        rule.lastRunAt = new Date();
+        rule.lastRunMatchCount = runResult.matched;
+        rule.lastRunError = undefined;
+        await rule.save();
+
+        result.imported += runResult.imported;
+        result.results.push({
+          ruleId: String(rule._id),
+          name: rule.name,
+          matched: runResult.matched,
+          imported: runResult.imported,
+        });
+      } catch (error) {
+        // One failing rule should not stop the rest of the batch.
+        const message = (error as Error).message || 'Extraction failed';
+        rule.lastRunAt = new Date();
+        rule.lastRunError = message;
+        await rule.save();
+
+        result.results.push({ ruleId: String(rule._id), name: rule.name, error: message });
+      }
+    }
+
+    // Tell any open results table to refetch. Only on a real import, so an
+    // idle poll does not churn every connected client.
+    if (result.imported > 0) {
+      broadcast({ type: 'imported', imported: result.imported });
+    }
+
+    return result;
+  } finally {
+    running = false;
+  }
 }

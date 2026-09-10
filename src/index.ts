@@ -8,6 +8,7 @@ import passport from './config/passport';
 import { connectDB } from './config/db';
 import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
+import { startDocTidyPoller } from './services/docTidyPoller';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -81,6 +82,8 @@ const start = async () => {
   });
   // Keep orders in sync even when nobody has the web app open.
   await startSyncScheduler();
+  // Same for Doc Tidy: capture matching mail as it arrives, not on demand.
+  startDocTidyPoller();
 };
 
 start();

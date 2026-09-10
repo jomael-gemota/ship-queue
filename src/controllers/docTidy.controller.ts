@@ -3,7 +3,8 @@ import { isValidObjectId } from 'mongoose';
 import DocTidyRule, { MATCH_MODES, type MatchMode } from '../models/DocTidyRule';
 import DocTidyMessage from '../models/DocTidyMessage';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
-import { runRule } from '../services/docTidy.service';
+import { runRule, runEnabledRules } from '../services/docTidy.service';
+import { addClient, broadcast } from '../services/docTidyEvents';
 import { getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
 
 /** Escapes user input before it is used inside a RegExp. */
@@ -166,6 +167,9 @@ export const runRuleById = async (req: Request, res: Response): Promise<void> =>
     rule.lastRunError = undefined;
     await rule.save();
 
+    // Keep other people's open results tables current too.
+    if (result.imported > 0) broadcast({ type: 'imported', imported: result.imported });
+
     res.json({ data: result });
   } catch (error) {
     const message = (error as Error).message || 'Extraction failed';
@@ -180,43 +184,49 @@ export const runRuleById = async (req: Request, res: Response): Promise<void> =>
 
 export const runAllRules = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const rules = await DocTidyRule.find({ enabled: true });
-    if (!rules.length) {
+    const enabledCount = await DocTidyRule.countDocuments({ enabled: true });
+    if (enabledCount === 0) {
       res.status(400).json({ message: 'There are no enabled rules to run' });
       return;
     }
 
-    const results: { ruleId: string; name: string; matched?: number; imported?: number; error?: string }[] = [];
-
-    for (const rule of rules) {
-      try {
-        const result = await runRule(rule);
-        rule.lastRunAt = new Date();
-        rule.lastRunMatchCount = result.matched;
-        rule.lastRunError = undefined;
-        await rule.save();
-
-        results.push({
-          ruleId: String(rule._id),
-          name: rule.name,
-          matched: result.matched,
-          imported: result.imported,
-        });
-      } catch (error) {
-        // One failing rule should not stop the rest of the batch.
-        const message = (error as Error).message || 'Extraction failed';
-        rule.lastRunAt = new Date();
-        rule.lastRunError = message;
-        await rule.save();
-
-        results.push({ ruleId: String(rule._id), name: rule.name, error: message });
-      }
+    const result = await runEnabledRules();
+    if (!result) {
+      res.status(409).json({
+        message: 'An extraction is already running — new messages will appear automatically.',
+      });
+      return;
     }
 
-    res.json({ data: { results } });
+    res.json({ data: { results: result.results } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to run rules', error: (error as Error).message });
   }
+};
+
+/* ---------------------------------------------------------------- events */
+
+/**
+ * Server-sent events stream that tells open results tables when to refetch.
+ *
+ * Events carry a signal rather than the rows themselves, so each client
+ * re-queries with its own filters and page and cannot drift out of sync with
+ * its filter state.
+ */
+export const streamEvents = (req: Request, res: Response): void => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // Stops reverse proxies buffering the stream into uselessness.
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+
+  const remove = addClient(res);
+  res.write(`data: ${JSON.stringify({ type: 'connected', at: new Date().toISOString() })}\n\n`);
+
+  req.on('close', remove);
 };
 
 /* -------------------------------------------------------------- messages */
