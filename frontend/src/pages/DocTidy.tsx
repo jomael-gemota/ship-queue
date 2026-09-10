@@ -6,6 +6,7 @@ import { formatBytes, formatDateTime } from '../lib/format'
 import {
   PAGE_SIZE_OPTIONS,
   type DocTidyConfig,
+  type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyRule,
@@ -40,6 +41,10 @@ export default function DocTidy() {
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Live updates
+  const [live, setLive] = useState(false)
+  const [newCount, setNewCount] = useState(0)
 
   const fetchMessages = useCallback(
     async (silent = false) => {
@@ -104,6 +109,40 @@ export default function DocTidy() {
     fetchMessages(true)
   }, [fetchMessages])
 
+  // The stream is opened once for the life of the page, so it reads the
+  // current fetcher through a ref rather than resubscribing on every filter
+  // change — reconnecting the stream each keystroke would defeat the point.
+  const fetchRef = useRef(fetchMessages)
+  useEffect(() => {
+    fetchRef.current = fetchMessages
+  }, [fetchMessages])
+
+  // The server pushes a signal, not rows, so the refetch honours whatever
+  // filters and page the user is currently on.
+  useEffect(() => {
+    return authApi.eventStream<DocTidyEvent>(
+      '/doc-tidy/stream',
+      (event) => {
+        if (event.type === 'connected') {
+          setLive(true)
+          return
+        }
+        if (event.type !== 'imported') return
+
+        setNewCount((count) => count + (event.imported ?? 0))
+        void fetchRef.current(true)
+      },
+      () => setLive(false)
+    )
+  }, [])
+
+  // The "new" badge is an arrival cue, not a persistent state.
+  useEffect(() => {
+    if (newCount === 0) return
+    const timer = setTimeout(() => setNewCount(0), 10_000)
+    return () => clearTimeout(timer)
+  }, [newCount])
+
   const handleRunAll = async () => {
     setRunning(true)
     setRunError(null)
@@ -160,7 +199,30 @@ export default function DocTidy() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2">
-          <DocTidyTabs />
+          <div className="flex items-center gap-3">
+            <DocTidyTabs />
+            {config?.mailboxConnected && (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  live
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-500/10 dark:text-slate-400'
+                }`}
+                title={
+                  live
+                    ? 'New mail matching an enabled rule is captured and shown here automatically'
+                    : 'Reconnecting to the live update stream…'
+                }
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    live ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  }`}
+                />
+                {live ? 'Live' : 'Offline'}
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
             {config?.mailboxConnected ? (
               <>
@@ -302,6 +364,11 @@ export default function DocTidy() {
 
           <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
             {refreshing && <Spinner className="h-3 w-3" />}
+            {newCount > 0 && (
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+                +{newCount} new
+              </span>
+            )}
             {pagination.total > 0 &&
               `${pagination.total.toLocaleString()} message${pagination.total === 1 ? '' : 's'}`}
           </span>

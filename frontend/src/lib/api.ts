@@ -101,9 +101,93 @@ async function* authPostStream<T>(endpoint: string, body?: unknown): AsyncGenera
   if (tail) yield JSON.parse(tail) as T
 }
 
+/**
+ * Opens a server-sent events stream and invokes `onEvent` for each message.
+ * Returns a function that closes it.
+ *
+ * Uses `fetch` rather than `EventSource` because `EventSource` cannot send an
+ * `Authorization` header, and the alternative — the JWT in the query string —
+ * would leak the token into server access logs.
+ */
+function authEventStream<T>(
+  endpoint: string,
+  onEvent: (event: T) => void,
+  onError?: (error: unknown) => void
+): () => void {
+  const controller = new AbortController()
+  let closed = false
+  let attempt = 0
+
+  const run = async () => {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      headers: { Accept: 'text/event-stream', ...getAuthHeaders() },
+      signal: controller.signal,
+    })
+
+    if (!res.ok || !res.body) throw new ApiError(`HTTP ${res.status}`)
+    attempt = 0
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE frames are separated by a blank line.
+      let split = buffer.indexOf('\n\n')
+      while (split !== -1) {
+        const frame = buffer.slice(0, split)
+        buffer = buffer.slice(split + 2)
+
+        const data = frame
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('')
+
+        if (data) {
+          try {
+            onEvent(JSON.parse(data) as T)
+          } catch {
+            // Ignore a malformed frame rather than tearing down the stream.
+          }
+        }
+        split = buffer.indexOf('\n\n')
+      }
+    }
+  }
+
+  // Reconnect with backoff: the stream is long-lived, so a dropped connection
+  // is expected (sleep, network change, server restart) rather than fatal.
+  const connect = () => {
+    if (closed) return
+    run()
+      .then(() => {
+        attempt += 1
+        if (!closed) setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempt))
+      })
+      .catch((err) => {
+        if (closed || controller.signal.aborted) return
+        onError?.(err)
+        attempt += 1
+        setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempt))
+      })
+  }
+  connect()
+
+  return () => {
+    closed = true
+    controller.abort()
+  }
+}
+
 export const authApi = {
   get: <T>(endpoint: string) => authRequest<T>(endpoint),
   postStream: authPostStream,
+  eventStream: authEventStream,
   post: <T>(endpoint: string, body?: unknown) =>
     authRequest<T>(endpoint, {
       method: 'POST',

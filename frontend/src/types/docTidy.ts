@@ -104,4 +104,11 @@ export interface RunAllResult {
   }[]
 }
 
+/** Pushed over `/doc-tidy/stream` when the server stores new messages. */
+export interface DocTidyEvent {
+  type: 'imported' | 'ping' | 'connected'
+  imported?: number
+  at?: string
+}
+
 export const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
