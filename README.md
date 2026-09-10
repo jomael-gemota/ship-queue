@@ -71,9 +71,26 @@ rule is eliminating every result:
 npx ts-node -T scripts/diagnose-doc-tidy.ts
 ```
 
+### Automatic capture
+
+The server checks the connected mailbox every `DOC_TIDY_POLL_INTERVAL_SECONDS`
+(default 15) and imports anything matching an enabled rule, whether or not
+someone has the page open. Open results tables hold a server-sent events stream
+and refresh the instant something is stored, so new mail appears without a
+manual refresh — the **Live** badge above the table shows the stream is
+connected.
+
+Capture latency is therefore bounded by the poll interval rather than being
+truly instantaneous; true push would require Gmail `users.watch` with a Cloud
+Pub/Sub topic and a publicly reachable webhook. A poll only fetches messages it
+has not already stored, so a short interval stays cheap.
+
+*Run all enabled rules* is still available, and is mainly useful for backfilling
+a newly created rule with a long lookback window.
+
 Access is read-only: Doc Tidy can never modify or delete mail. Extraction is
-manual (*Run* per rule, or *Run all enabled rules*), capped at 250 messages per
-run, and re-running a rule refreshes existing rows instead of duplicating them.
+capped at 250 messages per run, and re-running a rule refreshes existing rows
+instead of duplicating them.
 
 ## Tech Stack
 
@@ -145,6 +162,7 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials                             |
 | `GOOGLE_CALLBACK_URL` / `DRIVE_CALLBACK_URL` | OAuth redirect URIs (login + Drive picker)          |
 | `DOC_TIDY_CALLBACK_URL`                   | OAuth redirect URI for the Doc Tidy shared mailbox     |
+| `DOC_TIDY_POLL_INTERVAL_SECONDS`          | How often Doc Tidy checks the mailbox (default 15)     |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
@@ -262,6 +280,7 @@ attachment destination are admin-only.
 | POST   | `/run`                  | Run every enabled rule                             |
 | GET    | `/messages`             | Extracted messages (paginated, searchable, filterable) |
 | GET    | `/messages/:id`         | Message detail including body                      |
+| GET    | `/stream`               | SSE stream signalling when new messages are stored |
 | GET/PUT | `/config`              | Get / set the Drive destination (PUT = admin)      |
 | DELETE | `/config/mailbox`       | Disconnect the mailbox (admin)                     |
 | GET    | `/config/folders`       | Drive folder picker for the mailbox account (admin) |
