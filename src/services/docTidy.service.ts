@@ -115,20 +115,6 @@ function filterAttachments(msg: ParsedGmailMessage, rule: IDocTidyRule) {
 }
 
 /**
- * Keeps Drive tidy and filenames traceable: `2026-09-10_Acme-Invoice_bill.pdf`.
- * Drive allows duplicates, so no uniqueness suffix is needed.
- */
-function buildDriveFileName(msg: ParsedGmailMessage, filename: string): string {
-  const datePart = msg.sentAt.toISOString().slice(0, 10);
-  const subjectPart = (msg.subject || 'no-subject')
-    .replace(/[\\/:*?"<>|]/g, '')
-    .trim()
-    .slice(0, 60)
-    .replace(/\s+/g, '-');
-  return `${datePart}_${subjectPart}_${filename}`;
-}
-
-/**
  * Runs one rule end to end: query Gmail, verify each hit locally, copy
  * attachments into the configured Drive folder, and upsert the results.
  *
@@ -206,9 +192,11 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
           if (!att.attachmentId) throw new Error('Attachment has no Gmail id');
 
           const buffer = await getAttachmentBuffer(refreshToken, msg.gmailMessageId, att.attachmentId);
+          // Uploaded under the sender's own filename. Drive tolerates
+          // duplicate names, so no date or subject prefix is added.
           const uploaded = await uploadBufferToDrive(
             { refreshToken },
-            buildDriveFileName(msg, att.filename),
+            att.filename,
             att.mimeType,
             buffer,
             config.driveFolderId
