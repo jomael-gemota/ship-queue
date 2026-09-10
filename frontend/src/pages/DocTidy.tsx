@@ -379,33 +379,30 @@ export default function DocTidy() {
                         key={msg._id}
                         className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)]/40 hover:bg-[var(--primary-100)]/40 align-top"
                       >
-                        <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 dark:text-[var(--text-200)]">
+                        <td className="px-3 py-1.5 whitespace-nowrap text-slate-700 dark:text-[var(--text-200)]">
                           {formatDateTime(msg.sentAt)}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-700 dark:text-[var(--text-200)]">
-                          <div className="font-medium text-slate-900 dark:text-[var(--text-100)]">
-                            {msg.fromName || msg.from}
-                          </div>
-                          {msg.fromName && <div className="text-xs text-slate-500">{msg.from}</div>}
+                        <td
+                          className="px-3 py-1.5 whitespace-nowrap max-w-[200px] truncate font-medium text-slate-900 dark:text-[var(--text-100)]"
+                          title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}
+                        >
+                          {msg.fromName || msg.from}
                         </td>
-                        <td className="px-3 py-2.5 max-w-md">
+                        <td className="px-3 py-1.5 max-w-md">
                           <button
                             onClick={() => toggleRow(msg._id)}
-                            className="text-left font-medium text-slate-900 dark:text-[var(--text-100)] hover:text-[var(--accent-200)] cursor-pointer"
+                            className="block w-full text-left font-medium text-slate-900 dark:text-[var(--text-100)] hover:text-[var(--accent-200)] cursor-pointer truncate"
+                            title={msg.snippet ? 'Show preview' : msg.subject}
                           >
                             {msg.subject}
                           </button>
-                          {msg.snippet && (
-                            <p
-                              className={`text-xs text-slate-500 dark:text-[var(--text-200)] ${
-                                isOpen ? '' : 'line-clamp-1'
-                              }`}
-                            >
+                          {isOpen && msg.snippet && (
+                            <p className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">
                               {msg.snippet}
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           {msg.ruleName ? (
                             <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-xs font-medium text-[var(--accent-200)]">
                               {msg.ruleName}
@@ -414,11 +411,11 @@ export default function DocTidy() {
                             <span className="text-xs text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-1.5">
                           {msg.attachments.length === 0 ? (
                             <span className="text-xs text-slate-400">None</span>
                           ) : (
-                            <ul className="space-y-1">
+                            <ul className="space-y-0.5">
                               {msg.attachments.map((att, i) => (
                                 <li key={`${msg._id}-${i}`} className="flex items-center gap-1.5">
                                   {att.webViewLink ? (
