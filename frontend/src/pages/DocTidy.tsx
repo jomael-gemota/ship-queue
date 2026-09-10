@@ -40,8 +40,6 @@ export default function DocTidy() {
   const [pageSize, setPageSize] = useState(50)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
 
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-
   // Live updates
   const [live, setLive] = useState(false)
   const [newCount, setNewCount] = useState(0)
@@ -167,15 +165,6 @@ export default function DocTidy() {
     } finally {
       setRunning(false)
     }
-  }
-
-  const toggleRow = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
   }
 
   const clearFilters = () => {
@@ -440,34 +429,32 @@ export default function DocTidy() {
                   </tr>
                 ) : (
                   messages.map((msg) => {
-                    const isOpen = expanded.has(msg._id)
                     return (
                       <tr
                         key={msg._id}
-                        className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)]/40 hover:bg-[var(--primary-100)]/40 align-top"
+                        className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/60 align-top"
                       >
                         <td className="px-3 py-1.5 whitespace-nowrap text-slate-700 dark:text-[var(--text-200)]">
                           {formatDateTime(msg.sentAt)}
                         </td>
-                        <td
-                          className="px-3 py-1.5 whitespace-nowrap max-w-[200px] truncate font-medium text-slate-900 dark:text-[var(--text-100)]"
-                          title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}
-                        >
-                          {msg.fromName || msg.from}
+                        {/* Truncation lives on an inner block: `text-overflow`
+                            needs a definite width, which a cell in an
+                            auto-layout table does not guarantee. */}
+                        <td className="px-3 py-1.5">
+                          <div
+                            className="max-w-[200px] truncate font-medium text-slate-900 dark:text-[var(--text-100)]"
+                            title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}
+                          >
+                            {msg.fromName || msg.from}
+                          </div>
                         </td>
-                        <td className="px-3 py-1.5 max-w-md">
-                          <button
-                            onClick={() => toggleRow(msg._id)}
-                            className="block w-full text-left font-medium text-slate-900 dark:text-[var(--text-100)] hover:text-[var(--accent-200)] cursor-pointer truncate"
-                            title={msg.snippet ? 'Show preview' : msg.subject}
+                        <td className="px-3 py-1.5">
+                          <div
+                            className="max-w-md truncate font-medium text-slate-900 dark:text-[var(--text-100)]"
+                            title={msg.subject}
                           >
                             {msg.subject}
-                          </button>
-                          {isOpen && msg.snippet && (
-                            <p className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">
-                              {msg.snippet}
-                            </p>
-                          )}
+                          </div>
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           {msg.ruleName ? (
