@@ -198,9 +198,10 @@ npm start       # serves API + built frontend from http://localhost:5000
 | `npm run dev:server` | Start backend only, with hot reload (nodemon) |
 | `npm run dev:client` | Start frontend only (equivalent to `cd frontend && npm run dev`) |
 | `npm run install:all` | Install backend and frontend dependencies |
+| `npm run check` | **Quality gate** — typecheck (backend + frontend), frontend lint, frontend build |
 | `npm run build` | Compile backend (tsc) and build the frontend       |
 | `npm start`     | Run the compiled server (serves API + frontend)    |
-| `npm run lint`  | Lint backend TypeScript                            |
+| `npm run lint`  | Lint backend TypeScript (ESLint is not installed at root, so this is not part of `check`) |
 
 **Frontend** (`frontend/`):
 

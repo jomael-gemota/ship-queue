@@ -18,5 +18,22 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Fetching data in an effect is how every page in this app loads, and the
+      // rule cannot distinguish that from a genuine cascading-render bug. Kept
+      // as a warning so new instances stay visible, rather than off entirely or
+      // suppressed line by line across a dozen files.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
+  },
+  {
+    // A context module pairs its provider with the hook that reads it, and a
+    // shared UI module pairs its components with the helpers they are built
+    // from. Splitting either for Fast Refresh's benefit would scatter one
+    // concern across two files.
+    files: ['src/context/*.tsx', 'src/components/**/labelUi.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])
