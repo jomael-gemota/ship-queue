@@ -42,6 +42,7 @@ export default defineConfig({
           { text: 'Viewing Orders', link: '/guide/orders' },
           { text: 'Creating Shipping Labels', link: '/guide/create-label' },
           { text: 'Dropbox Fetcher', link: '/guide/dropbox-fetcher' },
+          { text: 'Doc Tidy', link: '/guide/doc-tidy' },
           { text: 'Settings', link: '/guide/settings' },
           { text: 'User Management', link: '/guide/user-management' },
         ],

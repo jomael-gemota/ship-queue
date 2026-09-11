@@ -11,7 +11,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google Drive uploads** — Optionally archive generated labels to Google Drive (any connected Google account, not just the login account).
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
-- **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table.
+- **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table. Each rule declares the kind of document it collects — Order Confirmation, Invoice or Other — which is stamped on every message it captures.
 
 ## User Guide
 
@@ -33,6 +33,11 @@ Doc Tidy reads a **single shared mailbox** (e.g. `invoice@outdoorequipped.com`)
 and extracts messages matching user-defined rules, copying their attachments to
 Google Drive. Rules and results are shared by the whole team; the connection is
 configured once by an admin.
+
+Every rule carries a **document type** — *Order Confirmation*, *Invoice* or
+*Other* — which is copied onto each message the rule captures, so the results
+table can be filtered and scanned by document kind. Editing a rule also updates
+the type and name shown on the messages it has already extracted.
 
 **One-time setup**
 
@@ -92,6 +97,28 @@ Access is read-only: Doc Tidy can never modify or delete mail. Extraction is
 capped at 250 messages per run, and re-running a rule refreshes existing rows
 instead of duplicating them.
 
+### Agent parsing
+
+Capture stops at the file. **Parse** — the button beside each PDF in the results
+table — sends that document to the Tidy agent, which reads it and returns
+structured JSON plus a table view.
+
+The agent runs as a Python worker on a separate Ubuntu machine, so the model
+never has to run on the web server. The worker dials out to Ship Queue over a
+WebSocket and holds the connection open; jobs are pushed down it and reasoning
+tokens come back up it. Everything the agent thinks is streamed to whoever has
+the panel open **and** stored on the job, so reopening a document later replays
+the transcript exactly as it happened.
+
+If the output is wrong, correct it. A correction stores the fixed JSON and your
+note, and both are retrieved on later documents from the same vendor — the note
+becomes a rule the agent must follow, and the corrected output becomes a worked
+example. This is why vendors are registered: corrections are scoped per vendor,
+so a format learned from one supplier is never applied to another.
+
+See `worker/README.md` for the Ubuntu setup, and
+`design-log/2026-09-11-doc-tidy-agent-parsing.md` for why it is built this way.
+
 ## Tech Stack
 
 | Layer    | Technology                                              |
@@ -100,7 +127,8 @@ instead of duplicating them.
 | Backend  | Node.js, Express, TypeScript                            |
 | Database | MongoDB (via Mongoose)                                  |
 | Auth     | Passport + Google OAuth 2.0, JWT                        |
-| External | ShipStation API, Google Drive API                       |
+| Agent    | Python worker (asyncio, motor, pdfplumber) on Ubuntu    |
+| External | ShipStation API, Google Drive API, Hermes/OpenAI API    |
 
 ## Project Structure
 
@@ -121,6 +149,7 @@ ship-queue/
 │       ├── lib/              # API client & utilities
 │       ├── pages/            # Route-level page components
 │       └── types/            # Shared TypeScript types
+├── worker/                   # Doc Tidy parsing agent (Python, runs on Ubuntu)
 ├── scripts/                  # One-off verification/maintenance scripts
 ├── design-log/               # Architecture & decision records
 ├── .env.example              # Environment variable template
@@ -163,6 +192,8 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `GOOGLE_CALLBACK_URL` / `DRIVE_CALLBACK_URL` | OAuth redirect URIs (login + Drive picker)          |
 | `DOC_TIDY_CALLBACK_URL`                   | OAuth redirect URI for the Doc Tidy shared mailbox     |
 | `DOC_TIDY_POLL_INTERVAL_SECONDS`          | How often Doc Tidy checks the mailbox (default 15)     |
+| `DOC_TIDY_WORKER_TOKEN`                   | Shared secret the parsing worker presents on `/ws/doc-tidy` |
+| `OPENAI_API_KEY` / `EMBEDDING_MODEL`      | Embeddings that make Doc Tidy corrections retrievable  |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
