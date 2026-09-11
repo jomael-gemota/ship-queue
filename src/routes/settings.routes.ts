@@ -9,6 +9,7 @@ import {
   getSyncConfig,
   updateSyncConfig,
 } from '../controllers/settings.controller';
+import { listCookieJars, updateCookieJar, runCookieJarNow } from '../controllers/cookieJar.controller';
 
 const router = Router();
 
@@ -22,5 +23,9 @@ router.delete('/dropbox', disconnectDropbox);
 
 router.get('/sync', getSyncConfig);
 router.put('/sync', requireAdmin, updateSyncConfig);
+
+router.get('/cookie-jars', listCookieJars);
+router.post('/cookie-jars/:key/run', requireAdmin, runCookieJarNow);
+router.patch('/cookie-jars/:key', requireAdmin, updateCookieJar);
 
 export default router;
