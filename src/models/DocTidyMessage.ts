@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { DOCUMENT_TYPES, type DocumentType } from './DocTidyRule';
 
 export interface IDocTidyAttachment {
   filename: string;
@@ -21,6 +22,11 @@ export interface IDocTidyMessage extends Document {
   ruleId?: Types.ObjectId;
   /** Denormalised so results stay readable after a rule is deleted. */
   ruleName?: string;
+  /**
+   * Denormalised from the rule for the same reason, and so the table can filter
+   * on it directly. Absent on messages captured before the field existed.
+   */
+  documentType?: DocumentType;
 
   gmailMessageId: string;
   threadId?: string;
@@ -59,6 +65,7 @@ const DocTidyMessageSchema = new Schema<IDocTidyMessage>(
   {
     ruleId: { type: Schema.Types.ObjectId, ref: 'DocTidyRule', index: true },
     ruleName: { type: String },
+    documentType: { type: String, enum: DOCUMENT_TYPES, default: 'other' },
 
     gmailMessageId: { type: String, required: true, unique: true },
     threadId: { type: String },
@@ -81,5 +88,6 @@ const DocTidyMessageSchema = new Schema<IDocTidyMessage>(
 // Supports the default "newest first" list query and the rule filter.
 DocTidyMessageSchema.index({ sentAt: -1 });
 DocTidyMessageSchema.index({ ruleId: 1, sentAt: -1 });
+DocTidyMessageSchema.index({ documentType: 1, sentAt: -1 });
 
 export default model<IDocTidyMessage>('DocTidyMessage', DocTidyMessageSchema);

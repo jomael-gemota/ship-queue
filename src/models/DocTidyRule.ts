@@ -4,6 +4,13 @@ export type MatchMode = 'any' | 'all';
 export const MATCH_MODES: MatchMode[] = ['any', 'all'];
 
 /**
+ * The kind of document a rule collects. Closed on purpose: the value is filtered
+ * on in the results table, so it has to stay comparable across rules.
+ */
+export type DocumentType = 'order_confirmation' | 'invoice' | 'other';
+export const DOCUMENT_TYPES: DocumentType[] = ['order_confirmation', 'invoice', 'other'];
+
+/**
  * A named extraction entry. Rules are shared team-wide: any authenticated user
  * can create, edit, run or delete one. `createdBy*` is attribution only.
  */
@@ -11,6 +18,12 @@ export interface IDocTidyRule extends Document {
   name: string;
   description?: string;
   enabled: boolean;
+
+  /**
+   * What the rule collects. Copied onto every message the rule captures, so the
+   * results table can be grouped and filtered without resolving the rule.
+   */
+  documentType: DocumentType;
 
   /** Sender addresses (or partial addresses/domains) to match. */
   fromAddresses: string[];
@@ -57,6 +70,9 @@ const DocTidyRuleSchema = new Schema<IDocTidyRule>(
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     enabled: { type: Boolean, default: true },
+
+    // Rules written before this field existed read as 'other'.
+    documentType: { type: String, enum: DOCUMENT_TYPES, default: 'other' },
 
     fromAddresses: { type: [String], default: [] },
     toAddresses: { type: [String], default: [] },

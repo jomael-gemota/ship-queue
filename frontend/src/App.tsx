@@ -12,6 +12,7 @@ import Settings from './pages/Settings'
 import DropboxFetcher from './pages/DropboxFetcher'
 import DocTidy from './pages/DocTidy'
 import DocTidyRules from './pages/DocTidyRules'
+import DocTidyVendors from './pages/DocTidyVendors'
 import AdminUsers from './pages/AdminUsers'
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/doc-tidy" element={<DocTidy />} />
                 <Route path="/doc-tidy/rules" element={<DocTidyRules />} />
+                <Route path="/doc-tidy/vendors" element={<DocTidyVendors />} />
                 <Route path="/settings" element={<Settings />} />
                 {/* Reachable by all authenticated users; the page itself shows a
                     blocking note and skips data loading for non-admins. */}

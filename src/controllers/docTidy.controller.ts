@@ -1,7 +1,13 @@
 import { Request, Response } from 'express';
 import { isValidObjectId } from 'mongoose';
-import DocTidyRule, { MATCH_MODES, type MatchMode } from '../models/DocTidyRule';
+import DocTidyRule, {
+  DOCUMENT_TYPES,
+  MATCH_MODES,
+  type DocumentType,
+  type MatchMode,
+} from '../models/DocTidyRule';
 import DocTidyMessage from '../models/DocTidyMessage';
+import DocTidyParseJob from '../models/DocTidyParseJob';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
@@ -39,6 +45,10 @@ function buildRulePayload(body: Record<string, unknown>) {
     ? (body.matchMode as MatchMode)
     : 'any';
 
+  const documentType = DOCUMENT_TYPES.includes(body.documentType as DocumentType)
+    ? (body.documentType as DocumentType)
+    : 'other';
+
   const lookbackRaw = Number(body.lookbackDays);
   const lookbackDays =
     Number.isFinite(lookbackRaw) && lookbackRaw > 0 ? Math.min(3650, Math.round(lookbackRaw)) : undefined;
@@ -47,6 +57,7 @@ function buildRulePayload(body: Record<string, unknown>) {
     name: String(body.name ?? '').trim(),
     description: typeof body.description === 'string' ? body.description.trim() : undefined,
     enabled: body.enabled === undefined ? true : Boolean(body.enabled),
+    documentType,
     fromAddresses: toStringArray(body.fromAddresses),
     toAddresses: toStringArray(body.toAddresses),
     subjectKeywords: toStringArray(body.subjectKeywords),
@@ -115,6 +126,15 @@ export const updateRule = async (req: Request, res: Response): Promise<void> => 
       res.status(404).json({ message: 'Rule not found' });
       return;
     }
+
+    // Keep the labels denormalised onto already-extracted messages in step with
+    // the rule. Re-running will not revisit those messages (`skipKnown`), so
+    // without this a renamed or re-classified rule leaves its own history
+    // contradicting it.
+    await DocTidyMessage.updateMany(
+      { ruleId: rule._id },
+      { $set: { ruleName: rule.name, documentType: rule.documentType } }
+    );
 
     res.json({ data: rule });
   } catch (error) {
@@ -236,6 +256,7 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     const {
       search,
       ruleId,
+      documentType,
       hasAttachments,
       dateFrom,
       dateTo,
@@ -252,6 +273,14 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     const filter: Record<string, unknown> = {};
 
     if (ruleId && isValidObjectId(ruleId)) filter.ruleId = ruleId;
+
+    if (DOCUMENT_TYPES.includes(documentType as DocumentType)) {
+      // Messages stored before the field existed have no `documentType` and are
+      // shown as "Other", so that filter has to match them too.
+      filter.documentType =
+        documentType === 'other' ? { $in: ['other', null] } : documentType;
+    }
+
     if (hasAttachments === 'true') filter.hasAttachments = true;
     if (hasAttachments === 'false') filter.hasAttachments = false;
 
@@ -289,8 +318,23 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
       hasFilter ? DocTidyMessage.countDocuments(filter) : DocTidyMessage.estimatedDocumentCount(),
     ]);
 
+    // Parse state for this page in one query rather than one per row. The table
+    // renders a Parse action per attachment, so it needs to know which of them
+    // already have a job and where each got to.
+    const jobs = await DocTidyParseJob.find({ messageId: { $in: messages.map((m) => m._id) } })
+      .select('messageId attachmentIndex status error completedAt vendorName vendorNeedsSetup')
+      .lean();
+
+    const jobsByMessage = new Map<string, typeof jobs>();
+    for (const job of jobs) {
+      const key = String(job.messageId);
+      const bucket = jobsByMessage.get(key);
+      if (bucket) bucket.push(job);
+      else jobsByMessage.set(key, [job]);
+    }
+
     res.json({
-      data: messages,
+      data: messages.map((m) => ({ ...m, parseJobs: jobsByMessage.get(String(m._id)) ?? [] })),
       pagination: {
         page: pageNum,
         pageSize: size,

@@ -1,5 +1,6 @@
 import './config/env';
 import path from 'path';
+import { createServer } from 'http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -9,6 +10,7 @@ import { connectDB } from './config/db';
 import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
 import { startDocTidyPoller } from './services/docTidyPoller';
+import { startDocTidyWorkerServer, WORKER_WS_PATH } from './services/docTidyWorkerRegistry';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -75,10 +77,16 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
+// An explicit HTTP server, rather than app.listen, because the Doc Tidy parsing
+// worker connects over WebSocket and needs the server's `upgrade` event.
+const httpServer = createServer(app);
+startDocTidyWorkerServer(httpServer);
+
 const start = async () => {
   await connectDB();
-  app.listen(PORT, HOST, () => {
+  httpServer.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);
+    console.log(`Doc Tidy worker endpoint: ws://${HOST}:${PORT}${WORKER_WS_PATH}`);
   });
   // Keep orders in sync even when nobody has the web app open.
   await startSyncScheduler();

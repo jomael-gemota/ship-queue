@@ -1,339 +1,60 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { authApi } from '../lib/api'
-import { Banner, DocTidyTabs, Spinner } from '../components/docTidy/docTidyUi'
+import {
+  Banner,
+  DocTidyTabs,
+  DocumentTypeBadge,
+  IconButton,
+  RuleCriteria,
+  Spinner,
+  ToggleSwitch,
+} from '../components/docTidy/docTidyUi'
+import RuleEditor from '../components/docTidy/RuleEditor'
 import { formatDateTime } from '../lib/format'
-import type {
-  DocTidyConfig,
-  DocTidyRule,
-  DocTidyRuleInput,
-  MatchMode,
-  RunRuleResult,
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_LABELS,
+  EMPTY_RULE,
+  documentTypeOf,
+  type DocTidyConfig,
+  type DocTidyRule,
+  type DocTidyRuleInput,
+  type DocumentType,
+  type RunRuleResult,
 } from '../types/docTidy'
 
-const EMPTY_RULE: DocTidyRuleInput = {
-  name: '',
-  description: '',
-  enabled: true,
-  fromAddresses: [],
-  toAddresses: [],
-  subjectKeywords: [],
-  bodyKeywords: [],
-  excludeKeywords: [],
-  matchMode: 'any',
-  dateFrom: null,
-  dateTo: null,
-  lookbackDays: 30,
-  requireAttachment: true,
-  attachmentExtensions: [],
+const ICONS = {
+  run: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  delete:
+    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
 }
 
-const inputClass =
-  'w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+const filterClass =
+  'text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
-/** Repeatable free-text entry rendered as removable chips. */
-function ChipInput({
-  label,
-  hint,
-  values,
-  onChange,
-  placeholder,
-}: {
-  label: string
-  hint?: string
-  values: string[]
-  onChange: (next: string[]) => void
-  placeholder: string
-}) {
-  const [draft, setDraft] = useState('')
+type StatusFilter = '' | 'enabled' | 'disabled'
 
-  const commit = () => {
-    const parts = draft
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
-    if (!parts.length) return
-    // Case-insensitive de-dupe so the same term isn't added twice.
-    const existing = new Set(values.map((v) => v.toLowerCase()))
-    onChange([...values, ...parts.filter((p) => !existing.has(p.toLowerCase()))])
-    setDraft('')
+/** Strips the server-only fields so an existing rule can seed the editor. */
+function toRuleInput(rule: DocTidyRule): DocTidyRuleInput {
+  return {
+    name: rule.name,
+    description: rule.description ?? '',
+    enabled: rule.enabled,
+    documentType: documentTypeOf(rule.documentType),
+    fromAddresses: rule.fromAddresses,
+    toAddresses: rule.toAddresses ?? [],
+    subjectKeywords: rule.subjectKeywords,
+    bodyKeywords: rule.bodyKeywords,
+    excludeKeywords: rule.excludeKeywords,
+    matchMode: rule.matchMode,
+    dateFrom: rule.dateFrom ?? null,
+    dateTo: rule.dateTo ?? null,
+    lookbackDays: rule.lookbackDays ?? null,
+    requireAttachment: rule.requireAttachment,
+    attachmentExtensions: rule.attachmentExtensions,
   }
-
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-[var(--text-100)]">
-        {label}
-        {hint && <span className="ml-1.5 text-xs font-normal text-[var(--text-200)]">{hint}</span>}
-      </label>
-
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {values.map((value, i) => (
-            <span
-              key={`${value}-${i}`}
-              className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] px-2.5 py-1 text-xs font-medium text-[var(--accent-200)]"
-            >
-              {value}
-              <button
-                type="button"
-                onClick={() => onChange(values.filter((_, idx) => idx !== i))}
-                className="opacity-60 hover:opacity-100 cursor-pointer"
-                aria-label={`Remove ${value}`}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <input
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ',') {
-            e.preventDefault()
-            commit()
-          }
-        }}
-        // Commit on blur too, so a typed term isn't silently lost on save.
-        onBlur={commit}
-        placeholder={placeholder}
-        className={inputClass}
-      />
-    </div>
-  )
-}
-
-function RuleEditor({
-  initial,
-  saving,
-  onCancel,
-  onSave,
-}: {
-  initial: DocTidyRuleInput
-  saving: boolean
-  onCancel: () => void
-  onSave: (rule: DocTidyRuleInput) => void
-}) {
-  const [rule, setRule] = useState<DocTidyRuleInput>(initial)
-  const [useLookback, setUseLookback] = useState(Boolean(initial.lookbackDays))
-
-  const set = <K extends keyof DocTidyRuleInput>(key: K, value: DocTidyRuleInput[K]) =>
-    setRule((prev) => ({ ...prev, [key]: value }))
-
-  const submit = () => {
-    // The date mode toggle decides which of the two ranges is persisted.
-    onSave({
-      ...rule,
-      lookbackDays: useLookback ? rule.lookbackDays || 30 : null,
-      dateFrom: useLookback ? null : rule.dateFrom,
-      dateTo: useLookback ? null : rule.dateTo,
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl">
-        <div className="sticky top-0 border-b border-[var(--bg-300)] bg-[var(--bg-100)] px-6 py-4">
-          <h2 className="text-base font-semibold text-[var(--text-100)]">
-            {initial.name ? 'Edit rule' : 'New extraction rule'}
-          </h2>
-          <p className="text-xs text-[var(--text-200)] mt-0.5">
-            Messages must match this entry to be extracted along with their attachments.
-          </p>
-        </div>
-
-        <div className="px-6 py-5 space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-[var(--text-100)]">Name</label>
-              <input
-                type="text"
-                value={rule.name}
-                onChange={(e) => set('name', e.target.value)}
-                placeholder="e.g. Acme supplier invoices"
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-[var(--text-100)]">
-                Description <span className="text-xs font-normal text-[var(--text-200)]">optional</span>
-              </label>
-              <input
-                type="text"
-                value={rule.description ?? ''}
-                onChange={(e) => set('description', e.target.value)}
-                placeholder="What this entry collects"
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <ChipInput
-            label="Sender emails"
-            hint="address or domain"
-            values={rule.fromAddresses}
-            onChange={(v) => set('fromAddresses', v)}
-            placeholder="billing@acme.com — press Enter to add"
-          />
-
-          <ChipInput
-            label="Delivered to"
-            hint="group or recipient address the mail arrived under"
-            values={rule.toAddresses}
-            onChange={(v) => set('toAddresses', v)}
-            placeholder="invoice@outdoorequipped.com — press Enter to add"
-          />
-
-          <ChipInput
-            label="Subject keywords"
-            values={rule.subjectKeywords}
-            onChange={(v) => set('subjectKeywords', v)}
-            placeholder="invoice, statement — press Enter to add"
-          />
-
-          <ChipInput
-            label="Body keywords"
-            values={rule.bodyKeywords}
-            onChange={(v) => set('bodyKeywords', v)}
-            placeholder="purchase order — press Enter to add"
-          />
-
-          <ChipInput
-            label="Exclude keywords"
-            hint="messages containing these are skipped"
-            values={rule.excludeKeywords}
-            onChange={(v) => set('excludeKeywords', v)}
-            placeholder="reminder, draft — press Enter to add"
-          />
-
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-[var(--text-100)]">Keyword matching</label>
-            <select
-              value={rule.matchMode}
-              onChange={(e) => set('matchMode', e.target.value as MatchMode)}
-              className={`${inputClass} cursor-pointer`}
-            >
-              <option value="any">Match any keyword</option>
-              <option value="all">Match all keywords</option>
-            </select>
-          </div>
-
-          {/* Date range */}
-          <div className="space-y-2 rounded-lg border border-[var(--bg-300)] p-4">
-            <p className="text-sm font-medium text-[var(--text-100)]">Date range</p>
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={useLookback}
-                  onChange={() => setUseLookback(true)}
-                  className="cursor-pointer"
-                />
-                Rolling window
-              </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={!useLookback}
-                  onChange={() => setUseLookback(false)}
-                  className="cursor-pointer"
-                />
-                Fixed dates
-              </label>
-            </div>
-
-            {useLookback ? (
-              <label className="flex items-center gap-2 text-sm text-[var(--text-200)]">
-                Look back
-                <input
-                  type="number"
-                  min={1}
-                  max={3650}
-                  value={rule.lookbackDays ?? 30}
-                  onChange={(e) => set('lookbackDays', Number(e.target.value))}
-                  className={`${inputClass} w-24`}
-                />
-                days from the run date
-              </label>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm text-[var(--text-200)] space-y-1">
-                  <span className="block">From</span>
-                  <input
-                    type="date"
-                    value={rule.dateFrom ? String(rule.dateFrom).slice(0, 10) : ''}
-                    onChange={(e) => set('dateFrom', e.target.value || null)}
-                    className={inputClass}
-                  />
-                </label>
-                <label className="text-sm text-[var(--text-200)] space-y-1">
-                  <span className="block">To</span>
-                  <input
-                    type="date"
-                    value={rule.dateTo ? String(rule.dateTo).slice(0, 10) : ''}
-                    onChange={(e) => set('dateTo', e.target.value || null)}
-                    className={inputClass}
-                  />
-                </label>
-              </div>
-            )}
-          </div>
-
-          {/* Attachments */}
-          <div className="space-y-3 rounded-lg border border-[var(--bg-300)] p-4">
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-100)] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={rule.requireAttachment}
-                onChange={(e) => set('requireAttachment', e.target.checked)}
-                className="cursor-pointer"
-              />
-              Only extract messages that have attachments
-            </label>
-
-            <ChipInput
-              label="Attachment file types"
-              hint="leave empty to accept all"
-              values={rule.attachmentExtensions}
-              onChange={(v) => set('attachmentExtensions', v)}
-              placeholder="pdf, xlsx — press Enter to add"
-            />
-          </div>
-
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-100)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={rule.enabled}
-              onChange={(e) => set('enabled', e.target.checked)}
-              className="cursor-pointer"
-            />
-            Enabled
-          </label>
-        </div>
-
-        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-100)] px-6 py-4">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border border-[var(--bg-300)] px-4 py-2 text-sm font-medium text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={saving || !rule.name.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {saving && <Spinner />}
-            Save rule
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export default function DocTidyRules() {
@@ -346,7 +67,12 @@ export default function DocTidyRules() {
   const [editing, setEditing] = useState<{ rule: DocTidyRuleInput; id?: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<DocTidyRule | null>(null)
+
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<DocumentType | ''>('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -407,11 +133,14 @@ export default function DocTidyRules() {
   }
 
   const handleToggle = async (rule: DocTidyRule) => {
+    setTogglingId(rule._id)
     try {
       await authApi.put(`/doc-tidy/rules/${rule._id}`, { ...rule, enabled: !rule.enabled })
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update rule')
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -425,24 +154,34 @@ export default function DocTidyRules() {
     }
   }
 
-  const summarise = (rule: DocTidyRule): string => {
-    const parts: string[] = []
-    if (rule.fromAddresses.length) parts.push(`from ${rule.fromAddresses.join(', ')}`)
-    if (rule.toAddresses?.length) parts.push(`to ${rule.toAddresses.join(', ')}`)
-    if (rule.subjectKeywords.length) parts.push(`subject: ${rule.subjectKeywords.join(', ')}`)
-    if (rule.bodyKeywords.length) parts.push(`body: ${rule.bodyKeywords.join(', ')}`)
-    if (rule.excludeKeywords.length) parts.push(`excluding: ${rule.excludeKeywords.join(', ')}`)
-    if (rule.lookbackDays) parts.push(`last ${rule.lookbackDays} days`)
-    if (rule.attachmentExtensions.length) parts.push(`${rule.attachmentExtensions.join('/')} files`)
-    return parts.length ? parts.join(' · ') : 'Matches every message in the mailbox'
+  // The full rule list is already loaded, so the toolbar filters in place.
+  const visibleRules = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return rules.filter((rule) => {
+      if (typeFilter && documentTypeOf(rule.documentType) !== typeFilter) return false
+      if (statusFilter === 'enabled' && !rule.enabled) return false
+      if (statusFilter === 'disabled' && rule.enabled) return false
+      if (!term) return true
+      return `${rule.name} ${rule.description ?? ''}`.toLowerCase().includes(term)
+    })
+  }, [rules, search, typeFilter, statusFilter])
+
+  const hasActiveFilters = Boolean(search || typeFilter || statusFilter)
+
+  const clearFilters = () => {
+    setSearch('')
+    setTypeFilter('')
+    setStatusFilter('')
   }
+
+  const openNew = () => setEditing({ rule: { ...EMPTY_RULE } })
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <DocTidyTabs />
         <button
-          onClick={() => setEditing({ rule: { ...EMPTY_RULE } })}
+          onClick={openNew}
           className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--accent-200)] text-white text-sm font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] transition-all cursor-pointer"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -474,7 +213,69 @@ export default function DocTidyRules() {
         </Banner>
       )}
 
-      <div className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] px-4 py-2.5">
+          <div className="relative min-w-[200px] flex-1 max-w-sm">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z"
+                />
+              </svg>
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search rules…"
+              className={`${filterClass} w-full pl-9`}
+            />
+          </div>
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as DocumentType | '')}
+            className={`${filterClass} cursor-pointer`}
+            aria-label="Filter by document type"
+          >
+            <option value="">All document types</option>
+            {DOCUMENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {DOCUMENT_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className={`${filterClass} cursor-pointer`}
+            aria-label="Filter by status"
+          >
+            <option value="">Any status</option>
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-[var(--accent-200)] hover:underline cursor-pointer"
+            >
+              Clear filters
+            </button>
+          )}
+
+          <span className="ml-auto text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
+            {hasActiveFilters
+              ? `${visibleRules.length} of ${rules.length} rules`
+              : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
+          </span>
+        </div>
+
         {loading ? (
           <div className="px-6 py-12 text-center text-sm text-[var(--text-200)]">
             <span className="inline-flex items-center gap-2">
@@ -482,100 +283,125 @@ export default function DocTidyRules() {
             </span>
           </div>
         ) : rules.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-sm text-[var(--text-200)]">
-              No extraction rules yet. Create one to describe which messages Doc Tidy should collect.
+          <div className="px-6 py-14 text-center">
+            <svg
+              className="mx-auto h-9 w-9 text-[var(--text-200)] opacity-50"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            <p className="mt-3 text-sm font-medium text-[var(--text-100)]">No extraction rules yet</p>
+            <p className="mt-1 text-sm text-[var(--text-200)]">
+              A rule describes which messages Doc Tidy should collect and what kind of document they are.
             </p>
+            <button
+              onClick={openNew}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white cursor-pointer"
+            >
+              Create the first rule
+            </button>
+          </div>
+        ) : visibleRules.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <p className="text-sm text-[var(--text-200)]">No rules match these filters.</p>
+            <button
+              onClick={clearFilters}
+              className="mt-2 text-sm text-[var(--accent-200)] hover:underline cursor-pointer"
+            >
+              Clear filters
+            </button>
           </div>
         ) : (
           <ul className="divide-y divide-[var(--bg-300)]">
-            {rules.map((rule) => (
-              <li key={rule._id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1">
+            {visibleRules.map((rule) => (
+              <li
+                key={rule._id}
+                className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[var(--bg-200)]/60 lg:flex-row lg:items-start lg:justify-between"
+              >
+                <div className={`min-w-0 flex-1 space-y-2 ${rule.enabled ? '' : 'opacity-60'}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-semibold text-[var(--text-100)]">{rule.name}</h3>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        rule.enabled
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                          : 'bg-slate-200 text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
-                      }`}
-                    >
-                      {rule.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
+                    <DocumentTypeBadge value={rule.documentType} />
                     {rule.requireAttachment && (
-                      <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-200)]">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-200)]"
+                        title="Only messages carrying an attachment are extracted"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                          />
+                        </svg>
                         Attachments only
                       </span>
                     )}
-                    <span className="text-[11px] uppercase tracking-wide text-[var(--text-200)]">
-                      match {rule.matchMode}
-                    </span>
                   </div>
 
                   {rule.description && (
-                    <p className="mt-0.5 text-xs text-[var(--text-200)]">{rule.description}</p>
+                    <p className="text-xs text-[var(--text-200)]">{rule.description}</p>
                   )}
-                  <p className="mt-1 text-xs text-[var(--text-200)]">{summarise(rule)}</p>
 
-                  <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                  <RuleCriteria rule={rule} />
+
+                  <p className="text-[11px] text-[var(--text-200)]">
                     {rule.lastRunAt
                       ? `Last run ${formatDateTime(rule.lastRunAt)} · ${rule.lastRunMatchCount ?? 0} matched`
                       : 'Never run'}
                     {rule.createdByName && ` · created by ${rule.createdByName}`}
                   </p>
                   {rule.lastRunError && (
-                    <p className="mt-1 text-[11px] text-red-500">Last run failed: {rule.lastRunError}</p>
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                      Last run failed: {rule.lastRunError}
+                    </p>
                   )}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-2 lg:pl-4">
+                  <ToggleSwitch
+                    checked={rule.enabled}
+                    disabled={togglingId === rule._id}
+                    onChange={() => handleToggle(rule)}
+                    label={rule.enabled ? 'Enabled' : 'Disabled'}
+                    title={rule.enabled ? 'Disable this rule' : 'Enable this rule'}
+                  />
+
                   <button
                     onClick={() => handleRun(rule)}
                     disabled={runningId === rule._id || !config?.mailboxConnected}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-xs font-medium text-[var(--accent-200)] hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 text-xs font-medium text-[var(--accent-200)] hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                     title={config?.mailboxConnected ? 'Run this rule now' : 'Connect the mailbox first'}
                   >
-                    {runningId === rule._id ? <Spinner className="h-3 w-3" /> : 'Run'}
+                    {runningId === rule._id ? (
+                      <Spinner className="h-3.5 w-3.5" />
+                    ) : (
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={ICONS.run} />
+                      </svg>
+                    )}
+                    Run
                   </button>
-                  <button
-                    onClick={() => handleToggle(rule)}
-                    className="rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
-                  >
-                    {rule.enabled ? 'Disable' : 'Enable'}
-                  </button>
-                  <button
-                    onClick={() =>
-                      setEditing({
-                        id: rule._id,
-                        rule: {
-                          name: rule.name,
-                          description: rule.description ?? '',
-                          enabled: rule.enabled,
-                          fromAddresses: rule.fromAddresses,
-                          toAddresses: rule.toAddresses ?? [],
-                          subjectKeywords: rule.subjectKeywords,
-                          bodyKeywords: rule.bodyKeywords,
-                          excludeKeywords: rule.excludeKeywords,
-                          matchMode: rule.matchMode,
-                          dateFrom: rule.dateFrom ?? null,
-                          dateTo: rule.dateTo ?? null,
-                          lookbackDays: rule.lookbackDays ?? null,
-                          requireAttachment: rule.requireAttachment,
-                          attachmentExtensions: rule.attachmentExtensions,
-                        },
-                      })
-                    }
-                    className="rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                  <button
+
+                  <IconButton
+                    label="Edit rule"
+                    iconPath={ICONS.edit}
+                    onClick={() => setEditing({ id: rule._id, rule: toRuleInput(rule) })}
+                  />
+                  <IconButton
+                    label="Delete rule"
+                    iconPath={ICONS.delete}
+                    tone="danger"
                     onClick={() => setConfirmDelete(rule)}
-                    className="rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 cursor-pointer"
-                  >
-                    Delete
-                  </button>
+                  />
                 </div>
               </li>
             ))}
@@ -586,6 +412,7 @@ export default function DocTidyRules() {
       {editing && (
         <RuleEditor
           initial={editing.rule}
+          isNew={!editing.id}
           saving={saving}
           onCancel={() => setEditing(null)}
           onSave={handleSave}
@@ -594,8 +421,11 @@ export default function DocTidyRules() {
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={() => setConfirmDelete(null)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+          <div
+            className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
+            onClick={() => setConfirmDelete(null)}
+          />
+          <div className="relative z-10 w-full max-w-sm space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl">
             <h2 className="text-base font-semibold text-[var(--text-100)]">Delete rule</h2>
             <p className="text-sm text-[var(--text-200)]">
               Delete <span className="font-medium">{confirmDelete.name}</span>? Messages it already

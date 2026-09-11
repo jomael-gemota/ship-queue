@@ -222,6 +222,7 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
         $set: {
           ruleId: rule._id,
           ruleName: rule.name,
+          documentType: rule.documentType ?? 'other',
           threadId: msg.threadId,
           from: msg.from,
           fromName: msg.fromName,

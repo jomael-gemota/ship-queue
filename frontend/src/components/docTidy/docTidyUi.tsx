@@ -1,4 +1,14 @@
 import { NavLink } from 'react-router-dom'
+import {
+  DOCUMENT_TYPE_ICONS,
+  DOCUMENT_TYPE_LABELS,
+  PARSE_STATUS_LABELS,
+  documentTypeOf,
+  isParseRunning,
+  type DocTidyRuleInput,
+  type DocumentType,
+  type ParseJobStatus,
+} from '../../types/docTidy'
 
 /** Sub-navigation shared by the Doc Tidy results and rules pages. */
 export function DocTidyTabs() {
@@ -34,6 +44,17 @@ export function DocTidyTabs() {
           />
         </svg>
         Extraction Rules
+      </NavLink>
+      <NavLink to="/doc-tidy/vendors" className={className}>
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+          />
+        </svg>
+        Vendors
       </NavLink>
     </div>
   )
@@ -142,6 +163,236 @@ export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
+  )
+}
+
+/* ------------------------------------------------------- document types */
+
+const DOCUMENT_TYPE_STYLES: Record<DocumentType, string> = {
+  order_confirmation:
+    'bg-amber-100 text-amber-800 ring-amber-200/70 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/20',
+  invoice:
+    'bg-violet-100 text-violet-800 ring-violet-200/70 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-400/20',
+  other:
+    'bg-slate-200 text-slate-700 ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
+}
+
+/** Colour-coded document type label used by the rules list and results table. */
+export function DocumentTypeBadge({
+  value,
+  className = '',
+}: {
+  value?: DocumentType | null
+  className?: string
+}) {
+  const type = documentTypeOf(value)
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset ${DOCUMENT_TYPE_STYLES[type]} ${className}`}
+    >
+      <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d={DOCUMENT_TYPE_ICONS[type]}
+        />
+      </svg>
+      {DOCUMENT_TYPE_LABELS[type]}
+    </span>
+  )
+}
+
+/* --------------------------------------------------------- agent parsing */
+
+const PARSE_STATUS_STYLES: Record<ParseJobStatus, string> = {
+  pending:
+    'bg-slate-200 text-slate-700 ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
+  processing:
+    'bg-sky-100 text-sky-800 ring-sky-200/70 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-400/20',
+  completed:
+    'bg-emerald-100 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/20',
+  failed:
+    'bg-rose-100 text-rose-800 ring-rose-200/70 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-400/20',
+}
+
+/**
+ * How far the agent got with one attachment. A running job gets a pulsing dot
+ * rather than a spinner: several can be in flight in one table, and four
+ * spinners read as the page loading rather than as four documents parsing.
+ */
+export function ParseStatusChip({
+  status,
+  title,
+}: {
+  status: ParseJobStatus
+  title?: string
+}) {
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset ${PARSE_STATUS_STYLES[status]}`}
+    >
+      {isParseRunning(status) && (
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-current" />
+      )}
+      {PARSE_STATUS_LABELS[status]}
+    </span>
+  )
+}
+
+/* ------------------------------------------------------------- controls */
+
+/** Accessible on/off switch. Doubles as the status indicator in the rules list. */
+export function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+  title,
+}: {
+  checked: boolean
+  onChange: (next: boolean) => void
+  label?: string
+  disabled?: boolean
+  title?: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label ? undefined : title}
+      disabled={disabled}
+      title={title}
+      onClick={() => onChange(!checked)}
+      className="inline-flex items-center gap-2 rounded-lg text-sm text-[var(--text-100)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]"
+    >
+      <span
+        className={`relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors ${
+          checked ? 'bg-[var(--accent-200)]' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
+        }`}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+            checked ? 'translate-x-[16px]' : 'translate-x-[2px]'
+          }`}
+        />
+      </span>
+      {label && <span className="whitespace-nowrap">{label}</span>}
+    </button>
+  )
+}
+
+/** Square, icon-only action button. Used for a rule's secondary actions. */
+export function IconButton({
+  label,
+  iconPath,
+  onClick,
+  tone = 'default',
+  disabled = false,
+}: {
+  label: string
+  iconPath: string
+  onClick: () => void
+  tone?: 'default' | 'danger'
+  disabled?: boolean
+}) {
+  const toneClass =
+    tone === 'danger'
+      ? 'text-rose-600 hover:bg-rose-50 hover:border-rose-200 dark:text-rose-400 dark:hover:bg-rose-900/20 dark:hover:border-rose-900/40'
+      : 'text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--bg-300)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${toneClass}`}
+    >
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+      </svg>
+    </button>
+  )
+}
+
+/* ------------------------------------------------------ rule conditions */
+
+type Criterion = { label: string; value: string; tone: 'default' | 'exclude' }
+
+/** Turns a rule into the discrete conditions shown as chips. */
+function criteriaOf(rule: DocTidyRuleInput): Criterion[] {
+  const items: Criterion[] = []
+  const add = (label: string, value: string, tone: Criterion['tone'] = 'default') =>
+    items.push({ label, value, tone })
+
+  if (rule.fromAddresses.length) add('From', rule.fromAddresses.join(', '))
+  if (rule.toAddresses?.length) add('To', rule.toAddresses.join(', '))
+  if (rule.subjectKeywords.length) add('Subject', rule.subjectKeywords.join(', '))
+  if (rule.bodyKeywords.length) add('Body', rule.bodyKeywords.join(', '))
+  if (rule.excludeKeywords.length) add('Not', rule.excludeKeywords.join(', '), 'exclude')
+
+  const hasKeywords = rule.subjectKeywords.length > 0 || rule.bodyKeywords.length > 0
+  if (hasKeywords) add('Match', rule.matchMode === 'all' ? 'All keywords' : 'Any keyword')
+
+  if (rule.lookbackDays) add('Window', `Last ${rule.lookbackDays} days`)
+  else if (rule.dateFrom || rule.dateTo) {
+    const from = rule.dateFrom ? String(rule.dateFrom).slice(0, 10) : 'any'
+    const to = rule.dateTo ? String(rule.dateTo).slice(0, 10) : 'today'
+    add('Window', `${from} → ${to}`)
+  }
+
+  if (rule.attachmentExtensions.length) {
+    add('Files', rule.attachmentExtensions.map((ext) => `.${ext}`).join(' '))
+  } else if (rule.requireAttachment) {
+    add('Files', 'Any file type')
+  }
+
+  return items
+}
+
+/**
+ * A rule's conditions as labelled chips. Shared by the rules list and the
+ * editor's preview, so what is previewed is exactly what the list will show.
+ */
+export function RuleCriteria({ rule }: { rule: DocTidyRuleInput }) {
+  const items = criteriaOf(rule)
+
+  if (!items.length) {
+    return (
+      <p className="text-xs italic text-[var(--text-200)]">
+        No conditions — matches every message in the mailbox.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {items.map((item) => (
+        <span
+          key={`${item.label}-${item.value}`}
+          title={`${item.label}: ${item.value}`}
+          className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
+            item.tone === 'exclude'
+              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/15 dark:text-rose-300'
+              : 'border-[var(--bg-300)] bg-[var(--bg-200)] text-[var(--text-100)]'
+          }`}
+        >
+          <span
+            className={`text-[10px] font-semibold uppercase tracking-wide ${
+              item.tone === 'exclude' ? 'text-rose-500 dark:text-rose-400' : 'text-[var(--text-200)]'
+            }`}
+          >
+            {item.label}
+          </span>
+          <span className="truncate">{item.value}</span>
+        </span>
+      ))}
+    </div>
   )
 }
 

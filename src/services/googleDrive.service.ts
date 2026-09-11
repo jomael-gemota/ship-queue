@@ -114,6 +114,26 @@ export async function uploadBufferToDrive(
 }
 
 /**
+ * Downloads a Drive file's raw bytes. Doc Tidy uses this to pull a stored
+ * attachment back out for parsing, so the worker never needs Drive access of
+ * its own.
+ */
+export async function downloadDriveFile(
+  creds: DriveCredentials,
+  fileId: string
+): Promise<Buffer> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' }
+  );
+
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
+/**
  * Lists folders in the user's Drive. When `parentId` is provided, lists its
  * direct subfolders; otherwise lists folders under "My Drive" root.
  * When `driveId` is provided the search is scoped to that Shared Drive.

@@ -10,9 +10,17 @@ import type { Response } from 'express';
  */
 
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected';
+  type: 'imported' | 'ping' | 'connected' | 'parse_status';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
+  /**
+   * For `parse_status`: which parse job changed and what it changed to, so a
+   * table showing that document can move its status chip without refetching the
+   * whole page. Unlike `imported`, this carries the id because the client can
+   * apply it to a row it already holds.
+   */
+  parseJobId?: string;
+  parseStatus?: string;
   at?: string;
 }
 

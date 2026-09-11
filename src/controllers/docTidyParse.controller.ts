@@ -1,0 +1,480 @@
+import { Request, Response } from 'express';
+import { isValidObjectId } from 'mongoose';
+import DocTidyParseJob from '../models/DocTidyParseJob';
+import DocTidyCorrection, {
+  CORRECTION_TEXT_SAMPLE_CHARS,
+  type CorrectionMode,
+} from '../models/DocTidyCorrection';
+import DocTidyVendor, { normalizeVendorName } from '../models/DocTidyVendor';
+import {
+  ParseRequestError,
+  requestParse,
+  rerunParse,
+} from '../services/docTidyParse.service';
+import { addJobClient, hasWorker } from '../services/docTidyWorkerRegistry';
+import { embedText } from '../lib/embeddings';
+
+/** Maps a thrown ParseRequestError onto its status; anything else is a 500. */
+function fail(res: Response, error: unknown, fallback: string): void {
+  if (error instanceof ParseRequestError) {
+    res.status(error.status).json({ message: error.message });
+    return;
+  }
+  res.status(500).json({ message: fallback, error: (error as Error).message });
+}
+
+/* ------------------------------------------------------------ parse jobs */
+
+export const getWorkerStatus = (_req: Request, res: Response): void => {
+  res.json({ data: { connected: hasWorker() } });
+};
+
+export const parseAttachment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const job = await requestParse(req.params.id, Number(req.params.index), {
+      id: req.user?.id,
+      name: req.user?.name,
+    });
+    res.status(202).json({ data: job });
+  } catch (error) {
+    fail(res, error, 'Failed to start parsing');
+  }
+};
+
+export const rerunParseJob = async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(202).json({ data: await rerunParse(req.params.id) });
+  } catch (error) {
+    fail(res, error, 'Failed to re-run parsing');
+  }
+};
+
+export const getParseJob = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+
+    const job = await DocTidyParseJob.findById(id).lean();
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    res.json({ data: job });
+  } catch (error) {
+    fail(res, error, 'Failed to load parse job');
+  }
+};
+
+/**
+ * Live transcript for one job.
+ *
+ * Replays whatever reasoning is already stored before attaching, so opening the
+ * panel late — or after a refresh — shows the run from the beginning rather than
+ * from the next token. A finished job is served entirely from storage and the
+ * stream is closed immediately; there is nothing more coming.
+ */
+export const streamParseJob = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  if (!isValidObjectId(id)) {
+    res.status(400).json({ message: 'Invalid parse job id' });
+    return;
+  }
+
+  try {
+    const job = await DocTidyParseJob.findById(id).lean();
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+
+    const send = (type: string, payload: Record<string, unknown>): void => {
+      res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
+    };
+
+    send('connected', { status: job.status });
+    if (job.thinking) send('thinking', { content: job.thinking });
+
+    if (job.status === 'completed') {
+      send('done', { json: job.jsonOutput ?? null, table: job.tableOutput ?? null });
+      res.end();
+      return;
+    }
+
+    if (job.status === 'failed') {
+      send('error', { message: job.error ?? 'The agent failed to parse this document' });
+      res.end();
+      return;
+    }
+
+    const remove = addJobClient(id, res);
+
+    // Proxies drop an idle stream, and a job can spend a long time inside a
+    // single model call without emitting anything.
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        clearInterval(heartbeat);
+      }
+    }, 20_000);
+    if (typeof heartbeat.unref === 'function') heartbeat.unref();
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      remove();
+    });
+  } catch (error) {
+    if (!res.headersSent) fail(res, error, 'Failed to open the reasoning stream');
+  }
+};
+
+/**
+ * Binds a user-confirmed vendor to a job.
+ *
+ * Needed when the agent could not name the vendor from the document: storing it
+ * here lets a re-run resolve the now-registered vendor even though nothing in
+ * the PDF identifies it.
+ */
+export const setParseJobVendor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { vendorName } = req.body as { vendorName?: unknown };
+
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+    if (typeof vendorName !== 'string' || !vendorName.trim()) {
+      res.status(400).json({ message: 'vendorName is required' });
+      return;
+    }
+
+    const job = await DocTidyParseJob.findByIdAndUpdate(
+      id,
+      { $set: { vendorName: vendorName.trim() } },
+      { new: true }
+    ).lean();
+
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    res.json({ data: job });
+  } catch (error) {
+    fail(res, error, 'Failed to set the vendor');
+  }
+};
+
+/* ----------------------------------------------------------- corrections */
+
+/**
+ * Key-order-independent serialisation, so two corrections holding the same data
+ * compare equal regardless of how the editor happened to order its keys.
+ */
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return Object.keys(obj)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = canonicalize(obj[key]);
+        return acc;
+      }, {});
+  }
+  return value;
+}
+
+const canonicalJson = (value: unknown): string => JSON.stringify(canonicalize(value));
+
+export const listJobCorrections = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+
+    const corrections = await DocTidyCorrection.find({ parseJobId: id })
+      .select('-embedding')
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({ data: corrections });
+  } catch (error) {
+    fail(res, error, 'Failed to load corrections');
+  }
+};
+
+/**
+ * Records a correction and embeds the source document so later, similar
+ * documents can retrieve it.
+ *
+ * The same output submitted again with a *different* note is a distinct
+ * correction: the note is the instruction the agent is asked to follow, so it
+ * carries signal the output alone does not.
+ */
+export const createJobCorrection = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { correctedOutput, note, mode, correctedTables } = req.body as {
+      correctedOutput?: unknown;
+      note?: unknown;
+      mode?: unknown;
+      correctedTables?: unknown;
+    };
+
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+    if (!correctedOutput || typeof correctedOutput !== 'object' || Array.isArray(correctedOutput)) {
+      res.status(400).json({ message: 'correctedOutput must be a JSON object' });
+      return;
+    }
+    if (note !== undefined && typeof note !== 'string') {
+      res.status(400).json({ message: 'note must be a string' });
+      return;
+    }
+    if (mode !== undefined && mode !== 'json' && mode !== 'tabular') {
+      res.status(400).json({ message: "mode must be 'json' or 'tabular'" });
+      return;
+    }
+    if (correctedTables !== undefined && !Array.isArray(correctedTables)) {
+      res.status(400).json({ message: 'correctedTables must be an array' });
+      return;
+    }
+
+    const job = await DocTidyParseJob.findById(id);
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    const normalizedNote = typeof note === 'string' && note.trim() ? note.trim() : undefined;
+
+    const existing = await DocTidyCorrection.find({ parseJobId: id }).select('-embedding').lean();
+    const target = canonicalJson(correctedOutput);
+    const duplicate = existing.find(
+      (c) =>
+        canonicalJson(c.correctedOutput) === target && (c.note ?? undefined) === normalizedNote
+    );
+    if (duplicate) {
+      res.json({ data: { duplicate: true, correctionId: String(duplicate._id) } });
+      return;
+    }
+
+    const documentTextSample = (job.documentTextSample ?? '').slice(
+      0,
+      CORRECTION_TEXT_SAMPLE_CHARS
+    );
+    const embedding = documentTextSample ? await embedText(documentTextSample) : null;
+
+    const correction = await DocTidyCorrection.create({
+      parseJobId: job._id,
+      filename: job.filename,
+      vendorName: job.vendorName ?? null,
+      documentTextSample,
+      embedding,
+      originalOutput: job.jsonOutput ?? null,
+      correctedOutput: correctedOutput as Record<string, unknown>,
+      mode: mode as CorrectionMode | undefined,
+      correctedTables: Array.isArray(correctedTables) ? correctedTables : undefined,
+      note: normalizedNote,
+      createdByName: req.user?.name,
+    });
+
+    res.status(201).json({
+      data: {
+        duplicate: false,
+        correctionId: String(correction._id),
+        embedded: embedding !== null,
+      },
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to record the correction');
+  }
+};
+
+export const listCorrections = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const corrections = await DocTidyCorrection.find()
+      .select('-embedding')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    res.json({ data: corrections });
+  } catch (error) {
+    fail(res, error, 'Failed to load corrections');
+  }
+};
+
+/**
+ * Deletes a correction. The worker reads corrections fresh on every job, so the
+ * delete is the whole update — the agent stops using it from the next run.
+ */
+export const deleteCorrection = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid correction id' });
+      return;
+    }
+
+    const result = await DocTidyCorrection.deleteOne({ _id: id });
+    if (result.deletedCount === 0) {
+      res.status(404).json({ message: 'Correction not found' });
+      return;
+    }
+
+    res.json({ data: { deleted: true } });
+  } catch (error) {
+    fail(res, error, 'Failed to delete the correction');
+  }
+};
+
+/* --------------------------------------------------------------- vendors */
+
+export const listVendors = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const vendors = await DocTidyVendor.find().sort({ name: 1 }).lean();
+
+    // Correction counts are what tell the user whether a vendor has actually
+    // taught the agent anything, as opposed to merely being registered.
+    const counts = await DocTidyCorrection.aggregate<{ _id: string | null; count: number }>([
+      { $group: { _id: '$vendorName', count: { $sum: 1 } } },
+    ]);
+    const byVendor = new Map<string, number>();
+    for (const row of counts) {
+      if (row._id) byVendor.set(normalizeVendorName(row._id), row.count);
+    }
+
+    res.json({
+      data: vendors.map((v) => ({
+        ...v,
+        correctionCount: byVendor.get(v.normalizedName) ?? 0,
+      })),
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to load vendors');
+  }
+};
+
+/**
+ * Registers a vendor, or adds another sample SKU to one already registered.
+ *
+ * Samples accumulate rather than replace: a vendor can legitimately use several
+ * SKU formats, and the agent matches each row against whichever sample fits.
+ */
+export const upsertVendor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, skuSample } = req.body as { name?: unknown; skuSample?: unknown };
+
+    if (typeof name !== 'string' || !name.trim()) {
+      res.status(400).json({ message: 'name is required' });
+      return;
+    }
+
+    const sample = typeof skuSample === 'string' ? skuSample.trim() : '';
+    const trimmedName = name.trim();
+
+    const vendor = await DocTidyVendor.findOneAndUpdate(
+      { normalizedName: normalizeVendorName(trimmedName) },
+      {
+        $set: { name: trimmedName },
+        ...(sample ? { $addToSet: { skuSamples: sample } } : {}),
+        $setOnInsert: {
+          normalizedName: normalizeVendorName(trimmedName),
+          createdByName: req.user?.name,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    res.json({ data: vendor });
+  } catch (error) {
+    fail(res, error, 'Failed to save the vendor');
+  }
+};
+
+export const removeVendorSample = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { skuSample } = req.body as { skuSample?: unknown };
+    if (typeof skuSample !== 'string' || !skuSample.trim()) {
+      res.status(400).json({ message: 'skuSample is required' });
+      return;
+    }
+
+    const normalizedName = normalizeVendorName(req.params.name);
+    const sample = skuSample.trim();
+
+    await DocTidyVendor.updateOne({ normalizedName }, { $pull: { skuSamples: sample } });
+    // Clear the legacy single field too, or the removed format keeps anchoring.
+    await DocTidyVendor.updateOne(
+      { normalizedName, skuSample: sample },
+      { $set: { skuSample: null } }
+    );
+
+    const vendor = await DocTidyVendor.findOne({ normalizedName }).lean();
+    if (!vendor) {
+      res.status(404).json({ message: 'Vendor not found' });
+      return;
+    }
+
+    res.json({ data: vendor });
+  } catch (error) {
+    fail(res, error, 'Failed to remove the sample SKU');
+  }
+};
+
+/**
+ * Deletes a vendor and everything it taught the agent.
+ *
+ * The cascade is the point: leaving corrections behind for a vendor nobody can
+ * see any more means the agent keeps applying rules the user believes they
+ * removed.
+ */
+export const deleteVendor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const normalizedName = normalizeVendorName(req.params.name);
+
+    const vendor = await DocTidyVendor.findOneAndDelete({ normalizedName });
+    if (!vendor) {
+      res.status(404).json({ message: 'Vendor not found' });
+      return;
+    }
+
+    // Corrections store the vendor name as it was written, so they are matched
+    // on the normalised form rather than with an equality filter.
+    const candidates = await DocTidyCorrection.find({ vendorName: { $ne: null } })
+      .select('_id vendorName')
+      .lean();
+    const ids = candidates
+      .filter((c) => c.vendorName && normalizeVendorName(c.vendorName) === normalizedName)
+      .map((c) => c._id);
+
+    let correctionsDeleted = 0;
+    if (ids.length > 0) {
+      const result = await DocTidyCorrection.deleteMany({ _id: { $in: ids } });
+      correctionsDeleted = result.deletedCount ?? 0;
+    }
+
+    res.json({ data: { deleted: true, correctionsDeleted } });
+  } catch (error) {
+    fail(res, error, 'Failed to delete the vendor');
+  }
+};

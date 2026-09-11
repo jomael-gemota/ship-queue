@@ -1,15 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { authApi } from '../lib/api'
-import { Banner, DocTidyTabs, PaginationArrows, Spinner, Th } from '../components/docTidy/docTidyUi'
-import { formatBytes, formatDateTime } from '../lib/format'
 import {
+  Banner,
+  DocTidyTabs,
+  DocumentTypeBadge,
+  PaginationArrows,
+  Spinner,
+  Th,
+} from '../components/docTidy/docTidyUi'
+import AttachmentCell from '../components/docTidy/AttachmentCell'
+import ParseJobPanel from '../components/docTidy/ParseJobPanel'
+import { formatDateTime } from '../lib/format'
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_LABELS,
   PAGE_SIZE_OPTIONS,
   type DocTidyConfig,
   type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyRule,
+  type DocumentType,
   type RunAllResult,
 } from '../types/docTidy'
 
@@ -32,6 +44,7 @@ export default function DocTidy() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [ruleId, setRuleId] = useState('')
+  const [documentType, setDocumentType] = useState<DocumentType | ''>('')
   const [hasAttachments, setHasAttachments] = useState<AttachmentFilter>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -44,6 +57,9 @@ export default function DocTidy() {
   const [live, setLive] = useState(false)
   const [newCount, setNewCount] = useState(0)
 
+  // The parse job whose reasoning panel is open, if any.
+  const [openJobId, setOpenJobId] = useState<string | null>(null)
+
   const fetchMessages = useCallback(
     async (silent = false) => {
       if (silent) setRefreshing(true)
@@ -54,6 +70,7 @@ export default function DocTidy() {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
         if (debouncedSearch) params.set('search', debouncedSearch)
         if (ruleId) params.set('ruleId', ruleId)
+        if (documentType) params.set('documentType', documentType)
         if (hasAttachments) params.set('hasAttachments', hasAttachments)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
@@ -68,7 +85,7 @@ export default function DocTidy() {
         setRefreshing(false)
       }
     },
-    [page, pageSize, debouncedSearch, ruleId, hasAttachments, dateFrom, dateTo]
+    [page, pageSize, debouncedSearch, ruleId, documentType, hasAttachments, dateFrom, dateTo]
   )
 
   // Rules populate the filter dropdown; config drives the "not connected" notice.
@@ -95,7 +112,7 @@ export default function DocTidy() {
   // Any filter change restarts at page 1.
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, ruleId, hasAttachments, dateFrom, dateTo, pageSize])
+  }, [debouncedSearch, ruleId, documentType, hasAttachments, dateFrom, dateTo, pageSize])
 
   const isFirstRender = useRef(true)
   useEffect(() => {
@@ -123,6 +140,13 @@ export default function DocTidy() {
       (event) => {
         if (event.type === 'connected') {
           setLive(true)
+          return
+        }
+        // A parse finishing elsewhere (or in another tab) changes a status chip
+        // on a row this table may already be showing, so it refetches without
+        // the "new messages" cue that an import deserves.
+        if (event.type === 'parse_status') {
+          void fetchRef.current(true)
           return
         }
         if (event.type !== 'imported') return
@@ -170,12 +194,15 @@ export default function DocTidy() {
   const clearFilters = () => {
     setSearchInput('')
     setRuleId('')
+    setDocumentType('')
     setHasAttachments('')
     setDateFrom('')
     setDateTo('')
   }
 
-  const hasActiveFilters = Boolean(searchInput || ruleId || hasAttachments || dateFrom || dateTo)
+  const hasActiveFilters = Boolean(
+    searchInput || ruleId || documentType || hasAttachments || dateFrom || dateTo
+  )
   const enabledRuleCount = useMemo(() => rules.filter((r) => r.enabled).length, [rules])
 
   const startItem = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1
@@ -314,7 +341,26 @@ export default function DocTidy() {
             )}
           </div>
 
-          <select value={ruleId} onChange={(e) => setRuleId(e.target.value)} className={`${inputClass} cursor-pointer`}>
+          <select
+            value={documentType}
+            onChange={(e) => setDocumentType(e.target.value as DocumentType | '')}
+            className={`${inputClass} cursor-pointer`}
+            aria-label="Filter by document type"
+          >
+            <option value="">All document types</option>
+            {DOCUMENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {DOCUMENT_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={ruleId}
+            onChange={(e) => setRuleId(e.target.value)}
+            className={`${inputClass} cursor-pointer`}
+            aria-label="Filter by rule"
+          >
             <option value="">All rules</option>
             {rules.map((r) => (
               <option key={r._id} value={r._id}>
@@ -406,6 +452,7 @@ export default function DocTidy() {
                   <Th label="Received" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
                   <Th label="From" iconPath="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
                   <Th label="Subject" iconPath="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <Th label="Document type" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   <Th label="Rule" iconPath="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
                   <Th label="Attachments" iconPath="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                 </tr>
@@ -413,7 +460,7 @@ export default function DocTidy() {
               <tbody className="divide-y divide-[var(--bg-300)]">
                 {initialLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500 dark:text-[var(--text-200)]">
+                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500 dark:text-[var(--text-200)]">
                       <span className="inline-flex items-center gap-2">
                         <Spinner /> Loading messages…
                       </span>
@@ -421,7 +468,7 @@ export default function DocTidy() {
                   </tr>
                 ) : messages.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500 dark:text-[var(--text-200)]">
+                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500 dark:text-[var(--text-200)]">
                       {hasActiveFilters
                         ? 'No messages match these filters.'
                         : 'No messages extracted yet. Create a rule and run it to pull messages in.'}
@@ -457,6 +504,9 @@ export default function DocTidy() {
                           </div>
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
+                          <DocumentTypeBadge value={msg.documentType} />
+                        </td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">
                           {msg.ruleName ? (
                             <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-xs font-medium text-[var(--accent-200)]">
                               {msg.ruleName}
@@ -466,45 +516,11 @@ export default function DocTidy() {
                           )}
                         </td>
                         <td className="px-3 py-1.5">
-                          {msg.attachments.length === 0 ? (
-                            <span className="text-xs text-slate-400">None</span>
-                          ) : (
-                            <ul className="space-y-0.5">
-                              {msg.attachments.map((att, i) => (
-                                <li key={`${msg._id}-${i}`} className="flex items-center gap-1.5">
-                                  {att.webViewLink ? (
-                                    <a
-                                      href={att.webViewLink}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-[var(--accent-200)] hover:underline truncate max-w-[220px]"
-                                      title={att.filename}
-                                    >
-                                      {att.filename}
-                                    </a>
-                                  ) : (
-                                    <span
-                                      className="truncate max-w-[220px] text-slate-600 dark:text-[var(--text-200)]"
-                                      title={att.uploadError || att.filename}
-                                    >
-                                      {att.filename}
-                                    </span>
-                                  )}
-                                  <span className="text-[11px] text-slate-400 whitespace-nowrap">
-                                    {formatBytes(att.size)}
-                                  </span>
-                                  {att.uploadError && (
-                                    <span
-                                      className="text-[11px] text-red-500"
-                                      title={att.uploadError}
-                                    >
-                                      upload failed
-                                    </span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                          <AttachmentCell
+                            message={msg}
+                            onOpenJob={setOpenJobId}
+                            onChanged={() => void fetchMessages(true)}
+                          />
                         </td>
                       </tr>
                     )
@@ -522,6 +538,14 @@ export default function DocTidy() {
           </div>
         )}
       </div>
+
+      {openJobId && (
+        <ParseJobPanel
+          jobId={openJobId}
+          onClose={() => setOpenJobId(null)}
+          onChanged={() => void fetchMessages(true)}
+        />
+      )}
     </div>
   )
 }
