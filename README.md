@@ -46,6 +46,7 @@ ship-queue/
 │   ├── middleware/           # Auth & error-handling middleware
 │   ├── models/               # Mongoose models (Order, Shipment, Label, …)
 │   ├── routes/               # API route definitions
+│   ├── cookie-jar/           # Dedicated cookie-refresh worker (separate process)
 │   └── services/             # ShipStation, Google Drive, sync scheduler, …
 ├── frontend/                 # React app
 │   └── src/
@@ -100,6 +101,8 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `GOOGLE_CALLBACK_URL` / `DRIVE_CALLBACK_URL` | OAuth redirect URIs (login + Drive picker)          |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
+| `COOKIE_JAR_PORT`                         | Cookie Jar health port (local; default 5001)       |
+| `COOKIE_JAR_OE_US_TOKEN`                  | Sphere API token for Seller Central OE US cookies  |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
 
 ### 3. Run in development
@@ -110,6 +113,9 @@ npm run dev
 
 # Terminal 2 — Frontend (http://localhost:5173)
 cd frontend && npm run dev
+
+# Terminal 3 — Cookie Jar worker (optional; http://localhost:5001/health)
+npm run cookie-jar:dev
 ```
 
 ### 4. Build for production
@@ -130,7 +136,9 @@ npm start       # serves API + built frontend from http://localhost:5000
 | `npm run dev`   | Start backend with hot reload (nodemon)            |
 | `npm run build` | Compile backend (tsc) and build the frontend       |
 | `npm start`     | Run the compiled server (serves API + frontend)    |
-| `npm run lint`  | Lint backend TypeScript                            |
+| `npm run lint`           | Lint backend TypeScript                            |
+| `npm run cookie-jar:dev` | Cookie Jar worker with hot reload                  |
+| `npm run cookie-jar`     | Run the compiled Cookie Jar worker                 |
 
 **Frontend** (`frontend/`):
 
@@ -188,6 +196,9 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | GET    | `/drive/folders` | List Google Drive folders                     |
 | DELETE | `/drive`         | Disconnect Google Drive                       |
 | GET/PUT| `/sync`          | Get / update auto-sync config (PUT = admin)   |
+| GET    | `/cookie-jars`   | List cookie-jar schedules (no cookie values)  |
+| PATCH  | `/cookie-jars/:key` | Update name / enabled / cron (admin)       |
+| POST   | `/cookie-jars/:key/run` | Run a jar immediately (admin)           |
 
 ### Admin — `/api/admin` (admin only)
 
@@ -206,6 +217,20 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | POST   | `/`    | Create a shipment    |
 | PUT    | `/:id` | Update a shipment    |
 | DELETE | `/:id` | Delete a shipment    |
+
+### Cookie Jar worker
+
+Dedicated process (not the API) that refreshes stored session cookies on a cron
+from Mongo. Fetcher implementations live in `src/cookie-jar/jars/`; name,
+enabled, cron, last cookie, and last run live in the `CookieJar` collection.
+
+```bash
+npm run cookie-jar:dev   # local
+npm run cookie-jar       # compiled (Railway start command for the worker service)
+```
+
+Keep the worker at **one replica**. Cron expressions are UTC. A future Settings
+UI can edit the Mongo row; the worker re-reads config every 30 seconds.
 
 ### Health
 
