@@ -3,7 +3,8 @@ import passport from 'passport';
 import { googleCallback, getMe, logout } from '../controllers/auth.controller';
 import { getDriveAuthUrl, handleDriveCallback } from '../controllers/driveAuth.controller';
 import { getDropboxAuthUrl, handleDropboxCallback } from '../controllers/dropboxAuth.controller';
-import { requireAuth } from '../middleware/auth';
+import { getDocTidyAuthUrl, handleDocTidyCallback } from '../controllers/docTidyAuth.controller';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -72,6 +73,11 @@ router.get('/drive/callback', handleDriveCallback);
 // Dropbox OAuth — connects a user's Dropbox account for the Dropbox Fetcher.
 router.get('/dropbox/connect', requireAuth, getDropboxAuthUrl);
 router.get('/dropbox/callback', handleDropboxCallback);
+
+// Doc Tidy OAuth — connects the single shared mailbox (Gmail read + Drive
+// write) that extraction rules run against. Admin-only.
+router.get('/doc-tidy/connect', requireAuth, requireAdmin, getDocTidyAuthUrl);
+router.get('/doc-tidy/callback', handleDocTidyCallback);
 
 // Protected — returns the currently authenticated user
 router.get('/me', requireAuth, getMe);

@@ -80,6 +80,60 @@ export async function uploadPdfToDrive(
 }
 
 /**
+ * Uploads an arbitrary buffer to Drive inside `folderId`. Used by Doc Tidy for
+ * email attachments, which can be any content type (unlike label PDFs).
+ */
+export async function uploadBufferToDrive(
+  creds: DriveCredentials,
+  fileName: string,
+  mimeType: string,
+  buffer: Buffer,
+  folderId?: string
+): Promise<UploadedDriveFile> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      ...(folderId ? { parents: [folderId] } : {}),
+    },
+    media: {
+      mimeType: mimeType || 'application/octet-stream',
+      body: Readable.from(buffer),
+    },
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  });
+
+  return {
+    id: res.data.id || '',
+    name: res.data.name || fileName,
+    webViewLink: res.data.webViewLink,
+  };
+}
+
+/**
+ * Downloads a Drive file's raw bytes. Doc Tidy uses this to pull a stored
+ * attachment back out for parsing, so the worker never needs Drive access of
+ * its own.
+ */
+export async function downloadDriveFile(
+  creds: DriveCredentials,
+  fileId: string
+): Promise<Buffer> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' }
+  );
+
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
+/**
  * Lists folders in the user's Drive. When `parentId` is provided, lists its
  * direct subfolders; otherwise lists folders under "My Drive" root.
  * When `driveId` is provided the search is scoped to that Shared Drive.

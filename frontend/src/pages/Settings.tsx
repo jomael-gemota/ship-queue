@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { authApi, ApiError } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder, SyncConfigResponse } from '../types/label'
 import { useAuth } from '../context/AuthContext'
+import DocTidySettingsCard from '../components/docTidy/DocTidySettingsCard'
 
 interface FoldersResponse {
   data: DriveFolder[]
@@ -783,6 +784,8 @@ export default function Settings() {
             </div>
           )}
         </section>
+
+        <DocTidySettingsCard isAdmin={isAdmin} />
       </div>
       </div>
     </div>

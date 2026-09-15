@@ -4,10 +4,17 @@
   "description": "Ship Queue backend API server",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon",
+    "dev": "concurrently -k -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "nodemon",
+    "dev:client": "npm --prefix frontend run dev",
+    "install:all": "npm install && npm --prefix frontend install",
     "build": "tsc && npm --prefix frontend ci --include=dev && npm run docs:build && npm --prefix frontend run build",
     "start": "node dist/index.js",
+    "check": "npm run typecheck && npm run lint:frontend && npm run build:frontend",
+    "typecheck": "tsc --noEmit && tsc -b --noEmit frontend",
     "lint": "eslint src/**/*.ts",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "build:frontend": "npm --prefix frontend run build",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs && node -e \"const fs=require('fs');fs.rmSync('frontend/public/docs',{recursive:true,force:true});fs.cpSync('docs/.vitepress/dist','frontend/public/docs',{recursive:true})\"",
     "docs:preview": "vitepress preview docs"
@@ -29,7 +36,8 @@
     "morgan": "^1.10.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/archiver": "^7.0.0",
@@ -41,6 +49,8 @@
     "@types/node": "^20.14.2",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^10.0.5",
     "medium-zoom": "^1.1.0",
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2",

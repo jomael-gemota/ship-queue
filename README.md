@@ -11,6 +11,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google Drive uploads** — Optionally archive generated labels to Google Drive (any connected Google account, not just the login account).
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
+- **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table. Each rule declares the kind of document it collects — Order Confirmation, Invoice or Other — which is stamped on every message it captures.
 
 ## User Guide
 
@@ -26,6 +27,98 @@ npm run docs:build    # build the guide into frontend/public/docs (runs as part 
 npm run docs:preview  # preview the standalone VitePress build
 ```
 
+## Doc Tidy
+
+Doc Tidy reads a **single shared mailbox** (e.g. `invoice@outdoorequipped.com`)
+and extracts messages matching user-defined rules, copying their attachments to
+Google Drive. Rules and results are shared by the whole team; the connection is
+configured once by an admin.
+
+Every rule carries a **document type** — *Order Confirmation*, *Invoice* or
+*Other* — which is copied onto each message the rule captures, so the results
+table can be filtered and scanned by document kind. Editing a rule also updates
+the type and name shown on the messages it has already extracted.
+
+**One-time setup**
+
+1. In Google Cloud Console, enable the **Gmail API** for the existing OAuth
+   client and add the `gmail.readonly` scope to the consent screen.
+2. Add `DOC_TIDY_CALLBACK_URL` to the client's authorised redirect URIs.
+3. Make sure the address you connect is a **real mailbox** (see below).
+4. In **Settings → Doc Tidy mailbox**, click *Connect mailbox*, sign in as that
+   account, and pick the Drive folder attachments should land in (it can be a
+   Shared Drive, separate from the label-upload folder). Double-check the
+   address shown afterwards — Google's account chooser will happily connect
+   whichever account you are already signed in as.
+
+### Reading a Google Group (e.g. `invoice@outdoorequipped.com`)
+
+The Gmail API can only read real mailboxes. A Google Group has no mailbox to
+authorise and its archive is not exposed by any API, so it cannot be connected
+directly. Instead:
+
+1. Add a real Workspace account to the group as a member, with **"Each email"**
+   delivery, so the group's mail lands in a readable mailbox.
+2. Connect **that** account in Settings.
+3. On each rule, set **Delivered to** to the group address
+   (`invoice@outdoorequipped.com`). This scopes the rule to mail that arrived
+   via the group — matching on `To`, `Cc`, `Bcc`, `Delivered-To` and the
+   `List-ID`/`List-Post` headers that Google Groups stamps on every message.
+
+Without a *Delivered to* value, a rule searches the entire connected mailbox,
+which will include the member's unrelated personal mail.
+
+If extraction returns nothing, run the diagnostic — it reports which account is
+actually connected, whether the group's mail is present, and which clause of a
+rule is eliminating every result:
+
+```bash
+npx ts-node -T scripts/diagnose-doc-tidy.ts
+```
+
+### Automatic capture
+
+The server checks the connected mailbox every `DOC_TIDY_POLL_INTERVAL_SECONDS`
+(default 15) and imports anything matching an enabled rule, whether or not
+someone has the page open. Open results tables hold a server-sent events stream
+and refresh the instant something is stored, so new mail appears without a
+manual refresh — the **Live** badge above the table shows the stream is
+connected.
+
+Capture latency is therefore bounded by the poll interval rather than being
+truly instantaneous; true push would require Gmail `users.watch` with a Cloud
+Pub/Sub topic and a publicly reachable webhook. A poll only fetches messages it
+has not already stored, so a short interval stays cheap.
+
+*Run all enabled rules* is still available, and is mainly useful for backfilling
+a newly created rule with a long lookback window.
+
+Access is read-only: Doc Tidy can never modify or delete mail. Extraction is
+capped at 250 messages per run, and re-running a rule refreshes existing rows
+instead of duplicating them.
+
+### Agent parsing
+
+Capture stops at the file. **Parse** — the button beside each PDF in the results
+table — sends that document to the Tidy agent, which reads it and returns
+structured JSON plus a table view.
+
+The agent runs as a Python worker on a separate Ubuntu machine, so the model
+never has to run on the web server. The worker dials out to Ship Queue over a
+WebSocket and holds the connection open; jobs are pushed down it and reasoning
+tokens come back up it. Everything the agent thinks is streamed to whoever has
+the panel open **and** stored on the job, so reopening a document later replays
+the transcript exactly as it happened.
+
+If the output is wrong, correct it. A correction stores the fixed JSON and your
+note, and both are retrieved on later documents from the same vendor — the note
+becomes a rule the agent must follow, and the corrected output becomes a worked
+example. This is why vendors are registered: corrections are scoped per vendor,
+so a format learned from one supplier is never applied to another.
+
+See `worker/README.md` for the Ubuntu setup, and
+`design-log/2026-09-11-doc-tidy-agent-parsing.md` for why it is built this way.
+
 ## Tech Stack
 
 | Layer    | Technology                                              |
@@ -34,7 +127,8 @@ npm run docs:preview  # preview the standalone VitePress build
 | Backend  | Node.js, Express, TypeScript                            |
 | Database | MongoDB (via Mongoose)                                  |
 | Auth     | Passport + Google OAuth 2.0, JWT                        |
-| External | ShipStation API, Google Drive API                       |
+| Agent    | Python worker (asyncio, motor, pdfplumber) on Ubuntu    |
+| External | ShipStation API, Google Drive API, Hermes/OpenAI API    |
 
 ## Project Structure
 
@@ -55,6 +149,7 @@ ship-queue/
 │       ├── lib/              # API client & utilities
 │       ├── pages/            # Route-level page components
 │       └── types/            # Shared TypeScript types
+├── worker/                   # Doc Tidy parsing agent (Python, runs on Ubuntu)
 ├── scripts/                  # One-off verification/maintenance scripts
 ├── design-log/               # Architecture & decision records
 ├── .env.example              # Environment variable template
@@ -75,11 +170,8 @@ ship-queue/
 ### 1. Clone & install
 
 ```bash
-# Backend (from repo root)
-npm install
-
-# Frontend
-cd frontend && npm install
+# Installs both backend and frontend dependencies
+npm run install:all
 ```
 
 ### 2. Configure environment
@@ -98,6 +190,10 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `JWT_SECRET` / `JWT_EXPIRES_IN`           | JWT signing secret and lifetime                        |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials                             |
 | `GOOGLE_CALLBACK_URL` / `DRIVE_CALLBACK_URL` | OAuth redirect URIs (login + Drive picker)          |
+| `DOC_TIDY_CALLBACK_URL`                   | OAuth redirect URI for the Doc Tidy shared mailbox     |
+| `DOC_TIDY_POLL_INTERVAL_SECONDS`          | How often Doc Tidy checks the mailbox (default 15)     |
+| `DOC_TIDY_WORKER_TOKEN`                   | Shared secret the parsing worker presents on `/ws/doc-tidy` |
+| `OPENAI_API_KEY` / `EMBEDDING_MODEL`      | Embeddings that make Doc Tidy corrections retrievable  |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
@@ -105,12 +201,14 @@ Key variables (see `.env.example` for the full list and inline notes):
 ### 3. Run in development
 
 ```bash
-# Terminal 1 — Backend (http://localhost:5000)
+# Starts both the backend (http://localhost:5000) and frontend
+# (http://localhost:5173) together in one terminal
 npm run dev
-
-# Terminal 2 — Frontend (http://localhost:5173)
-cd frontend && npm run dev
 ```
+
+Prefer to run them separately (e.g. to isolate log output)? Use
+`npm run dev:server` (backend only) or `npm run dev:client` (frontend only,
+equivalent to `cd frontend && npm run dev`).
 
 ### 4. Build for production
 
@@ -127,10 +225,14 @@ npm start       # serves API + built frontend from http://localhost:5000
 
 | Script          | Description                                        |
 | --------------- | -------------------------------------------------- |
-| `npm run dev`   | Start backend with hot reload (nodemon)            |
+| `npm run dev`   | Start backend + frontend together (hot reload for both) |
+| `npm run dev:server` | Start backend only, with hot reload (nodemon) |
+| `npm run dev:client` | Start frontend only (equivalent to `cd frontend && npm run dev`) |
+| `npm run install:all` | Install backend and frontend dependencies |
+| `npm run check` | **Quality gate** — typecheck (backend + frontend), frontend lint, frontend build |
 | `npm run build` | Compile backend (tsc) and build the frontend       |
 | `npm start`     | Run the compiled server (serves API + frontend)    |
-| `npm run lint`  | Lint backend TypeScript                            |
+| `npm run lint`  | Lint backend TypeScript (ESLint is not installed at root, so this is not part of `check`) |
 
 **Frontend** (`frontend/`):
 
@@ -196,6 +298,24 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | GET    | `/users`                 | List users                   |
 | PATCH  | `/users/:id/permissions` | Update user permissions      |
 | DELETE | `/users/:id`             | Delete a user                |
+
+### Doc Tidy — `/api/doc-tidy`
+
+Extraction rules and results are shared team-wide; the mailbox connection and
+attachment destination are admin-only.
+
+| Method | Path                    | Description                                        |
+| ------ | ----------------------- | -------------------------------------------------- |
+| GET/POST | `/rules`              | List / create extraction rules                     |
+| PUT/DELETE | `/rules/:id`        | Update / delete a rule                             |
+| POST   | `/rules/:id/run`        | Run extraction for one rule                        |
+| POST   | `/run`                  | Run every enabled rule                             |
+| GET    | `/messages`             | Extracted messages (paginated, searchable, filterable) |
+| GET    | `/messages/:id`         | Message detail including body                      |
+| GET    | `/stream`               | SSE stream signalling when new messages are stored |
+| GET/PUT | `/config`              | Get / set the Drive destination (PUT = admin)      |
+| DELETE | `/config/mailbox`       | Disconnect the mailbox (admin)                     |
+| GET    | `/config/folders`       | Drive folder picker for the mailbox account (admin) |
 
 ### Shipments — `/api/shipments`
 
