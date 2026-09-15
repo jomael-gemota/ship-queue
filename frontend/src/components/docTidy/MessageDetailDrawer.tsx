@@ -156,12 +156,12 @@ export default function MessageDetailDrawer({
           </div>
 
           {/* Subject */}
-          <h3 className="break-words text-[15px] font-semibold leading-snug text-[var(--text-100)]">
+          <h3 className="break-words text-[13px] font-semibold leading-snug text-[var(--text-100)]">
             {detail.subject || '(no subject)'}
           </h3>
 
           {/* Metadata row */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <span className="flex items-center gap-1 text-[11px] text-[var(--text-200)]">
               <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -207,11 +207,11 @@ export default function MessageDetailDrawer({
               <div className="min-w-0">
                 {detail.fromName ? (
                   <>
-                    <p className="break-words font-medium text-[var(--text-100)]">{detail.fromName}</p>
-                    <p className="break-all text-sm text-[var(--text-200)]">{detail.from}</p>
+                    <p className="break-words text-[12px] font-medium text-[var(--text-100)]">{detail.fromName}</p>
+                    <p className="break-all text-[11px] text-[var(--text-200)]">{detail.from}</p>
                   </>
                 ) : (
-                  <p className="break-all text-[var(--text-100)]">{detail.from}</p>
+                  <p className="break-all text-[12px] text-[var(--text-100)]">{detail.from}</p>
                 )}
               </div>
             </div>
@@ -225,13 +225,13 @@ export default function MessageDetailDrawer({
                 detail.to.map((addr) => (
                   <span
                     key={addr}
-                    className="break-all rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-sm text-[var(--text-100)]"
+                    className="break-all rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[11px] text-[var(--text-100)]"
                   >
                     {addr}
                   </span>
                 ))
               ) : (
-                <span className="text-sm text-[var(--text-200)]">—</span>
+                <span className="text-[11px] text-[var(--text-200)]">—</span>
               )}
             </div>
           </section>
@@ -270,12 +270,12 @@ export default function MessageDetailDrawer({
               </div>
             ) : detail.bodyText || detail.snippet ? (
               <div className="max-h-72 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4">
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--text-100)]">
+                <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--text-100)]">
                   {detail.bodyText || detail.snippet}
                 </p>
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--bg-300)] p-4 text-sm italic text-[var(--text-200)]">
+              <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--bg-300)] p-4 text-[12px] italic text-[var(--text-200)]">
                 <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
