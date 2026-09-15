@@ -24,3 +24,16 @@ export function formatDateTime(iso?: string | null): string {
     minute: '2-digit',
   }).format(date)
 }
+
+/** Date-only variant of {@link formatDateTime}, for dense table cells that
+ *  reveal the time on hover instead (via `title`). */
+export function formatDate(iso?: string | null): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
+}
