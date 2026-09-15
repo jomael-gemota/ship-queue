@@ -24,6 +24,123 @@ function SkeletonLine({ width = 'w-full' }: { width?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Gmail-style email body renderer
+// ---------------------------------------------------------------------------
+
+type Segment =
+  | { kind: 'text'; text: string }
+  | { kind: 'quote'; depth: number; text: string }
+  | { kind: 'signature'; text: string }
+
+/**
+ * Parses plain-text email body into structured segments:
+ *  - `>` lines → blockquote (depth = number of leading `>`)
+ *  - `-- ` / `--` on its own line → everything after is signature
+ *  - everything else → regular paragraph text
+ */
+function parseEmailBody(raw: string): Segment[] {
+  const sigRx = /^--\s*$/m
+  const sigMatch = sigRx.exec(raw)
+
+  let body = raw
+  let sig: string | null = null
+  if (sigMatch) {
+    body = raw.slice(0, sigMatch.index).trimEnd()
+    sig = raw.slice(sigMatch.index + sigMatch[0].length).trimStart()
+  }
+
+  const lines = body.split('\n')
+  const segments: Segment[] = []
+
+  for (const line of lines) {
+    const quoteMatch = line.match(/^(>+)\s?/)
+    if (quoteMatch) {
+      const depth = quoteMatch[1].length
+      const stripped = line.slice(quoteMatch[0].length)
+      const last = segments[segments.length - 1]
+      if (last?.kind === 'quote' && last.depth === depth) {
+        last.text += '\n' + stripped
+      } else {
+        segments.push({ kind: 'quote', depth, text: stripped })
+      }
+    } else {
+      const last = segments[segments.length - 1]
+      if (last?.kind === 'text') {
+        last.text += '\n' + line
+      } else {
+        segments.push({ kind: 'text', text: line })
+      }
+    }
+  }
+
+  if (sig) segments.push({ kind: 'signature', text: sig })
+  return segments
+}
+
+const QUOTE_BORDER: Record<number, string> = {
+  1: 'border-[var(--accent-200)]',
+  2: 'border-slate-400 dark:border-slate-500',
+}
+
+function EmailBodyRenderer({ text, isSnippet }: { text: string; isSnippet?: boolean }) {
+  if (isSnippet) {
+    return (
+      <p className="whitespace-pre-wrap text-[12px] leading-relaxed italic text-[var(--text-200)]">
+        {text}
+      </p>
+    )
+  }
+
+  const segments = parseEmailBody(text)
+
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) => {
+        if (seg.kind === 'text') {
+          /* Split by blank lines → visual paragraph breaks */
+          const paras = seg.text.split(/\n{2,}/)
+          return (
+            <div key={i} className="space-y-2">
+              {paras.map((para, j) => (
+                <p
+                  key={j}
+                  className="whitespace-pre-wrap break-words text-[13px] leading-[1.65] text-[var(--text-100)]"
+                >
+                  {para}
+                </p>
+              ))}
+            </div>
+          )
+        }
+
+        if (seg.kind === 'quote') {
+          const borderCls = QUOTE_BORDER[seg.depth] ?? 'border-slate-300 dark:border-slate-600'
+          return (
+            <blockquote
+              key={i}
+              className={`border-l-[3px] pl-3 ${borderCls}`}
+            >
+              <p className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[var(--text-200)]">
+                {seg.text}
+              </p>
+            </blockquote>
+          )
+        }
+
+        /* signature */
+        return (
+          <div key={i} className="border-t border-[var(--bg-300)] pt-3">
+            <p className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[var(--text-200)]">
+              {seg.text}
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -251,12 +368,10 @@ export default function MessageDetailDrawer({
 
           {/* MESSAGE BODY */}
           <section className="px-5 py-4">
-            <div className="mb-2.5 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               <SectionLabel>Message</SectionLabel>
               {showingPreviewOnly && (
-                <span className="mb-2.5 text-[10px] italic text-[var(--text-200)]">
-                  Preview only
-                </span>
+                <span className="text-[10px] italic text-[var(--text-200)]">Snippet preview</span>
               )}
             </div>
 
@@ -269,10 +384,12 @@ export default function MessageDetailDrawer({
                 <SkeletonLine width="w-3/4" />
               </div>
             ) : detail.bodyText || detail.snippet ? (
-              <div className="max-h-72 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4">
-                <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--text-100)]">
-                  {detail.bodyText || detail.snippet}
-                </p>
+              /* Gmail-style email reading pane — full height, no inner scroll cap */
+              <div className="rounded-xl border border-[var(--bg-300)] bg-white dark:bg-[var(--bg-200)] px-5 py-4 shadow-[inset_0_1px_3px_rgba(0,0,0,0.04)]">
+                <EmailBodyRenderer
+                  text={detail.bodyText || detail.snippet!}
+                  isSnippet={!detail.bodyText}
+                />
               </div>
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--bg-300)] p-4 text-[12px] italic text-[var(--text-200)]">
