@@ -13,7 +13,7 @@ import {
 /** Sub-navigation shared by the Doc Tidy results and rules pages. */
 export function DocTidyTabs() {
   const base =
-    'inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors cursor-pointer'
+    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer'
   const className = ({ isActive }: { isActive: boolean }) =>
     `${base} ${
       isActive
@@ -24,7 +24,7 @@ export function DocTidyTabs() {
   return (
     <div className="inline-flex items-center gap-1 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-1">
       <NavLink to="/doc-tidy" end className={className}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -35,7 +35,7 @@ export function DocTidyTabs() {
         Extracted Messages
       </NavLink>
       <NavLink to="/doc-tidy/rules" className={className}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -46,7 +46,7 @@ export function DocTidyTabs() {
         Extraction Rules
       </NavLink>
       <NavLink to="/doc-tidy/vendors" className={className}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -60,35 +60,48 @@ export function DocTidyTabs() {
   )
 }
 
-/** Sticky, icon-prefixed header cell matching the Orders table. */
+/**
+ * Sticky, icon-prefixed header cell matching the Orders table. `children`
+ * replaces the label outright, for a column headed by a control (a
+ * select-all checkbox) rather than a name.
+ */
 export function Th({
   label,
   iconPath,
   align = 'left',
+  className = '',
+  children,
 }: {
-  label: string
+  label?: string
   iconPath?: string
-  align?: 'left' | 'right'
+  align?: 'left' | 'center' | 'right'
+  className?: string
+  children?: React.ReactNode
 }) {
+  const textAlign =
+    align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+  const flexAlign =
+    align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''
+
   return (
     <th
-      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap ${
-        align === 'right' ? 'text-right' : 'text-left'
-      }`}
+      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap ${textAlign} ${className}`}
     >
-      <span className={`flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : ''}`}>
-        {iconPath && (
-          <svg
-            className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
-          </svg>
-        )}
-        {label}
-      </span>
+      {children ?? (
+        <span className={`flex items-center gap-1.5 ${flexAlign}`}>
+          {iconPath && (
+            <svg
+              className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+            </svg>
+          )}
+          {label}
+        </span>
+      )}
     </th>
   )
 }
@@ -129,7 +142,7 @@ export function PaginationArrows({
         </svg>
       </button>
 
-      <span className="px-2.5 py-1 text-sm text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
+      <span className="px-2 py-1 text-[11px] text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
         Page {page} of {pages}
       </span>
 
@@ -189,7 +202,7 @@ export function DocumentTypeBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset ${DOCUMENT_TYPE_STYLES[type]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap ring-1 ring-inset ${DOCUMENT_TYPE_STYLES[type]} ${className}`}
     >
       <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -318,6 +331,65 @@ export function IconButton({
       </svg>
     </button>
   )
+}
+
+/**
+ * Compact icon-only button for row-level actions in a dense table, where the
+ * 32px `IconButton` (with its border) would blow out the row height.
+ */
+export function TableActionButton({
+  label,
+  onClick,
+  children,
+  disabled = false,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+    >
+      {children}
+    </button>
+  )
+}
+
+/** Lightning-bolt glyph for the Parse action — sending a document to the agent. */
+export function BoltIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  )
+}
+
+/* --------------------------------------------------- avatar colour util */
+
+/**
+ * Deterministic avatar background colour from the first character of a
+ * seed string (a sender name or e-mail address). Used by the table rows and
+ * the detail drawer so both show the same colour for the same sender.
+ */
+export function avatarColour(seed: string): string {
+  const palette = [
+    'bg-blue-500',
+    'bg-emerald-500',
+    'bg-violet-500',
+    'bg-amber-500',
+    'bg-rose-500',
+    'bg-teal-500',
+    'bg-indigo-500',
+    'bg-sky-500',
+  ]
+  return palette[seed.charCodeAt(0) % palette.length]
 }
 
 /* ------------------------------------------------------ rule conditions */
