@@ -27,8 +27,6 @@ import {
   type RunAllResult,
 } from '../types/docTidy'
 
-type AttachmentFilter = '' | 'true' | 'false'
-
 export default function DocTidy() {
   const [messages, setMessages] = useState<DocTidyMessage[]>([])
   const [rules, setRules] = useState<DocTidyRule[]>([])
@@ -47,7 +45,6 @@ export default function DocTidy() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [ruleId, setRuleId] = useState('')
   const [documentType, setDocumentType] = useState<DocumentType | ''>('')
-  const [hasAttachments, setHasAttachments] = useState<AttachmentFilter>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
@@ -79,7 +76,6 @@ export default function DocTidy() {
         if (debouncedSearch) params.set('search', debouncedSearch)
         if (ruleId) params.set('ruleId', ruleId)
         if (documentType) params.set('documentType', documentType)
-        if (hasAttachments) params.set('hasAttachments', hasAttachments)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
 
@@ -93,7 +89,7 @@ export default function DocTidy() {
         setRefreshing(false)
       }
     },
-    [page, pageSize, debouncedSearch, ruleId, documentType, hasAttachments, dateFrom, dateTo]
+    [page, pageSize, debouncedSearch, ruleId, documentType, dateFrom, dateTo]
   )
 
   // Rules populate the filter dropdown; config drives the "not connected" notice.
@@ -122,7 +118,7 @@ export default function DocTidy() {
   useEffect(() => {
     setPage(1)
     setSelectedIds(new Set())
-  }, [debouncedSearch, ruleId, documentType, hasAttachments, dateFrom, dateTo, pageSize])
+  }, [debouncedSearch, ruleId, documentType, dateFrom, dateTo, pageSize])
 
   const isFirstRender = useRef(true)
   useEffect(() => {
@@ -205,13 +201,12 @@ export default function DocTidy() {
     setSearchInput('')
     setRuleId('')
     setDocumentType('')
-    setHasAttachments('')
     setDateFrom('')
     setDateTo('')
   }
 
   const hasActiveFilters = Boolean(
-    searchInput || ruleId || documentType || hasAttachments || dateFrom || dateTo
+    searchInput || ruleId || documentType || dateFrom || dateTo
   )
   const enabledRuleCount = useMemo(() => rules.filter((r) => r.enabled).length, [rules])
 
@@ -403,12 +398,6 @@ export default function DocTidy() {
             {rules.map((r) => (
               <option key={r._id} value={r._id}>{r.name}</option>
             ))}
-          </select>
-
-          <select value={hasAttachments} onChange={(e) => setHasAttachments(e.target.value as AttachmentFilter)} className={`${inputClass} cursor-pointer`}>
-            <option value="">Any attachments</option>
-            <option value="true">With attachments</option>
-            <option value="false">Without attachments</option>
           </select>
 
           {/* Date range */}
