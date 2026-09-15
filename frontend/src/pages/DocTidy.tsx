@@ -583,10 +583,10 @@ export default function DocTidy() {
                       <tr
                         key={msg._id}
                         onClick={() => setViewMessage(msg)}
-                        className={`group cursor-pointer align-middle transition-colors ${
+                        className={`group cursor-pointer align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
                           isSelected
                             ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                            : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
+                            : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                         }`}
                       >
                         {/* Checkbox — stop propagation so clicking it doesn't open the drawer */}
@@ -606,13 +606,13 @@ export default function DocTidy() {
                         </td>
 
                         {/* From — avatar + single-line name/address (Gmail-style compact) */}
-                        <td className="px-3 py-1">
-                          <div className="flex items-center gap-2">
+                        <td className="px-3 py-1 min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
                             <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${avatarColour(senderSeed)}`}>
                               {senderSeed.charAt(0).toUpperCase()}
                             </span>
                             <div
-                              className="max-w-[180px] truncate text-[var(--text-100)]"
+                              className="min-w-0 truncate text-[var(--text-100)]"
                               title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}
                             >
                               {msg.fromName || msg.from}
@@ -621,8 +621,8 @@ export default function DocTidy() {
                         </td>
 
                         {/* Subject */}
-                        <td className="px-3 py-1">
-                          <div className="max-w-md truncate text-[var(--text-100)]" title={msg.subject}>
+                        <td className="px-3 py-1 min-w-0">
+                          <div className="truncate text-[var(--text-100)]" title={msg.subject}>
                             {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
                           </div>
                         </td>
