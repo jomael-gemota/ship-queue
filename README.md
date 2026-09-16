@@ -103,6 +103,7 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `COOKIE_JAR_PORT`                         | Cookie Jar health port (local; default 5001)       |
 | `COOKIE_JAR_OE_US_TOKEN`                  | Sphere API token for Seller Central OE US cookies  |
+| `HH_B2B_COOKIE` / `HH_B2B_BASE_URL` / `HH_B2B_CATALOG` / `HH_B2B_ACCOUNT_ID` | Helly Hansen Sports B2B session (cookie optional if Cookie Jar has it) |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
 
 ### 3. Run in development
@@ -242,7 +243,12 @@ order when headers are present (`Order ID` / `PO Number`). You can also paste
 rows in the import modal; headers are optional if one column is an Amazon Order
 ID. New orders start with Details
 `pending` and Cart `none`. Customer, address, and line items stay empty until
-the Seller Central fill that runs right after upload. The Notes column starts
+the Seller Central fill that runs right after upload. As soon as an Order ID
+is **Synced**, a cart-draft job runs for that order against Helly Hansen Sports
+B2B (`POST /api/documents/` with `do_submit: false` — no Place Order). Catalog
+`ASAPSPORT` and account `9014876` are the Order Swift Sports brand defaults.
+The session cookie lives in Cookie Jar `helly-hansen-sports-b2b` (or `HH_B2B_COOKIE`).
+Cart becomes **Draft** when that step finishes. The Notes column starts
 as the uploaded filename and can be edited later (for example `Skip: Cancelled`).
 Each order also has its own Notes field.
 

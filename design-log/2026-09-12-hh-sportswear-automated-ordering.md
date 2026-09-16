@@ -116,5 +116,15 @@ removed; groups now come from spreadsheet upload.
   while one is filling is queued. There is no background poller. Operators can
   also re-sync one Order ID or a whole batch from the row hover menu (or the
   batch header); that resets Details to **Pending** and runs the same fill.
-- **Not built yet:** B2B draft, cross-check, Place Order.
+  Re-sync also clears Cart **Draft** (not Ready / Review / Placed) so a new
+  draft can be created from the refreshed details.
+- **Built:** once an Order ID is Details **Synced** (and has line items), the
+  API automatically creates a **Cart draft** for that order via Helly Hansen
+  Sports B2B HTTP (catalog search → `POST /api/documents/` with `do_submit:
+  false`). Config matches Order Swift brand Helly Hansen Sports: baseUrl
+  `https://b2bsport.hellyhansen.com`, catalog `ASAPSPORT`, account `9014876`.
+  Session cookie is Cookie Jar `helly-hansen-sports-b2b` (manual; not Sphere)
+  or `HH_B2B_COOKIE`. Drop-ship address is not applied until Place Order.
+  The filter-bar chip shows “Drafting …” while that job runs.
+- **Not built yet:** cross-check, Place Order (`do_submit: true`).
 - Cookie Jar is the SC session source for fetches/cross-checks that need SC.
