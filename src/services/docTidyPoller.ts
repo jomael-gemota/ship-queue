@@ -11,7 +11,7 @@ import { isExtractionRunning, runEnabledRules } from './docTidy.service';
  * plus a fetch only for mail we have never seen.
  */
 
-const DEFAULT_INTERVAL_SECONDS = 15;
+const DEFAULT_INTERVAL_SECONDS = 30;
 const MIN_INTERVAL_SECONDS = 5;
 const STARTUP_DELAY_MS = 8_000;
 
