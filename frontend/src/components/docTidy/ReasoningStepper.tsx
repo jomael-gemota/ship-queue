@@ -58,7 +58,7 @@ export default function ReasoningStepper({
 
   return (
     <div className="space-y-3">
-      <div ref={railRef} className="overflow-x-auto pb-1">
+      <div ref={railRef} className="overflow-x-auto pb-1 pt-3">
         <ol className="flex min-w-max items-start">
           {steps.map((step, i) => {
             const isCurrent = i === lastIndex && live

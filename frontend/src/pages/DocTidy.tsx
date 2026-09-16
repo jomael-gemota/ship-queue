@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import {
@@ -14,6 +14,7 @@ import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
+import { newMessageStore } from '../lib/docTidyStore'
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
@@ -24,8 +25,18 @@ import {
   type DocTidyMessagesResponse,
   type DocTidyRule,
   type DocumentType,
-  type RunAllResult,
 } from '../types/docTidy'
+
+/** Human-friendly relative label for the last-synced timestamp. */
+function formatLastSynced(date: Date): string {
+  const diffMs = Date.now() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 
 export default function DocTidy() {
   const [messages, setMessages] = useState<DocTidyMessage[]>([])
@@ -36,10 +47,6 @@ export default function DocTidy() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [running, setRunning] = useState(false)
-  const [runResult, setRunResult] = useState<string | null>(null)
-  const [runError, setRunError] = useState<string | null>(null)
-
   // Filters
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -49,12 +56,28 @@ export default function DocTidy() {
   const [dateTo, setDateTo] = useState('')
 
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(500)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
 
-  // Live updates
+  // Live sync state
   const [live, setLive] = useState(false)
-  const [newCount, setNewCount] = useState(0)
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
+  // Holds the poller interval without triggering extra re-renders.
+  const pollerIntervalMsRef = useRef<number>(15_000)
+  // 1-second tick re-renders the "Synced X ago" and countdown displays.
+  const [, setTick] = useState(0)
+
+  // Clear the unread badge when the user lands on the Messages tab.
+  useEffect(() => {
+    newMessageStore.clear()
+  }, [])
+
+  // Tick every second to keep relative timestamps and the countdown fresh.
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
 
   // The parse job whose reasoning panel is open, if any.
   const [openJobId, setOpenJobId] = useState<string | null>(null)
@@ -82,6 +105,7 @@ export default function DocTidy() {
         const res = await authApi.get<DocTidyMessagesResponse>(`/doc-tidy/messages?${params.toString()}`)
         setMessages(res.data)
         setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+        setLastSynced(new Date())
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load messages')
       } finally {
@@ -101,7 +125,14 @@ export default function DocTidy() {
     ]).then(([rulesRes, configRes]) => {
       if (cancelled) return
       setRules(rulesRes.data)
-      if (configRes) setConfig(configRes.data)
+      if (configRes) {
+        setConfig(configRes.data)
+        // Seed the countdown from the server's known poll interval + last poll time.
+        const intervalMs = (configRes.data.pollerIntervalSeconds ?? 15) * 1_000
+        pollerIntervalMsRef.current = intervalMs
+        const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
+        setNextSyncAt(new Date(base + intervalMs))
+      }
     })
     return () => {
       cancelled = true
@@ -157,45 +188,15 @@ export default function DocTidy() {
         }
         if (event.type !== 'imported') return
 
-        setNewCount((count) => count + (event.imported ?? 0))
+        // Increment the cross-page unread badge, reset the next-sync countdown,
+        // and refresh the table.
+        newMessageStore.add(event.imported ?? 0)
+        setNextSyncAt(new Date(Date.now() + pollerIntervalMsRef.current))
         void fetchRef.current(true)
       },
       () => setLive(false)
     )
   }, [])
-
-  // The "new" badge is an arrival cue, not a persistent state.
-  useEffect(() => {
-    if (newCount === 0) return
-    const timer = setTimeout(() => setNewCount(0), 10_000)
-    return () => clearTimeout(timer)
-  }, [newCount])
-
-  const handleRunAll = async () => {
-    setRunning(true)
-    setRunError(null)
-    setRunResult(null)
-    try {
-      const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
-      const results = res.data.results
-      const imported = results.reduce((sum, r) => sum + (r.imported ?? 0), 0)
-      const matched = results.reduce((sum, r) => sum + (r.matched ?? 0), 0)
-      const failed = results.filter((r) => r.error)
-
-      const parts = [`${matched} matched`, `${imported} newly imported`]
-      if (failed.length) parts.push(`${failed.length} rule${failed.length === 1 ? '' : 's'} failed`)
-      setRunResult(`Extraction complete — ${parts.join(', ')}.`)
-
-      if (failed.length) {
-        setRunError(failed.map((f) => `${f.name}: ${f.error}`).join(' · '))
-      }
-      await fetchMessages(true)
-    } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Extraction failed')
-    } finally {
-      setRunning(false)
-    }
-  }
 
   const clearFilters = () => {
     setSearchInput('')
@@ -208,7 +209,6 @@ export default function DocTidy() {
   const hasActiveFilters = Boolean(
     searchInput || ruleId || documentType || dateFrom || dateTo
   )
-  const enabledRuleCount = useMemo(() => rules.filter((r) => r.enabled).length, [rules])
 
   const startItem = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1
   const endItem = Math.min(page * pageSize, pagination.total)
@@ -258,78 +258,40 @@ export default function DocTidy() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <DocTidyTabs />
-            {config?.mailboxConnected && (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  live
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
-                    : 'bg-slate-100 text-slate-500 dark:bg-slate-500/10 dark:text-slate-400'
-                }`}
-                title={
-                  live
-                    ? 'New mail matching an enabled rule is captured and shown here automatically'
-                    : 'Reconnecting to the live update stream…'
-                }
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    live ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                  }`}
-                />
-                {live ? 'Live' : 'Offline'}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-gray-500 dark:text-[var(--text-200)]">
-            {config?.mailboxConnected ? (
-              <>
-                Mailbox:{' '}
-                <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">
-                  {config.mailboxEmail}
-                </span>
-                {config.driveFolderName && (
-                  <>
-                    {' · Attachments → '}
-                    <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">
-                      {config.driveFolderName}
-                    </span>
-                  </>
-                )}
-              </>
-            ) : (
-              'No mailbox connected yet.'
-            )}
-          </p>
-        </div>
+      {/* ── Tab bar ────────────────────────────────────────────────── */}
+      <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
+        <DocTidyTabs />
 
-        <button
-          onClick={handleRunAll}
-          disabled={running || !config?.mailboxConnected || enabledRuleCount === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white dark:text-[var(--text-100)] text-[11px] font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] disabled:bg-sky-300 disabled:text-sky-50 disabled:shadow-none disabled:translate-y-0 transition-all cursor-pointer disabled:cursor-not-allowed"
-          title={
-            !config?.mailboxConnected
-              ? 'Connect the Doc Tidy mailbox in Settings first'
-              : enabledRuleCount === 0
-                ? 'Enable at least one extraction rule'
-                : 'Run every enabled rule'
-          }
-        >
-          {running ? <Spinner className="h-3.5 w-3.5" /> : (
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          )}
-          {running ? 'Extracting…' : 'Run all enabled rules'}
-        </button>
+        {/* Sync timestamps — flush with the tab baseline */}
+        {(lastSynced ?? nextSyncAt) && (() => {
+          const secondsLeft = nextSyncAt
+            ? Math.max(0, Math.round((nextSyncAt.getTime() - Date.now()) / 1_000))
+            : null
+
+          return (
+            <div className="flex items-center gap-3 pb-2 pl-4 shrink-0 text-[11px] text-[var(--text-200)]">
+              {lastSynced && (
+                <span className="flex items-center gap-1">
+                  <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Synced {formatLastSynced(lastSynced)}
+                </span>
+              )}
+              {secondsLeft !== null && (
+                <>
+                  {lastSynced && <span className="opacity-30">·</span>}
+                  <span className="flex items-center gap-1">
+                    <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {secondsLeft > 0 ? `next in ${secondsLeft}s` : 'syncing…'}
+                  </span>
+                </>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {!config?.mailboxConnected && (
@@ -339,17 +301,6 @@ export default function DocTidy() {
             Settings
           </Link>{' '}
           page before messages can be extracted.
-        </Banner>
-      )}
-
-      {runResult && (
-        <Banner kind="success" onDismiss={() => setRunResult(null)}>
-          {runResult}
-        </Banner>
-      )}
-      {runError && (
-        <Banner kind="error" onDismiss={() => setRunError(null)}>
-          {runError}
         </Banner>
       )}
 
@@ -417,10 +368,23 @@ export default function DocTidy() {
           {/* Status indicators */}
           <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
             {refreshing && <Spinner className="h-3 w-3" />}
-            {newCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                +{newCount} new
+            {config?.mailboxConnected && (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  live
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-500/10 dark:text-slate-400'
+                }`}
+                title={
+                  live
+                    ? 'New mail matching an enabled rule is captured and shown here automatically'
+                    : 'Reconnecting to the live update stream…'
+                }
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}
+                />
+                {live ? 'Live' : 'Offline'}
               </span>
             )}
             {pagination.total > 0 && (

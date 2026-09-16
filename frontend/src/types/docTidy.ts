@@ -139,6 +139,10 @@ export interface DocTidyConfig {
   connectedByName: string | null
   driveFolderId: string | null
   driveFolderName: string | null
+  /** How often the background poller checks the mailbox (seconds). */
+  pollerIntervalSeconds?: number | null
+  /** ISO timestamp of the last completed poll cycle on the server. */
+  lastPollAt?: string | null
 }
 
 /** Result of running a single rule. */
@@ -171,7 +175,7 @@ export interface DocTidyEvent {
   at?: string
 }
 
-export const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
+export const PAGE_SIZE_OPTIONS = [500, 1000, 2000, 5000]
 
 /* ------------------------------------------------------------ agent parsing */
 
@@ -269,4 +273,16 @@ export function vendorSamples(vendor: DocTidyVendor): string[] {
   const samples = [...(vendor.skuSamples ?? [])]
   if (vendor.skuSample) samples.push(vendor.skuSample)
   return [...new Set(samples)]
+}
+
+/**
+ * Canonical key for matching a correction to a vendor.
+ *
+ * Must stay identical to `normalizeVendorName()` in `src/models/DocTidyVendor.ts`
+ * and `normalize_vendor_name()` in `worker/sku.py`. If this diverges, the UI
+ * groups corrections differently from how the worker scopes retrieval — which is
+ * the exact failure the grouping exists to expose.
+ */
+export function normalizeVendorName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }

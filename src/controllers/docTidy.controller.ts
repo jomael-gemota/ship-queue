@@ -12,6 +12,7 @@ import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
 import { getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
+import { getPollerStatus } from '../services/docTidyPoller';
 
 /** Escapes user input before it is used inside a RegExp. */
 function escapeRegExp(input: string): string {
@@ -265,9 +266,9 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     } = req.query as Record<string, string | undefined>;
 
     const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1);
-    const allowedSizes = [50, 100, 200, 500];
-    const requested = parseInt(pageSize ?? '50', 10);
-    const size = allowedSizes.includes(requested) ? requested : 50;
+    const allowedSizes = [50, 100, 200, 500, 1000, 2000, 5000];
+    const requested = parseInt(pageSize ?? '500', 10);
+    const size = allowedSizes.includes(requested) ? requested : 500;
     const skip = (pageNum - 1) * size;
 
     const filter: Record<string, unknown> = {};
@@ -371,6 +372,7 @@ export const getMessageById = async (req: Request, res: Response): Promise<void>
 
 async function buildConfigPayload() {
   const config = await getDocTidyConfigDoc(true);
+  const poller = getPollerStatus();
   return {
     mailboxConnected: Boolean(config.gmailRefreshToken),
     mailboxEmail: config.gmailAccountEmail || null,
@@ -378,6 +380,8 @@ async function buildConfigPayload() {
     connectedByName: config.gmailConnectedByName || null,
     driveFolderId: config.driveFolderId || null,
     driveFolderName: config.driveFolderName || null,
+    pollerIntervalSeconds: poller.intervalSeconds,
+    lastPollAt: poller.lastPollAt?.toISOString() ?? null,
   };
 }
 

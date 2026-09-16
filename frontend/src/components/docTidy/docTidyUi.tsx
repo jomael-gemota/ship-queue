@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { newMessageStore } from '../../lib/docTidyStore'
 import {
   DOCUMENT_TYPE_ICONS,
   DOCUMENT_TYPE_LABELS,
@@ -10,21 +12,32 @@ import {
   type ParseJobStatus,
 } from '../../types/docTidy'
 
-/** Sub-navigation shared by the Doc Tidy results and rules pages. */
+/**
+ * Full-width underline tab bar shared by all three Doc Tidy sections.
+ *
+ * The component renders a <nav> without an outer border — callers wrap it in a
+ * div that provides the horizontal rule so action buttons can sit flush on the
+ * same baseline (flex items-end justify-between border-b …).
+ *
+ * The active tab's border-b-2 uses -mb-px to overlap the parent's border-b,
+ * producing the standard "selected tab" look without a double line.
+ */
 export function DocTidyTabs() {
-  const base =
-    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer'
-  const className = ({ isActive }: { isActive: boolean }) =>
-    `${base} ${
+  // Reactive unread count — survives navigation between sub-pages.
+  const [unread, setUnread] = useState(newMessageStore.get)
+  useEffect(() => newMessageStore.subscribe(() => setUnread(newMessageStore.get())), [])
+
+  const tab = ({ isActive }: { isActive: boolean }) =>
+    `inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 -mb-px cursor-pointer whitespace-nowrap select-none transition-colors ${
       isActive
-        ? 'bg-[var(--primary-100)] text-[var(--accent-200)] shadow-sm'
-        : 'text-[var(--text-200)] hover:bg-[var(--primary-100)] hover:text-[var(--text-100)]'
+        ? 'border-[var(--accent-200)] text-[var(--accent-200)]'
+        : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)] hover:border-[var(--bg-300)]'
     }`
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-1">
-      <NavLink to="/doc-tidy" end className={className}>
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <nav className="flex items-end" aria-label="Doc Tidy navigation">
+      <NavLink to="/doc-tidy" end className={tab}>
+        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -33,9 +46,14 @@ export function DocTidyTabs() {
           />
         </svg>
         Extracted Messages
+        {unread > 0 && (
+          <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent-200)] px-1 text-[10px] font-bold leading-none text-white">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
       </NavLink>
-      <NavLink to="/doc-tidy/rules" className={className}>
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <NavLink to="/doc-tidy/rules" className={tab}>
+        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -45,8 +63,8 @@ export function DocTidyTabs() {
         </svg>
         Extraction Rules
       </NavLink>
-      <NavLink to="/doc-tidy/vendors" className={className}>
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <NavLink to="/doc-tidy/vendors" className={tab}>
+        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -56,7 +74,7 @@ export function DocTidyTabs() {
         </svg>
         Vendors
       </NavLink>
-    </div>
+    </nav>
   )
 }
 
