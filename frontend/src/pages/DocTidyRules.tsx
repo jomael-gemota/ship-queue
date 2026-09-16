@@ -178,17 +178,20 @@ export default function DocTidyRules() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* ── Tab bar + action controls ──────────────────────────────── */}
+      <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
         <DocTidyTabs />
-        <button
-          onClick={openNew}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--accent-200)] text-white text-sm font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] transition-all cursor-pointer"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New rule
-        </button>
+        <div className="pb-1.5 pl-4 shrink-0">
+          <button
+            onClick={openNew}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--accent-200)] text-white text-sm font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] transition-all cursor-pointer"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New rule
+          </button>
+        </div>
       </div>
 
       {!config?.mailboxConnected && (

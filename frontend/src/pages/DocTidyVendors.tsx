@@ -90,7 +90,8 @@ export default function DocTidyVendors() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* ── Tab bar ───────────────────────────────────────────────── */}
+      <div className="border-b border-[var(--bg-300)]">
         <DocTidyTabs />
       </div>
 

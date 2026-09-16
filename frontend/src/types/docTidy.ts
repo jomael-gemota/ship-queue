@@ -139,6 +139,10 @@ export interface DocTidyConfig {
   connectedByName: string | null
   driveFolderId: string | null
   driveFolderName: string | null
+  /** How often the background poller checks the mailbox (seconds). */
+  pollerIntervalSeconds?: number | null
+  /** ISO timestamp of the last completed poll cycle on the server. */
+  lastPollAt?: string | null
 }
 
 /** Result of running a single rule. */
@@ -171,7 +175,7 @@ export interface DocTidyEvent {
   at?: string
 }
 
-export const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
+export const PAGE_SIZE_OPTIONS = [500, 1000, 2000, 5000]
 
 /* ------------------------------------------------------------ agent parsing */
 
