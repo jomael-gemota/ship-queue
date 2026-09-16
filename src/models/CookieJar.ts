@@ -7,6 +7,10 @@ export const SELLER_CENTRAL_OE_US_NAME = 'Seller Central Outdoor Equipped US';
 /** Minute 0 of every 6th hour UTC (00:00, 06:00, 12:00, 18:00). */
 export const SELLER_CENTRAL_OE_US_CRON = '0 */6 * * *';
 
+/** Helly Hansen Sports B2B session. Stored manually — no Sphere fetcher. */
+export const HELLY_HANSEN_SPORTS_B2B_KEY = 'helly-hansen-sports-b2b';
+export const HELLY_HANSEN_SPORTS_B2B_NAME = 'Helly Hansen Sports B2B';
+
 /** Previous key — renamed in place on seed so existing cookies are kept. */
 const LEGACY_SELLER_CENTRAL_OE_US_KEY = 'outdoor-equipped-us';
 
@@ -60,7 +64,23 @@ const CookieJarSchema = new Schema<ICookieJar>(
   { timestamps: true }
 );
 
+export function isManualCookieJar(key: string): boolean {
+  return key === HELLY_HANSEN_SPORTS_B2B_KEY;
+}
+
 const CookieJar = model<ICookieJar>('CookieJar', CookieJarSchema);
+
+async function seedJar(key: string, name: string, cron: string, enabled: boolean): Promise<void> {
+  const existing = await CookieJar.findOne({ key }).select('key');
+  if (existing) return;
+  try {
+    await CookieJar.create({ key, name, enabled, cron });
+    console.log(`[cookie-jar] Seeded ${key}`);
+  } catch (err) {
+    const code = err && typeof err === 'object' && 'code' in err ? (err as { code?: number }).code : undefined;
+    if (code !== 11000) throw err;
+  }
+}
 
 /**
  * Inserts the built-in jars if they are missing. Renames the legacy
@@ -69,36 +89,25 @@ const CookieJar = model<ICookieJar>('CookieJar', CookieJarSchema);
  */
 export async function seedCookieJars(): Promise<void> {
   const current = await CookieJar.findOne({ key: SELLER_CENTRAL_OE_US_KEY }).select('key');
-  if (current) return;
-
-  const renamed = await CookieJar.findOneAndUpdate(
-    { key: LEGACY_SELLER_CENTRAL_OE_US_KEY },
-    {
-      $set: {
-        key: SELLER_CENTRAL_OE_US_KEY,
-        name: SELLER_CENTRAL_OE_US_NAME,
-        cron: SELLER_CENTRAL_OE_US_CRON,
+  if (!current) {
+    const renamed = await CookieJar.findOneAndUpdate(
+      { key: LEGACY_SELLER_CENTRAL_OE_US_KEY },
+      {
+        $set: {
+          key: SELLER_CENTRAL_OE_US_KEY,
+          name: SELLER_CENTRAL_OE_US_NAME,
+          cron: SELLER_CENTRAL_OE_US_CRON,
+        },
       },
-    },
-    { new: true }
-  );
-  if (renamed) {
-    console.log(`[cookie-jar] Renamed ${LEGACY_SELLER_CENTRAL_OE_US_KEY} → ${SELLER_CENTRAL_OE_US_KEY}`);
-    return;
+      { new: true }
+    );
+    if (renamed) {
+      console.log(`[cookie-jar] Renamed ${LEGACY_SELLER_CENTRAL_OE_US_KEY} → ${SELLER_CENTRAL_OE_US_KEY}`);
+    }
   }
 
-  try {
-    await CookieJar.create({
-      key: SELLER_CENTRAL_OE_US_KEY,
-      name: SELLER_CENTRAL_OE_US_NAME,
-      enabled: true,
-      cron: SELLER_CENTRAL_OE_US_CRON,
-    });
-    console.log(`[cookie-jar] Seeded ${SELLER_CENTRAL_OE_US_KEY}`);
-  } catch (err) {
-    const code = err && typeof err === 'object' && 'code' in err ? (err as { code?: number }).code : undefined;
-    if (code !== 11000) throw err;
-  }
+  await seedJar(SELLER_CENTRAL_OE_US_KEY, SELLER_CENTRAL_OE_US_NAME, SELLER_CENTRAL_OE_US_CRON, true);
+  await seedJar(HELLY_HANSEN_SPORTS_B2B_KEY, HELLY_HANSEN_SPORTS_B2B_NAME, DEFAULT_JAR_CRON, true);
 }
 
 export default CookieJar;

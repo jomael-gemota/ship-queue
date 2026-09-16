@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
-import CookieJar, { MAX_JAR_NAME_LEN, seedCookieJars, validateJarCron } from '../models/CookieJar';
+import CookieJar, {
+  MAX_JAR_NAME_LEN,
+  isManualCookieJar,
+  seedCookieJars,
+  validateJarCron,
+} from '../models/CookieJar';
 import { executeCookieJar } from '../cookie-jar/run';
 import { getFetcher } from '../cookie-jar/registry';
 
@@ -9,6 +14,8 @@ export interface CookieJarPublic {
   enabled: boolean;
   cron: string;
   hasCookie: boolean;
+  hasFetcher: boolean;
+  manual: boolean;
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -22,6 +29,8 @@ function toPublic(doc: InstanceType<typeof CookieJar>): CookieJarPublic {
     enabled: doc.enabled,
     cron: doc.cron,
     hasCookie: Boolean(doc.get('cookie')),
+    hasFetcher: Boolean(getFetcher(doc.key)),
+    manual: isManualCookieJar(doc.key),
     lastRunAt: doc.lastRunAt ? doc.lastRunAt.toISOString() : null,
     lastSuccessAt: doc.lastSuccessAt ? doc.lastSuccessAt.toISOString() : null,
     lastError: doc.lastError ?? null,
@@ -40,7 +49,7 @@ export const listCookieJars = async (_req: Request, res: Response): Promise<void
   }
 };
 
-/** Admin-only. Updates name / enabled / cron. Does not accept or return the cookie. */
+/** Admin-only. Updates name / enabled / cron, and optionally the cookie (never returned). */
 export const updateCookieJar = async (req: Request, res: Response): Promise<void> => {
   try {
     const key = String(req.params.key || '').trim();
@@ -55,9 +64,14 @@ export const updateCookieJar = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { name, enabled, cron } = req.body as { name?: string; enabled?: boolean; cron?: string };
-    if (name === undefined && enabled === undefined && cron === undefined) {
-      res.status(400).json({ message: 'Provide name, enabled, and/or cron' });
+    const { name, enabled, cron, cookie } = req.body as {
+      name?: string;
+      enabled?: boolean;
+      cron?: string;
+      cookie?: string;
+    };
+    if (name === undefined && enabled === undefined && cron === undefined && cookie === undefined) {
+      res.status(400).json({ message: 'Provide name, enabled, cron, and/or cookie' });
       return;
     }
 
@@ -93,6 +107,18 @@ export const updateCookieJar = async (req: Request, res: Response): Promise<void
         return;
       }
       doc.cron = cron.trim();
+    }
+
+    if (cookie !== undefined) {
+      if (typeof cookie !== 'string') {
+        res.status(400).json({ message: 'Cookie must be a string' });
+        return;
+      }
+      doc.cookie = cookie.trim();
+      if (doc.cookie) {
+        doc.lastSuccessAt = new Date();
+        doc.lastError = null;
+      }
     }
 
     await doc.save();

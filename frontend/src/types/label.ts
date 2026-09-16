@@ -321,6 +321,8 @@ export interface CookieJar {
   enabled: boolean
   cron: string
   hasCookie: boolean
+  hasFetcher?: boolean
+  manual?: boolean
   lastRunAt: string | null
   lastSuccessAt: string | null
   lastError: string | null

@@ -139,6 +139,7 @@ export default function CookieJarSection({
           </div>
           <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
             Schedule background cookie refreshes. The worker stores the latest cookie; this page never shows it.
+            Helly Hansen Sports B2B is stored here too, but that session is pasted — Sphere does not refresh it.
           </p>
         </div>
       </div>
@@ -202,6 +203,7 @@ export default function CookieJarSection({
                   />
                 </div>
 
+                {!jar.manual && (
                 <div className="flex items-center gap-3 p-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Cron schedule</p>
@@ -218,6 +220,13 @@ export default function CookieJarSection({
                     className="w-48 max-w-full rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm font-mono text-slate-700 dark:text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
                   />
                 </div>
+                )}
+
+                {jar.manual && (
+                  <p className="px-4 py-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    Manual session for Helly Hansen Sports B2B (ASAPSPORT). Prefer Dropship (B2B) → HH Sportswear → Configurations. Not refreshed by Sphere.
+                  </p>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 text-xs">
                   <StatusCell
@@ -237,6 +246,7 @@ export default function CookieJarSection({
 
                 {isAdmin ? (
                   <div className="flex items-center justify-end gap-2 p-4">
+                    {jar.hasFetcher !== false && (
                     <button
                       type="button"
                       onClick={() => runJarNow(jar)}
@@ -245,6 +255,7 @@ export default function CookieJarSection({
                     >
                       {running ? 'Running…' : 'Run now'}
                     </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => saveJar(jar)}
