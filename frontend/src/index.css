@@ -211,10 +211,15 @@ body {
   }
 }
 
+.hh-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .hh-action-row {
   --hh-peek: 12px;
   --hh-peek-hot: 36px;
-  --hh-action-shift: 5.75rem;
+  --hh-action-shift: 8rem;
   isolation: isolate;
 }
 
@@ -281,6 +286,18 @@ body {
   vertical-align: middle;
 }
 
+.hh-row-actions-tray {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: var(--hh-peek);
+  overflow: hidden;
+  pointer-events: none;
+  transition: width 160ms ease;
+}
+
 .hh-row-handle {
   position: absolute;
   top: 0;
@@ -315,10 +332,22 @@ body {
   opacity: 1;
 }
 
+.hh-action-row:has(.hh-row-handle:hover) .hh-row-actions-tray,
+.hh-action-row:has(.hh-row-handle:focus-visible) .hh-row-actions-tray {
+  width: var(--hh-peek-hot);
+}
+
 .hh-row-handle:hover,
 .hh-row-handle:focus-visible {
   width: var(--hh-peek-hot);
   background: var(--accent-100);
+}
+
+.hh-action-row.is-open .hh-row-actions-tray,
+.hh-action-row.is-open:has(.hh-row-handle:hover) .hh-row-actions-tray,
+.hh-action-row.is-open:has(.hh-row-handle:focus-visible) .hh-row-actions-tray {
+  width: var(--hh-action-shift);
+  pointer-events: auto;
 }
 
 .hh-action-row.is-open .hh-row-handle,
@@ -336,15 +365,21 @@ body {
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 5;
+  z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
+  justify-content: flex-end;
+  gap: 0.375rem;
+  box-sizing: border-box;
   width: var(--hh-action-shift);
+  padding: 0 0.5rem;
   pointer-events: none;
   opacity: 0;
   transition: opacity 180ms ease;
+}
+
+.hh-row-actions-inner > * {
+  flex-shrink: 0;
 }
 
 .hh-action-row.is-open .hh-row-actions-inner {
@@ -405,7 +440,8 @@ body {
 }
 
 .hh-action-row.is-deleting .hh-row-handle,
-.hh-action-row.is-deleting .hh-row-actions-inner {
+.hh-action-row.is-deleting .hh-row-actions-inner,
+.hh-action-row.is-deleting .hh-row-actions-tray {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -446,6 +482,7 @@ body {
 
   .hh-action-row > td:not(.hh-row-actions),
   .hh-row-handle,
+  .hh-row-actions-tray,
   .hh-row-actions-inner {
     transition: none;
   }

@@ -12,12 +12,14 @@ const SEARCH_PLACEHOLDERS = {
   list: 'Search order ID, SKU, PO, reference, customer, notes…',
   orders: 'Search order ID, SKU, PO, reference, customer, notes…',
   items: 'Search title, SKU, ASIN…',
+  config: '',
 } as const
 
 const COUNT_NOUNS = {
   list: ['group', 'groups'],
   orders: ['order', 'orders'],
   items: ['item', 'items'],
+  config: ['setting', 'settings'],
 } as const
 
 const selectClass =

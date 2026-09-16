@@ -3,9 +3,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup } from '../../lib/hhSportswear'
 import { HH_CART_STATUS_LABELS, HH_DETAILS_STATUS_LABELS } from '../../lib/hhSportswear'
-import { BackIcon, RefreshIcon, Spinner } from '../labels/labelUi'
+import { BackIcon, Spinner } from '../labels/labelUi'
+import { Tooltip } from '../Tooltip'
 import type { HHPage } from '../../lib/hhNav'
 import { prefersReducedMotion } from '../../lib/hhNav'
+import { DROPSHIP_PATH, HH_SPORTSWEAR_PATH } from '../../lib/dropship'
 
 export function HHBreadcrumb({
   groupId,
@@ -15,19 +17,23 @@ export function HHBreadcrumb({
   current: HHPage
 }) {
   const crumbs: { label: string; to?: string }[] = [
+    { label: 'Dropship (B2B)', to: DROPSHIP_PATH },
     {
       label: 'HH Sportswear',
-      to: current === 'list' ? undefined : '/ordering/hh-sportswear',
+      to: current === 'list' ? undefined : HH_SPORTSWEAR_PATH,
     },
   ]
   if (current === 'orders' || current === 'items') {
     crumbs.push({
       label: 'Orders',
-      to: current === 'items' && groupId ? `/ordering/hh-sportswear/${groupId}` : undefined,
+      to: current === 'items' && groupId ? `${HH_SPORTSWEAR_PATH}/${groupId}` : undefined,
     })
   }
   if (current === 'items') {
     crumbs.push({ label: 'Items' })
+  }
+  if (current === 'config') {
+    crumbs.push({ label: 'Configurations' })
   }
 
   return (
@@ -280,7 +286,9 @@ export function HHRowActions({
           event.currentTarget.blur()
         }}
       />
-      <div className="hh-row-actions-inner">{children}</div>
+      <div className="hh-row-actions-tray">
+        <div className="hh-row-actions-inner">{children}</div>
+      </div>
     </td>
   )
 }
@@ -296,29 +304,108 @@ export function HHResyncButton({
   size?: 'sm' | 'md'
   title?: string
 }) {
-  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
+  const sizing = size === 'sm' ? 'px-2 py-1.5' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onClick()
-      }}
-      disabled={busy}
-      title={title}
-      aria-label={title}
-      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-[var(--accent-100)] hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--accent-200)] dark:hover:bg-[var(--primary-100)] cursor-pointer transition-colors ${sizing}`}
-    >
-      {busy ? <Spinner className={iconSize} /> : <RefreshIcon className={iconSize} />}
-    </button>
+    <Tooltip content={title}>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onClick()
+        }}
+        disabled={busy}
+        aria-label={title}
+        className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-[var(--accent-100)] hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--accent-200)] dark:hover:bg-[var(--primary-100)] cursor-pointer transition-colors ${sizing}`}
+      >
+        {busy ? <Spinner className={iconSize} /> : <DetailsResyncIcon className={iconSize} />}
+      </button>
+    </Tooltip>
   )
 }
 
-export type HHPendingDelete =
-  | { kind: 'group'; group: HHOrderGroup }
-  | { kind: 'order'; order: HHChildOrder }
+function DetailsResyncIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h7"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 5a2 2 0 012-2h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11h5M8 15h3" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M20.2 14.2a3.6 3.6 0 10-1 2.5"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.2 11.5V15h-3.4" />
+    </svg>
+  )
+}
+
+function CartDraftIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 3h2l.6 3M6.2 9h12.2l-1.5 6.2a1 1 0 01-1 .8H8.1a1 1 0 01-1-.8L5.4 6H3"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 20a1.25 1.25 0 11-2.5 0A1.25 1.25 0 019 20zM18 20a1.25 1.25 0 11-2.5 0A1.25 1.25 0 0118 20z"
+      />
+    </svg>
+  )
+}
+
+export function HHRedraftButton({
+  busy,
+  onClick,
+  size = 'sm',
+  title = 'Regenerate B2B draft',
+}: {
+  busy?: boolean
+  onClick: () => void
+  size?: 'sm' | 'md'
+  title?: string
+}) {
+  const sizing = size === 'sm' ? 'px-2 py-1.5' : 'p-2'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  return (
+    <Tooltip content={title}>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onClick()
+        }}
+        disabled={busy}
+        aria-label={title}
+        className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-[var(--accent-100)] hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--accent-200)] dark:hover:bg-[var(--primary-100)] cursor-pointer transition-colors ${sizing}`}
+      >
+        {busy ? <Spinner className={iconSize} /> : <CartDraftIcon className={iconSize} />}
+      </button>
+    </Tooltip>
+  )
+}
+
+export type HHPendingAction =
+  | { type: 'delete' | 'resync' | 'redraft'; target: 'group'; group: HHOrderGroup }
+  | { type: 'delete' | 'resync' | 'redraft'; target: 'order'; order: HHChildOrder }
 
 const DETAILS_BADGE_CLASS: Record<HHDetailsStatus, string> = {
   pending: 'bg-[var(--primary-100)] text-slate-700 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]',
@@ -352,46 +439,150 @@ export function HHCartBadge({ status }: { status: HHCartStatus }) {
   )
 }
 
-export function HHConfirmDeleteModal({
+function confirmCopy(pending: HHPendingAction) {
+  const isGroup = pending.target === 'group'
+  const orderId = pending.target === 'order' ? pending.order.orderId : null
+  const createdBy = pending.target === 'group' ? pending.group.createdByName.trim() : null
+
+  if (pending.type === 'resync') {
+    return {
+      title: isGroup ? 'Re-sync batch details?' : 'Re-sync order details?',
+      body: isGroup ? (
+        <>
+          This will pull Seller Central details again for every order in the batch created by{' '}
+          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{createdBy}</span>.
+        </>
+      ) : (
+        <>
+          This will pull Seller Central details again for order{' '}
+          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+        </>
+      ),
+      confirm: 'Re-sync',
+      busy: 'Re-syncing…',
+      danger: false,
+    }
+  }
+
+  if (pending.type === 'redraft') {
+    return {
+      title: isGroup ? 'Regenerate B2B drafts?' : 'Regenerate B2B draft?',
+      body: isGroup ? (
+        <>
+          This will create new Helly Hansen B2B drafts for every order in this batch. Existing drafts
+          will be replaced.
+        </>
+      ) : (
+        <>
+          This will create a new Helly Hansen B2B draft for order{' '}
+          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+          {' '}The existing draft will be replaced.
+        </>
+      ),
+      confirm: 'Regenerate',
+      busy: 'Regenerating…',
+      danger: false,
+    }
+  }
+
+  return {
+    title: isGroup ? 'Delete group?' : 'Delete order?',
+    body: isGroup ? (
+      <>
+        This will remove the group created by{' '}
+        <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{createdBy}</span>{' '}
+        and all nested orders.
+      </>
+    ) : (
+      <>
+        This will remove order{' '}
+        <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+      </>
+    ),
+    confirm: 'Delete',
+    busy: 'Deleting…',
+    danger: true,
+  }
+}
+
+export type HHConfirmOptions = { draftCart?: boolean }
+
+function HHConfirmSwitch({
+  checked,
+  disabled,
+  label,
+  description,
+  onChange,
+}: {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  description: string
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">{label}</p>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+        } ${checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+            checked ? 'translate-x-5' : 'translate-x-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+export function HHConfirmModal({
   pending,
   onConfirm,
   onCancel,
   busy = false,
   error = null,
 }: {
-  pending: HHPendingDelete
-  onConfirm: () => void
+  pending: HHPendingAction
+  onConfirm: (options?: HHConfirmOptions) => void
   onCancel: () => void
   busy?: boolean
   error?: string | null
 }) {
-  const isGroup = pending.kind === 'group'
+  const copy = confirmCopy(pending)
+  const [draftCart, setDraftCart] = useState(true)
+  const isResync = pending.type === 'resync'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className="relative z-10 w-full max-w-sm space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl">
-        <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-          {isGroup ? 'Delete group?' : 'Delete order?'}
-        </h3>
-        <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-          {isGroup ? (
-            <>
-              This will remove the group created by{' '}
-              <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">
-                {pending.group.createdByName}
-              </span>{' '}
-              and all nested orders.
-            </>
-          ) : (
-            <>
-              This will remove order{' '}
-              <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">
-                {pending.order.orderId}
-              </span>
-              .
-            </>
-          )}
-        </p>
+      <div className={`relative z-10 w-full space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl ${isResync ? 'max-w-md' : 'max-w-sm'}`}>
+        <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{copy.title}</h3>
+        <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">{copy.body}</p>
+        {isResync && (
+          <HHConfirmSwitch
+            checked={draftCart}
+            disabled={busy}
+            label="Also regenerate B2B cart"
+            description={
+              draftCart
+                ? 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
+                : 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
+            }
+            onChange={setDraftCart}
+          />
+        )}
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
@@ -404,14 +595,20 @@ export function HHConfirmDeleteModal({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(isResync ? { draftCart } : undefined)}
             disabled={busy}
-            className="cursor-pointer rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={
+              copy.danger
+                ? 'cursor-pointer rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
+                : 'cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[var(--accent-100)]'
+            }
           >
-            {busy ? 'Deleting…' : 'Delete'}
+            {busy ? copy.busy : copy.confirm}
           </button>
         </div>
       </div>
     </div>
   )
 }
+
+export const HHConfirmDeleteModal = HHConfirmModal

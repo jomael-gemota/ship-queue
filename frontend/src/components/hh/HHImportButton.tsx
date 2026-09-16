@@ -10,6 +10,46 @@ const PASTE_PLACEHOLDER = '225702\t111-5023603-3399458\n225709\t111-5586027-4450
 
 type ImportTab = 'file' | 'paste'
 
+function ImportSwitch({
+  checked,
+  disabled,
+  label,
+  description,
+  onChange,
+}: {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  description: string
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">{label}</p>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+        } ${checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+            checked ? 'translate-x-5' : 'translate-x-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
 function fileLooksValid(file: File): string | null {
   const name = file.name.toLowerCase()
   if (!name.endsWith('.xlsx') && !name.endsWith('.xlsm') && !name.endsWith('.csv')) {
@@ -36,6 +76,8 @@ export function HHImportButton() {
   const [importBusy, setImportBusy] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [fetchDetails, setFetchDetails] = useState(true)
+  const [draftCart, setDraftCart] = useState(true)
   const dragDepth = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -58,6 +100,8 @@ export function HHImportButton() {
     setSelectedFile(null)
     setPaste('')
     setTab('file')
+    setFetchDetails(true)
+    setDraftCart(true)
     setDragging(false)
     dragDepth.current = 0
     resetFileInput()
@@ -88,7 +132,9 @@ export function HHImportButton() {
     const file = selectedFile
     setImportBusy(true)
     setImportError(null)
-    const request = usingPaste ? importHHSpreadsheet({ text: paste }) : importHHSpreadsheet(file!)
+    const request = usingPaste
+      ? importHHSpreadsheet({ text: paste }, { fetchDetails, draftCart: fetchDetails && draftCart })
+      : importHHSpreadsheet(file!, { fetchDetails, draftCart: fetchDetails && draftCart })
     request
       .then((res) => {
         flashHHGroupRow(res.data.id)
@@ -360,6 +406,33 @@ export function HHImportButton() {
               <p className="mt-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
                 Columns can be in either order. Headers are optional if one column is an Amazon Order ID. Duplicate Order ID + PO rows become one order.
               </p>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--text-200)]">
+                After import
+              </p>
+              <ImportSwitch
+                checked={fetchDetails}
+                disabled={importBusy}
+                label="Fetch order details"
+                description="Pull Seller Central buyer, address, and items for each Order ID."
+                onChange={(next) => {
+                  setFetchDetails(next)
+                  setDraftCart(next)
+                }}
+              />
+              <ImportSwitch
+                checked={fetchDetails && draftCart}
+                disabled={importBusy || !fetchDetails}
+                label="Draft B2B cart"
+                description={
+                  fetchDetails
+                    ? 'Create a Helly Hansen draft after details sync. The order is not placed.'
+                    : 'Turn on Fetch order details first. Carts need synced items.'
+                }
+                onChange={setDraftCart}
+              />
             </div>
 
             <div className="flex flex-col gap-2">

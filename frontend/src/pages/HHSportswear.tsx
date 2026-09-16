@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HHActionRow, HHCartBadge, HHConfirmDeleteModal, HHDetailsBadge, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
-import type { HHPendingDelete } from '../components/hh/hhUi'
+import { HHActionRow, HHCartBadge, HHConfirmModal, HHDetailsBadge, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { deleteHHGroup, formatCreatedAt, hhFilterSummary } from '../lib/hhSportswear'
@@ -54,10 +54,12 @@ export default function HHSportswear() {
     reload,
     rerunDetails,
     resyncBusyId,
+    rerunCartDraft,
+    cartDraftBusyId,
   } = useHHList()
-  const [pendingDelete, setPendingDelete] = useState<HHPendingDelete | null>(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const { openId, toggle, close } = useHHOpenRow()
   const { exitingId, beginExit, finishExit } = useHHRowExit((id) => {
     setGroups((current) => current.filter((group) => group.id !== id))
@@ -146,7 +148,7 @@ export default function HHSportswear() {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="hh-table-scroll">
         <table className="w-full text-sm">
           <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]">
             <tr className="text-left">
@@ -256,14 +258,18 @@ export default function HHSportswear() {
                         size="sm"
                         title="Re-sync details for this batch"
                         busy={resyncBusyId === group.id}
-                        onClick={() => {
-                          void rerunDetails(group.id)
-                        }}
+                        onClick={() => setPendingAction({ type: 'resync', target: 'group', group })}
+                      />
+                      <HHRedraftButton
+                        size="sm"
+                        title="Regenerate B2B draft for this batch"
+                        busy={cartDraftBusyId === group.id}
+                        onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
                       <DeleteBatchButton
                         size="sm"
                         title="Delete"
-                        onClick={() => setPendingDelete({ kind: 'group', group })}
+                        onClick={() => setPendingAction({ type: 'delete', target: 'group', group })}
                       />
                     </HHRowActions>
                   </HHActionRow>
@@ -280,33 +286,57 @@ export default function HHSportswear() {
         </div>
       )}
 
-      {pendingDelete && (
-        <HHConfirmDeleteModal
-          pending={pendingDelete}
-          busy={deleteBusy}
-          error={deleteError}
+      {pendingAction && (
+        <HHConfirmModal
+          pending={pendingAction}
+          busy={actionBusy}
+          error={actionError}
           onCancel={() => {
-            if (deleteBusy) return
-            setPendingDelete(null)
-            setDeleteError(null)
+            if (actionBusy) return
+            setPendingAction(null)
+            setActionError(null)
           }}
-          onConfirm={() => {
-            if (pendingDelete.kind !== 'group' || deleteBusy) return
-            const groupId = pendingDelete.group.id
-            setDeleteBusy(true)
-            setDeleteError(null)
-            deleteHHGroup(groupId)
+          onConfirm={(options) => {
+            if (actionBusy || pendingAction.target !== 'group') return
+            const pending = pendingAction
+            const groupId = pending.group.id
+            setActionBusy(true)
+            setActionError(null)
+
+            if (pending.type === 'delete') {
+              deleteHHGroup(groupId)
+                .then(() => {
+                  setPendingAction(null)
+                  setActionError(null)
+                  close()
+                  beginExit(groupId)
+                })
+                .catch((error: unknown) => {
+                  setActionError(error instanceof Error ? error.message : 'Failed to delete group')
+                })
+                .finally(() => setActionBusy(false))
+              return
+            }
+
+            const request =
+              pending.type === 'resync'
+                ? rerunDetails(groupId, undefined, { draftCart: options?.draftCart !== false })
+                : rerunCartDraft(groupId)
+            request
               .then(() => {
-                setPendingDelete(null)
-                close()
-                beginExit(groupId)
+                setPendingAction(null)
+                setActionError(null)
               })
               .catch((error: unknown) => {
-                setDeleteError(error instanceof Error ? error.message : 'Failed to delete group')
+                setActionError(
+                  error instanceof Error
+                    ? error.message
+                    : pending.type === 'resync'
+                      ? 'Failed to re-sync details'
+                      : 'Failed to regenerate draft',
+                )
               })
-              .finally(() => {
-                setDeleteBusy(false)
-              })
+              .finally(() => setActionBusy(false))
           }}
         />
       )}

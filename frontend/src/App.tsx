@@ -14,6 +14,8 @@ import HHSportswear from './pages/HHSportswear'
 import HHSportswearLayout from './pages/HHSportswearLayout'
 import HHSportswearOrders from './pages/HHSportswearOrders'
 import HHSportswearItems from './pages/HHSportswearItems'
+import HHSportswearConfig from './pages/HHSportswearConfig'
+import DropshipBrands from './pages/DropshipBrands'
 import AdminUsers from './pages/AdminUsers'
 
 function App() {
@@ -34,8 +36,10 @@ function App() {
                 <Route path="/create-label" element={<CreateShippingLabel />} />
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
+                <Route path="/ordering" element={<DropshipBrands />} />
                 <Route path="/ordering/hh-sportswear" element={<HHSportswearLayout />}>
                   <Route index element={<HHSportswear />} />
+                  <Route path="configurations" element={<HHSportswearConfig />} />
                   <Route path=":groupId" element={<HHSportswearOrders />} />
                   <Route path=":groupId/orders/:orderId" element={<HHSportswearItems />} />
                 </Route>

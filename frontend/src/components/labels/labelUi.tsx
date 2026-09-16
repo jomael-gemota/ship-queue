@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Tooltip } from '../Tooltip'
 import type {
   LabelRecord,
   LabelAddress,
@@ -1007,17 +1008,19 @@ function PreflightStatusBadge({ status }: { status: PreflightItem['status'] }) {
 }
 
 export function DeleteBatchButton({ busy, onClick, size = 'md', disabled, title = 'Delete batch' }: { busy?: boolean; onClick: () => void; size?: 'sm' | 'md'; disabled?: boolean; title?: string }) {
-  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
+  const sizing = size === 'sm' ? 'px-2 py-1.5' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   return (
-    <button
-      onClick={onClick}
-      disabled={busy || disabled}
-      title={title}
-      className={`inline-flex items-center justify-center rounded-lg border border-red-300 dark:border-red-800 bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
-    >
-      {busy ? <Spinner className={iconSize} /> : <TrashIcon className={iconSize} />}
-    </button>
+    <Tooltip content={title}>
+      <button
+        onClick={onClick}
+        disabled={busy || disabled}
+        aria-label={title}
+        className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-red-300 dark:border-red-800 bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
+      >
+        {busy ? <Spinner className={iconSize} /> : <TrashIcon className={iconSize} />}
+      </button>
+    </Tooltip>
   )
 }
 

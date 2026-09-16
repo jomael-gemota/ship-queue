@@ -89,6 +89,18 @@ export function listHHGroups() {
   return authApi.get<{ data: HHOrderGroup[] }>('/hh-sportswear')
 }
 
+export interface HHCartDraftStatus {
+  running: boolean
+  currentGroupId: string | null
+  currentOrderId: string | null
+  queued: number
+  lastRunAt: string | null
+  lastSuccessAt: string | null
+  lastError: string | null
+  lastRun: { drafted: number; skipped: number; failed: number } | null
+  pendingUndrafted: number
+}
+
 export interface HHScSyncStatus {
   running: boolean
   currentGroupId: string | null
@@ -99,25 +111,68 @@ export interface HHScSyncStatus {
   lastError: string | null
   lastRun: { synced: number; flagged: number; failed: number } | null
   pendingUnsynced: number
+  cart?: HHCartDraftStatus
 }
 
 export function getHHScSyncStatus() {
   return authApi.get<{ data: HHScSyncStatus }>('/hh-sportswear/sc-sync')
 }
 
-export function importHHSpreadsheet(input: File | { text: string }) {
+export interface HHB2bConfig {
+  baseUrl: string
+  catalog: string
+  accountId: string
+  hasCookie: boolean
+  cookieUpdatedAt: string | null
+  updatedAt: string
+  updatedByName: string
+}
+
+export type HHB2bConfigPatch = Partial<{
+  baseUrl: string
+  catalog: string
+  accountId: string
+  cookie: string
+}>
+
+export function getHHB2bConfig() {
+  return authApi.get<{ data: HHB2bConfig }>('/hh-sportswear/config')
+}
+
+export function updateHHB2bConfig(patch: HHB2bConfigPatch) {
+  return authApi.patch<{ data: HHB2bConfig }>('/hh-sportswear/config', patch)
+}
+
+export function importHHSpreadsheet(
+  input: File | { text: string },
+  options?: { fetchDetails?: boolean; draftCart?: boolean },
+) {
   const body = new FormData()
   if (input instanceof File) body.append('file', input)
   else body.append('text', input.text)
+  body.append('fetchDetails', options?.fetchDetails === false ? 'false' : 'true')
+  body.append('draftCart', options?.draftCart === false ? 'false' : 'true')
   return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>('/hh-sportswear/import', body)
 }
 
-export function rerunHHGroupScSync(groupId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/sc-sync`)
+export function rerunHHGroupScSync(groupId: string, options?: { draftCart?: boolean }) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/sc-sync`, {
+    draftCart: options?.draftCart !== false,
+  })
 }
 
-export function rerunHHOrderScSync(groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/sc-sync`)
+export function rerunHHOrderScSync(groupId: string, orderId: string, options?: { draftCart?: boolean }) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/sc-sync`, {
+    draftCart: options?.draftCart !== false,
+  })
+}
+
+export function rerunHHGroupCartDraft(groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/cart-draft`)
+}
+
+export function rerunHHOrderCartDraft(groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/cart-draft`)
 }
 
 export function updateHHGroupNotes(id: string, notes: string) {

@@ -17,13 +17,29 @@ function formatAgo(iso: string | null): string {
 }
 
 function statusLabel(data: HHScSyncSnapshot): string {
-  if (data.running) {
-    return data.currentOrderId ? `Filling ${data.currentOrderId}` : 'Filling this batch'
-  }
+  const cart = data.cart
+  const filling = data.running
+    ? data.currentOrderId
+      ? `Filling ${data.currentOrderId}`
+      : 'Filling this batch'
+    : null
+  const drafting = cart?.running
+    ? cart.currentOrderId
+      ? `Drafting ${cart.currentOrderId}`
+      : 'Drafting carts'
+    : null
+  if (filling && drafting) return `${filling} · ${drafting}`
+  if (filling) return filling
+  if (drafting) return drafting
   if (data.queuedGroups > 0) return `${data.queuedGroups} batch${data.queuedGroups === 1 ? '' : 'es'} queued`
+  if (cart && cart.queued > 0) return `${cart.queued} cart${cart.queued === 1 ? '' : 's'} queued`
   if (data.lastError) return 'Details fill paused'
+  if (cart?.lastError) return 'Cart draft paused'
   if (data.pendingUnsynced > 0) return `${data.pendingUnsynced} pending details`
-  return 'Details idle'
+  if (cart && cart.pendingUndrafted > 0) {
+    return `${cart.pendingUndrafted} waiting for cart`
+  }
+  return 'Idle'
 }
 
 export function HHScSyncStatus() {
@@ -50,7 +66,7 @@ export function HHScSyncStatus() {
         .then((res) => {
           if (cancelled) return
           setData(res.data)
-          running = res.data.running
+          running = res.data.running || Boolean(res.data.cart?.running)
           if (running || wasRunningRef.current) refreshSilentRef.current()
           wasRunningRef.current = running
         })
@@ -73,19 +89,24 @@ export function HHScSyncStatus() {
 
   if (!data) return null
 
+  const cart = data.cart
   const tone =
-    data.lastError && !data.running
+    (data.lastError || cart?.lastError) && !data.running && !cart?.running
       ? 'error'
-      : data.running
+      : data.running || cart?.running
         ? 'run'
-        : data.pendingUnsynced > 0 || data.queuedGroups > 0
+        : data.pendingUnsynced > 0 ||
+            data.queuedGroups > 0 ||
+            (cart?.pendingUndrafted ?? 0) > 0 ||
+            (cart?.queued ?? 0) > 0
           ? 'wait'
           : 'idle'
-  const ago = formatAgo(data.lastSuccessAt)
+  const ago = formatAgo(data.lastSuccessAt || cart?.lastSuccessAt || null)
   const title = [
-    data.lastError ? `Last error: ${data.lastError}` : null,
+    data.lastError ? `Details error: ${data.lastError}` : null,
+    cart?.lastError ? `Cart error: ${cart.lastError}` : null,
     ago ? `Last success ${ago}` : null,
-    'Fills right after a batch is uploaded, or when you re-sync details',
+    'Fills details after upload, then drafts a cart for each synced Order ID',
   ]
     .filter(Boolean)
     .join(' · ')

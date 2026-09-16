@@ -7,7 +7,9 @@ import {
   hhItemMatchesQuery,
   hhOrderMatchesQuery,
   listHHGroups,
+  rerunHHGroupCartDraft,
   rerunHHGroupScSync,
+  rerunHHOrderCartDraft,
   rerunHHOrderScSync,
   updateHHGroupNotes,
   updateHHOrderNotes,
@@ -52,8 +54,10 @@ interface HHListContextValue {
   refreshSilent: () => void
   groups: HHOrderGroup[]
   setGroups: Dispatch<SetStateAction<HHOrderGroup[]>>
-  rerunDetails: (groupId: string, orderId?: string) => Promise<void>
+  rerunDetails: (groupId: string, orderId?: string, options?: { draftCart?: boolean }) => Promise<void>
   resyncBusyId: string | null
+  rerunCartDraft: (groupId: string, orderId?: string) => Promise<void>
+  cartDraftBusyId: string | null
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
   selectedDetailsStatus: HHDetailsStatus | ''
@@ -95,10 +99,12 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const [resyncBusyId, setResyncBusyId] = useState<string | null>(null)
+  const [cartDraftBusyId, setCartDraftBusyId] = useState<string | null>(null)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
     orders: { ...EMPTY_FILTERS },
     items: { ...EMPTY_FILTERS },
+    config: { ...EMPTY_FILTERS },
   })
   const [pageSize, setPageSize] = useState(10)
   const fetchGenRef = useRef(0)
@@ -263,21 +269,38 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     refreshSilent: () => refreshGroups('silent'),
     groups,
     setGroups,
-    rerunDetails: async (groupId, orderId) => {
+    rerunDetails: async (groupId, orderId, options) => {
       const busyId = orderId ?? groupId
       setResyncBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderScSync(groupId, orderId)
-          : await rerunHHGroupScSync(groupId)
+          ? await rerunHHOrderScSync(groupId, orderId, options)
+          : await rerunHHGroupScSync(groupId, options)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
         console.error(error)
+        throw error
       } finally {
         setResyncBusyId((current) => (current === busyId ? null : current))
       }
     },
     resyncBusyId,
+    rerunCartDraft: async (groupId, orderId) => {
+      const busyId = orderId ?? groupId
+      setCartDraftBusyId(busyId)
+      try {
+        const res = orderId
+          ? await rerunHHOrderCartDraft(groupId, orderId)
+          : await rerunHHGroupCartDraft(groupId)
+        setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+      } catch (error) {
+        console.error(error)
+        throw error
+      } finally {
+        setCartDraftBusyId((current) => (current === busyId ? null : current))
+      }
+    },
+    cartDraftBusyId,
     updateNotes: async (groupId, notes) => {
       const res = await updateHHGroupNotes(groupId, notes)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
