@@ -3,7 +3,7 @@ import { authApi } from '../../lib/api'
 import { ErrorIcon, SuccessIcon } from '../labels/labelUi'
 import { BoltIcon, Spinner, TableActionButton } from './docTidyUi'
 import { PARSEABLE } from './AttachmentCell'
-import { isParseRunning, type DocTidyMessage, type DocTidyParseJob } from '../../types/docTidy'
+import { isParseRunning, type DocTidyMessage, type DocTidyParseJob, type ParseJobSummary } from '../../types/docTidy'
 
 /**
  * Parse-action icons for one message row in the results table.
@@ -32,6 +32,8 @@ export default function AttachmentIcons({
 }) {
   const [startingIndex, setStartingIndex] = useState<number | null>(null)
   const [failedIndex, setFailedIndex] = useState<{ index: number; message: string } | null>(null)
+  const [abortingJobId, setAbortingJobId] = useState<string | null>(null)
+  const [hoveredJobId, setHoveredJobId] = useState<string | null>(null)
 
   const startParse = async (index: number) => {
     setStartingIndex(index)
@@ -49,6 +51,18 @@ export default function AttachmentIcons({
     }
   }
 
+  const abortJob = async (job: ParseJobSummary) => {
+    setAbortingJobId(job._id)
+    try {
+      await authApi.post(`/doc-tidy/parse-jobs/${job._id}/abort`)
+      onChanged()
+    } catch {
+      // Silently ignore — the user can try again or open the panel
+    } finally {
+      setAbortingJobId(null)
+    }
+  }
+
   // Only render buttons for parseable attachments; skip entirely when none exist.
   const parseableItems = message.attachments
     .map((att, i) => ({ att, i }))
@@ -58,26 +72,57 @@ export default function AttachmentIcons({
 
   return (
     <div className="flex items-center justify-center gap-0.5">
-      {parseableItems.map(({ att: _att, i }) => {
+      {parseableItems.map(({ i }) => {
         const job = message.parseJobs?.find((j) => j.attachmentIndex === i)
         const failure = failedIndex?.index === i ? failedIndex.message : null
 
         if (job) {
-          // A job exists — show its status and let the user open the panel.
+          const running = isParseRunning(job.status)
+          const isAborting = abortingJobId === job._id
+          const isHovered = hoveredJobId === job._id
+
+          // Running jobs show a spinner at rest; on hover they flip to an abort ×
+          if (running) {
+            return (
+              <span
+                key={i}
+                className="relative"
+                onMouseEnter={() => setHoveredJobId(job._id)}
+                onMouseLeave={() => setHoveredJobId(null)}
+              >
+                <TableActionButton
+                  label={isHovered ? 'Stop / abort this parse' : 'The agent is working on this — open to watch'}
+                  onClick={() => isHovered ? void abortJob(job) : onOpenJob(job._id)}
+                  disabled={isAborting}
+                >
+                  {isAborting ? (
+                    <Spinner className="h-5 w-5 text-slate-400" />
+                  ) : isHovered ? (
+                    /* Abort "×" glyph */
+                    <svg className="h-5 w-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <Spinner className="h-5 w-5 text-sky-500" />
+                  )}
+                </TableActionButton>
+              </span>
+            )
+          }
+
+          // Finished / failed — open the panel on click.
           return (
             <TableActionButton
               key={i}
               label={
                 job.error ??
-                (isParseRunning(job.status)
-                  ? 'The agent is working on this — open to watch'
+                (job.status === 'failed'
+                  ? 'Parse failed — open to see error'
                   : 'Open the agent\u2019s reasoning and output')
               }
               onClick={() => onOpenJob(job._id)}
             >
-              {isParseRunning(job.status) ? (
-                <Spinner className="h-5 w-5 text-sky-500" />
-              ) : job.status === 'failed' ? (
+              {job.status === 'failed' ? (
                 <ErrorIcon className="h-5 w-5 text-rose-500" />
               ) : (
                 <SuccessIcon className="h-5 w-5 text-emerald-500" />

@@ -44,6 +44,7 @@ export default function ParseJobPanel({
   const [job, setJob] = useState<DocTidyParseJob | null>(null)
   const [corrections, setCorrections] = useState<DocTidyCorrection[]>([])
   const [rerunning, setRerunning] = useState(false)
+  const [aborting, setAborting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [epoch, setEpoch] = useState(0)
 
@@ -107,6 +108,20 @@ export default function ParseJobPanel({
     }
   }
 
+  const abort = async () => {
+    setAborting(true)
+    setActionError(null)
+    try {
+      await authApi.post(`/doc-tidy/parse-jobs/${jobId}/abort`)
+      await loadJob()
+      onChanged()
+    } catch (err) {
+      setActionError((err as Error).message)
+    } finally {
+      setAborting(false)
+    }
+  }
+
   const status = stream.status === 'idle' ? (job?.status ?? 'pending') : stream.status
   const json = stream.json ?? job?.jsonOutput ?? null
   const table = stream.table ?? job?.tableOutput ?? null
@@ -145,6 +160,23 @@ export default function ParseJobPanel({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {/* Abort — only relevant while a job is in flight */}
+            {isParseRunning(status) && (
+              <button
+                type="button"
+                onClick={() => void abort()}
+                disabled={aborting}
+                title="Stop this parse immediately and mark it as failed"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 py-1.5 text-sm text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+              >
+                {aborting ? <Spinner /> : (
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                Abort
+              </button>
+            )}
             <button
               type="button"
               onClick={rerun}
