@@ -24,6 +24,7 @@ export default function VendorSetup({
   const [sample, setSample] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [registered, setRegistered] = useState<DocTidyVendor | null>(null)
 
   const submit = async () => {
     if (!name.trim()) return
@@ -38,12 +39,33 @@ export default function VendorSetup({
       // Bind it to the job too, so the re-run resolves the vendor even if the
       // document never names it.
       await authApi.post(`/doc-tidy/parse-jobs/${jobId}/vendor`, { vendorName: name.trim() })
+      // Show success state first so the user sees feedback before the card disappears.
+      setRegistered(res.data)
       onRegistered(res.data)
     } catch (err) {
       setError((err as Error).message)
     } finally {
       setSaving(false)
     }
+  }
+
+  // Success state — shown while the parent reloads the job and unmounts this card.
+  if (registered) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-900/15">
+        <svg
+          className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm text-emerald-800 dark:text-emerald-300">
+          <span className="font-semibold">{registered.name}</span> was added to your vendors. Re-run the agent to apply it.
+        </p>
+      </div>
+    )
   }
 
   return (
