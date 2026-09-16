@@ -6,9 +6,8 @@ import {
   DocTidyTabs,
   DocumentTypeBadge,
   IconButton,
-  RuleCriteria,
+  PaginationArrows,
   Spinner,
-  ToggleSwitch,
 } from '../components/docTidy/docTidyUi'
 import RuleEditor from '../components/docTidy/RuleEditor'
 import { formatDateTime } from '../lib/format'
@@ -21,18 +20,13 @@ import {
   type DocTidyRule,
   type DocTidyRuleInput,
   type DocumentType,
-  type RunRuleResult,
 } from '../types/docTidy'
 
-const ICONS = {
-  run: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-  edit: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
-  delete:
-    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
-}
+const ICON_DELETE =
+  'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16'
 
 const filterClass =
-  'text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
 type StatusFilter = '' | 'enabled' | 'disabled'
 
@@ -57,6 +51,8 @@ function toRuleInput(rule: DocTidyRule): DocTidyRuleInput {
   }
 }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
 export default function DocTidyRules() {
   const [rules, setRules] = useState<DocTidyRule[]>([])
   const [config, setConfig] = useState<DocTidyConfig | null>(null)
@@ -66,13 +62,13 @@ export default function DocTidyRules() {
 
   const [editing, setEditing] = useState<{ rule: DocTidyRuleInput; id?: string } | null>(null)
   const [saving, setSaving] = useState(false)
-  const [runningId, setRunningId] = useState<string | null>(null)
-  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<DocTidyRule | null>(null)
 
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<DocumentType | ''>('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,39 +107,6 @@ export default function DocTidyRules() {
     }
   }
 
-  const handleRun = async (rule: DocTidyRule) => {
-    setRunningId(rule._id)
-    setError(null)
-    setNotice(null)
-    try {
-      const res = await authApi.post<{ data: RunRuleResult }>(`/doc-tidy/rules/${rule._id}/run`)
-      const r = res.data
-      setNotice(
-        `"${rule.name}" — ${r.matched} matched, ${r.imported} new, ${r.updated} updated, ` +
-          `${r.attachmentsUploaded} attachment${r.attachmentsUploaded === 1 ? '' : 's'} saved to Drive` +
-          (r.attachmentErrors ? ` (${r.attachmentErrors} failed)` : '')
-      )
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Extraction failed')
-      await load()
-    } finally {
-      setRunningId(null)
-    }
-  }
-
-  const handleToggle = async (rule: DocTidyRule) => {
-    setTogglingId(rule._id)
-    try {
-      await authApi.put(`/doc-tidy/rules/${rule._id}`, { ...rule, enabled: !rule.enabled })
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update rule')
-    } finally {
-      setTogglingId(null)
-    }
-  }
-
   const handleDelete = async (rule: DocTidyRule) => {
     try {
       await authApi.delete(`/doc-tidy/rules/${rule._id}`)
@@ -154,8 +117,8 @@ export default function DocTidyRules() {
     }
   }
 
-  // The full rule list is already loaded, so the toolbar filters in place.
-  const visibleRules = useMemo(() => {
+  /** All rules that pass the active filters — not yet paginated. */
+  const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase()
     return rules.filter((rule) => {
       if (typeFilter && documentTypeOf(rule.documentType) !== typeFilter) return false
@@ -166,16 +129,32 @@ export default function DocTidyRules() {
     })
   }, [rules, search, typeFilter, statusFilter])
 
+  const totalPages = Math.max(1, Math.ceil(filteredRules.length / pageSize))
+
+  /** The current page slice of the filtered list. */
+  const pagedRules = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredRules.slice(start, start + pageSize)
+  }, [filteredRules, page, pageSize])
+
+  // Reset to page 1 whenever any filter changes.
+  useEffect(() => {
+    setPage(1)
+  }, [search, typeFilter, statusFilter])
+
   const hasActiveFilters = Boolean(search || typeFilter || statusFilter)
 
   const clearFilters = () => {
     setSearch('')
     setTypeFilter('')
     setStatusFilter('')
+    setPage(1)
   }
 
   const openNew = () => setEditing({ rule: { ...EMPTY_RULE } })
+  const openEdit = (rule: DocTidyRule) => setEditing({ id: rule._id, rule: toRuleInput(rule) })
 
+  /* ─────────────────────────────────────────────────────────── render ── */
   return (
     <div className="space-y-4">
       {/* ── Tab bar + action controls ──────────────────────────────── */}
@@ -217,10 +196,12 @@ export default function DocTidyRules() {
       )}
 
       <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm">
-        <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] px-4 py-2.5">
-          <div className="relative min-w-[200px] flex-1 max-w-sm">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        {/* ── Toolbar ── */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] px-4 py-2">
+          {/* Search */}
+          <div className="relative min-w-[180px] flex-1 max-w-xs">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -234,10 +215,11 @@ export default function DocTidyRules() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search rules…"
-              className={`${filterClass} w-full pl-9`}
+              className={`${filterClass} w-full pl-8`}
             />
           </div>
 
+          {/* Type filter */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as DocumentType | '')}
@@ -252,6 +234,7 @@ export default function DocTidyRules() {
             ))}
           </select>
 
+          {/* Status filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
@@ -259,26 +242,28 @@ export default function DocTidyRules() {
             aria-label="Filter by status"
           >
             <option value="">Any status</option>
-            <option value="enabled">Enabled</option>
+            <option value="enabled">Active</option>
             <option value="disabled">Disabled</option>
           </select>
 
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="text-sm text-[var(--accent-200)] hover:underline cursor-pointer"
+              className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer"
             >
-              Clear filters
+              Clear
             </button>
           )}
 
-          <span className="ml-auto text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
+          {/* Rule count */}
+          <span className="ml-auto text-[11px] text-gray-500 dark:text-[var(--text-200)]">
             {hasActiveFilters
-              ? `${visibleRules.length} of ${rules.length} rules`
+              ? `${filteredRules.length} of ${rules.length} rules`
               : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
           </span>
         </div>
 
+        {/* ── Body ── */}
         {loading ? (
           <div className="px-6 py-12 text-center text-sm text-[var(--text-200)]">
             <span className="inline-flex items-center gap-2">
@@ -311,7 +296,7 @@ export default function DocTidyRules() {
               Create the first rule
             </button>
           </div>
-        ) : visibleRules.length === 0 ? (
+        ) : filteredRules.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <p className="text-sm text-[var(--text-200)]">No rules match these filters.</p>
             <button
@@ -322,96 +307,144 @@ export default function DocTidyRules() {
             </button>
           </div>
         ) : (
-          <ul className="divide-y divide-[var(--bg-300)]">
-            {visibleRules.map((rule) => (
-              <li
-                key={rule._id}
-                className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[var(--bg-200)]/60 lg:flex-row lg:items-start lg:justify-between"
-              >
-                <div className={`min-w-0 flex-1 space-y-2 ${rule.enabled ? '' : 'opacity-60'}`}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold text-[var(--text-100)]">{rule.name}</h3>
-                    <DocumentTypeBadge value={rule.documentType} />
-                    {rule.requireAttachment && (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-200)]"
-                        title="Only messages carrying an attachment are extracted"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <>
+            <ul className="divide-y divide-[var(--bg-300)]">
+              {pagedRules.map((rule) => (
+                <li
+                  key={rule._id}
+                  onClick={() => openEdit(rule)}
+                  className={`group cursor-pointer flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[var(--bg-200)]/50 lg:flex-row lg:items-center lg:justify-between border-l-2 ${
+                    rule.enabled ? 'border-l-[var(--accent-200)]' : 'border-l-[var(--bg-300)]'
+                  }`}
+                >
+                  {/* ── Main content ── */}
+                  <div className={`min-w-0 flex-1 space-y-1.5 ${rule.enabled ? '' : 'opacity-60'}`}>
+                    {/* Name + type badge */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-[var(--text-100)]">{rule.name}</h3>
+                      <DocumentTypeBadge value={rule.documentType} />
+                    </div>
+
+                    {/* Last-run metadata */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-200)]">
+                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                           />
                         </svg>
-                        Attachments only
+                        {rule.lastRunAt
+                          ? `Last run ${formatDateTime(rule.lastRunAt)} · ${rule.lastRunMatchCount ?? 0} matched`
+                          : 'Never run'}
                       </span>
-                    )}
+                      {rule.createdByName && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-200)]">
+                          <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
+                          </svg>
+                          {rule.createdByName}
+                        </span>
+                      )}
+                      {rule.lastRunError && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-rose-600 dark:text-rose-400">
+                          <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                          </svg>
+                          Last run failed: {rule.lastRunError}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {rule.description && (
-                    <p className="text-xs text-[var(--text-200)]">{rule.description}</p>
-                  )}
+                  {/* ── Right side: status badge + chevron + delete ── */}
+                  <div className="flex shrink-0 items-center gap-2.5 lg:pl-4">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+                        rule.enabled
+                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20'
+                          : 'bg-[var(--bg-200)] text-[var(--text-200)] ring-[var(--bg-300)]'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          rule.enabled
+                            ? 'bg-emerald-500 dark:bg-emerald-400'
+                            : 'bg-[var(--text-200)]/50'
+                        }`}
+                      />
+                      {rule.enabled ? 'Active' : 'Disabled'}
+                    </span>
 
-                  <RuleCriteria rule={rule} />
+                    <svg
+                      className="h-4 w-4 shrink-0 text-[var(--text-200)] opacity-0 transition-opacity group-hover:opacity-60"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
 
-                  <p className="text-[11px] text-[var(--text-200)]">
-                    {rule.lastRunAt
-                      ? `Last run ${formatDateTime(rule.lastRunAt)} · ${rule.lastRunMatchCount ?? 0} matched`
-                      : 'Never run'}
-                    {rule.createdByName && ` · created by ${rule.createdByName}`}
-                  </p>
-                  {rule.lastRunError && (
-                    <p className="text-[11px] text-rose-600 dark:text-rose-400">
-                      Last run failed: {rule.lastRunError}
-                    </p>
-                  )}
-                </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <IconButton
+                        label="Delete rule"
+                        iconPath={ICON_DELETE}
+                        tone="danger"
+                        onClick={() => setConfirmDelete(rule)}
+                      />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
 
-                <div className="flex shrink-0 items-center gap-2 lg:pl-4">
-                  <ToggleSwitch
-                    checked={rule.enabled}
-                    disabled={togglingId === rule._id}
-                    onChange={() => handleToggle(rule)}
-                    label={rule.enabled ? 'Enabled' : 'Disabled'}
-                    title={rule.enabled ? 'Disable this rule' : 'Enable this rule'}
-                  />
+            {/* ── Pagination footer ── */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] px-4 py-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                <span>Rows per page</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setPage(1)
+                  }}
+                  className="cursor-pointer rounded border border-[var(--bg-300)] bg-[var(--bg-100)] px-1.5 py-0.5 text-[11px] text-[var(--text-100)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] dark:bg-[var(--bg-200)]"
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="tabular-nums">
+                  {filteredRules.length === 0
+                    ? '0'
+                    : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredRules.length)}`}{' '}
+                  of {filteredRules.length}
+                </span>
+              </div>
 
-                  <button
-                    onClick={() => handleRun(rule)}
-                    disabled={runningId === rule._id || !config?.mailboxConnected}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 text-xs font-medium text-[var(--accent-200)] hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    title={config?.mailboxConnected ? 'Run this rule now' : 'Connect the mailbox first'}
-                  >
-                    {runningId === rule._id ? (
-                      <Spinner className="h-3.5 w-3.5" />
-                    ) : (
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={ICONS.run} />
-                      </svg>
-                    )}
-                    Run
-                  </button>
-
-                  <IconButton
-                    label="Edit rule"
-                    iconPath={ICONS.edit}
-                    onClick={() => setEditing({ id: rule._id, rule: toRuleInput(rule) })}
-                  />
-                  <IconButton
-                    label="Delete rule"
-                    iconPath={ICONS.delete}
-                    tone="danger"
-                    onClick={() => setConfirmDelete(rule)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+              {totalPages > 1 && (
+                <PaginationArrows page={page} pages={totalPages} onChange={setPage} />
+              )}
+            </div>
+          </>
         )}
       </div>
 
+      {/* ── Rule editor modal ── */}
       {editing && (
         <RuleEditor
           initial={editing.rule}
@@ -422,30 +455,47 @@ export default function DocTidyRules() {
         />
       )}
 
+      {/* ── Delete confirmation modal ── */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
             onClick={() => setConfirmDelete(null)}
           />
-          <div className="relative z-10 w-full max-w-sm space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl">
-            <h2 className="text-base font-semibold text-[var(--text-100)]">Delete rule</h2>
-            <p className="text-sm text-[var(--text-200)]">
-              Delete <span className="font-medium">{confirmDelete.name}</span>? Messages it already
-              extracted are kept.
-            </p>
-            <div className="flex justify-end gap-2">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl"
+          >
+            <div className="flex items-center gap-3 border-b border-[var(--bg-300)] px-5 py-4">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={ICON_DELETE} />
+                </svg>
+              </div>
+              <h2 className="text-base font-semibold text-[var(--text-100)]">Delete rule</h2>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-sm text-[var(--text-200)]">
+                Delete{' '}
+                <span className="font-medium text-[var(--text-100)]">{confirmDelete.name}</span>?
+                Messages it already extracted are kept.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-5 py-3">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="rounded-lg border border-[var(--bg-300)] px-4 py-2 text-sm font-medium text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
+                className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-sm font-medium text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)]"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(confirmDelete)}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 cursor-pointer"
+                className="cursor-pointer rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
-                Delete
+                Delete rule
               </button>
             </div>
           </div>
