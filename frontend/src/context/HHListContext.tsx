@@ -1,29 +1,63 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
+import { flashHHGroupRow } from '../components/hh/hhUi'
 import {
-  HH_SAMPLE_GROUPS,
   hhGroupMatchesQuery,
   hhItemMatchesQuery,
   hhOrderMatchesQuery,
+  listHHGroups,
+  rerunHHGroupScSync,
+  rerunHHOrderScSync,
+  updateHHGroupNotes,
+  updateHHOrderNotes,
 } from '../lib/hhSportswear'
-import type { HHChildOrder, HHLineItem, HHOrderGroup, HHOrderStatus } from '../lib/hhSportswear'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection } from '../lib/hhNav'
 import type { HHPage } from '../lib/hhNav'
 
+const POLL_INTERVAL_MS = 5000
+const OPTIMISTIC_LOCAL_MS = 15_000
+
+function mergePolledGroups(current: HHOrderGroup[], incoming: HHOrderGroup[]): HHOrderGroup[] {
+  const incomingIds = new Set(incoming.map((group) => group.id))
+  const now = Date.now()
+  const optimistic = current.filter((group) => {
+    if (incomingIds.has(group.id)) return false
+    const created = Date.parse(group.createdAt)
+    return Number.isFinite(created) && now - created < OPTIMISTIC_LOCAL_MS
+  })
+  if (optimistic.length === 0) return incoming
+  return [...optimistic, ...incoming].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || 0,
+  )
+}
+
 interface HHLevelFilters {
-  status: HHOrderStatus | ''
+  detailsStatus: HHDetailsStatus | ''
+  cartStatus: HHCartStatus | ''
   search: string
   page: number
 }
 
-const EMPTY_FILTERS: HHLevelFilters = { status: '', search: '', page: 1 }
+const EMPTY_FILTERS: HHLevelFilters = { detailsStatus: '', cartStatus: '', search: '', page: 1 }
+
+export type HHLoadState = 'loading' | 'ready' | 'error'
 
 interface HHListContextValue {
   level: HHPage
+  loadState: HHLoadState
+  loadError: string | null
+  reload: () => void
+  refreshSilent: () => void
   groups: HHOrderGroup[]
   setGroups: Dispatch<SetStateAction<HHOrderGroup[]>>
-  selectedStatus: HHOrderStatus | ''
+  rerunDetails: (groupId: string, orderId?: string) => Promise<void>
+  resyncBusyId: string | null
+  updateNotes: (groupId: string, notes: string) => Promise<void>
+  updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
+  selectedDetailsStatus: HHDetailsStatus | ''
+  selectedCartStatus: HHCartStatus | ''
   searchInput: string
   page: number
   pageSize: number
@@ -37,7 +71,8 @@ interface HHListContextValue {
   safePage: number
   startItem: number
   endItem: number
-  handleStatusChange: (value: HHOrderStatus | '') => void
+  handleDetailsStatusChange: (value: HHDetailsStatus | '') => void
+  handleCartStatusChange: (value: HHCartStatus | '') => void
   handleSearchChange: (value: string) => void
   handleClearFilters: () => void
   hasActiveFilters: boolean
@@ -55,13 +90,104 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const level = hhBreadcrumbPage(location.pathname)
   const pathnameRef = useRef(location.pathname)
 
-  const [groups, setGroups] = useState<HHOrderGroup[]>(HH_SAMPLE_GROUPS)
+  const [groups, setGroups] = useState<HHOrderGroup[]>([])
+  const [loadState, setLoadState] = useState<HHLoadState>('loading')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [resyncBusyId, setResyncBusyId] = useState<string | null>(null)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
     orders: { ...EMPTY_FILTERS },
     items: { ...EMPTY_FILTERS },
   })
   const [pageSize, setPageSize] = useState(10)
+  const fetchGenRef = useRef(0)
+  const knownIdsRef = useRef<Set<string> | null>(null)
+
+  const refreshGroups = useCallback((mode: 'initial' | 'silent') => {
+    const gen = ++fetchGenRef.current
+    if (mode === 'initial') {
+      setLoadState('loading')
+      setLoadError(null)
+    }
+
+    listHHGroups()
+      .then((res) => {
+        if (gen !== fetchGenRef.current) return
+        const incoming = res.data
+        const known = knownIdsRef.current
+        setGroups((current) => mergePolledGroups(current, incoming))
+        if (known) {
+          const newestRemote = incoming.find((group) => !known.has(group.id))
+          if (newestRemote) flashHHGroupRow(newestRemote.id)
+        }
+        const nextKnown = new Set(incoming.map((group) => group.id))
+        if (known) {
+          for (const id of known) nextKnown.add(id)
+        }
+        knownIdsRef.current = nextKnown
+        setLoadState('ready')
+        setLoadError(null)
+      })
+      .catch((error: unknown) => {
+        if (gen !== fetchGenRef.current) return
+        if (mode === 'silent' && knownIdsRef.current) return
+        setLoadError(error instanceof Error ? error.message : 'Failed to load HH Sportswear groups')
+        setLoadState('error')
+      })
+  }, [])
+
+  useEffect(() => {
+    refreshGroups('initial')
+    return () => {
+      fetchGenRef.current += 1
+    }
+  }, [reloadToken, refreshGroups])
+
+  useEffect(() => {
+    if (loadState !== 'ready') return
+    for (const group of groups) {
+      knownIdsRef.current?.add(group.id)
+    }
+  }, [groups, loadState])
+
+  useEffect(() => {
+    let timer: number | null = null
+
+    const stop = () => {
+      if (timer != null) {
+        window.clearInterval(timer)
+        timer = null
+      }
+    }
+
+    const start = () => {
+      stop()
+      timer = window.setInterval(() => {
+        if (document.hidden) return
+        refreshGroups('silent')
+      }, POLL_INTERVAL_MS)
+    }
+
+    const onVisible = () => {
+      if (document.hidden) {
+        stop()
+        return
+      }
+      refreshGroups('silent')
+      start()
+    }
+
+    start()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [refreshGroups])
 
   useLayoutEffect(() => {
     const from = pathnameRef.current
@@ -75,7 +201,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   }, [location.pathname])
 
   const currentFilters = filtersByLevel[level]
-  const selectedStatus = currentFilters.status
+  const selectedDetailsStatus = currentFilters.detailsStatus
+  const selectedCartStatus = currentFilters.cartStatus
   const searchInput = currentFilters.search
 
   const updateCurrentFilters = (patch: Partial<HHLevelFilters>) => {
@@ -96,7 +223,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   const filtered = useMemo(() => {
     return groups.filter((group) => {
-      if (filtersByLevel.list.status && group.status !== filtersByLevel.list.status) return false
+      if (filtersByLevel.list.detailsStatus && group.detailsStatus !== filtersByLevel.list.detailsStatus) return false
+      if (filtersByLevel.list.cartStatus && group.cartStatus !== filtersByLevel.list.cartStatus) return false
       return hhGroupMatchesQuery(group, filtersByLevel.list.search)
     })
   }, [groups, filtersByLevel.list])
@@ -107,7 +235,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const filteredOrders = useMemo(() => {
     if (!activeGroup) return []
     return activeGroup.children.filter((order) => {
-      if (filtersByLevel.orders.status && order.status !== filtersByLevel.orders.status) return false
+      if (filtersByLevel.orders.detailsStatus && order.detailsStatus !== filtersByLevel.orders.detailsStatus) return false
+      if (filtersByLevel.orders.cartStatus && order.cartStatus !== filtersByLevel.orders.cartStatus) return false
       return hhOrderMatchesQuery(order, filtersByLevel.orders.search)
     })
   }, [activeGroup, filtersByLevel.orders])
@@ -128,9 +257,37 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   const value: HHListContextValue = {
     level,
+    loadState,
+    loadError,
+    reload: () => setReloadToken((current) => current + 1),
+    refreshSilent: () => refreshGroups('silent'),
     groups,
     setGroups,
-    selectedStatus,
+    rerunDetails: async (groupId, orderId) => {
+      const busyId = orderId ?? groupId
+      setResyncBusyId(busyId)
+      try {
+        const res = orderId
+          ? await rerunHHOrderScSync(groupId, orderId)
+          : await rerunHHGroupScSync(groupId)
+        setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+      } catch (error) {
+        console.error(error)
+      } finally {
+        setResyncBusyId((current) => (current === busyId ? null : current))
+      }
+    },
+    resyncBusyId,
+    updateNotes: async (groupId, notes) => {
+      const res = await updateHHGroupNotes(groupId, notes)
+      setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+    },
+    updateOrderNotes: async (groupId, orderId, notes) => {
+      const res = await updateHHOrderNotes(groupId, orderId, notes)
+      setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+    },
+    selectedDetailsStatus,
+    selectedCartStatus,
     searchInput,
     page: safePage,
     pageSize,
@@ -144,16 +301,19 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     safePage,
     startItem,
     endItem,
-    handleStatusChange: (value) => {
-      updateCurrentFilters({ status: value, page: 1 })
+    handleDetailsStatusChange: (value) => {
+      updateCurrentFilters({ detailsStatus: value, page: 1 })
+    },
+    handleCartStatusChange: (value) => {
+      updateCurrentFilters({ cartStatus: value, page: 1 })
     },
     handleSearchChange: (value) => {
       updateCurrentFilters({ search: value, page: 1 })
     },
     handleClearFilters: () => {
-      updateCurrentFilters({ status: '', search: '', page: 1 })
+      updateCurrentFilters({ detailsStatus: '', cartStatus: '', search: '', page: 1 })
     },
-    hasActiveFilters: Boolean(selectedStatus || searchInput.trim()),
+    hasActiveFilters: Boolean(selectedDetailsStatus || selectedCartStatus || searchInput.trim()),
     handlePageSizeChange: (value) => {
       setPageSize(value)
       setFiltersByLevel((current) => ({

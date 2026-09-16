@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HHActionRow, HHConfirmDeleteModal, HHRowActions, HHRowActionsHeader, HHStatusBadge, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHCartBadge, HHConfirmDeleteModal, HHDetailsBadge, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingDelete } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
-import { HH_STATUS_LABELS, formatCreatedAt } from '../lib/hhSportswear'
+import { HHNotesField } from '../components/hh/HHNotesField'
+import { deleteHHGroup, formatCreatedAt, hhFilterSummary } from '../lib/hhSportswear'
 import {
   ClockIcon,
   DeleteBatchButton,
@@ -36,7 +37,8 @@ function NotesIcon({ className = '' }: { className?: string }) {
 export default function HHSportswear() {
   const {
     setGroups,
-    selectedStatus,
+    selectedDetailsStatus,
+    selectedCartStatus,
     searchInput,
     pageSize,
     paginated,
@@ -47,8 +49,15 @@ export default function HHSportswear() {
     endItem,
     handlePageSizeChange,
     setPage,
+    loadState,
+    loadError,
+    reload,
+    rerunDetails,
+    resyncBusyId,
   } = useHHList()
   const [pendingDelete, setPendingDelete] = useState<HHPendingDelete | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { openId, toggle, close } = useHHOpenRow()
   const { exitingId, beginExit, finishExit } = useHHRowExit((id) => {
     setGroups((current) => current.filter((group) => group.id !== id))
@@ -151,7 +160,10 @@ export default function HHSportswear() {
                 <HeaderLabel icon={<NotesIcon className="h-3.5 w-3.5" />} text="Notes" />
               </Th>
               <Th>
-                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Status" />
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Details" />
+              </Th>
+              <Th>
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Cart" />
               </Th>
               <Th>
                 <HeaderLabel icon={<EyeIcon className="h-3.5 w-3.5" />} text="Orders" />
@@ -160,29 +172,45 @@ export default function HHSportswear() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
-            {paginated.length === 0 ? (
+            {loadState === 'loading' ? (
               <tr>
-                <Td colSpan={6} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
-                  {selectedStatus && searchInput.trim()
-                    ? `No groups match "${searchInput.trim()}" with status "${HH_STATUS_LABELS[selectedStatus]}".`
-                    : selectedStatus
-                      ? `No groups with status "${HH_STATUS_LABELS[selectedStatus]}".`
-                      : searchInput.trim()
-                        ? `No groups match "${searchInput.trim()}".`
-                        : 'No orders yet.'}
+                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                  Loading groups…
+                </Td>
+              </tr>
+            ) : loadState === 'error' ? (
+              <tr>
+                <Td colSpan={7} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+                  <p>{loadError || 'Failed to load groups.'}</p>
+                  <button
+                    type="button"
+                    onClick={reload}
+                    className="mt-2 cursor-pointer text-sm font-medium text-[var(--accent-100)] hover:underline dark:text-[var(--accent-200)]"
+                  >
+                    Try again
+                  </button>
+                </Td>
+              </tr>
+            ) : paginated.length === 0 ? (
+              <tr>
+                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                  {selectedDetailsStatus || selectedCartStatus
+                    ? searchInput.trim()
+                      ? `No groups match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
+                      : `No groups with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
+                    : searchInput.trim()
+                      ? `No groups match "${searchInput.trim()}".`
+                      : 'No groups yet. Import a spreadsheet to create a batch.'}
                 </Td>
               </tr>
             ) : (
               paginated.map((group, idx) => {
-                const zebra = idx % 2 === 1
-                const rowBg = zebra
-                  ? 'bg-[var(--bg-200)] dark:bg-[var(--bg-200)]'
-                  : 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]'
                 const orderCount = group.children.length
                 return (
                   <HHActionRow
                     key={group.id}
-                    className={rowBg}
+                    rowId={group.id}
+                    className={idx % 2 === 1 ? 'hh-row-alt' : ''}
                     open={openId === group.id}
                     exiting={exitingId === group.id}
                     onExitEnd={() => finishExit(group.id)}
@@ -199,12 +227,17 @@ export default function HHSportswear() {
                       </p>
                     </Td>
                     <Td compact className="max-w-md">
-                      <p className="whitespace-pre-wrap break-words text-slate-600 dark:text-[var(--text-200)]">
-                        {group.notes}
-                      </p>
+                      <HHNotesField
+                        groupId={group.id}
+                        notes={group.notes}
+                        sourceFileName={group.sourceFileName}
+                      />
                     </Td>
                     <Td compact>
-                      <HHStatusBadge status={group.status} />
+                      <HHDetailsBadge status={group.detailsStatus} />
+                    </Td>
+                    <Td compact>
+                      <HHCartBadge status={group.cartStatus} />
                     </Td>
                     <Td compact>
                       <Link
@@ -216,10 +249,17 @@ export default function HHSportswear() {
                       </Link>
                     </Td>
                     <HHRowActions
-                      className={rowBg}
                       open={openId === group.id}
                       onToggle={() => toggle(group.id)}
                     >
+                      <HHResyncButton
+                        size="sm"
+                        title="Re-sync details for this batch"
+                        busy={resyncBusyId === group.id}
+                        onClick={() => {
+                          void rerunDetails(group.id)
+                        }}
+                      />
                       <DeleteBatchButton
                         size="sm"
                         title="Delete"
@@ -243,13 +283,30 @@ export default function HHSportswear() {
       {pendingDelete && (
         <HHConfirmDeleteModal
           pending={pendingDelete}
-          onCancel={() => setPendingDelete(null)}
-          onConfirm={() => {
-            if (pendingDelete.kind === 'group') {
-              close()
-              beginExit(pendingDelete.group.id)
-            }
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => {
+            if (deleteBusy) return
             setPendingDelete(null)
+            setDeleteError(null)
+          }}
+          onConfirm={() => {
+            if (pendingDelete.kind !== 'group' || deleteBusy) return
+            const groupId = pendingDelete.group.id
+            setDeleteBusy(true)
+            setDeleteError(null)
+            deleteHHGroup(groupId)
+              .then(() => {
+                setPendingDelete(null)
+                close()
+                beginExit(groupId)
+              })
+              .catch((error: unknown) => {
+                setDeleteError(error instanceof Error ? error.message : 'Failed to delete group')
+              })
+              .finally(() => {
+                setDeleteBusy(false)
+              })
           }}
         />
       )}

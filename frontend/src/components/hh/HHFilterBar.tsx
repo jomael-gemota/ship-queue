@@ -1,10 +1,16 @@
-import { HH_STATUS_LABELS, HH_STATUSES } from '../../lib/hhSportswear'
-import type { HHOrderStatus } from '../../lib/hhSportswear'
+import {
+  HH_CART_STATUSES,
+  HH_CART_STATUS_LABELS,
+  HH_DETAILS_STATUSES,
+  HH_DETAILS_STATUS_LABELS,
+} from '../../lib/hhSportswear'
+import type { HHCartStatus, HHDetailsStatus } from '../../lib/hhSportswear'
 import { useHHList } from '../../context/HHListContext'
+import { HHScSyncStatus } from './HHScSyncStatus'
 
 const SEARCH_PLACEHOLDERS = {
-  list: 'Search order ID, SKU, PO, customer, notes…',
-  orders: 'Search order ID, SKU, PO, customer…',
+  list: 'Search order ID, SKU, PO, reference, customer, notes…',
+  orders: 'Search order ID, SKU, PO, reference, customer, notes…',
   items: 'Search title, SKU, ASIN…',
 } as const
 
@@ -14,14 +20,19 @@ const COUNT_NOUNS = {
   items: ['item', 'items'],
 } as const
 
+const selectClass =
+  'cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
+
 export function HHFilterBar() {
   const {
     level,
-    selectedStatus,
+    selectedDetailsStatus,
+    selectedCartStatus,
     searchInput,
     total,
     hasActiveFilters,
-    handleStatusChange,
+    handleDetailsStatusChange,
+    handleCartStatusChange,
     handleSearchChange,
     handleClearFilters,
   } = useHHList()
@@ -32,19 +43,36 @@ export function HHFilterBar() {
     <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] px-4 py-2.5 dark:border-[var(--bg-300)]">
       {showStatus && (
         <>
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-status-filter">
-            Status
+          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-details-filter">
+            Details
           </label>
           <select
-            id="hh-status-filter"
-            value={selectedStatus}
-            onChange={(event) => handleStatusChange(event.target.value as HHOrderStatus | '')}
-            className="cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+            id="hh-details-filter"
+            value={selectedDetailsStatus}
+            onChange={(event) => handleDetailsStatusChange(event.target.value as HHDetailsStatus | '')}
+            className={selectClass}
           >
-            <option value="">All Statuses</option>
-            {HH_STATUSES.map((status) => (
+            <option value="">All details</option>
+            {HH_DETAILS_STATUSES.map((status) => (
               <option key={status} value={status}>
-                {HH_STATUS_LABELS[status]}
+                {HH_DETAILS_STATUS_LABELS[status]}
+              </option>
+            ))}
+          </select>
+
+          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-cart-filter">
+            Cart
+          </label>
+          <select
+            id="hh-cart-filter"
+            value={selectedCartStatus}
+            onChange={(event) => handleCartStatusChange(event.target.value as HHCartStatus | '')}
+            className={selectClass}
+          >
+            <option value="">All carts</option>
+            {HH_CART_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {HH_CART_STATUS_LABELS[status]}
               </option>
             ))}
           </select>
@@ -87,7 +115,8 @@ export function HHFilterBar() {
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex flex-wrap items-center gap-3">
+        <HHScSyncStatus />
         {hasActiveFilters && (
           <button
             type="button"

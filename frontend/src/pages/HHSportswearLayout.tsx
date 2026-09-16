@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { useLocation, useOutlet, useParams } from 'react-router-dom'
 import { HHFilterBar } from '../components/hh/HHFilterBar'
 import { HHBackButton, HHBreadcrumb } from '../components/hh/hhUi'
+import { HHImportButton } from '../components/hh/HHImportButton'
 import { HHListProvider } from '../context/HHListContext'
 import { hhBreadcrumbPage, hhDirection, hhParentPath, prefersReducedMotion } from '../lib/hhNav'
 
@@ -41,7 +42,7 @@ function HHSportswearShell() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <HHBreadcrumb current={hhBreadcrumbPage(location.pathname)} groupId={groupId} />
-        {backTo && <HHBackButton to={backTo} />}
+        {backTo ? <HHBackButton to={backTo} /> : <HHImportButton />}
       </div>
       <section className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
         <HHFilterBar />

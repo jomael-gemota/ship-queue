@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { HHChildOrder, HHOrderGroup, HHOrderStatus } from '../../lib/hhSportswear'
-import { BackIcon } from '../labels/labelUi'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup } from '../../lib/hhSportswear'
+import { HH_CART_STATUS_LABELS, HH_DETAILS_STATUS_LABELS } from '../../lib/hhSportswear'
+import { BackIcon, RefreshIcon, Spinner } from '../labels/labelUi'
 import type { HHPage } from '../../lib/hhNav'
 import { prefersReducedMotion } from '../../lib/hhNav'
 
@@ -128,17 +129,58 @@ export function useHHRowExit(onExited: (id: string) => void) {
   return { exitingId, beginExit, finishExit }
 }
 
+const HH_FLASH_MS = 4500
+const HH_FLASH_PENDING = '__hhSportswearFlashId'
+
+function pendingFlashId(): string | null {
+  return (window as Window & { [HH_FLASH_PENDING]?: string | null })[HH_FLASH_PENDING] ?? null
+}
+
+function setPendingFlashId(id: string | null) {
+  ;(window as Window & { [HH_FLASH_PENDING]?: string | null })[HH_FLASH_PENDING] = id
+}
+
+function rowByGroupId(groupId: string): HTMLTableRowElement | null {
+  const row = document.querySelector(`tr[data-hh-group="${CSS.escape(groupId)}"]`)
+  return row instanceof HTMLTableRowElement ? row : null
+}
+
+export function flashHHGroupRow(groupId: string) {
+  if (!groupId) return
+  setPendingFlashId(groupId)
+  const apply = () => {
+    const row = rowByGroupId(groupId)
+    if (!row) return false
+    row.classList.remove('is-fresh')
+    void row.offsetWidth
+    row.classList.add('is-fresh')
+    return true
+  }
+  if (!apply()) {
+    window.setTimeout(() => {
+      if (!apply()) window.setTimeout(apply, 32)
+    }, 0)
+  }
+  window.setTimeout(() => {
+    if (pendingFlashId() !== groupId) return
+    setPendingFlashId(null)
+    rowByGroupId(groupId)?.classList.remove('is-fresh')
+  }, HH_FLASH_MS)
+}
+
 export function HHActionRow({
   children,
   className = '',
   open = false,
   exiting = false,
+  rowId,
   onExitEnd,
 }: {
   children: ReactNode
   className?: string
   open?: boolean
   exiting?: boolean
+  rowId?: string
   onExitEnd?: () => void
 }) {
   const rowRef = useRef<HTMLTableRowElement>(null)
@@ -147,11 +189,26 @@ export function HHActionRow({
   onExitEndRef.current = onExitEnd
 
   useLayoutEffect(() => {
+    const row = rowRef.current
+    if (!row) return
+    if (rowId) row.classList.toggle('is-fresh', pendingFlashId() === rowId)
+    const cells = Array.from(row.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement && !el.classList.contains('hh-row-actions'),
+    )
+    const n = Math.max(cells.length, 1)
+    cells.forEach((cell, i) => {
+      const t = n <= 1 ? 1 : i / (n - 1)
+      cell.style.setProperty('--hh-t', t.toFixed(4))
+      cell.style.zIndex = String(n - i)
+    })
+  })
+
+  useLayoutEffect(() => {
     finishedRef.current = false
     const row = rowRef.current
     if (!exiting || !row) return
 
-    const cells = [...row.children] as HTMLElement[]
+    const cells = Array.from(row.children) as HTMLElement[]
     for (const cell of cells) {
       cell.style.boxSizing = 'border-box'
       cell.style.height = `${Math.ceil(cell.getBoundingClientRect().height)}px`
@@ -175,7 +232,8 @@ export function HHActionRow({
   return (
     <tr
       ref={rowRef}
-      className={`hh-action-row ${open ? 'is-open' : ''} ${exiting ? 'is-deleting' : ''} ${className}`.trim()}
+      data-hh-group={rowId}
+      className={`hh-action-row hh-table-row ${open ? 'is-open' : ''} ${exiting ? 'is-deleting' : ''} ${className}`.trim()}
       onTransitionEnd={(event) => {
         if (!exiting || finishedRef.current) return
         if (event.propertyName !== 'height') return
@@ -227,21 +285,69 @@ export function HHRowActions({
   )
 }
 
+export function HHResyncButton({
+  busy,
+  onClick,
+  size = 'sm',
+  title = 'Re-sync details',
+}: {
+  busy?: boolean
+  onClick: () => void
+  size?: 'sm' | 'md'
+  title?: string
+}) {
+  const sizing = size === 'sm' ? 'p-1.5' : 'p-2'
+  const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onClick()
+      }}
+      disabled={busy}
+      title={title}
+      aria-label={title}
+      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-[var(--accent-100)] hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--accent-200)] dark:hover:bg-[var(--primary-100)] cursor-pointer transition-colors ${sizing}`}
+    >
+      {busy ? <Spinner className={iconSize} /> : <RefreshIcon className={iconSize} />}
+    </button>
+  )
+}
+
 export type HHPendingDelete =
   | { kind: 'group'; group: HHOrderGroup }
   | { kind: 'order'; order: HHChildOrder }
 
-export function HHStatusBadge({ status }: { status: HHOrderStatus }) {
-  if (status === 'complete') {
-    return (
-      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-        Complete
-      </span>
-    )
+const DETAILS_BADGE_CLASS: Record<HHDetailsStatus, string> = {
+  pending: 'bg-[var(--primary-100)] text-slate-700 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]',
+  synced: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
+  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+}
+
+const CART_BADGE_CLASS: Record<Exclude<HHCartStatus, 'none'>, string> = {
+  draft: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  ready: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
+  review: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  placed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+}
+
+export function HHDetailsBadge({ status }: { status: HHDetailsStatus }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${DETAILS_BADGE_CLASS[status]}`}>
+      {HH_DETAILS_STATUS_LABELS[status]}
+    </span>
+  )
+}
+
+export function HHCartBadge({ status }: { status: HHCartStatus }) {
+  if (status === 'none') {
+    return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-[var(--primary-100)] px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
-      Draft
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${CART_BADGE_CLASS[status]}`}>
+      {HH_CART_STATUS_LABELS[status]}
     </span>
   )
 }
@@ -250,10 +356,14 @@ export function HHConfirmDeleteModal({
   pending,
   onConfirm,
   onCancel,
+  busy = false,
+  error = null,
 }: {
   pending: HHPendingDelete
   onConfirm: () => void
   onCancel: () => void
+  busy?: boolean
+  error?: string | null
 }) {
   const isGroup = pending.kind === 'group'
   return (
@@ -282,20 +392,23 @@ export function HHConfirmDeleteModal({
             </>
           )}
         </p>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="cursor-pointer rounded-lg bg-[var(--bg-200)] px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-[var(--bg-300)] dark:text-[var(--text-200)]"
+            disabled={busy}
+            className="cursor-pointer rounded-lg bg-[var(--bg-200)] px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-[var(--bg-300)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-[var(--text-200)]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="cursor-pointer rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            disabled={busy}
+            className="cursor-pointer rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Delete
+            {busy ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </div>

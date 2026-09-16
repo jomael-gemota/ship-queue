@@ -1,10 +1,39 @@
-export type HHOrderStatus = 'complete' | 'draft'
+import { authApi } from './api'
 
-export const HH_STATUSES: HHOrderStatus[] = ['complete', 'draft']
+export type HHDetailsStatus = 'pending' | 'synced' | 'failed'
+export type HHCartStatus = 'none' | 'draft' | 'ready' | 'review' | 'placed'
 
-export const HH_STATUS_LABELS: Record<HHOrderStatus, string> = {
-  complete: 'Complete',
+export const HH_DETAILS_STATUSES: HHDetailsStatus[] = ['pending', 'synced', 'failed']
+export const HH_CART_STATUSES: HHCartStatus[] = ['none', 'draft', 'ready', 'review', 'placed']
+
+export const HH_DETAILS_STATUS_LABELS: Record<HHDetailsStatus, string> = {
+  pending: 'Pending',
+  synced: 'Synced',
+  failed: 'Failed',
+}
+
+export const HH_CART_STATUS_LABELS: Record<HHCartStatus, string> = {
+  none: 'None',
   draft: 'Draft',
+  ready: 'Ready',
+  review: 'Review',
+  placed: 'Placed',
+}
+
+export function hhDetailsStatusLabel(status: string): string {
+  return HH_DETAILS_STATUS_LABELS[status as HHDetailsStatus] ?? status
+}
+
+export function hhCartStatusLabel(status: string): string {
+  if (status === 'none') return '—'
+  return HH_CART_STATUS_LABELS[status as HHCartStatus] ?? status
+}
+
+export function hhFilterSummary(detailsStatus: HHDetailsStatus | '', cartStatus: HHCartStatus | ''): string {
+  const parts: string[] = []
+  if (detailsStatus) parts.push(`details "${HH_DETAILS_STATUS_LABELS[detailsStatus]}"`)
+  if (cartStatus) parts.push(`cart "${HH_CART_STATUS_LABELS[cartStatus]}"`)
+  return parts.join(' and ')
 }
 
 export interface HHLineItem {
@@ -12,21 +41,29 @@ export interface HHLineItem {
   title: string
   sku: string
   asin: string
+  imageUrl: string
   quantity: number
   unitPrice: number
+  tax: number
 }
 
 export interface HHChildOrder {
   id: string
   orderId: string
   po: string
+  referenceNumber: string
   customerName: string
   customerEmail: string
   customerPhone: string
   addressLine1: string
   addressLine2: string
+  city: string
+  state: string
+  postalCode: string
   country: string
-  status: HHOrderStatus
+  notes: string
+  detailsStatus: HHDetailsStatus
+  cartStatus: HHCartStatus
   items: HHLineItem[]
 }
 
@@ -36,149 +73,78 @@ export interface HHOrderGroup {
   createdByName: string
   createdByEmail: string
   notes: string
-  status: HHOrderStatus
+  sourceFileName: string
+  detailsStatus: HHDetailsStatus
+  cartStatus: HHCartStatus
   children: HHChildOrder[]
 }
 
-const PEOPLE = [
-  { name: 'Alexa Mae Carreon', email: 'acarreon@outdoorequipped.com' },
-  { name: 'Jomael Gemota', email: 'jomael@outdoorequipped.com' },
-  { name: 'Trixie Lauron', email: 'tlauron@outdoorequipped.com' },
-  { name: 'Alex Rivera', email: 'arivera@channelprecision.com' },
-  { name: 'Jordan Lee', email: 'jlee@outdoorequipped.com' },
-  { name: 'Priya Shah', email: 'pshah@outdoorequipped.com' },
-]
-
-const NOTES = [
-  'Rush B2B restock for the fall catalog — confirm sizes S–XL on the navy pullover before submitting to HH Sportswear. Warehouse wants this packed with the existing Belleville outbound if possible.',
-  'Hold for updated wholesale pricing on hoodies.',
-  'Replacement PO after the first file had mixed sizes. Recheck XL count.',
-  'Spring sample pack for the buyer walkthrough on Friday.',
-  'Do not ship until HH confirms the new SKU mapping.',
-  'Add packing slips for the marketplace drop-ship orders.',
-  'Priority: trailer leaves Belleville Thursday morning.',
-  'Duplicate upload — keep this copy, ignore the earlier draft.',
-]
-
-const CUSTOMERS = [
-  {
-    name: 'Ash and Kerry McArthur',
-    email: 'slk73sr4qjm3kbf@marketplace.amazon.com',
-    phone: '+1 415-419-8616 ext. 87605',
-    addressLine1: '51 LAWRENCE ST',
-    addressLine2: 'NORFOLK, MA 02056-1910',
-  },
-  {
-    name: 'Melissa Grant',
-    email: 'mgrant@example.com',
-    phone: '+1 508-555-0199',
-    addressLine1: '18 CEDAR RIDGE RD',
-    addressLine2: 'FRANKLIN, MA 02038-1422',
-  },
-  {
-    name: 'Chris Patel',
-    email: 'cpatel@example.com',
-    phone: '+1 617-555-0142',
-    addressLine1: '402 ATLANTIC AVE',
-    addressLine2: 'BOSTON, MA 02110-3350',
-  },
-  {
-    name: 'Dana Okonkwo',
-    email: 'dokonkwo@example.com',
-    phone: '+1 401-555-0174',
-    addressLine1: '90 BENEFIT ST',
-    addressLine2: 'PROVIDENCE, RI 02903-1804',
-  },
-  {
-    name: 'Riley Chen',
-    email: 'rchen@example.com',
-    phone: '+1 203-555-0118',
-    addressLine1: '12 HARBOR VIEW AVE',
-    addressLine2: 'STAMFORD, CT 06902-6731',
-  },
-]
-
-const PRODUCTS = [
-  { title: "HH Sportswear Men's Navy Pullover Hoodie — Size M", sku: 'HH-NVY-HD-M', asin: 'B0C8QK4N2P', unitPrice: 32 },
-  { title: 'HH Sportswear Trail Short — Size L', sku: 'HH-TRL-SH-L', asin: 'B0C9W1L8KT', unitPrice: 24.5 },
-  { title: "HH Sportswear Women's Fleece Jacket — Size S", sku: 'HH-FLC-JK-S', asin: 'B0D1A7M3QX', unitPrice: 41 },
-  { title: 'HH Sportswear Classic Crew Sweatshirt — Size XL', sku: 'HH-CRW-SS-XL', asin: 'B0D2B9P5ZR', unitPrice: 29.75 },
-  { title: 'HH Sportswear Performance Tee — Size L', sku: 'HH-PRF-TE-L', asin: 'B0D3C4N6YW', unitPrice: 18 },
-  { title: 'HH Sportswear Quarter-Zip — Size M', sku: 'HH-QTZ-M', asin: 'B0D4E8P1KA', unitPrice: 36 },
-  { title: 'HH Sportswear Jogger Pant — Size L', sku: 'HH-JGR-L', asin: 'B0D5F2Q7NB', unitPrice: 34 },
-]
-
-function padAmazonOrder(n: number): string {
-  return `114-${String(4600000 + n).padStart(7, '0')}-${String(8600000 + n).padStart(7, '0')}`
+export interface HHImportMeta {
+  orderCount: number
+  duplicateRowsSkipped: number
+  incompleteRowsSkipped: number
 }
 
-function buildItems(groupIndex: number, orderIndex: number): HHLineItem[] {
-  const count = 2 + ((groupIndex + orderIndex) % 3)
-  return Array.from({ length: count }, (_, i) => {
-    const product = PRODUCTS[(groupIndex + orderIndex + i) % PRODUCTS.length]
-    return {
-      id: `${groupIndex + 1}-${orderIndex}-${i}`,
-      title: product.title,
-      sku: product.sku,
-      asin: product.asin,
-      quantity: 2 + ((groupIndex + i) % 8),
-      unitPrice: product.unitPrice,
-    }
-  })
+export function listHHGroups() {
+  return authApi.get<{ data: HHOrderGroup[] }>('/hh-sportswear')
 }
 
-function buildOrders(groupIndex: number): HHChildOrder[] {
-  const count = 2 + (groupIndex % 3)
-  return Array.from({ length: count }, (_, o) => {
-    const customer = CUSTOMERS[(groupIndex + o) % CUSTOMERS.length]
-    const status: HHOrderStatus = (groupIndex + o) % 3 === 0 ? 'complete' : 'draft'
-    return {
-      id: `${groupIndex + 1}-${String.fromCharCode(97 + o)}`,
-      orderId: padAmazonOrder(groupIndex * 10 + o + 1),
-      po: String(210000 + groupIndex * 17 + o),
-      customerName: customer.name,
-      customerEmail: customer.email,
-      customerPhone: customer.phone,
-      addressLine1: customer.addressLine1,
-      addressLine2: customer.addressLine2,
-      country: 'US',
-      status,
-      items: buildItems(groupIndex, o),
-    }
-  })
+export interface HHScSyncStatus {
+  running: boolean
+  currentGroupId: string | null
+  currentOrderId: string | null
+  queuedGroups: number
+  lastRunAt: string | null
+  lastSuccessAt: string | null
+  lastError: string | null
+  lastRun: { synced: number; flagged: number; failed: number } | null
+  pendingUnsynced: number
 }
 
-function buildSampleGroups(): HHOrderGroup[] {
-  return Array.from({ length: 16 }, (_, i) => {
-    const person = PEOPLE[i % PEOPLE.length]
-    const created = new Date(Date.UTC(2026, 7, 4 + i, 10 + (i % 8), 12 + i, 24))
-    return {
-      id: String(i + 1),
-      createdAt: created.toISOString(),
-      createdByName: person.name,
-      createdByEmail: person.email,
-      notes: NOTES[i % NOTES.length],
-      status: i % 3 === 0 ? 'complete' : 'draft',
-      children: buildOrders(i),
-    }
-  })
+export function getHHScSyncStatus() {
+  return authApi.get<{ data: HHScSyncStatus }>('/hh-sportswear/sc-sync')
 }
 
-export const HH_SAMPLE_GROUPS: HHOrderGroup[] = buildSampleGroups()
-
-export function getHHGroupById(id: string): HHOrderGroup | undefined {
-  return HH_SAMPLE_GROUPS.find((group) => group.id === id)
+export function importHHSpreadsheet(input: File | { text: string }) {
+  const body = new FormData()
+  if (input instanceof File) body.append('file', input)
+  else body.append('text', input.text)
+  return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>('/hh-sportswear/import', body)
 }
 
-export function getHHOrder(
-  groupId: string,
-  orderId: string,
-): { group: HHOrderGroup; order: HHChildOrder } | undefined {
-  const group = getHHGroupById(groupId)
-  if (!group) return undefined
-  const order = group.children.find((child) => child.id === orderId || child.orderId === orderId)
-  if (!order) return undefined
-  return { group, order }
+export function rerunHHGroupScSync(groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/sc-sync`)
+}
+
+export function rerunHHOrderScSync(groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/sc-sync`)
+}
+
+export function updateHHGroupNotes(id: string, notes: string) {
+  return authApi.patch<{ data: HHOrderGroup }>(`/hh-sportswear/${id}`, { notes })
+}
+
+export function updateHHOrderNotes(groupId: string, orderId: string, notes: string) {
+  return authApi.patch<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}`, { notes })
+}
+
+export function deleteHHGroup(id: string) {
+  return authApi.delete<{ data: { deleted: boolean } }>(`/hh-sportswear/${id}`)
+}
+
+export function deleteHHOrder(groupId: string, orderId: string) {
+  return authApi.delete<{ data: { deleted: boolean } }>(`/hh-sportswear/${groupId}/orders/${orderId}`)
+}
+
+export function downloadHHImportTemplate() {
+  const csv = 'PO Number,Order ID\n100001,111-0000000-0000000\n'
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'hh-sportswear-import-template.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export function formatCreatedAt(iso: string): string {
@@ -190,6 +156,104 @@ export function formatCreatedAt(iso: string): string {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+export const HH_MISSING = '-'
+
+export function hhOrDash(value: string | null | undefined): string {
+  if (value == null) return HH_MISSING
+  const trimmed = String(value).trim()
+  return trimmed || HH_MISSING
+}
+
+export function composeCityStatePostal(city: string, state: string, postalCode: string): string {
+  const cityState = [city, state].filter(Boolean).join(', ')
+  return [cityState, postalCode].filter(Boolean).join(' ')
+}
+
+export function formatHhLocalityLine(
+  city: string | null | undefined,
+  state: string | null | undefined,
+  postalCode: string | null | undefined,
+): string {
+  const cityText = (city ?? '').trim()
+  const stateText = (state ?? '').trim()
+  const postalText = (postalCode ?? '').trim()
+  if (!cityText && !stateText && !postalText) return HH_MISSING
+  return `${hhOrDash(cityText)}, ${hhOrDash(stateText)} ${hhOrDash(postalText)}`
+}
+
+export function formatHhAddressLines(order: Pick<
+  HHChildOrder,
+  'addressLine1' | 'addressLine2' | 'city' | 'state' | 'postalCode' | 'country'
+>): string[] {
+  const lines: string[] = []
+  if (order.addressLine1) lines.push(order.addressLine1)
+  if (order.addressLine2) lines.push(order.addressLine2)
+  const locality = composeCityStatePostal(order.city, order.state, order.postalCode)
+  const alreadyShown = lines.some((line) => line.replace(/\s+/g, ' ') === locality)
+  if (locality && !alreadyShown) lines.push(locality)
+  if (order.country) lines.push(order.country)
+  return lines
+}
+
+export function hhItemSubtotal(item: Pick<HHLineItem, 'quantity' | 'unitPrice'>): number {
+  return item.quantity * item.unitPrice
+}
+
+export function hhItemTax(item: Pick<HHLineItem, 'tax'>): number {
+  return item.tax ?? 0
+}
+
+export function hhItemTotal(item: Pick<HHLineItem, 'quantity' | 'unitPrice' | 'tax'>): number {
+  return hhItemSubtotal(item) + hhItemTax(item)
+}
+
+export function hhOrderHasAddress(order: Pick<
+  HHChildOrder,
+  'addressLine1' | 'addressLine2' | 'city' | 'state' | 'postalCode'
+>): boolean {
+  return Boolean(order.addressLine1 || order.addressLine2 || order.city || order.state || order.postalCode)
+}
+
+export function formatHhCompactAddress(order: Pick<
+  HHChildOrder,
+  'addressLine1' | 'addressLine2' | 'city' | 'state' | 'postalCode' | 'country'
+>): string {
+  const lines = formatHhAddressLines(order)
+  const withoutDefaultCountry = order.country === 'US' ? lines.filter((line) => line !== order.country) : lines
+  return withoutDefaultCountry.join(', ')
+}
+
+export function isAmazonMarketplaceEmail(email: string): boolean {
+  return /@marketplace\.amazon\./i.test(email.trim())
+}
+
+export function hhBuyerContact(
+  order: Pick<HHChildOrder, 'customerEmail' | 'customerPhone'>,
+): string {
+  const email = order.customerEmail.trim()
+  if (email && !isAmazonMarketplaceEmail(email)) return email
+  return order.customerPhone.trim()
+}
+
+export function formatHhBuyerInfo(
+  order: Pick<HHChildOrder, 'customerName' | 'addressLine1' | 'city' | 'state' | 'postalCode'>,
+): { name: string; line1: string; locality: string } {
+  const locality = formatHhLocalityLine(order.city, order.state, order.postalCode)
+  const rawLine1 = (order.addressLine1 ?? '').trim()
+  const compactLocality = composeCityStatePostal(
+    (order.city ?? '').trim(),
+    (order.state ?? '').trim(),
+    (order.postalCode ?? '').trim(),
+  )
+  const line1LooksLikeLocality =
+    Boolean(compactLocality) && rawLine1.replace(/\s+/g, ' ') === compactLocality
+  return {
+    name: hhOrDash(order.customerName),
+    line1: !rawLine1 || line1LooksLikeLocality ? HH_MISSING : rawLine1,
+    locality,
+  }
 }
 
 function includesQuery(value: string | number | undefined, query: string): boolean {
@@ -204,7 +268,8 @@ export function hhItemMatchesQuery(item: HHLineItem, rawQuery: string): boolean 
     includesQuery(item.sku, query) ||
     includesQuery(item.asin, query) ||
     includesQuery(item.quantity, query) ||
-    includesQuery(item.unitPrice, query)
+    includesQuery(item.unitPrice, query) ||
+    includesQuery(item.tax, query)
   )
 }
 
@@ -214,13 +279,19 @@ export function hhOrderMatchesQuery(order: HHChildOrder, rawQuery: string): bool
   if (
     includesQuery(order.orderId, query) ||
     includesQuery(order.po, query) ||
+    includesQuery(order.referenceNumber, query) ||
     includesQuery(order.customerName, query) ||
     includesQuery(order.customerEmail, query) ||
     includesQuery(order.customerPhone, query) ||
     includesQuery(order.addressLine1, query) ||
     includesQuery(order.addressLine2, query) ||
+    includesQuery(order.city, query) ||
+    includesQuery(order.state, query) ||
+    includesQuery(order.postalCode, query) ||
     includesQuery(order.country, query) ||
-    includesQuery(HH_STATUS_LABELS[order.status], query)
+    includesQuery(order.notes, query) ||
+    includesQuery(hhDetailsStatusLabel(order.detailsStatus), query) ||
+    includesQuery(hhCartStatusLabel(order.cartStatus), query)
   ) {
     return true
   }
@@ -235,7 +306,9 @@ export function hhGroupMatchesQuery(group: HHOrderGroup, rawQuery: string): bool
     includesQuery(group.createdByName, query) ||
     includesQuery(group.createdByEmail, query) ||
     includesQuery(group.notes, query) ||
-    includesQuery(HH_STATUS_LABELS[group.status], query) ||
+    includesQuery(group.sourceFileName, query) ||
+    includesQuery(hhDetailsStatusLabel(group.detailsStatus), query) ||
+    includesQuery(hhCartStatusLabel(group.cartStatus), query) ||
     includesQuery(formatCreatedAt(group.createdAt), query)
   ) {
     return true

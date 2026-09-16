@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { HHActionRow, HHConfirmDeleteModal, HHRowActions, HHRowActionsHeader, HHStatusBadge, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHCartBadge, HHConfirmDeleteModal, HHDetailsBadge, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingDelete } from '../components/hh/hhUi'
+import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
+import { HHNotesField } from '../components/hh/HHNotesField'
 import { useHHList } from '../context/HHListContext'
-import { HH_STATUS_LABELS, formatCreatedAt } from '../lib/hhSportswear'
+import { deleteHHGroup, deleteHHOrder, formatCreatedAt, hhFilterSummary } from '../lib/hhSportswear'
 import {
+  AmazonIcon,
   DeleteBatchButton,
   EyeIcon,
   HeaderLabel,
@@ -23,14 +26,27 @@ function PoIcon({ className = '' }: { className?: string }) {
   )
 }
 
-function AddressIcon({ className = '' }: { className?: string }) {
+function RefIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
-        d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"
+        d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"
+      />
+    </svg>
+  )
+}
+
+function NotesIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 12h6m-6 4h6M7 4h7l5 5v11H7V4z"
       />
     </svg>
   )
@@ -39,9 +55,12 @@ function AddressIcon({ className = '' }: { className?: string }) {
 export default function HHSportswearOrders() {
   const { groupId = '' } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
-  const { setGroups, getGroup, filteredOrders, selectedStatus, searchInput } = useHHList()
+  const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId } =
+    useHHList()
   const group = getGroup(groupId)
   const [pendingDelete, setPendingDelete] = useState<HHPendingDelete | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { openId, toggle, close } = useHHOpenRow()
   const { exitingId, beginExit, finishExit } = useHHRowExit((id) => {
     setGroups((current) =>
@@ -52,16 +71,53 @@ export default function HHSportswearOrders() {
   })
 
   const confirmDelete = () => {
-    if (!pendingDelete || !group) return
-    if (pendingDelete.kind === 'group') {
-      setGroups((current) => current.filter((item) => item.id !== group.id))
-      setPendingDelete(null)
-      navigate('/ordering/hh-sportswear')
-      return
-    }
-    setPendingDelete(null)
-    close()
-    beginExit(pendingDelete.order.id)
+    if (!pendingDelete || !group || deleteBusy) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+
+    const request =
+      pendingDelete.kind === 'group'
+        ? deleteHHGroup(group.id)
+        : deleteHHOrder(group.id, pendingDelete.order.id)
+
+    request
+      .then(() => {
+        if (pendingDelete.kind === 'group') {
+          setGroups((current) => current.filter((item) => item.id !== group.id))
+          setPendingDelete(null)
+          navigate('/ordering/hh-sportswear')
+          return
+        }
+        const orderId = pendingDelete.order.id
+        setPendingDelete(null)
+        close()
+        beginExit(orderId)
+      })
+      .catch((error: unknown) => {
+        setDeleteError(error instanceof Error ? error.message : 'Failed to delete')
+      })
+      .finally(() => {
+        setDeleteBusy(false)
+      })
+  }
+
+  if (loadState === 'loading') {
+    return <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">Loading group…</p>
+  }
+
+  if (loadState === 'error') {
+    return (
+      <div className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+        <p>{loadError || 'Failed to load group.'}</p>
+        <button
+          type="button"
+          onClick={reload}
+          className="mt-2 cursor-pointer font-medium text-[var(--accent-100)] hover:underline dark:text-[var(--accent-200)]"
+        >
+          Try again
+        </button>
+      </div>
+    )
   }
 
   if (!group) {
@@ -74,23 +130,35 @@ export default function HHSportswearOrders() {
         <div className="min-w-0">
           <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
             <span>{formatCreatedAt(group.createdAt)}</span>
-            <HHStatusBadge status={group.status} />
+            <HHDetailsBadge status={group.detailsStatus} />
+            <HHCartBadge status={group.cartStatus} />
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
             {group.children.length} order{group.children.length === 1 ? '' : 's'}
             {' · '}
             {group.createdByName} ({group.createdByEmail})
           </p>
-          {group.notes && (
-            <p className="mt-2 max-w-3xl text-sm whitespace-pre-wrap text-slate-600 dark:text-[var(--text-200)]">
-              {group.notes}
-            </p>
-          )}
+          <HHNotesField
+            groupId={group.id}
+            notes={group.notes}
+            sourceFileName={group.sourceFileName}
+            variant="header"
+          />
         </div>
-        <DeleteBatchButton
-          title="Delete group"
-          onClick={() => setPendingDelete({ kind: 'group', group })}
-        />
+        <div className="flex items-center gap-2">
+          <HHResyncButton
+            size="md"
+            title="Re-sync details for this batch"
+            busy={resyncBusyId === group.id}
+            onClick={() => {
+              void rerunDetails(group.id)
+            }}
+          />
+          <DeleteBatchButton
+            title="Delete group"
+            onClick={() => setPendingDelete({ kind: 'group', group })}
+          />
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -104,13 +172,19 @@ export default function HHSportswearOrders() {
                 <HeaderLabel icon={<PoIcon className="h-3.5 w-3.5" />} text="PO" />
               </Th>
               <Th>
-                <HeaderLabel icon={<UserIcon className="h-3.5 w-3.5" />} text="Customer" />
+                <HeaderLabel icon={<RefIcon className="h-3.5 w-3.5" />} text="Reference Number" />
               </Th>
               <Th>
-                <HeaderLabel icon={<AddressIcon className="h-3.5 w-3.5" />} text="Address" />
+                <HeaderLabel icon={<UserIcon className="h-3.5 w-3.5" />} text="Buyer Info" />
               </Th>
               <Th>
-                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Status" />
+                <HeaderLabel icon={<NotesIcon className="h-3.5 w-3.5" />} text="Notes" />
+              </Th>
+              <Th>
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Details" />
+              </Th>
+              <Th>
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Cart" />
               </Th>
               <Th>
                 <HeaderLabel icon={<EyeIcon className="h-3.5 w-3.5" />} text="Items" />
@@ -121,52 +195,55 @@ export default function HHSportswearOrders() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {filteredOrders.length === 0 ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={9} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {group.children.length === 0
                     ? 'No orders in this group.'
-                    : selectedStatus && searchInput.trim()
-                      ? `No orders match "${searchInput.trim()}" with status "${HH_STATUS_LABELS[selectedStatus]}".`
-                      : selectedStatus
-                        ? `No orders with status "${HH_STATUS_LABELS[selectedStatus]}".`
-                        : searchInput.trim()
+                    : selectedDetailsStatus || selectedCartStatus
+                      ? searchInput.trim()
+                        ? `No orders match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
+                        : `No orders with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
+                      : searchInput.trim()
                           ? `No orders match "${searchInput.trim()}".`
                           : 'No orders in this group.'}
                 </Td>
               </tr>
             ) : (
               filteredOrders.map((order, idx) => {
-                const zebra = idx % 2 === 1
-                const rowBg = zebra
-                  ? 'bg-[var(--bg-200)] dark:bg-[var(--bg-200)]'
-                  : 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]'
                 return (
                   <HHActionRow
                     key={order.id}
-                    className={rowBg}
+                    className={idx % 2 === 1 ? 'hh-row-alt' : ''}
                     open={openId === order.id}
                     exiting={exitingId === order.id}
                     onExitEnd={() => finishExit(order.id)}
                   >
                     <Td compact className="whitespace-nowrap font-mono text-slate-800 dark:text-[var(--text-100)]">
-                      {order.orderId}
+                      <span className="inline-flex items-center gap-1.5">
+                        <AmazonIcon className="h-3.5 w-3.5 shrink-0" />
+                        {order.orderId}
+                      </span>
                     </Td>
                     <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
                       {order.po}
                     </Td>
-                    <Td compact className="max-w-[280px]">
-                      <p className="font-medium text-slate-800 dark:text-[var(--text-100)]">{order.customerName}</p>
-                      <p className="break-all text-xs text-slate-500 dark:text-[var(--text-200)]">
-                        {order.customerEmail}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">{order.customerPhone}</p>
+                    <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
+                      {order.referenceNumber || '—'}
                     </Td>
-                    <Td compact className="max-w-[240px]">
-                      <p className="text-slate-700 dark:text-[var(--text-100)]">{order.addressLine1}</p>
-                      <p className="text-slate-600 dark:text-[var(--text-200)]">{order.addressLine2}</p>
-                      <p className="text-slate-500 dark:text-[var(--text-200)]">{order.country}</p>
+                    <Td compact className="max-w-[320px]">
+                      <HHBuyerInfo order={order} />
+                    </Td>
+                    <Td compact className="max-w-xs">
+                      <HHNotesField
+                        groupId={group.id}
+                        orderId={order.id}
+                        notes={order.notes ?? ''}
+                      />
                     </Td>
                     <Td compact>
-                      <HHStatusBadge status={order.status} />
+                      <HHDetailsBadge status={order.detailsStatus} />
+                    </Td>
+                    <Td compact>
+                      <HHCartBadge status={order.cartStatus} />
                     </Td>
                     <Td compact>
                       <Link
@@ -178,10 +255,17 @@ export default function HHSportswearOrders() {
                       </Link>
                     </Td>
                     <HHRowActions
-                      className={rowBg}
                       open={openId === order.id}
                       onToggle={() => toggle(order.id)}
                     >
+                      <HHResyncButton
+                        size="sm"
+                        title="Re-sync details for this order"
+                        busy={resyncBusyId === order.id}
+                        onClick={() => {
+                          void rerunDetails(group.id, order.id)
+                        }}
+                      />
                       <DeleteBatchButton
                         size="sm"
                         title="Delete"
@@ -199,7 +283,13 @@ export default function HHSportswearOrders() {
       {pendingDelete && (
         <HHConfirmDeleteModal
           pending={pendingDelete}
-          onCancel={() => setPendingDelete(null)}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => {
+            if (deleteBusy) return
+            setPendingDelete(null)
+            setDeleteError(null)
+          }}
           onConfirm={confirmDelete}
         />
       )}

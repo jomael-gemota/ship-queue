@@ -48,6 +48,21 @@ async function authRequest<T>(endpoint: string, options?: RequestInit): Promise<
   return res.json()
 }
 
+async function authFormRequest<T>(endpoint: string, body: FormData): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders() },
+    body,
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: 'An error occurred' }))
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
+  }
+
+  return res.json()
+}
+
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
   post: <T>(endpoint: string, body: unknown) =>
@@ -109,6 +124,7 @@ export const authApi = {
       method: 'POST',
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
+  postForm: <T>(endpoint: string, body: FormData) => authFormRequest<T>(endpoint, body),
   put: <T>(endpoint: string, body: unknown) =>
     authRequest<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(endpoint: string, body: unknown) =>
