@@ -286,3 +286,145 @@ export function vendorSamples(vendor: DocTidyVendor): string[] {
 export function normalizeVendorName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
+
+/* ─────────────────────────────────────────────── Invoice Audit ── */
+
+/** A completed parse job as returned by `GET /doc-tidy/parse-jobs`. */
+export interface ParseJobListItem {
+  _id: string
+  messageId: string
+  attachmentIndex: number
+  filename: string
+  driveFileId?: string
+  status: ParseJobStatus
+  jsonOutput?: Record<string, unknown> | null
+  tableOutput?: { tables: AgentTable[] } | null
+  vendorName?: string | null
+  vendorNeedsSetup?: boolean
+  error?: string | null
+  requestedByName?: string
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ParseJobsResponse {
+  data: ParseJobListItem[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    pages: number
+  }
+}
+
+/** All column ids available in the Invoice Audit table. */
+export type InvoiceAuditColumnId =
+  | 'vendorName'
+  | 'documentType'
+  | 'invoiceNumber'
+  | 'poNumber'
+  | 'orderDate'
+  | 'invoiceDate'
+  | 'terms'
+  | 'trackingNumber'
+  | 'totalValue'
+  | 'lineItems'
+  | 'filename'
+  | 'parsedAt'
+  | 'requestedBy'
+
+export interface InvoiceAuditColumn {
+  id: InvoiceAuditColumnId
+  label: string
+  description: string
+  defaultVisible: boolean
+}
+
+export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
+  { id: 'vendorName',     label: 'Vendor',       description: 'Vendor or supplier name',                       defaultVisible: true },
+  { id: 'documentType',   label: 'Type',          description: 'Document type (Invoice, Order Confirmation…)',  defaultVisible: true },
+  { id: 'invoiceNumber',  label: 'Invoice #',     description: 'Invoice number from the document',             defaultVisible: true },
+  { id: 'poNumber',       label: 'PO Number',     description: 'Purchase order number',                        defaultVisible: true },
+  { id: 'orderDate',      label: 'Order Date',    description: 'Date the order was placed',                    defaultVisible: true },
+  { id: 'invoiceDate',    label: 'Invoice Date',  description: 'Date printed on the invoice',                  defaultVisible: true },
+  { id: 'terms',          label: 'Terms',         description: 'Payment terms (e.g. Net 30)',                  defaultVisible: true },
+  { id: 'trackingNumber', label: 'Tracking #',    description: 'Shipment tracking number',                     defaultVisible: true },
+  { id: 'totalValue',     label: 'Total Value',   description: 'Grand total / invoice amount',                 defaultVisible: true },
+  { id: 'lineItems',      label: 'Line Items',    description: 'Products or SKUs listed on the document',      defaultVisible: true },
+  { id: 'filename',       label: 'Filename',      description: 'Original PDF filename',                        defaultVisible: false },
+  { id: 'parsedAt',       label: 'Parsed At',     description: 'When the agent completed parsing',             defaultVisible: false },
+  { id: 'requestedBy',    label: 'Requested By',  description: 'Who triggered the parse',                      defaultVisible: false },
+]
+
+const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns'
+
+/** Load per-column visibility from localStorage, falling back to defaults. */
+export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {
+  const defaults = Object.fromEntries(
+    INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
+  ) as Record<InvoiceAuditColumnId, boolean>
+
+  try {
+    const raw = localStorage.getItem(AUDIT_COL_STORAGE_KEY)
+    if (!raw) return defaults
+    const stored = JSON.parse(raw) as Partial<Record<InvoiceAuditColumnId, boolean>>
+    return { ...defaults, ...stored }
+  } catch {
+    return defaults
+  }
+}
+
+/** Persist column visibility to localStorage. */
+export function saveAuditColumnVisibility(visibility: Record<InvoiceAuditColumnId, boolean>): void {
+  try {
+    localStorage.setItem(AUDIT_COL_STORAGE_KEY, JSON.stringify(visibility))
+  } catch {
+    // localStorage can be blocked in some environments — silently ignore.
+  }
+}
+
+/**
+ * Extract a scalar value from a free-form AI JSON output, trying multiple
+ * common field-name variants. Keys are normalised to lowercase with all
+ * separators (`_`, `-`, spaces) stripped before comparison.
+ */
+export function extractJsonField(
+  json: Record<string, unknown> | null | undefined,
+  ...candidates: string[]
+): string {
+  if (!json) return ''
+  const norm = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+  for (const key of candidates) {
+    const target = norm(key)
+    for (const [k, v] of Object.entries(json)) {
+      if (norm(k) !== target) continue
+      if (v === null || v === undefined) continue
+      if (typeof v === 'string') return v.trim()
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+      if (Array.isArray(v)) return '' // arrays handled separately
+      return ''
+    }
+  }
+  return ''
+}
+
+/**
+ * Extract an array value (e.g. line_items) from the JSON output.
+ * Returns an empty array if not found or not an array.
+ */
+export function extractJsonArray(
+  json: Record<string, unknown> | null | undefined,
+  ...candidates: string[]
+): Record<string, unknown>[] {
+  if (!json) return []
+  const norm = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+  for (const key of candidates) {
+    const target = norm(key)
+    for (const [k, v] of Object.entries(json)) {
+      if (norm(k) !== target) continue
+      if (Array.isArray(v)) return v as Record<string, unknown>[]
+    }
+  }
+  return []
+}

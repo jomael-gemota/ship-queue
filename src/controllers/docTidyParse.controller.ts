@@ -49,6 +49,84 @@ export const rerunParseJob = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+/**
+ * Forcibly marks a pending or processing job as failed.
+ *
+ * Useful when the worker drops a job without updating its status (e.g. a crash
+ * or network split), leaving the UI spinning indefinitely. The job is kept for
+ * history and can be re-run once the root cause is resolved.
+ */
+export const abortParseJob = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+
+    const job = await DocTidyParseJob.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          status: 'failed',
+          error: 'Parsing was stopped by the user.',
+          completedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    res.json({ data: job });
+  } catch (error) {
+    fail(res, error, 'Failed to abort the parse job');
+  }
+};
+
+/**
+ * Returns completed parse jobs for the Invoice Audit view.
+ *
+ * Large fields (`thinking`, `documentTextSample`) are excluded to keep
+ * response payloads small; the full job is still available via GET /parse-jobs/:id.
+ */
+export const listParseJobs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      status = 'completed',
+      page = '1',
+      pageSize = '200',
+      vendorName,
+    } = req.query as Record<string, string>;
+
+    const filter: Record<string, unknown> = { status };
+    if (vendorName) filter.vendorName = { $regex: vendorName, $options: 'i' };
+
+    const pg = Math.max(1, parseInt(page, 10));
+    const size = Math.min(500, Math.max(1, parseInt(pageSize, 10)));
+
+    const [jobs, total] = await Promise.all([
+      DocTidyParseJob.find(filter)
+        .select('-thinking -documentTextSample')
+        .sort({ completedAt: -1, createdAt: -1 })
+        .skip((pg - 1) * size)
+        .limit(size)
+        .lean(),
+      DocTidyParseJob.countDocuments(filter),
+    ]);
+
+    res.json({
+      data: jobs,
+      pagination: { page: pg, pageSize: size, total, pages: Math.max(1, Math.ceil(total / size)) },
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to load parse jobs');
+  }
+};
+
 export const getParseJob = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;

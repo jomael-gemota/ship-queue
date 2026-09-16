@@ -264,9 +264,11 @@ export default function DocTidy() {
 
         {/* Sync timestamps — flush with the tab baseline */}
         {(lastSynced ?? nextSyncAt) && (() => {
+          /* eslint-disable react-hooks/purity */
           const secondsLeft = nextSyncAt
             ? Math.max(0, Math.round((nextSyncAt.getTime() - Date.now()) / 1_000))
             : null
+          /* eslint-enable react-hooks/purity */
 
           return (
             <div className="flex items-center gap-3 pb-2 pl-4 shrink-0 text-[11px] text-[var(--text-200)]">

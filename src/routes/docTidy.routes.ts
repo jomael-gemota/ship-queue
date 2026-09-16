@@ -19,6 +19,7 @@ import {
   getWorkerStatus,
   parseAttachment,
   rerunParseJob,
+  abortParseJob,
   getParseJob,
   streamParseJob,
   setParseJobVendor,
@@ -30,6 +31,7 @@ import {
   upsertVendor,
   removeVendorSample,
   deleteVendor,
+  listParseJobs,
 } from '../controllers/docTidyParse.controller';
 
 const router = Router();
@@ -54,8 +56,10 @@ router.get('/stream', streamEvents);
 // Agent parsing. One job per attachment, run by the worker on the Hermes box.
 router.get('/worker/status', getWorkerStatus);
 router.post('/messages/:id/attachments/:index/parse', parseAttachment);
+router.get('/parse-jobs', listParseJobs);
 router.get('/parse-jobs/:id', getParseJob);
 router.post('/parse-jobs/:id/rerun', rerunParseJob);
+router.post('/parse-jobs/:id/abort', abortParseJob);
 router.post('/parse-jobs/:id/vendor', setParseJobVendor);
 // Per-job SSE: the agent's reasoning as it is produced.
 router.get('/parse-jobs/:id/stream', streamParseJob);

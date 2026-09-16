@@ -13,6 +13,7 @@ import DropboxFetcher from './pages/DropboxFetcher'
 import DocTidy from './pages/DocTidy'
 import DocTidyRules from './pages/DocTidyRules'
 import DocTidyVendors from './pages/DocTidyVendors'
+import DocTidyInvoiceAudit from './pages/DocTidyInvoiceAudit'
 import AdminUsers from './pages/AdminUsers'
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/doc-tidy" element={<DocTidy />} />
+                <Route path="/doc-tidy/invoice-audit" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/rules" element={<DocTidyRules />} />
                 <Route path="/doc-tidy/vendors" element={<DocTidyVendors />} />
                 <Route path="/settings" element={<Settings />} />
