@@ -8,7 +8,13 @@ import {
   Spinner,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
-import { vendorSamples, type DocTidyVendor } from '../types/docTidy'
+import { diffOutputs } from '../lib/correctionDiff'
+import {
+  normalizeVendorName,
+  vendorSamples,
+  type DocTidyCorrection,
+  type DocTidyVendor,
+} from '../types/docTidy'
 
 /* ─────────────────────────────────────────────────────────── VendorEditor ── */
 
@@ -346,10 +352,121 @@ function VendorEditor({
   )
 }
 
+/* ─────────────────────────────────────────────────────── CorrectionList ── */
+
+/** How many changed fields a correction shows before collapsing the remainder. */
+const CHANGE_PREVIEW_LIMIT = 5
+
+function formatWhen(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * One learned correction: what the user changed, and the instruction they left.
+ *
+ * The note matters more than the diff — the worker promotes it into the system
+ * prompt as a hard rule — so it is given the emphasis, not buried under paths.
+ */
+function CorrectionItem({
+  correction,
+  onDelete,
+}: {
+  correction: DocTidyCorrection
+  onDelete: () => void
+}) {
+  const [showAll, setShowAll] = useState(false)
+
+  // A correction saved before the agent's baseline was recorded has nothing to
+  // diff against; flattening `null` would mark every field as changed.
+  const hasBaseline = Boolean(correction.originalOutput)
+  const changes = useMemo(
+    () =>
+      hasBaseline ? diffOutputs(correction.originalOutput, correction.correctedOutput) : [],
+    [hasBaseline, correction.originalOutput, correction.correctedOutput]
+  )
+
+  const shown = showAll ? changes : changes.slice(0, CHANGE_PREVIEW_LIMIT)
+  const hidden = changes.length - shown.length
+
+  return (
+    <li className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3.5 py-3">
+      {/* Provenance */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-[var(--text-100)]">
+            {correction.filename}
+          </p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+            {formatWhen(correction.createdAt)}
+            {correction.createdByName && ` · by ${correction.createdByName}`}
+            {correction.mode && ` · from the ${correction.mode === 'json' ? 'JSON' : 'table'} view`}
+          </p>
+        </div>
+        <IconButton label="Delete correction" tone="danger" onClick={onDelete} iconPath={ICON_DELETE} />
+      </div>
+
+      {/* The user's instruction — applied as a hard rule on every later parse */}
+      {correction.note && (
+        <p className="mt-2 rounded-md border-l-2 border-[var(--accent-200)] bg-[var(--primary-100)]/60 px-2.5 py-1.5 text-xs text-[var(--text-100)]">
+          {correction.note}
+        </p>
+      )}
+
+      {/* Field-level changes */}
+      {changes.length > 0 ? (
+        <>
+          <ul className="mt-2 space-y-1">
+            {shown.map((change) => (
+              <li key={change.path} className="text-[11px] leading-relaxed">
+                <span className="font-mono text-[var(--text-200)]">{change.path}</span>
+                <span className="mx-1.5 text-[var(--text-200)]">·</span>
+                <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
+                  {change.before || '—'}
+                </span>
+                <span className="mx-1.5 text-[var(--text-200)]">→</span>
+                <span className="font-mono text-emerald-700 dark:text-emerald-400">
+                  {change.after || '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {(hidden > 0 || showAll) && (
+            <button
+              type="button"
+              onClick={() => setShowAll((prev) => !prev)}
+              className="mt-1.5 cursor-pointer text-[11px] font-medium text-[var(--accent-200)] hover:underline"
+            >
+              {showAll ? 'Show fewer' : `+${hidden} more change${hidden === 1 ? '' : 's'}`}
+            </button>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-[11px] italic text-[var(--text-200)]">
+          {hasBaseline
+            ? 'No field differences — saved for the instruction above.'
+            : "The agent's original output was not recorded, so there is nothing to compare."}
+        </p>
+      )}
+    </li>
+  )
+}
+
 /* ──────────────────────────────────────────────────────────── Page ── */
 
 const ICON_DELETE =
   'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16'
+
+const ICON_EDIT =
+  'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
 
 const filterClass =
   'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
@@ -360,6 +477,7 @@ type CorrectionFilter = '' | 'has' | 'none'
 
 export default function DocTidyVendors() {
   const [vendors, setVendors] = useState<DocTidyVendor[]>([])
+  const [corrections, setCorrections] = useState<DocTidyCorrection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -367,6 +485,13 @@ export default function DocTidyVendors() {
   /** `null` = new vendor  |  `DocTidyVendor` = editing existing  |  `undefined` = modal closed */
   const [editing, setEditing] = useState<DocTidyVendor | null | undefined>(undefined)
   const [pendingDelete, setPendingDelete] = useState<DocTidyVendor | null>(null)
+  const [pendingCorrectionDelete, setPendingCorrectionDelete] = useState<DocTidyCorrection | null>(
+    null
+  )
+
+  /** Vendor ids whose learned corrections are expanded. */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [showUnassigned, setShowUnassigned] = useState(false)
 
   const [search, setSearch] = useState('')
   const [correctionFilter, setCorrectionFilter] = useState<CorrectionFilter>('')
@@ -376,8 +501,12 @@ export default function DocTidyVendors() {
   const load = useCallback(async () => {
     setError(null)
     try {
-      const res = await authApi.get<{ data: DocTidyVendor[] }>('/doc-tidy/vendors')
-      setVendors(res.data)
+      const [vendorRes, correctionRes] = await Promise.all([
+        authApi.get<{ data: DocTidyVendor[] }>('/doc-tidy/vendors'),
+        authApi.get<{ data: DocTidyCorrection[] }>('/doc-tidy/corrections'),
+      ])
+      setVendors(vendorRes.data)
+      setCorrections(correctionRes.data)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -422,6 +551,55 @@ export default function DocTidyVendors() {
       setPendingDelete(null)
     }
   }
+
+  const confirmCorrectionDelete = async () => {
+    if (!pendingCorrectionDelete) return
+    try {
+      await authApi.delete(`/doc-tidy/corrections/${pendingCorrectionDelete._id}`)
+      setNotice('Correction deleted — the agent stops using it on the next parse.')
+      setPendingCorrectionDelete(null)
+      await load()
+    } catch (err) {
+      setError((err as Error).message)
+      setPendingCorrectionDelete(null)
+    }
+  }
+
+  const toggleExpanded = (vendorId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(vendorId)) next.delete(vendorId)
+      else next.add(vendorId)
+      return next
+    })
+  }
+
+  /**
+   * Corrections keyed by the vendor they taught, plus the ones that reached no
+   * vendor at all.
+   *
+   * An unmatched `vendorName` is not cosmetic: with `CORRECTION_VENDOR_STRICT`
+   * on the worker, such a correction is never retrieved for any vendor, so it
+   * teaches the agent nothing. Collecting them makes that visible.
+   */
+  const { byVendor, unassigned } = useMemo(() => {
+    const registered = new Set(vendors.map((v) => v.normalizedName))
+    const grouped = new Map<string, DocTidyCorrection[]>()
+    const orphans: DocTidyCorrection[] = []
+
+    for (const correction of corrections) {
+      const key = correction.vendorName ? normalizeVendorName(correction.vendorName) : ''
+      if (key && registered.has(key)) {
+        const list = grouped.get(key)
+        if (list) list.push(correction)
+        else grouped.set(key, [correction])
+      } else {
+        orphans.push(correction)
+      }
+    }
+
+    return { byVendor: grouped, unassigned: orphans }
+  }, [vendors, corrections])
 
   /** All vendors passing the active filters — not yet paginated. */
   const filteredVendors = useMemo(() => {
@@ -598,105 +776,153 @@ export default function DocTidyVendors() {
               {pagedVendors.map((vendor) => {
                 const samples = vendorSamples(vendor)
                 const initial = vendor.name.charAt(0).toUpperCase()
+                const learned = byVendor.get(vendor.normalizedName) ?? []
+                const isOpen = expanded.has(vendor._id)
 
                 return (
                   <li
                     key={vendor._id}
-                    onClick={() => openEdit(vendor)}
-                    className={`group cursor-pointer flex items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--bg-200)]/50 border-l-2 ${
+                    className={`border-l-2 ${
                       vendor.correctionCount > 0
                         ? 'border-l-[var(--accent-200)]'
                         : 'border-l-[var(--bg-300)]'
                     }`}
                   >
-                    {/* Avatar */}
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white ${avatarColour(vendor.name)}`}
+                      onClick={() => toggleExpanded(vendor._id)}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isOpen}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          toggleExpanded(vendor._id)
+                        }
+                      }}
+                      className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-[var(--bg-200)]/50"
                     >
-                      {initial}
-                    </div>
-
-                    {/* Content */}
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      {/* Name + attribution */}
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-sm font-semibold text-[var(--text-100)]">
-                          {vendor.name}
-                        </span>
-                        {vendor.createdByName && (
-                          <span className="text-[11px] text-[var(--text-200)]">
-                            Added by {vendor.createdByName}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Corrections pill + SKU samples inline */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                            vendor.correctionCount > 0
-                              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20'
-                              : 'bg-[var(--bg-200)] text-[var(--text-200)] ring-1 ring-[var(--bg-300)]'
-                          }`}
-                        >
-                          <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                            />
-                          </svg>
-                          {vendor.correctionCount === 0
-                            ? 'No corrections yet'
-                            : `${vendor.correctionCount} correction${vendor.correctionCount === 1 ? '' : 's'} taught to agent`}
-                        </span>
-
-                        {/* SKU samples — compact, read-only chips */}
-                        {samples.length > 0 && (
-                          <>
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                              SKUs
-                            </span>
-                            {samples.map((s) => (
-                              <span
-                                key={s}
-                                className="inline-flex items-center rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-100)]"
-                              >
-                                {s}
-                              </span>
-                            ))}
-                          </>
-                        )}
-
-                        {samples.length === 0 && (
-                          <span className="text-[11px] italic text-[var(--text-200)]">
-                            No sample SKU
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right side: chevron + delete */}
-                    <div className="flex shrink-0 items-center gap-2">
-                      <svg
-                        className="h-4 w-4 shrink-0 text-[var(--text-200)] opacity-0 transition-opacity group-hover:opacity-60"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                      {/* Avatar */}
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white ${avatarColour(vendor.name)}`}
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                        {initial}
+                      </div>
 
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <IconButton
-                          label="Delete vendor"
-                          tone="danger"
-                          onClick={() => setPendingDelete(vendor)}
-                          iconPath={ICON_DELETE}
-                        />
+                      {/* Content */}
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        {/* Name + attribution */}
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-sm font-semibold text-[var(--text-100)]">
+                            {vendor.name}
+                          </span>
+                          {vendor.createdByName && (
+                            <span className="text-[11px] text-[var(--text-200)]">
+                              Added by {vendor.createdByName}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Corrections pill + SKU samples inline */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                              vendor.correctionCount > 0
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20'
+                                : 'bg-[var(--bg-200)] text-[var(--text-200)] ring-1 ring-[var(--bg-300)]'
+                            }`}
+                          >
+                            <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                              />
+                            </svg>
+                            {vendor.correctionCount === 0
+                              ? 'No corrections yet'
+                              : `${vendor.correctionCount} correction${vendor.correctionCount === 1 ? '' : 's'} taught to agent`}
+                          </span>
+
+                          {/* SKU samples — compact, read-only chips */}
+                          {samples.length > 0 && (
+                            <>
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                                SKUs
+                              </span>
+                              {samples.map((s) => (
+                                <span
+                                  key={s}
+                                  className="inline-flex items-center rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-100)]"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                            </>
+                          )}
+
+                          {samples.length === 0 && (
+                            <span className="text-[11px] italic text-[var(--text-200)]">
+                              No sample SKU
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right side: disclosure chevron + edit + delete */}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <svg
+                          className={`h-4 w-4 shrink-0 text-[var(--text-200)] transition-transform ${
+                            isOpen ? 'rotate-90 opacity-70' : 'opacity-40 group-hover:opacity-70'
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <IconButton
+                            label="Edit vendor"
+                            onClick={() => openEdit(vendor)}
+                            iconPath={ICON_EDIT}
+                          />
+                          <IconButton
+                            label="Delete vendor"
+                            tone="danger"
+                            onClick={() => setPendingDelete(vendor)}
+                            iconPath={ICON_DELETE}
+                          />
+                        </div>
                       </div>
                     </div>
+
+                    {/* ── Learned corrections ── */}
+                    {isOpen && (
+                      <div className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-5 py-4">
+                        <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                          What {vendor.name} has taught the agent
+                        </p>
+
+                        {learned.length === 0 ? (
+                          <p className="text-xs text-[var(--text-200)]">
+                            Nothing yet. Correct a parsed document for this vendor and the fix
+                            appears here, and steers every later parse of their paperwork.
+                          </p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {learned.map((correction) => (
+                              <CorrectionItem
+                                key={correction._id}
+                                correction={correction}
+                                onDelete={() => setPendingCorrectionDelete(correction)}
+                              />
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </li>
                 )
               })}
@@ -735,6 +961,83 @@ export default function DocTidyVendors() {
           </>
         )}
       </div>
+
+      {/* ── Corrections that reached no vendor ────────────────────── */}
+      {!loading && unassigned.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-amber-300/60 bg-[var(--bg-100)] shadow-sm dark:border-amber-500/30">
+          <button
+            type="button"
+            onClick={() => setShowUnassigned((prev) => !prev)}
+            aria-expanded={showUnassigned}
+            className="flex w-full cursor-pointer items-center gap-3 bg-amber-50/70 px-4 py-3 text-left transition-colors hover:bg-amber-50 dark:bg-amber-500/10 dark:hover:bg-amber-500/15"
+          >
+            <svg
+              className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-[var(--text-100)]">
+                {unassigned.length} correction{unassigned.length === 1 ? '' : 's'} not reaching any
+                vendor
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                These have no vendor name, or a name that matches no registered vendor. The agent
+                never retrieves them, so they are teaching it nothing.
+              </p>
+            </div>
+
+            <svg
+              className={`h-4 w-4 shrink-0 text-[var(--text-200)] transition-transform ${showUnassigned ? 'rotate-90' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {showUnassigned && (
+            <div className="border-t border-[var(--bg-300)] px-4 py-4">
+              <p className="mb-2.5 text-xs text-[var(--text-200)]">
+                Register a vendor under exactly the name shown on a correction and it starts
+                steering that vendor's parses.
+              </p>
+              <ul className="space-y-2">
+                {unassigned.map((correction) => (
+                  <li key={correction._id}>
+                    <p className="mb-1 text-[11px] text-[var(--text-200)]">
+                      Vendor name on this correction:{' '}
+                      {correction.vendorName ? (
+                        <span className="font-mono text-amber-700 dark:text-amber-400">
+                          {correction.vendorName}
+                        </span>
+                      ) : (
+                        <span className="italic">none recorded</span>
+                      )}
+                    </p>
+                    <ul>
+                      <CorrectionItem
+                        correction={correction}
+                        onDelete={() => setPendingCorrectionDelete(correction)}
+                      />
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Vendor editor modal ───────────────────────────────────── */}
       {editing !== undefined && (
@@ -791,6 +1094,56 @@ export default function DocTidyVendors() {
                 className="cursor-pointer rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
                 Delete vendor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Correction delete confirmation modal ───────────────────── */}
+      {pendingCorrectionDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
+            onClick={() => setPendingCorrectionDelete(null)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl"
+          >
+            <div className="flex items-center gap-3 border-b border-[var(--bg-300)] px-5 py-4">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={ICON_DELETE} />
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-[var(--text-100)]">Delete correction?</h3>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-sm text-[var(--text-200)]">
+                The agent stops applying this to{' '}
+                {pendingCorrectionDelete.vendorName ?? 'this vendor'}'s documents from the next
+                parse onward. Anything it already learned from other corrections is unaffected.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setPendingCorrectionDelete(null)}
+                className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-sm text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmCorrectionDelete()}
+                className="cursor-pointer rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              >
+                Delete correction
               </button>
             </div>
           </div>

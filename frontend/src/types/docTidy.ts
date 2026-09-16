@@ -274,3 +274,15 @@ export function vendorSamples(vendor: DocTidyVendor): string[] {
   if (vendor.skuSample) samples.push(vendor.skuSample)
   return [...new Set(samples)]
 }
+
+/**
+ * Canonical key for matching a correction to a vendor.
+ *
+ * Must stay identical to `normalizeVendorName()` in `src/models/DocTidyVendor.ts`
+ * and `normalize_vendor_name()` in `worker/sku.py`. If this diverges, the UI
+ * groups corrections differently from how the worker scopes retrieval — which is
+ * the exact failure the grouping exists to expose.
+ */
+export function normalizeVendorName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
+}
