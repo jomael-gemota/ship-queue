@@ -312,10 +312,13 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
 
 export const listCorrections = async (_req: Request, res: Response): Promise<void> => {
   try {
+    // The Vendors page groups this whole set by vendor, so it needs more than a
+    // recent slice. `documentTextSample` is excluded alongside the embedding: it
+    // is 2000 characters per row that nothing renders.
     const corrections = await DocTidyCorrection.find()
-      .select('-embedding')
+      .select('-embedding -documentTextSample')
       .sort({ createdAt: -1 })
-      .limit(200)
+      .limit(1000)
       .lean();
     res.json({ data: corrections });
   } catch (error) {
