@@ -218,6 +218,34 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | PUT    | `/:id` | Update a shipment    |
 | DELETE | `/:id` | Delete a shipment    |
 
+### HH Sportswear — `/api/hh-sportswear`
+
+B2B order groups with nested orders and line items. All routes require a JWT.
+
+| Method | Path                         | Description                           |
+| ------ | ---------------------------- | ------------------------------------- |
+| GET    | `/`                          | List groups (full tree, newest first) |
+| POST   | `/`                          | Create a group (JSON)                 |
+| POST   | `/import`                    | Upload .xlsx/.csv or paste Order ID + PO |
+| GET    | `/sc-sync`                   | Details fill runtime (chip)           |
+| POST   | `/:groupId/sc-sync`          | Re-sync details for a whole batch     |
+| POST   | `/:groupId/orders/:orderId/sc-sync` | Re-sync details for one order  |
+| PATCH  | `/:groupId`                  | Update batch notes                    |
+| PATCH  | `/:groupId/orders/:orderId`  | Update order notes                    |
+| GET    | `/:groupId`                  | Get one group                         |
+| DELETE | `/:groupId`                  | Delete a group                        |
+| DELETE | `/:groupId/orders/:orderId`  | Delete one order from a group         |
+
+Import creates one group (batch) and one order per **unique** Order ID + PO
+Number pair. Duplicate rows are skipped. Files can list those columns in either
+order when headers are present (`Order ID` / `PO Number`). You can also paste
+rows in the import modal; headers are optional if one column is an Amazon Order
+ID. New orders start with Details
+`pending` and Cart `none`. Customer, address, and line items stay empty until
+the Seller Central fill that runs right after upload. The Notes column starts
+as the uploaded filename and can be edited later (for example `Skip: Cancelled`).
+Each order also has its own Notes field.
+
 ### Cookie Jar worker
 
 Dedicated process (not the API) that refreshes stored session cookies on a cron
