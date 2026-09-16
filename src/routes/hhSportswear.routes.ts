@@ -11,9 +11,12 @@ import {
   listGroups,
   rerunGroupScSync,
   rerunOrderScSync,
+  rerunGroupCartDraft,
+  rerunOrderCartDraft,
   updateGroupNotes,
   updateOrderNotes,
 } from '../controllers/hhSportswear.controller';
+import { getHhB2bConfig, updateHhB2bConfig } from '../controllers/hhB2bConfig.controller';
 
 const router = Router();
 
@@ -52,9 +55,13 @@ router.use(requireAuth);
 router.get('/', listGroups);
 router.post('/', createGroup);
 router.post('/import', handleImportUpload, importGroup);
+router.get('/config', getHhB2bConfig);
+router.patch('/config', updateHhB2bConfig);
 router.get('/sc-sync', getScSyncStatus);
 router.post('/:groupId/sc-sync', rerunGroupScSync);
 router.post('/:groupId/orders/:orderId/sc-sync', rerunOrderScSync);
+router.post('/:groupId/cart-draft', rerunGroupCartDraft);
+router.post('/:groupId/orders/:orderId/cart-draft', rerunOrderCartDraft);
 router.get('/:groupId', getGroup);
 router.patch('/:groupId', updateGroupNotes);
 router.patch('/:groupId/orders/:orderId', updateOrderNotes);

@@ -63,6 +63,7 @@ export interface IHHChildOrder {
   notes: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
+  b2bDraftId: string;
   items: IHHLineItem[];
 }
 
@@ -119,6 +120,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
       required: true,
       default: HH_DEFAULT_CART_STATUS,
     },
+    b2bDraftId: { type: String, default: '', trim: true },
     items: { type: [LineItemSchema], default: [] },
   },
   { _id: true }
@@ -228,6 +230,33 @@ export async function migrateHhSplitStatuses(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[hh-sportswear] Migrated ${updated} group${updated === 1 ? '' : 's'} to details/cart status`);
+  }
+}
+
+/** Local placeholder drafts were never posted to B2B. Cart Draft means a real document. */
+export async function migrateLocalHhCartDrafts(): Promise<void> {
+  const groups = await HHOrderGroup.find({ 'children.b2bDraftId': /^local:/ }).lean<LegacyGroup[]>();
+  let updated = 0;
+
+  for (const group of groups) {
+    const children = (group.children ?? []).map((child) => {
+      if (!(child.b2bDraftId ?? '').startsWith('local:')) return child;
+      return { ...child, cartStatus: HH_DEFAULT_CART_STATUS, b2bDraftId: '' };
+    });
+    await HHOrderGroup.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          children,
+          cartStatus: rollupHhCartStatus(children.map((child) => child.cartStatus)),
+        },
+      }
+    );
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    console.log(`[hh-sportswear] Cleared ${updated} group${updated === 1 ? '' : 's'} of local cart placeholders`);
   }
 }
 

@@ -8,7 +8,10 @@ import passport from './config/passport';
 import { connectDB } from './config/db';
 import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
-import { migrateHhSplitStatuses } from './models/HHOrderGroup';
+import { migrateHhSplitStatuses, migrateLocalHhCartDrafts } from './models/HHOrderGroup';
+import { seedCookieJars } from './models/CookieJar';
+import { seedHhB2bConfig } from './models/HHB2bConfig';
+import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -77,7 +80,11 @@ app.get('*', (req, res, next) => {
 
 const start = async () => {
   await connectDB();
+  await seedCookieJars();
+  await seedHhB2bConfig();
   await migrateHhSplitStatuses();
+  await migrateLocalHhCartDrafts();
+  await repairHhB2bReferenceNumbers();
   app.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);
   });

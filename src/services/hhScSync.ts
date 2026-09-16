@@ -14,6 +14,8 @@ import {
   loadSellerCentralCookie,
 } from '../lib/hhSellerCentral';
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
+import { withHhGroupLock } from '../lib/hhGroupLock';
+import { enqueueHhCartDraft } from './hhCartDraft';
 
 const LOG = '[hh-sc-sync]';
 const MAX_ERROR_LEN = 1000;
@@ -38,6 +40,7 @@ export interface HhScSyncRuntime {
 interface HhScSyncJob {
   groupId: string;
   childId?: string;
+  autoDraft: boolean;
 }
 
 const queue: HhScSyncJob[] = [];
@@ -124,10 +127,18 @@ function applyGroupRollup(group: IHHOrderGroup): void {
   group.cartStatus = rollupHhCartStatus(group.children.map((child) => child.cartStatus));
 }
 
-async function persistChild(group: IHHOrderGroup): Promise<void> {
-  applyGroupRollup(group);
-  group.markModified('children');
-  await group.save();
+async function persistChild(groupId: string, childId: string, mutate: (child: IHHChildOrder) => void): Promise<IHHChildOrder | null> {
+  return withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return null;
+    const child = group.children.id(childId);
+    if (!child) return null;
+    mutate(child);
+    applyGroupRollup(group);
+    group.markModified('children');
+    await group.save();
+    return child;
+  });
 }
 
 class StopGroupError extends Error {
@@ -143,8 +154,16 @@ function childNeedsFill(child: IHHChildOrder): boolean {
   return (child.items ?? []).some((item) => item.imageUrl == null || typeof item.tax !== 'number');
 }
 
-async function fillChild(group: IHHOrderGroup, child: IHHChildOrder, cookie: string, run: HhScSyncRunResult): Promise<void> {
+async function fillChild(
+  group: IHHOrderGroup,
+  child: IHHChildOrder,
+  cookie: string,
+  run: HhScSyncRunResult,
+  autoDraft: boolean
+): Promise<void> {
   currentOrderId = child.orderId;
+  const groupId = String(group._id);
+  const childId = String(child._id);
   const scOrder = await fetchScOrder(child.orderId, cookie);
   if (scOrder.sellerNotes && scOrder.sellerNotes !== child.po) {
     console.warn(
@@ -157,20 +176,22 @@ async function fillChild(group: IHHOrderGroup, child: IHHChildOrder, cookie: str
       console.warn(`${LOG} Skipped ${child.orderId} — missing order.blob on refresh`);
       return;
     }
-    applyFill(child, mapScFill(scOrder, null), 'failed');
-    await persistChild(group);
+    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed'));
     run.flagged += 1;
     console.warn(`${LOG} Failed ${child.orderId} — missing order.blob`);
     return;
   }
 
   const buyer = await fetchScBuyerInfo(child.orderId, scOrder.blob, cookie);
-  applyFill(child, mapScFill(scOrder, buyer), 'synced');
-  await persistChild(group);
+  const saved = await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, buyer), 'synced'));
   run.synced += 1;
   lastSuccessAt = new Date();
   lastError = null;
-  console.log(`${LOG} Synced ${child.orderId} (${child.items.length} item${child.items.length === 1 ? '' : 's'})`);
+  const itemCount = saved?.items.length ?? child.items.length;
+  console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
+  if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
+    enqueueHhCartDraft(groupId, childId);
+  }
 }
 
 function pickNextChild(group: IHHOrderGroup, job: HhScSyncJob, attempted: Set<string>): IHHChildOrder | undefined {
@@ -216,7 +237,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
 
       attempted.add(String(child._id));
       try {
-        await fillChild(group, child, cookie, run);
+        await fillChild(group, child, cookie, run, job.autoDraft);
       } catch (err) {
         if (err instanceof HhScAuthError || err instanceof HhScRateLimitError) {
           throw new StopGroupError(err.message);
@@ -226,8 +247,9 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
             console.warn(`${LOG} Skipped ${child.orderId} — ${err.message}`);
             continue;
           }
-          applyFill(child, { ...EMPTY_FILL, country: child.country || 'US' }, 'failed');
-          await persistChild(group);
+          await persistChild(String(group._id), String(child._id), (row) =>
+            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed')
+          );
           run.flagged += 1;
           lastError = truncateError(`${child.orderId}: ${err.message}`);
           console.warn(`${LOG} Failed ${child.orderId} — ${err.message}`);
@@ -274,11 +296,14 @@ async function drainQueue(): Promise<void> {
 }
 
 /** Starts filling pending (and image/tax backfill) Order IDs. Safe to call after the HTTP response. */
-export function enqueueHhGroupScSync(groupId: string, childId?: string): void {
+export function enqueueHhGroupScSync(groupId: string, childId?: string, options?: { autoDraft?: boolean }): void {
   if (!groupId) return;
-  const job: HhScSyncJob = { groupId, childId };
+  const autoDraft = options?.autoDraft !== false;
+  const job: HhScSyncJob = { groupId, childId, autoDraft };
 
-  if (queue.some((queued) => jobCovers(queued, job))) {
+  const existing = queue.find((queued) => jobCovers(queued, job));
+  if (existing) {
+    if (autoDraft) existing.autoDraft = true;
     console.log(`${LOG} Group ${jobLabel(job)} is already queued`);
     return;
   }
