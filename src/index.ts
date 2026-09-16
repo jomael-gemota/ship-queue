@@ -8,6 +8,7 @@ import passport from './config/passport';
 import { connectDB } from './config/db';
 import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
+import { migrateHhSplitStatuses } from './models/HHOrderGroup';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -76,6 +77,7 @@ app.get('*', (req, res, next) => {
 
 const start = async () => {
   await connectDB();
+  await migrateHhSplitStatuses();
   app.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);
   });
