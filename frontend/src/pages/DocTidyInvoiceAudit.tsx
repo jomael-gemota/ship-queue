@@ -11,11 +11,15 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
+  LINE_ITEM_COLUMNS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
+  loadLineItemColumnVisibility,
+  saveLineItemColumnVisibility,
   extractJsonField,
   extractJsonArray,
   type InvoiceAuditColumnId,
+  type LineItemColumnId,
   type ParseJobListItem,
   type ParseJobsResponse,
 } from '../types/docTidy'
@@ -161,42 +165,302 @@ function ColumnSettingsDrawer({
   )
 }
 
-/* ──────────────────────────────────── Line items expansion ── */
+/* ──────────────────────────────── Line item column drawer ── */
 
-function LineItemsExpansion({ items }: { items: Record<string, unknown>[] }) {
+function LineItemColumnDrawer({
+  vendorName,
+  visibility,
+  onChange,
+  onClose,
+}: {
+  vendorName: string
+  visibility: Record<LineItemColumnId, boolean>
+  onChange: (next: Record<LineItemColumnId, boolean>) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  const toggle = (id: LineItemColumnId) => onChange({ ...visibility, [id]: !visibility[id] })
+
+  const resetDefaults = () => {
+    const defaults = Object.fromEntries(
+      LINE_ITEM_COLUMNS.map((c) => [c.id, c.defaultVisible])
+    ) as Record<LineItemColumnId, boolean>
+    onChange(defaults)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Line item column settings"
+        className="relative ml-auto flex h-full w-full max-w-xs flex-col overflow-hidden border-l border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text-100)]">Line item columns</h3>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              {vendorName
+                ? <>Saved separately for <span className="font-medium text-[var(--text-100)]">{vendorName}</span>.</>
+                : 'Toggle which columns are shown in the line items table.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+            Default visible
+          </p>
+          <ul className="space-y-1">
+            {LINE_ITEM_COLUMNS.filter((c) => c.defaultVisible).map((col) => (
+              <li key={col.id}>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+                  <input
+                    type="checkbox"
+                    checked={visibility[col.id]}
+                    onChange={() => toggle(col.id)}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
+                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+                  </div>
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mb-3 mt-5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+            Hidden by default
+          </p>
+          <ul className="space-y-1">
+            {LINE_ITEM_COLUMNS.filter((c) => !c.defaultVisible).map((col) => (
+              <li key={col.id}>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+                  <input
+                    type="checkbox"
+                    checked={visibility[col.id]}
+                    onChange={() => toggle(col.id)}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
+                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+                  </div>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-5 py-3">
+          <button
+            type="button"
+            onClick={resetDefaults}
+            className="cursor-pointer text-xs text-[var(--text-200)] hover:text-[var(--accent-200)] hover:underline"
+          >
+            Reset to defaults
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────── Line items table ── */
+
+/** Extract a scalar from a line-item object, returning '' if absent. */
+function liField(item: Record<string, unknown>, ...candidates: string[]): string {
+  return extractJsonField(item, ...candidates)
+}
+
+/** Render a text cell — monospace variant optional. */
+function liTextCell(value: string, mono = false): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return (
+    <span className={mono ? 'font-mono text-[var(--text-100)]' : 'text-[var(--text-100)]'}>
+      {value}
+    </span>
+  )
+}
+
+/** Render a numeric/currency cell, right-aligned. */
+function liNumCell(value: string): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+}
+
+function LineItemsTable({
+  items,
+  vendorName,
+}: {
+  items: Record<string, unknown>[]
+  vendorName: string
+}) {
+  const [colVisibility, setColVisibility] = useState<Record<LineItemColumnId, boolean>>(
+    () => loadLineItemColumnVisibility(vendorName)
+  )
+  const [showColSettings, setShowColSettings] = useState(false)
+
+  const handleColChange = (next: Record<LineItemColumnId, boolean>) => {
+    setColVisibility(next)
+    saveLineItemColumnVisibility(vendorName, next)
+  }
+
+  const visibleCols = useMemo(
+    () => LINE_ITEM_COLUMNS.filter((c) => colVisibility[c.id]),
+    [colVisibility]
+  )
+
+  const cellFor = (item: Record<string, unknown>, colId: LineItemColumnId): React.ReactNode => {
+    switch (colId) {
+      case 'sku':
+        return liTextCell(liField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number', 'partno', 'itemcode'), true)
+      case 'model':
+        return liTextCell(liField(item, 'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no', 'style#', 'product_code'), true)
+      case 'description':
+        return liTextCell(liField(item, 'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name'))
+      case 'quantity':
+        return liNumCell(liField(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount'))
+      case 'unitPrice':
+        return liNumCell(liField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price', 'per_unit', 'per_unit_price'))
+      case 'discountedPrice':
+        return liNumCell(liField(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price', 'dealer_price'))
+      case 'discountPercent':
+        return liNumCell(liField(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc', 'pct_off', 'discount_%'))
+      case 'lineTotal':
+        return liNumCell(liField(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'ext_amount', 'amount'))
+      case 'uom':
+        return liTextCell(liField(item, 'uom', 'unit', 'unit_of_measure', 'unit_measure', 'measure'), true)
+      case 'taxAmount':
+        return liNumCell(liField(item, 'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst'))
+      case 'notes':
+        return liTextCell(liField(item, 'notes', 'note', 'remarks', 'comments', 'comment'))
+      default:
+        return null
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-2 text-xs italic text-[var(--text-200)]">No line items extracted.</p>
   }
 
   return (
-    <ul className="divide-y divide-[var(--bg-300)]">
-      {items.map((item, idx) => {
-        const desc =
-          extractJsonField(item, 'description', 'name', 'product', 'item', 'sku', 'part_number', 'part_no') ||
-          `Item ${idx + 1}`
-        const sku = extractJsonField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code')
-        const qty = extractJsonField(item, 'quantity', 'qty', 'amount')
-        const unitPrice = extractJsonField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost')
-        const total = extractJsonField(item, 'total', 'line_total', 'subtotal', 'amount', 'extended_price')
-        const uom = extractJsonField(item, 'uom', 'unit', 'unit_of_measure')
+    <div>
+      {/* Sub-header with count and column toggle */}
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+          {items.length} line item{items.length !== 1 ? 's' : ''}
+          {vendorName && (
+            <span className="ml-1.5 normal-case font-normal text-[var(--text-200)]">
+              · {vendorName}
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowColSettings(true)}
+          title="Configure visible line item columns"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--bg-300)] px-2 py-1 text-[10px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Columns
+          <span className="rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-200)]">
+            {visibleCols.length}
+          </span>
+        </button>
+      </div>
 
-        return (
-          <li key={idx} className="flex flex-wrap items-start gap-x-4 gap-y-0.5 py-2 text-[11px]">
-            <div className="min-w-0 flex-1">
-              <span className="font-medium text-[var(--text-100)]">{desc}</span>
-              {sku && sku !== desc && (
-                <span className="ml-2 font-mono text-[var(--text-200)]">{sku}</span>
-              )}
-            </div>
-            <div className="flex shrink-0 gap-3 text-[var(--text-200)]">
-              {qty && <span>Qty: <span className="font-medium text-[var(--text-100)]">{qty}{uom ? ` ${uom}` : ''}</span></span>}
-              {unitPrice && <span>Unit: <span className="font-medium text-[var(--text-100)]">{unitPrice}</span></span>}
-              {total && <span>Total: <span className="font-semibold text-[var(--text-100)]">{total}</span></span>}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+      {/* Table */}
+      <div className="overflow-x-auto rounded-lg border border-[var(--bg-300)]">
+        <table className="w-full text-[11px] border-separate border-spacing-0 min-w-max">
+          <thead>
+            <tr className="bg-[var(--bg-300)]/70">
+              {visibleCols.map((col) => (
+                <th
+                  key={col.id}
+                  className={`
+                    px-3 py-2 text-[10px] font-semibold uppercase tracking-wide
+                    text-[var(--text-200)] whitespace-nowrap border-b border-[var(--bg-300)]
+                    ${col.numeric ? 'text-right' : 'text-left'}
+                  `}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr
+                key={idx}
+                className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/40 transition-colors"
+              >
+                {visibleCols.map((col, ci) => (
+                  <td
+                    key={col.id}
+                    className={`
+                      px-3 py-1.5 align-middle
+                      ${idx < items.length - 1 ? 'border-b border-[var(--bg-300)]/60' : ''}
+                      ${col.numeric ? 'text-right tabular-nums' : 'text-left'}
+                      ${col.id === 'description' ? 'max-w-[280px]' : ''}
+                      ${ci === 0 ? 'rounded-l' : ''}
+                      ${ci === visibleCols.length - 1 ? 'rounded-r' : ''}
+                    `}
+                  >
+                    {cellFor(item, col.id)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Per-vendor column settings drawer */}
+      {showColSettings && (
+        <LineItemColumnDrawer
+          vendorName={vendorName}
+          visibility={colVisibility}
+          onChange={handleColChange}
+          onClose={() => setShowColSettings(false)}
+        />
+      )}
+    </div>
   )
 }
 
@@ -581,12 +845,12 @@ export default function DocTidyInvoiceAudit() {
                         <tr key={`${job._id}-items`}>
                           <td
                             colSpan={visibleCols.length + 1}
-                            className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-6 pb-3 pt-2"
+                            className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-6 pb-4 pt-3"
                           >
-                            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                              Line items — {job.filename}
-                            </p>
-                            <LineItemsExpansion items={lineItems} />
+                            <LineItemsTable
+                              items={lineItems}
+                              vendorName={job.vendorName ?? ''}
+                            />
                           </td>
                         </tr>
                       )

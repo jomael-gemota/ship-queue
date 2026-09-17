@@ -428,3 +428,76 @@ export function extractJsonArray(
   }
   return []
 }
+
+/* ─────────────────────────────────────── Line Item Columns ── */
+
+/** All column ids available in the line-items sub-table. */
+export type LineItemColumnId =
+  | 'sku'
+  | 'model'
+  | 'description'
+  | 'quantity'
+  | 'unitPrice'
+  | 'discountedPrice'
+  | 'discountPercent'
+  | 'lineTotal'
+  | 'uom'
+  | 'taxAmount'
+  | 'notes'
+
+export interface LineItemColumn {
+  id: LineItemColumnId
+  label: string
+  description: string
+  defaultVisible: boolean
+  /** Right-align and apply tabular-nums to numeric/currency columns. */
+  numeric?: boolean
+  /** Render value in monospace (e.g. codes). */
+  mono?: boolean
+}
+
+export const LINE_ITEM_COLUMNS: LineItemColumn[] = [
+  { id: 'sku',             label: 'SKU',          description: 'Part number, SKU, or item code',               defaultVisible: true,  mono: true  },
+  { id: 'model',           label: 'Model #',       description: 'Model number, style number, or product code',  defaultVisible: true,  mono: true  },
+  { id: 'description',     label: 'Description',   description: 'Product or item description',                  defaultVisible: true                },
+  { id: 'quantity',        label: 'Qty',           description: 'Quantity ordered',                             defaultVisible: true,  numeric: true },
+  { id: 'unitPrice',       label: 'Unit Price',    description: 'Unit price, item cost, or list price',         defaultVisible: true,  numeric: true },
+  { id: 'discountedPrice', label: 'Disc. Price',   description: 'Price after discount applied',                 defaultVisible: true,  numeric: true },
+  { id: 'discountPercent', label: 'Discount %',    description: 'Percentage discount applied',                  defaultVisible: true,  numeric: true },
+  { id: 'lineTotal',       label: 'Line Total',    description: 'Total cost for this line item',                defaultVisible: true,  numeric: true },
+  { id: 'uom',             label: 'UOM',           description: 'Unit of measure (e.g. EA, CS, LB)',            defaultVisible: false, mono: true  },
+  { id: 'taxAmount',       label: 'Tax',           description: 'Tax amount for this line',                     defaultVisible: false, numeric: true },
+  { id: 'notes',           label: 'Notes',         description: 'Additional notes or remarks on this line',     defaultVisible: false               },
+]
+
+const LINE_ITEM_COL_STORAGE_PREFIX = 'docTidy.lineItems.columns.'
+
+/** Load per-column visibility for a specific vendor's line items from localStorage. */
+export function loadLineItemColumnVisibility(vendorName: string): Record<LineItemColumnId, boolean> {
+  const defaults = Object.fromEntries(
+    LINE_ITEM_COLUMNS.map((c) => [c.id, c.defaultVisible])
+  ) as Record<LineItemColumnId, boolean>
+
+  try {
+    const key = LINE_ITEM_COL_STORAGE_PREFIX + normalizeVendorName(vendorName || 'unknown')
+    const raw = localStorage.getItem(key)
+    if (!raw) return defaults
+    const stored = JSON.parse(raw) as Partial<Record<LineItemColumnId, boolean>>
+    return { ...defaults, ...stored }
+  } catch {
+    return defaults
+  }
+}
+
+/** Persist line-item column visibility for a specific vendor to localStorage. */
+export function saveLineItemColumnVisibility(
+  vendorName: string,
+  visibility: Record<LineItemColumnId, boolean>
+): void {
+  try {
+    const key = LINE_ITEM_COL_STORAGE_PREFIX + normalizeVendorName(vendorName || 'unknown')
+    localStorage.setItem(key, JSON.stringify(visibility))
+  } catch {
+    // localStorage can be blocked in some environments — silently ignore.
+  }
+}
