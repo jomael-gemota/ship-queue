@@ -6,6 +6,8 @@ import DocTidyCorrection, {
   type CorrectionMode,
 } from '../models/DocTidyCorrection';
 import DocTidyVendor, { normalizeVendorName } from '../models/DocTidyVendor';
+import DocTidyMessage from '../models/DocTidyMessage';
+import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import {
   ParseRequestError,
   requestParse,
@@ -100,10 +102,38 @@ export const listParseJobs = async (req: Request, res: Response): Promise<void> 
       page = '1',
       pageSize = '200',
       vendorName,
+      workspaceId,
     } = req.query as Record<string, string>;
 
     const filter: Record<string, unknown> = { status };
     if (vendorName) filter.vendorName = { $regex: vendorName, $options: 'i' };
+
+    // Workspace filter: resolve rule IDs → message IDs → parse job filter.
+    if (workspaceId) {
+      if (!isValidObjectId(workspaceId)) {
+        res.status(400).json({ message: 'Invalid workspaceId' });
+        return;
+      }
+
+      const workspace = await DocTidyWorkspace.findById(workspaceId).lean();
+      if (!workspace) {
+        res.status(404).json({ message: 'Workspace not found' });
+        return;
+      }
+
+      // A workspace with no rules can never have any jobs.
+      if (workspace.ruleIds.length === 0) {
+        res.json({ data: [], pagination: { page: 1, pageSize: Number(pageSize), total: 0, pages: 1 } });
+        return;
+      }
+
+      const messages = await DocTidyMessage
+        .find({ ruleId: { $in: workspace.ruleIds } })
+        .select('_id')
+        .lean();
+
+      filter.messageId = { $in: messages.map((m) => m._id) };
+    }
 
     const pg = Math.max(1, parseInt(page, 10));
     const size = Math.min(500, Math.max(1, parseInt(pageSize, 10)));

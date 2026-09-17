@@ -287,6 +287,22 @@ export function normalizeVendorName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+/* ──────────────────────────────────────────── Invoice Workspaces ── */
+
+/**
+ * A named view that aggregates parse jobs from a selected set of rules.
+ * Many-to-many with rules: the same rule can be in multiple workspaces.
+ */
+export interface DocTidyWorkspace {
+  _id: string
+  name: string
+  /** Rule IDs included in this workspace. */
+  ruleIds: string[]
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
 /* ─────────────────────────────────────────────── Invoice Audit ── */
 
 /** A completed parse job as returned by `GET /doc-tidy/parse-jobs`. */
@@ -318,8 +334,9 @@ export interface ParseJobsResponse {
   }
 }
 
-/** All column ids available in the Invoice Audit table. */
+/** All column ids available in the Invoice Audit table (document-level + line item). */
 export type InvoiceAuditColumnId =
+  // ── Document-level ──
   | 'vendorName'
   | 'documentType'
   | 'invoiceNumber'
@@ -329,7 +346,19 @@ export type InvoiceAuditColumnId =
   | 'terms'
   | 'trackingNumber'
   | 'totalValue'
-  | 'lineItems'
+  // ── Line item (inline, prefixed li) ──
+  | 'liSku'
+  | 'liModel'
+  | 'liDescription'
+  | 'liQuantity'
+  | 'liUnitPrice'
+  | 'liDiscountedPrice'
+  | 'liDiscountPercent'
+  | 'liLineTotal'
+  | 'liUom'
+  | 'liTaxAmount'
+  | 'liNotes'
+  // ── Meta ──
   | 'filename'
   | 'parsedAt'
   | 'requestedBy'
@@ -339,22 +368,40 @@ export interface InvoiceAuditColumn {
   label: string
   description: string
   defaultVisible: boolean
+  /** Which logical section this column belongs to (used by the settings drawer). */
+  section: 'document' | 'lineItem'
+  /** Right-align header and cell; apply tabular-nums. */
+  numeric?: boolean
+  /** Render cell value in monospace. */
+  mono?: boolean
 }
 
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
-  { id: 'vendorName',     label: 'Vendor',       description: 'Vendor or supplier name',                       defaultVisible: true },
-  { id: 'documentType',   label: 'Type',          description: 'Document type (Invoice, Order Confirmation…)',  defaultVisible: true },
-  { id: 'invoiceNumber',  label: 'Invoice #',     description: 'Invoice number from the document',             defaultVisible: true },
-  { id: 'poNumber',       label: 'PO Number',     description: 'Purchase order number',                        defaultVisible: true },
-  { id: 'orderDate',      label: 'Order Date',    description: 'Date the order was placed',                    defaultVisible: true },
-  { id: 'invoiceDate',    label: 'Invoice Date',  description: 'Date printed on the invoice',                  defaultVisible: true },
-  { id: 'terms',          label: 'Terms',         description: 'Payment terms (e.g. Net 30)',                  defaultVisible: true },
-  { id: 'trackingNumber', label: 'Tracking #',    description: 'Shipment tracking number',                     defaultVisible: true },
-  { id: 'totalValue',     label: 'Total Value',   description: 'Grand total / invoice amount',                 defaultVisible: true },
-  { id: 'lineItems',      label: 'Line Items',    description: 'Products or SKUs listed on the document',      defaultVisible: true },
-  { id: 'filename',       label: 'Filename',      description: 'Original PDF filename',                        defaultVisible: false },
-  { id: 'parsedAt',       label: 'Parsed At',     description: 'When the agent completed parsing',             defaultVisible: false },
-  { id: 'requestedBy',    label: 'Requested By',  description: 'Who triggered the parse',                      defaultVisible: false },
+  // ── Document fields ──
+  { id: 'vendorName',        section: 'document',  label: 'Vendor',        description: 'Vendor or supplier name',                      defaultVisible: true  },
+  { id: 'documentType',      section: 'document',  label: 'Type',          description: 'Document type (Invoice, Order Confirmation…)', defaultVisible: true  },
+  { id: 'invoiceNumber',     section: 'document',  label: 'Invoice #',     description: 'Invoice number from the document',             defaultVisible: true  },
+  { id: 'poNumber',          section: 'document',  label: 'PO Number',     description: 'Purchase order number',                        defaultVisible: true  },
+  { id: 'orderDate',         section: 'document',  label: 'Order Date',    description: 'Date the order was placed',                    defaultVisible: true  },
+  { id: 'invoiceDate',       section: 'document',  label: 'Invoice Date',  description: 'Date printed on the invoice',                  defaultVisible: true  },
+  { id: 'totalValue',        section: 'document',  label: 'Total Value',   description: 'Grand total / invoice amount',                 defaultVisible: true,  numeric: true },
+  { id: 'terms',             section: 'document',  label: 'Terms',         description: 'Payment terms (e.g. Net 30)',                  defaultVisible: false },
+  { id: 'trackingNumber',    section: 'document',  label: 'Tracking #',    description: 'Shipment tracking number',                     defaultVisible: false },
+  { id: 'filename',          section: 'document',  label: 'Filename',      description: 'Original PDF filename',                        defaultVisible: false },
+  { id: 'parsedAt',          section: 'document',  label: 'Parsed At',     description: 'When the agent completed parsing',             defaultVisible: false },
+  { id: 'requestedBy',       section: 'document',  label: 'Requested By',  description: 'Who triggered the parse',                      defaultVisible: false },
+  // ── Line item fields ──
+  { id: 'liSku',             section: 'lineItem',  label: 'SKU',           description: 'Part number, SKU, or item code',               defaultVisible: true,  mono: true    },
+  { id: 'liModel',           section: 'lineItem',  label: 'Model #',       description: 'Model number, style number, or product code',  defaultVisible: true,  mono: true    },
+  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: true                 },
+  { id: 'liQuantity',        section: 'lineItem',  label: 'Qty',           description: 'Quantity ordered',                             defaultVisible: true,  numeric: true },
+  { id: 'liUnitPrice',       section: 'lineItem',  label: 'Unit Price',    description: 'Unit price, item cost, or list price',         defaultVisible: true,  numeric: true },
+  { id: 'liDiscountedPrice', section: 'lineItem',  label: 'Disc. Price',   description: 'Price after discount applied',                 defaultVisible: true,  numeric: true },
+  { id: 'liDiscountPercent', section: 'lineItem',  label: 'Discount %',    description: 'Percentage discount applied',                  defaultVisible: true,  numeric: true },
+  { id: 'liLineTotal',       section: 'lineItem',  label: 'Line Total',    description: 'Total cost for this line item',                defaultVisible: true,  numeric: true },
+  { id: 'liUom',             section: 'lineItem',  label: 'UOM',           description: 'Unit of measure (e.g. EA, CS, LB)',            defaultVisible: false, mono: true    },
+  { id: 'liTaxAmount',       section: 'lineItem',  label: 'Tax',           description: 'Tax amount for this line',                     defaultVisible: false, numeric: true },
+  { id: 'liNotes',           section: 'lineItem',  label: 'Notes',         description: 'Additional notes or remarks on this line',     defaultVisible: false },
 ]
 
 const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns'
@@ -428,3 +475,10 @@ export function extractJsonArray(
   }
   return []
 }
+
+/* ─────────────────────────── (Legacy) Line Item Column types ─ removed ── */
+// Superseded by the inline li* columns in InvoiceAuditColumnId.
+// Kept as a placeholder so future imports fail loudly rather than silently.
+/** @deprecated Use the InvoiceAuditColumnId li* variants instead. */
+export type LineItemColumnId = never
+

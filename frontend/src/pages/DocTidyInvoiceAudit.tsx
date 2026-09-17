@@ -5,9 +5,9 @@ import {
   DocTidyTabs,
   DocumentTypeBadge,
   PaginationArrows,
+  Spinner,
   Th,
 } from '../components/docTidy/docTidyUi'
-import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -15,12 +15,12 @@ import {
   saveAuditColumnVisibility,
   extractJsonField,
   extractJsonArray,
+  type DocTidyRule,
+  type DocTidyWorkspace,
   type InvoiceAuditColumnId,
   type ParseJobListItem,
   type ParseJobsResponse,
 } from '../types/docTidy'
-
-/* ──────────────────────────────────── helpers ── */
 
 /** Strip common currency prefixes/symbols for cleaner display. */
 function formatTotal(raw: string): string {
@@ -38,19 +38,13 @@ function ColumnSettingsDrawer({
   onChange: (next: Record<InvoiceAuditColumnId, boolean>) => void
   onClose: () => void
 }) {
-  const drawerRef = useRef<HTMLDivElement>(null)
-
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const toggle = (id: InvoiceAuditColumnId) => {
-    onChange({ ...visibility, [id]: !visibility[id] })
-  }
+  const toggle = (id: InvoiceAuditColumnId) => onChange({ ...visibility, [id]: !visibility[id] })
 
   const resetDefaults = () => {
     const defaults = Object.fromEntries(
@@ -59,14 +53,30 @@ function ColumnSettingsDrawer({
     onChange(defaults)
   }
 
+  const docCols   = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
+  const liCols    = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+
+  const ColRow = ({ col }: { col: (typeof INVOICE_AUDIT_COLUMNS)[number] }) => (
+    <li>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+        <input
+          type="checkbox"
+          checked={visibility[col.id]}
+          onChange={() => toggle(col.id)}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
+          <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+        </div>
+      </label>
+    </li>
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={onClose} />
-
-      {/* Drawer — slides in from the right */}
       <div
-        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Column settings"
@@ -80,12 +90,8 @@ function ColumnSettingsDrawer({
               Toggle which fields are shown in the table.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
-          >
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="-mr-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -93,66 +99,48 @@ function ColumnSettingsDrawer({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-            Default visible
-          </p>
-          <ul className="space-y-1">
-            {INVOICE_AUDIT_COLUMNS.filter((c) => c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input
-                    type="checkbox"
-                    checked={visibility[col.id]}
-                    onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Document fields section */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="h-3.5 w-3.5 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                Document fields
+              </p>
+            </div>
+            <ul className="space-y-1">
+              {docCols.map((col) => <ColRow key={col.id} col={col} />)}
+            </ul>
+          </div>
 
-          <p className="mb-3 mt-5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-            Hidden by default
-          </p>
-          <ul className="space-y-1">
-            {INVOICE_AUDIT_COLUMNS.filter((c) => !c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input
-                    type="checkbox"
-                    checked={visibility[col.id]}
-                    onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
+          {/* Line item fields section */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="h-3.5 w-3.5 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                Line item fields
+              </p>
+            </div>
+            <ul className="space-y-1">
+              {liCols.map((col) => <ColRow key={col.id} col={col} />)}
+            </ul>
+          </div>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-5 py-3">
-          <button
-            type="button"
-            onClick={resetDefaults}
-            className="cursor-pointer text-xs text-[var(--text-200)] hover:text-[var(--accent-200)] hover:underline"
-          >
+          <button type="button" onClick={resetDefaults}
+            className="cursor-pointer text-xs text-[var(--text-200)] hover:text-[var(--accent-200)] hover:underline">
             Reset to defaults
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white"
-          >
+          <button type="button" onClick={onClose}
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white">
             Done
           </button>
         </div>
@@ -161,129 +149,449 @@ function ColumnSettingsDrawer({
   )
 }
 
-/* ──────────────────────────────────── Line items expansion ── */
+/* ──────────────────────────── Workspace editor dialog ── */
 
-function LineItemsExpansion({ items }: { items: Record<string, unknown>[] }) {
-  if (items.length === 0) {
-    return <p className="py-2 text-xs italic text-[var(--text-200)]">No line items extracted.</p>
-  }
-
-  return (
-    <ul className="divide-y divide-[var(--bg-300)]">
-      {items.map((item, idx) => {
-        const desc =
-          extractJsonField(item, 'description', 'name', 'product', 'item', 'sku', 'part_number', 'part_no') ||
-          `Item ${idx + 1}`
-        const sku = extractJsonField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code')
-        const qty = extractJsonField(item, 'quantity', 'qty', 'amount')
-        const unitPrice = extractJsonField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost')
-        const total = extractJsonField(item, 'total', 'line_total', 'subtotal', 'amount', 'extended_price')
-        const uom = extractJsonField(item, 'uom', 'unit', 'unit_of_measure')
-
-        return (
-          <li key={idx} className="flex flex-wrap items-start gap-x-4 gap-y-0.5 py-2 text-[11px]">
-            <div className="min-w-0 flex-1">
-              <span className="font-medium text-[var(--text-100)]">{desc}</span>
-              {sku && sku !== desc && (
-                <span className="ml-2 font-mono text-[var(--text-200)]">{sku}</span>
-              )}
-            </div>
-            <div className="flex shrink-0 gap-3 text-[var(--text-200)]">
-              {qty && <span>Qty: <span className="font-medium text-[var(--text-100)]">{qty}{uom ? ` ${uom}` : ''}</span></span>}
-              {unitPrice && <span>Unit: <span className="font-medium text-[var(--text-100)]">{unitPrice}</span></span>}
-              {total && <span>Total: <span className="font-semibold text-[var(--text-100)]">{total}</span></span>}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+function WorkspaceEditorDialog({
+  initial,
+  rules,
+  rulesLoading,
+  onSave,
+  onClose,
+}: {
+  initial: DocTidyWorkspace | null
+  rules: DocTidyRule[]
+  rulesLoading: boolean
+  onSave: (workspace: DocTidyWorkspace) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(
+    new Set(initial?.ruleIds ?? [])
   )
-}
-
-/* ──────────────────────────────────── Page ── */
-
-const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
-
-export default function DocTidyInvoiceAudit() {
-  const [jobs, setJobs] = useState<ParseJobListItem[]>([])
-  const [pagination, setPagination] = useState({ total: 0, pages: 1 })
-  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(100)
-  const [vendorSearch, setVendorSearch] = useState('')
-  const [debouncedVendor, setDebouncedVendor] = useState('')
-
-  // Expanded line-item rows
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-
-  // Column visibility
-  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(
-    loadAuditColumnVisibility
-  )
-  const [showColSettings, setShowColSettings] = useState(false)
-
-  // Parse panel
-  const [openJobId, setOpenJobId] = useState<string | null>(null)
-
-  // Debounce vendor search
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedVendor(vendorSearch.trim()), 350)
-    return () => clearTimeout(timer)
-  }, [vendorSearch])
+    nameRef.current?.focus()
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
 
-  // Reset page on filter change
-  useEffect(() => {
-    setPage(1)
-  }, [debouncedVendor, pageSize])
-
-  const fetchJobs = useCallback(
-    async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const params = new URLSearchParams({
-          status: 'completed',
-          page: String(page),
-          pageSize: String(pageSize),
-        })
-        if (debouncedVendor) params.set('vendorName', debouncedVendor)
-
-        const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
-        setJobs(res.data)
-        setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load invoice audit data')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [page, pageSize, debouncedVendor]
-  )
-
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      fetchJobs()
-      return
-    }
-    fetchJobs()
-  }, [fetchJobs])
-
-  const handleColVisChange = (next: Record<InvoiceAuditColumnId, boolean>) => {
-    setColVisibility(next)
-    saveAuditColumnVisibility(next)
-  }
-
-  const toggleRow = (id: string) => {
-    setExpandedRows((prev) => {
+  const toggleRule = (id: string) => {
+    setSelectedRuleIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+  }
+
+  const submit = async () => {
+    if (!name.trim()) { setError('Please enter a workspace name.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const body = { name: name.trim(), ruleIds: [...selectedRuleIds] }
+      let result: { data: DocTidyWorkspace }
+      if (initial) {
+        result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
+      } else {
+        result = await authApi.post<{ data: DocTidyWorkspace }>('/doc-tidy/workspaces', body)
+      }
+      onSave(result.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save workspace')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        style={{ maxHeight: 'min(80vh, 640px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">
+              {initial ? 'Edit workspace' : 'New workspace'}
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              {initial
+                ? 'Rename or change which rules this workspace aggregates.'
+                : 'Give your workspace a name and select which rules to include.'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Name */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+              Workspace name
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void submit()}
+              placeholder="e.g. Acme Invoices, Q3 Orders…"
+              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+            />
+          </div>
+
+          {/* Rules */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Rules</label>
+              <span className="text-[11px] text-[var(--text-200)]">{selectedRuleIds.size} selected</span>
+            </div>
+
+            {rulesLoading ? (
+              <div className="flex items-center gap-2 py-4 text-xs text-[var(--text-200)]">
+                <Spinner className="h-3.5 w-3.5" /> Loading rules…
+              </div>
+            ) : rules.length === 0 ? (
+              <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-6 text-center">
+                <p className="text-xs text-[var(--text-200)]">No rules yet.</p>
+                <p className="mt-1 text-[11px] text-[var(--text-200)]">Create filter rules first.</p>
+              </div>
+            ) : (
+              <ul className="overflow-y-auto rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)]" style={{ maxHeight: '260px' }}>
+                {rules.map((rule) => (
+                  <li key={rule._id}>
+                    <label className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--bg-200)]">
+                      <input
+                        type="checkbox"
+                        checked={selectedRuleIds.has(rule._id)}
+                        onChange={() => toggleRule(rule._id)}
+                        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-[var(--text-100)]">{rule.name}</span>
+                          <DocumentTypeBadge value={rule.documentType} />
+                          {!rule.enabled && (
+                            <span className="text-[10px] italic text-[var(--text-200)]">disabled</span>
+                          )}
+                        </div>
+                        {rule.description && (
+                          <p className="mt-0.5 text-[11px] text-[var(--text-200)] truncate">{rule.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-[11px] text-[var(--text-200)]">A rule can be part of multiple workspaces.</p>
+          </div>
+
+          {error && (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+          <button type="button" onClick={onClose}
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={saving}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+            {saving ? 'Saving…' : initial ? 'Save changes' : 'Create workspace'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────── Workspace card ── */
+
+function WorkspaceCard({
+  workspace,
+  rules,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  workspace: DocTidyWorkspace
+  rules: DocTidyRule[]
+  onOpen: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const ruleNames = workspace.ruleIds
+    .map((id) => rules.find((r) => r._id === id)?.name)
+    .filter((n): n is string => Boolean(n))
+
+  return (
+    <div onClick={onOpen}
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] cursor-pointer transition-all hover:border-[var(--accent-200)] hover:shadow-md">
+      {/* Body */}
+      <div className="flex-1 px-5 pt-5 pb-4">
+        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+        </div>
+        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] transition-colors line-clamp-2">
+          {workspace.name}
+        </h3>
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {ruleNames.length === 0 && workspace.ruleIds.length === 0 && (
+            <span className="text-[11px] italic text-[var(--text-200)]">No rules assigned</span>
+          )}
+          {ruleNames.slice(0, 3).map((name) => (
+            <span key={name} className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
+              {name}
+            </span>
+          ))}
+          {ruleNames.length > 3 && (
+            <span className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
+              +{ruleNames.length - 3} more
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
+        <span className="text-[11px] text-[var(--text-200)]">
+          {workspace.ruleIds.length} rule{workspace.ruleIds.length !== 1 ? 's' : ''}
+        </span>
+        <div className="flex items-center gap-1">
+          {confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-rose-500">Delete?</span>
+              <button onClick={onDelete} className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">Yes</button>
+              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)]">No</button>
+            </div>
+          ) : (
+            <>
+              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">Edit</button>
+              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-rose-500">Delete</button>
+              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--primary-100)] px-3 py-1 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80 transition-opacity">Open →</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────── Line item cell helpers ── */
+
+/** Pull a scalar value from a line-item object. */
+function liField(item: Record<string, unknown>, ...candidates: string[]): string {
+  return extractJsonField(item, ...candidates)
+}
+
+/** Text cell — monospace variant for codes. */
+function liText(value: string, mono = false): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return <span className={mono ? 'font-mono text-[var(--text-100)]' : 'text-[var(--text-100)]'}>{value}</span>
+}
+
+/** Numeric / currency cell. */
+function liNum(value: string): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+}
+
+/** Render an inline line item column cell for the given item (null = no item). */
+function liCellFor(colId: InvoiceAuditColumnId, item: Record<string, unknown> | null): React.ReactNode {
+  if (!item) return <span className="text-[var(--text-200)]">—</span>
+  switch (colId) {
+    case 'liSku':             return liText(liField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'), true)
+    case 'liModel':           return liText(liField(item, 'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no'), true)
+    case 'liDescription':     return liText(liField(item, 'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name'))
+    case 'liQuantity':        return liNum(liField(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount'))
+    case 'liUnitPrice':       return liNum(liField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'))
+    case 'liDiscountedPrice': return liNum(liField(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'))
+    case 'liDiscountPercent': return liNum(liField(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'))
+    case 'liLineTotal':       return liNum(liField(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount'))
+    case 'liUom':             return liText(liField(item, 'uom', 'unit', 'unit_of_measure', 'unit_measure'), true)
+    case 'liTaxAmount':       return liNum(liField(item, 'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst'))
+    case 'liNotes':           return liText(liField(item, 'notes', 'note', 'remarks', 'comments', 'comment'))
+    default:                  return null
+  }
+}
+
+/** True if the column id belongs to the line item section. */
+function isLineItemCol(id: InvoiceAuditColumnId): boolean {
+  return id.startsWith('li')
+}
+
+/* ──────────────────────────────────────────────── Page ── */
+
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
+
+export default function DocTidyInvoiceAudit() {
+  /* ── View state ── */
+  type View = 'workspaces' | 'audit'
+  const [view, setView] = useState<View>('workspaces')
+  const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
+
+  /* ── Workspaces ── */
+  const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
+  const [wsLoading, setWsLoading] = useState(true)
+  const [wsError, setWsError] = useState<string | null>(null)
+
+  /* ── Rules (loaded once, for the editor) ── */
+  const [rules, setRules] = useState<DocTidyRule[]>([])
+  const [rulesLoading, setRulesLoading] = useState(false)
+  const rulesLoadedRef = useRef(false)
+
+  /* ── Workspace editor ── */
+  const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
+
+  /* ── Audit table ── */
+  const [jobs, setJobs] = useState<ParseJobListItem[]>([])
+  const [pagination, setPagination] = useState({ total: 0, pages: 1 })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
+  const [vendorSearch, setVendorSearch] = useState('')
+  const [debouncedVendor, setDebouncedVendor] = useState('')
+  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
+  const [showColSettings, setShowColSettings] = useState(false)
+
+  /* ── Load workspaces on mount ── */
+  const loadWorkspaces = useCallback(async () => {
+    setWsLoading(true)
+    setWsError(null)
+    try {
+      const res = await authApi.get<{ data: DocTidyWorkspace[] }>('/doc-tidy/workspaces')
+      setWorkspaces(res.data)
+    } catch (err) {
+      setWsError(err instanceof Error ? err.message : 'Failed to load workspaces')
+    } finally {
+      setWsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
+
+  /* ── Load rules lazily ── */
+  const loadRules = useCallback(async () => {
+    if (rulesLoadedRef.current) return
+    rulesLoadedRef.current = true
+    setRulesLoading(true)
+    try {
+      const res = await authApi.get<{ data: DocTidyRule[] }>('/doc-tidy/rules')
+      setRules(res.data)
+    } catch {
+      rulesLoadedRef.current = false
+    } finally {
+      setRulesLoading(false)
+    }
+  }, [])
+
+  /* ── Vendor search debounce ── */
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedVendor(vendorSearch.trim()), 350)
+    return () => clearTimeout(t)
+  }, [vendorSearch])
+
+  useEffect(() => { setPage(1) }, [debouncedVendor, pageSize])
+
+  /* ── Fetch parse jobs ── */
+  const fetchJobs = useCallback(async () => {
+    if (!activeWorkspace) return
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        status: 'completed',
+        page: String(page),
+        pageSize: String(pageSize),
+        workspaceId: activeWorkspace._id,
+      })
+      if (debouncedVendor) params.set('vendorName', debouncedVendor)
+      const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
+      setJobs(res.data)
+      setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load invoice data')
+    } finally {
+      setLoading(false)
+    }
+  }, [activeWorkspace, page, pageSize, debouncedVendor])
+
+  useEffect(() => { void fetchJobs() }, [fetchJobs])
+
+  /* ── Workspace navigation ── */
+  const enterWorkspace = (ws: DocTidyWorkspace) => {
+    setActiveWorkspace(ws)
+    setView('audit')
+    setPage(1)
+    setVendorSearch('')
+    setError(null)
+  }
+
+  const leaveWorkspace = () => {
+    setView('workspaces')
+    setActiveWorkspace(null)
+    setJobs([])
+    setPagination({ total: 0, pages: 1 })
+  }
+
+  const openEditor = (target: DocTidyWorkspace | 'new') => {
+    setEditTarget(target)
+    void loadRules()
+  }
+
+  const handleWorkspaceSaved = (saved: DocTidyWorkspace) => {
+    setWorkspaces((prev) => {
+      const idx = prev.findIndex((w) => w._id === saved._id)
+      if (idx === -1) return [...prev, saved]
+      const next = [...prev]
+      next[idx] = saved
+      return next
+    })
+    if (activeWorkspace?._id === saved._id) setActiveWorkspace(saved)
+    setEditTarget(null)
+  }
+
+  const handleDeleteWorkspace = async (ws: DocTidyWorkspace) => {
+    try {
+      await authApi.delete(`/doc-tidy/workspaces/${ws._id}`)
+      setWorkspaces((prev) => prev.filter((w) => w._id !== ws._id))
+      if (activeWorkspace?._id === ws._id) leaveWorkspace()
+    } catch (err) {
+      setWsError(err instanceof Error ? err.message : 'Failed to delete workspace')
+    }
+  }
+
+  /* ── Column helpers ── */
+  const handleColVisChange = (next: Record<InvoiceAuditColumnId, boolean>) => {
+    setColVisibility(next)
+    saveAuditColumnVisibility(next)
   }
 
   const visibleCols = useMemo(
@@ -297,6 +605,59 @@ export default function DocTidyInvoiceAudit() {
   const inputClass =
     'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
+  /* ── Document-level cell renderer ── */
+  const docCellFor = (colId: InvoiceAuditColumnId, job: ParseJobListItem): React.ReactNode => {
+    const json = job.jsonOutput ?? null
+    switch (colId) {
+      case 'vendorName':
+        return (
+          <span className="font-medium text-[var(--text-100)]">
+            {job.vendorName ||
+              extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from') ||
+              <span className="italic text-[var(--text-200)]">—</span>}
+          </span>
+        )
+      case 'documentType': {
+        const rawType = extractJsonField(json, 'document_type', 'type', 'doc_type')
+        const norm = rawType.toLowerCase().replace(/[\s_-]+/g, '_')
+        if (norm.includes('invoice')) return <DocumentTypeBadge value="invoice" />
+        if (norm.includes('order') || norm.includes('confirmation') || norm.includes('po')) return <DocumentTypeBadge value="order_confirmation" />
+        if (rawType) return <span className="text-[var(--text-200)]">{rawType}</span>
+        return <DocumentTypeBadge value={undefined} />
+      }
+      case 'invoiceNumber':   return cell(extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'))
+      case 'poNumber':        return cell(extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+      case 'orderDate':       return cell(extractJsonField(json, 'order_date', 'date_of_order', 'order date'))
+      case 'invoiceDate':     return cell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+      case 'terms':           return cell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+      case 'trackingNumber':  return cell(extractJsonField(json, 'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number'))
+      case 'totalValue':
+        return (
+          <span className="font-semibold tabular-nums text-[var(--text-100)]">
+            {formatTotal(extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')) ||
+              <span className="font-normal text-[var(--text-200)]">—</span>}
+          </span>
+        )
+      case 'filename':
+        return (
+          <span className="font-mono text-[var(--text-200)] truncate max-w-[160px] block" title={job.filename}>
+            {job.filename}
+          </span>
+        )
+      case 'parsedAt':
+        return (
+          <span className="text-[var(--text-200)]" title={job.completedAt ? formatDateTime(job.completedAt) : ''}>
+            {job.completedAt ? formatDate(job.completedAt) : '—'}
+          </span>
+        )
+      case 'requestedBy':
+        return <span className="text-[var(--text-200)]">{job.requestedByName || '—'}</span>
+      default:
+        return null
+    }
+  }
+
+  /* ── Render ── */
   return (
     <div className="space-y-4">
       {/* ── Tab bar ── */}
@@ -304,320 +665,272 @@ export default function DocTidyInvoiceAudit() {
         <DocTidyTabs />
       </div>
 
-      {error && (
-        <Banner kind="error" onDismiss={() => setError(null)}>
-          {error}
-        </Banner>
-      )}
+      {/* ── Global error banner ── */}
+      {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
 
-      {/* ── Table card ── */}
-      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
-
-        {/* ── Filter / toolbar bar ── */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-2.5">
-          {/* Vendor search */}
-          <div className="relative min-w-[200px] flex-1 max-w-xs">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              value={vendorSearch}
-              onChange={(e) => setVendorSearch(e.target.value)}
-              placeholder="Filter by vendor…"
-              className={`${inputClass} w-full pl-8 pr-8`}
-            />
-            {vendorSearch && (
-              <button
-                onClick={() => setVendorSearch('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
-                aria-label="Clear search"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {/* Summary */}
-          <span className="text-[11px] text-[var(--text-200)]">
-            {pagination.total > 0 ? `${pagination.total.toLocaleString()} document${pagination.total === 1 ? '' : 's'}` : ''}
-          </span>
-
-          {/* Column settings button */}
-          <button
-            type="button"
-            onClick={() => setShowColSettings(true)}
-            title="Configure visible columns"
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Columns
-            <span className="rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-200)]">
-              {visibleCols.length}
-            </span>
-          </button>
-        </div>
-
-        {/* ── Top pagination ── */}
-        {!loading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-            <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-              <span>Rows per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
-              >
-                {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
+      {/* ══════════════════════════════ WORKSPACE LIST ══════════════════════════════ */}
+      {view === 'workspaces' && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--text-100)]">Invoice Workspaces</h2>
+              <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                Create a workspace to scope your invoice audit to specific filter rules.
+              </p>
             </div>
-            <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+            <button type="button" onClick={() => openEditor('new')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New workspace
+            </button>
           </div>
-        )}
 
-        {/* ── Table ── */}
-        <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
-          {error ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
-                <svg className="h-5 w-5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          {wsLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
+                  <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                  <div className="mt-4 h-px bg-[var(--bg-300)]" />
+                  <div className="mt-3 flex justify-end gap-2">
+                    <div className="h-6 w-10 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="h-6 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : workspaces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                 </svg>
               </div>
-              <div>
-                <p className="text-sm font-medium text-[var(--text-100)]">Failed to load data</p>
-                <p className="mt-0.5 text-xs text-[var(--text-200)]">{error}</p>
-              </div>
-              <button onClick={() => fetchJobs()} className="text-sm text-[var(--accent-200)] hover:underline cursor-pointer">
-                Try again
+              <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces yet</h3>
+              <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
+                Workspaces let you scope the invoice audit to a named set of filter rules.
+              </p>
+              <button type="button" onClick={() => openEditor('new')}
+                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create your first workspace
               </button>
             </div>
           ) : (
-            <table className="w-full text-[11px] border-separate border-spacing-0">
-              <thead>
-                <tr>
-                  {visibleCols.map((col) => (
-                    <Th
-                      key={col.id}
-                      label={col.label}
-                    />
-                  ))}
-                  {/* Actions col */}
-                  <Th label="Actions" align="center" />
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i}>
-                      {visibleCols.map((col) => (
-                        <td key={col.id} className="px-3 py-2">
-                          <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
-                        </td>
-                      ))}
-                      <td className="px-3 py-2">
-                        <div className="mx-auto h-6 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
-                      </td>
-                    </tr>
-                  ))
-                ) : jobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={visibleCols.length + 1} className="py-16 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
-                          <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-medium text-[var(--text-100)]">
-                            {debouncedVendor ? 'No documents match this vendor filter' : 'No parsed documents yet'}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
-                            {debouncedVendor
-                              ? 'Try clearing the filter above.'
-                              : 'Parse PDFs from the Email Records tab to see them here.'}
-                          </p>
-                        </div>
-                        {debouncedVendor && (
-                          <button onClick={() => setVendorSearch('')} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
-                            Clear filter
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  jobs.flatMap((job) => {
-                    const json = job.jsonOutput ?? null
-                    const isExpanded = expandedRows.has(job._id)
-
-                    const lineItems = extractJsonArray(
-                      json,
-                      'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
-                    )
-
-                    const cellFor = (colId: InvoiceAuditColumnId): React.ReactNode => {
-                      switch (colId) {
-                        case 'vendorName':
-                          return (
-                            <span className="font-medium text-[var(--text-100)]">
-                              {job.vendorName ||
-                                extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from') ||
-                                <span className="italic text-[var(--text-200)]">—</span>}
-                            </span>
-                          )
-                        case 'documentType': {
-                          const rawType = extractJsonField(json, 'document_type', 'type', 'doc_type')
-                          // Try to map to our known types
-                          const normalized = rawType.toLowerCase().replace(/[\s_-]+/g, '_')
-                          if (normalized.includes('invoice')) {
-                            return <DocumentTypeBadge value="invoice" />
-                          }
-                          if (normalized.includes('order') || normalized.includes('confirmation') || normalized.includes('po')) {
-                            return <DocumentTypeBadge value="order_confirmation" />
-                          }
-                          if (rawType) {
-                            return <span className="text-[var(--text-200)]">{rawType}</span>
-                          }
-                          return <DocumentTypeBadge value={undefined} />
-                        }
-                        case 'invoiceNumber':
-                          return cell(extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'))
-                        case 'poNumber':
-                          return cell(extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
-                        case 'orderDate':
-                          return cell(extractJsonField(json, 'order_date', 'date_of_order', 'order date'))
-                        case 'invoiceDate':
-                          return cell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
-                        case 'terms':
-                          return cell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
-                        case 'trackingNumber':
-                          return cell(extractJsonField(json, 'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number'))
-                        case 'totalValue':
-                          return (
-                            <span className="font-semibold tabular-nums text-[var(--text-100)]">
-                              {formatTotal(extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')) || <span className="font-normal text-[var(--text-200)]">—</span>}
-                            </span>
-                          )
-                        case 'lineItems':
-                          if (lineItems.length === 0) {
-                            return <span className="italic text-[var(--text-200)]">—</span>
-                          }
-                          return (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); toggleRow(job._id) }}
-                              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80"
-                            >
-                              <svg className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                              {lineItems.length} item{lineItems.length === 1 ? '' : 's'}
-                            </button>
-                          )
-                        case 'filename':
-                          return (
-                            <span className="font-mono text-[var(--text-200)] truncate max-w-[160px] block" title={job.filename}>
-                              {job.filename}
-                            </span>
-                          )
-                        case 'parsedAt':
-                          return (
-                            <span className="text-[var(--text-200)]" title={job.completedAt ? formatDateTime(job.completedAt) : ''}>
-                              {job.completedAt ? formatDate(job.completedAt) : '—'}
-                            </span>
-                          )
-                        case 'requestedBy':
-                          return <span className="text-[var(--text-200)]">{job.requestedByName || '—'}</span>
-                        default:
-                          return null
-                      }
-                    }
-
-                    const rows: React.ReactNode[] = [
-                      <tr
-                        key={job._id}
-                        className="group align-middle odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50 transition-colors"
-                      >
-                        {visibleCols.map((col) => (
-                          <td key={col.id} className="px-3 py-1.5 text-[11px]">
-                            {cellFor(col.id)}
-                          </td>
-                        ))}
-                        {/* Actions */}
-                        <td className="px-3 py-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setOpenJobId(job._id)}
-                            title="Open parsed document details"
-                            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)]"
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>,
-                    ]
-
-                    // Inline line-item expansion
-                    if (isExpanded && lineItems.length > 0) {
-                      rows.push(
-                        <tr key={`${job._id}-items`}>
-                          <td
-                            colSpan={visibleCols.length + 1}
-                            className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-6 pb-3 pt-2"
-                          >
-                            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                              Line items — {job.filename}
-                            </p>
-                            <LineItemsExpansion items={lineItems} />
-                          </td>
-                        </tr>
-                      )
-                    }
-
-                    return rows
-                  })
-                )}
-              </tbody>
-            </table>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {workspaces.map((ws) => (
+                <WorkspaceCard
+                  key={ws._id}
+                  workspace={ws}
+                  rules={rules}
+                  onOpen={() => enterWorkspace(ws)}
+                  onEdit={() => openEditor(ws)}
+                  onDelete={() => void handleDeleteWorkspace(ws)}
+                />
+              ))}
+            </div>
           )}
         </div>
+      )}
 
-        {/* ── Bottom pagination ── */}
-        {!loading && !error && pagination.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-            <span className="text-[11px] text-[var(--text-200)]">
-              {startItem}–{endItem} of {pagination.total.toLocaleString()}
-            </span>
-            <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+      {/* ══════════════════════════════ AUDIT DETAIL ══════════════════════════════ */}
+      {view === 'audit' && activeWorkspace && (
+        <div className="space-y-4">
+
+          {/* Breadcrumb */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button type="button" onClick={leaveWorkspace}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Workspaces
+              </button>
+              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-sm font-semibold text-[var(--text-100)] truncate">{activeWorkspace.name}</span>
+            </div>
+            <button type="button" onClick={() => openEditor(activeWorkspace)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-xs text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit workspace
+            </button>
           </div>
-        )}
-      </div>
 
-      {/* ── Parse job panel ── */}
-      {openJobId && (
-        <ParseJobPanel
-          jobId={openJobId}
-          onClose={() => setOpenJobId(null)}
-          onChanged={() => void fetchJobs()}
-        />
+          {error && <Banner kind="error" onDismiss={() => setError(null)}>{error}</Banner>}
+
+          {/* Table card */}
+          <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-2.5">
+              {/* Vendor search */}
+              <div className="relative min-w-[180px] flex-1 max-w-xs">
+                <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                  </svg>
+                </span>
+                <input type="text" value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)}
+                  placeholder="Filter by vendor…" className={`${inputClass} w-full pl-8 pr-8`} />
+                {vendorSearch && (
+                  <button onClick={() => setVendorSearch('')} aria-label="Clear search"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* Column settings */}
+              <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
+                className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Columns
+                <span className="rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-200)]">
+                  {visibleCols.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Table — horizontally scrollable, vertically unbounded */}
+            <div className="overflow-x-auto">
+              {error ? (
+                <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
+                    <svg className="h-5 w-5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-[var(--text-100)]">Failed to load data</p>
+                  <button onClick={() => void fetchJobs()} className="text-sm text-[var(--accent-200)] hover:underline cursor-pointer">Try again</button>
+                </div>
+              ) : (
+                <table className="w-full text-[11px] border-separate border-spacing-0">
+                  <thead>
+                    <tr>
+                      {visibleCols.map((col) => (
+                        <Th
+                          key={col.id}
+                          label={col.label}
+                          align={col.numeric ? 'right' : 'left'}
+                        />
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      Array.from({ length: 12 }).map((_, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                          {visibleCols.map((col) => (
+                            <td key={col.id} className="px-2.5 py-1">
+                              <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : jobs.length === 0 ? (
+                      <tr>
+                        <td colSpan={visibleCols.length} className="py-16 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
+                              <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-medium text-[var(--text-100)]">
+                                {debouncedVendor ? 'No documents match this vendor filter' : 'No parsed documents in this workspace'}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                                {debouncedVendor
+                                  ? 'Try clearing the filter above.'
+                                  : 'Parse PDFs from the Email Records tab under the rules in this workspace.'}
+                              </p>
+                            </div>
+                            {debouncedVendor && (
+                              <button onClick={() => setVendorSearch('')} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                Clear filter
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      /* ── Flattened rows: one row per line item, alternating per row ── */
+                      (() => {
+                        let rowIdx = 0
+                        return jobs.flatMap((job) => {
+                          const json = job.jsonOutput ?? null
+                          const lineItems = extractJsonArray(
+                            json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
+                          )
+                          const rowItems: (Record<string, unknown> | null)[] =
+                            lineItems.length > 0 ? lineItems : [null]
+
+                          return rowItems.map((item, itemIdx) => {
+                            const isEven = rowIdx % 2 === 0
+                            rowIdx++
+                            return (
+                              <tr
+                                key={`${job._id}-${itemIdx}`}
+                                className={`${isEven ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'} hover:bg-[var(--primary-100)]/50 transition-colors align-middle`}
+                              >
+                                {visibleCols.map((col) => (
+                                  <td
+                                    key={col.id}
+                                    className={`px-2.5 py-1 text-[11px] whitespace-nowrap ${col.numeric ? 'text-right tabular-nums' : ''} ${col.mono ? 'font-mono' : ''}`}
+                                  >
+                                    {isLineItemCol(col.id)
+                                      ? liCellFor(col.id, item)
+                                      : docCellFor(col.id, job)}
+                                  </td>
+                                ))}
+                              </tr>
+                            )
+                          })
+                        })
+                      })()
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Bottom pagination — rows-per-page + count + arrows */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                <span>Rows per page:</span>
+                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {pagination.total > 0 && (
+                  <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
+                )}
+              </div>
+              {pagination.pages > 1 && (
+                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Column settings drawer ── */}
@@ -628,11 +941,22 @@ export default function DocTidyInvoiceAudit() {
           onClose={() => setShowColSettings(false)}
         />
       )}
+
+      {/* ── Workspace editor ── */}
+      {editTarget !== null && (
+        <WorkspaceEditorDialog
+          initial={editTarget === 'new' ? null : editTarget}
+          rules={rules}
+          rulesLoading={rulesLoading}
+          onSave={handleWorkspaceSaved}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
     </div>
   )
 }
 
-/** Render a plain scalar cell, or a dash if empty. */
+/** Render a plain scalar doc-level cell, or a dash if empty. */
 function cell(value: string): React.ReactNode {
   return value
     ? <span className="text-[var(--text-100)]">{value}</span>

@@ -33,6 +33,12 @@ import {
   deleteVendor,
   listParseJobs,
 } from '../controllers/docTidyParse.controller';
+import {
+  listWorkspaces,
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+} from '../controllers/docTidyWorkspace.controller';
 
 const router = Router();
 
@@ -74,6 +80,12 @@ router.get('/vendors', listVendors);
 router.post('/vendors', upsertVendor);
 router.post('/vendors/:name/samples/remove', removeVendorSample);
 router.delete('/vendors/:name', deleteVendor);
+
+// Invoice Audit workspaces — team-wide, any signed-in user may manage them.
+router.get('/workspaces', listWorkspaces);
+router.post('/workspaces', createWorkspace);
+router.put('/workspaces/:id', updateWorkspace);
+router.delete('/workspaces/:id', deleteWorkspace);
 
 // The mailbox connection and attachment destination are admin-managed.
 router.get('/config', getConfig);
