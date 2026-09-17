@@ -287,6 +287,22 @@ export function normalizeVendorName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+/* ──────────────────────────────────────────── Invoice Workspaces ── */
+
+/**
+ * A named view that aggregates parse jobs from a selected set of rules.
+ * Many-to-many with rules: the same rule can be in multiple workspaces.
+ */
+export interface DocTidyWorkspace {
+  _id: string
+  name: string
+  /** Rule IDs included in this workspace. */
+  ruleIds: string[]
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
 /* ─────────────────────────────────────────────── Invoice Audit ── */
 
 /** A completed parse job as returned by `GET /doc-tidy/parse-jobs`. */
