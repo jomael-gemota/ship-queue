@@ -12,17 +12,13 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
-  LINE_ITEM_COLUMNS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
-  loadLineItemColumnVisibility,
-  saveLineItemColumnVisibility,
   extractJsonField,
   extractJsonArray,
   type DocTidyRule,
   type DocTidyWorkspace,
   type InvoiceAuditColumnId,
-  type LineItemColumnId,
   type ParseJobListItem,
   type ParseJobsResponse,
 } from '../types/docTidy'
@@ -43,8 +39,6 @@ function ColumnSettingsDrawer({
   onChange: (next: Record<InvoiceAuditColumnId, boolean>) => void
   onClose: () => void
 }) {
-  const drawerRef = useRef<HTMLDivElement>(null)
-
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKeyDown)
@@ -60,118 +54,41 @@ function ColumnSettingsDrawer({
     onChange(defaults)
   }
 
+  const docCols   = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
+  const liCols    = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+
+  const ColRow = ({ col }: { col: (typeof INVOICE_AUDIT_COLUMNS)[number] }) => (
+    <li>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+        <input
+          type="checkbox"
+          checked={visibility[col.id]}
+          onChange={() => toggle(col.id)}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
+          <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+        </div>
+      </label>
+    </li>
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={onClose} />
       <div
-        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Column settings"
         className="relative ml-auto flex h-full w-full max-w-xs flex-col overflow-hidden border-l border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
       >
+        {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
           <div>
             <h3 className="text-sm font-semibold text-[var(--text-100)]">Column visibility</h3>
-            <p className="mt-0.5 text-xs text-[var(--text-200)]">Toggle which fields are shown in the table.</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close"
-            className="-mr-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Default visible</p>
-          <ul className="space-y-1">
-            {INVOICE_AUDIT_COLUMNS.filter((c) => c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input type="checkbox" checked={visibility[col.id]} onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          <p className="mb-3 mt-5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Hidden by default</p>
-          <ul className="space-y-1">
-            {INVOICE_AUDIT_COLUMNS.filter((c) => !c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input type="checkbox" checked={visibility[col.id]} onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-5 py-3">
-          <button type="button" onClick={resetDefaults}
-            className="cursor-pointer text-xs text-[var(--text-200)] hover:text-[var(--accent-200)] hover:underline">
-            Reset to defaults
-          </button>
-          <button type="button" onClick={onClose}
-            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white">
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ──────────────────────────────── Line item column drawer ── */
-
-function LineItemColumnDrawer({
-  vendorName,
-  visibility,
-  onChange,
-  onClose,
-}: {
-  vendorName: string
-  visibility: Record<LineItemColumnId, boolean>
-  onChange: (next: Record<LineItemColumnId, boolean>) => void
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
-  const toggle = (id: LineItemColumnId) => onChange({ ...visibility, [id]: !visibility[id] })
-
-  const resetDefaults = () => {
-    const defaults = Object.fromEntries(
-      LINE_ITEM_COLUMNS.map((c) => [c.id, c.defaultVisible])
-    ) as Record<LineItemColumnId, boolean>
-    onChange(defaults)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="Line item column settings"
-        className="relative ml-auto flex h-full w-full max-w-xs flex-col overflow-hidden border-l border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--text-100)]">Line item columns</h3>
             <p className="mt-0.5 text-xs text-[var(--text-200)]">
-              {vendorName
-                ? <>Saved separately for <span className="font-medium text-[var(--text-100)]">{vendorName}</span>.</>
-                : 'Toggle which columns are shown in the line items table.'}
+              Toggle which fields are shown in the table.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
@@ -182,40 +99,42 @@ function LineItemColumnDrawer({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Default visible</p>
-          <ul className="space-y-1">
-            {LINE_ITEM_COLUMNS.filter((c) => c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input type="checkbox" checked={visibility[col.id]} onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Document fields section */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="h-3.5 w-3.5 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                Document fields
+              </p>
+            </div>
+            <ul className="space-y-1">
+              {docCols.map((col) => <ColRow key={col.id} col={col} />)}
+            </ul>
+          </div>
 
-          <p className="mb-3 mt-5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Hidden by default</p>
-          <ul className="space-y-1">
-            {LINE_ITEM_COLUMNS.filter((c) => !c.defaultVisible).map((col) => (
-              <li key={col.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-                  <input type="checkbox" checked={visibility[col.id]} onChange={() => toggle(col.id)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-                    <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
+          {/* Line item fields section */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="h-3.5 w-3.5 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                Line item fields
+              </p>
+            </div>
+            <ul className="space-y-1">
+              {liCols.map((col) => <ColRow key={col.id} col={col} />)}
+            </ul>
+          </div>
         </div>
 
+        {/* Footer */}
         <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-5 py-3">
           <button type="button" onClick={resetDefaults}
             className="cursor-pointer text-xs text-[var(--text-200)] hover:text-[var(--accent-200)] hover:underline">
@@ -231,118 +150,7 @@ function LineItemColumnDrawer({
   )
 }
 
-/* ──────────────────────────────────── Line items table ── */
-
-function liField(item: Record<string, unknown>, ...candidates: string[]): string {
-  return extractJsonField(item, ...candidates)
-}
-
-function liTextCell(value: string, mono = false): React.ReactNode {
-  if (!value) return <span className="text-[var(--text-200)]">—</span>
-  return <span className={mono ? 'font-mono text-[var(--text-100)]' : 'text-[var(--text-100)]'}>{value}</span>
-}
-
-function liNumCell(value: string): React.ReactNode {
-  if (!value) return <span className="text-[var(--text-200)]">—</span>
-  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
-}
-
-function LineItemsTable({ items, vendorName }: { items: Record<string, unknown>[]; vendorName: string }) {
-  const [colVisibility, setColVisibility] = useState<Record<LineItemColumnId, boolean>>(
-    () => loadLineItemColumnVisibility(vendorName)
-  )
-  const [showColSettings, setShowColSettings] = useState(false)
-
-  const handleColChange = (next: Record<LineItemColumnId, boolean>) => {
-    setColVisibility(next)
-    saveLineItemColumnVisibility(vendorName, next)
-  }
-
-  const visibleCols = useMemo(() => LINE_ITEM_COLUMNS.filter((c) => colVisibility[c.id]), [colVisibility])
-
-  const cellFor = (item: Record<string, unknown>, colId: LineItemColumnId): React.ReactNode => {
-    switch (colId) {
-      case 'sku':             return liTextCell(liField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'), true)
-      case 'model':           return liTextCell(liField(item, 'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no'), true)
-      case 'description':     return liTextCell(liField(item, 'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name'))
-      case 'quantity':        return liNumCell(liField(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount'))
-      case 'unitPrice':       return liNumCell(liField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'))
-      case 'discountedPrice': return liNumCell(liField(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'))
-      case 'discountPercent': return liNumCell(liField(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'))
-      case 'lineTotal':       return liNumCell(liField(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount'))
-      case 'uom':             return liTextCell(liField(item, 'uom', 'unit', 'unit_of_measure', 'unit_measure'), true)
-      case 'taxAmount':       return liNumCell(liField(item, 'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst'))
-      case 'notes':           return liTextCell(liField(item, 'notes', 'note', 'remarks', 'comments', 'comment'))
-      default:                return null
-    }
-  }
-
-  if (items.length === 0) {
-    return <p className="py-2 text-xs italic text-[var(--text-200)]">No line items extracted.</p>
-  }
-
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-          {items.length} line item{items.length !== 1 ? 's' : ''}
-          {vendorName && <span className="ml-1.5 normal-case font-normal">· {vendorName}</span>}
-        </p>
-        <button type="button" onClick={() => setShowColSettings(true)}
-          title="Configure visible line item columns"
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--bg-300)] px-2 py-1 text-[10px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          Columns
-          <span className="rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-200)]">
-            {visibleCols.length}
-          </span>
-        </button>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-[var(--bg-300)]">
-        <table className="w-full text-[11px] border-separate border-spacing-0 min-w-max">
-          <thead>
-            <tr className="bg-[var(--bg-300)]/70">
-              {visibleCols.map((col) => (
-                <th key={col.id}
-                  className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap border-b border-[var(--bg-300)] ${col.numeric ? 'text-right' : 'text-left'}`}>
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <tr key={idx} className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/40 transition-colors">
-                {visibleCols.map((col) => (
-                  <td key={col.id}
-                    className={`px-3 py-1.5 align-middle ${idx < items.length - 1 ? 'border-b border-[var(--bg-300)]/60' : ''} ${col.numeric ? 'text-right tabular-nums' : 'text-left'} ${col.id === 'description' ? 'max-w-[280px]' : ''}`}>
-                    {cellFor(item, col.id)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {showColSettings && (
-        <LineItemColumnDrawer
-          vendorName={vendorName}
-          visibility={colVisibility}
-          onChange={handleColChange}
-          onClose={() => setShowColSettings(false)}
-        />
-      )}
-    </div>
-  )
-}
-
-/* ──────────────────────────────── Workspace editor dialog ── */
+/* ──────────────────────────── Workspace editor dialog ── */
 
 function WorkspaceEditorDialog({
   initial,
@@ -451,12 +259,8 @@ function WorkspaceEditorDialog({
           {/* Rules */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                Rules
-              </label>
-              <span className="text-[11px] text-[var(--text-200)]">
-                {selectedRuleIds.size} selected
-              </span>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Rules</label>
+              <span className="text-[11px] text-[var(--text-200)]">{selectedRuleIds.size} selected</span>
             </div>
 
             {rulesLoading ? (
@@ -466,9 +270,7 @@ function WorkspaceEditorDialog({
             ) : rules.length === 0 ? (
               <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-6 text-center">
                 <p className="text-xs text-[var(--text-200)]">No rules yet.</p>
-                <p className="mt-1 text-[11px] text-[var(--text-200)]">
-                  Create filter rules first so you can include them here.
-                </p>
+                <p className="mt-1 text-[11px] text-[var(--text-200)]">Create filter rules first.</p>
               </div>
             ) : (
               <ul className="overflow-y-auto rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)]" style={{ maxHeight: '260px' }}>
@@ -498,10 +300,7 @@ function WorkspaceEditorDialog({
                 ))}
               </ul>
             )}
-
-            <p className="mt-2 text-[11px] text-[var(--text-200)]">
-              A rule can be part of multiple workspaces.
-            </p>
+            <p className="mt-2 text-[11px] text-[var(--text-200)]">A rule can be part of multiple workspaces.</p>
           </div>
 
           {error && (
@@ -517,12 +316,8 @@ function WorkspaceEditorDialog({
             className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={saving}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
+          <button type="button" onClick={() => void submit()} disabled={saving}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
             {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
             {saving ? 'Saving…' : initial ? 'Save changes' : 'Create workspace'}
           </button>
@@ -554,33 +349,25 @@ function WorkspaceCard({
     .filter((n): n is string => Boolean(n))
 
   return (
-    <div
-      onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] cursor-pointer transition-all hover:border-[var(--accent-200)] hover:shadow-md"
-    >
+    <div onClick={onOpen}
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] cursor-pointer transition-all hover:border-[var(--accent-200)] hover:shadow-md">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
-        {/* Icon */}
         <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
               d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
           </svg>
         </div>
-
-        {/* Name */}
         <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] transition-colors line-clamp-2">
           {workspace.name}
         </h3>
-
-        {/* Rule pills */}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {ruleNames.length === 0 && workspace.ruleIds.length === 0 && (
             <span className="text-[11px] italic text-[var(--text-200)]">No rules assigned</span>
           )}
           {ruleNames.slice(0, 3).map((name) => (
-            <span key={name}
-              className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
+            <span key={name} className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
               {name}
             </span>
           ))}
@@ -593,41 +380,22 @@ function WorkspaceCard({
       </div>
 
       {/* Footer */}
-      <div
-        className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
         <span className="text-[11px] text-[var(--text-200)]">
           {workspace.ruleIds.length} rule{workspace.ruleIds.length !== 1 ? 's' : ''}
         </span>
-
         <div className="flex items-center gap-1">
           {confirmDelete ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-rose-500">Delete?</span>
-              <button onClick={onDelete}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">
-                Yes
-              </button>
-              <button onClick={() => setConfirmDelete(false)}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)]">
-                No
-              </button>
+              <button onClick={onDelete} className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">Yes</button>
+              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)]">No</button>
             </div>
           ) : (
             <>
-              <button onClick={onEdit}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
-                Edit
-              </button>
-              <button onClick={() => setConfirmDelete(true)}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-rose-500">
-                Delete
-              </button>
-              <button onClick={onOpen}
-                className="cursor-pointer rounded-lg bg-[var(--primary-100)] px-3 py-1 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80 transition-opacity">
-                Open →
-              </button>
+              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">Edit</button>
+              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-rose-500">Delete</button>
+              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--primary-100)] px-3 py-1 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80 transition-opacity">Open →</button>
             </>
           )}
         </div>
@@ -636,11 +404,52 @@ function WorkspaceCard({
   )
 }
 
-/* ──────────────────────────────────────────────── Page constants ── */
+/* ─────────────────────────────────── Line item cell helpers ── */
+
+/** Pull a scalar value from a line-item object. */
+function liField(item: Record<string, unknown>, ...candidates: string[]): string {
+  return extractJsonField(item, ...candidates)
+}
+
+/** Text cell — monospace variant for codes. */
+function liText(value: string, mono = false): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return <span className={mono ? 'font-mono text-[var(--text-100)]' : 'text-[var(--text-100)]'}>{value}</span>
+}
+
+/** Numeric / currency cell. */
+function liNum(value: string): React.ReactNode {
+  if (!value) return <span className="text-[var(--text-200)]">—</span>
+  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+}
+
+/** Render an inline line item column cell for the given item (null = no item). */
+function liCellFor(colId: InvoiceAuditColumnId, item: Record<string, unknown> | null): React.ReactNode {
+  if (!item) return <span className="text-[var(--text-200)]">—</span>
+  switch (colId) {
+    case 'liSku':             return liText(liField(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'), true)
+    case 'liModel':           return liText(liField(item, 'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no'), true)
+    case 'liDescription':     return liText(liField(item, 'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name'))
+    case 'liQuantity':        return liNum(liField(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount'))
+    case 'liUnitPrice':       return liNum(liField(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'))
+    case 'liDiscountedPrice': return liNum(liField(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'))
+    case 'liDiscountPercent': return liNum(liField(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'))
+    case 'liLineTotal':       return liNum(liField(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount'))
+    case 'liUom':             return liText(liField(item, 'uom', 'unit', 'unit_of_measure', 'unit_measure'), true)
+    case 'liTaxAmount':       return liNum(liField(item, 'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst'))
+    case 'liNotes':           return liText(liField(item, 'notes', 'note', 'remarks', 'comments', 'comment'))
+    default:                  return null
+  }
+}
+
+/** True if the column id belongs to the line item section. */
+function isLineItemCol(id: InvoiceAuditColumnId): boolean {
+  return id.startsWith('li')
+}
+
+/* ──────────────────────────────────────────────── Page ── */
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
-
-/* ──────────────────────────────────────────────────────── Page ── */
 
 export default function DocTidyInvoiceAudit() {
   /* ── View state ── */
@@ -658,7 +467,7 @@ export default function DocTidyInvoiceAudit() {
   const [rulesLoading, setRulesLoading] = useState(false)
   const rulesLoadedRef = useRef(false)
 
-  /* ── Workspace editor dialog ── */
+  /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
 
   /* ── Audit table ── */
@@ -670,7 +479,6 @@ export default function DocTidyInvoiceAudit() {
   const [pageSize, setPageSize] = useState(100)
   const [vendorSearch, setVendorSearch] = useState('')
   const [debouncedVendor, setDebouncedVendor] = useState('')
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
   const [openJobId, setOpenJobId] = useState<string | null>(null)
@@ -691,7 +499,7 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
-  /* ── Load rules lazily (when editor opens) ── */
+  /* ── Load rules lazily ── */
   const loadRules = useCallback(async () => {
     if (rulesLoadedRef.current) return
     rulesLoadedRef.current = true
@@ -700,7 +508,7 @@ export default function DocTidyInvoiceAudit() {
       const res = await authApi.get<{ data: DocTidyRule[] }>('/doc-tidy/rules')
       setRules(res.data)
     } catch {
-      rulesLoadedRef.current = false // allow retry
+      rulesLoadedRef.current = false
     } finally {
       setRulesLoading(false)
     }
@@ -714,7 +522,7 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { setPage(1) }, [debouncedVendor, pageSize])
 
-  /* ── Fetch parse jobs (only when inside a workspace) ── */
+  /* ── Fetch parse jobs ── */
   const fetchJobs = useCallback(async () => {
     if (!activeWorkspace) return
     setLoading(true)
@@ -744,7 +552,6 @@ export default function DocTidyInvoiceAudit() {
     setActiveWorkspace(ws)
     setView('audit')
     setPage(1)
-    setExpandedRows(new Set())
     setVendorSearch('')
     setError(null)
   }
@@ -783,19 +590,10 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /* ── Table helpers ── */
+  /* ── Column helpers ── */
   const handleColVisChange = (next: Record<InvoiceAuditColumnId, boolean>) => {
     setColVisibility(next)
     saveAuditColumnVisibility(next)
-  }
-
-  const toggleRow = (id: string) => {
-    setExpandedRows((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
   }
 
   const visibleCols = useMemo(
@@ -809,6 +607,58 @@ export default function DocTidyInvoiceAudit() {
   const inputClass =
     'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
+  /* ── Document-level cell renderer ── */
+  const docCellFor = (colId: InvoiceAuditColumnId, job: ParseJobListItem): React.ReactNode => {
+    const json = job.jsonOutput ?? null
+    switch (colId) {
+      case 'vendorName':
+        return (
+          <span className="font-medium text-[var(--text-100)]">
+            {job.vendorName ||
+              extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from') ||
+              <span className="italic text-[var(--text-200)]">—</span>}
+          </span>
+        )
+      case 'documentType': {
+        const rawType = extractJsonField(json, 'document_type', 'type', 'doc_type')
+        const norm = rawType.toLowerCase().replace(/[\s_-]+/g, '_')
+        if (norm.includes('invoice')) return <DocumentTypeBadge value="invoice" />
+        if (norm.includes('order') || norm.includes('confirmation') || norm.includes('po')) return <DocumentTypeBadge value="order_confirmation" />
+        if (rawType) return <span className="text-[var(--text-200)]">{rawType}</span>
+        return <DocumentTypeBadge value={undefined} />
+      }
+      case 'invoiceNumber':   return cell(extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'))
+      case 'poNumber':        return cell(extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+      case 'orderDate':       return cell(extractJsonField(json, 'order_date', 'date_of_order', 'order date'))
+      case 'invoiceDate':     return cell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+      case 'terms':           return cell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+      case 'trackingNumber':  return cell(extractJsonField(json, 'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number'))
+      case 'totalValue':
+        return (
+          <span className="font-semibold tabular-nums text-[var(--text-100)]">
+            {formatTotal(extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')) ||
+              <span className="font-normal text-[var(--text-200)]">—</span>}
+          </span>
+        )
+      case 'filename':
+        return (
+          <span className="font-mono text-[var(--text-200)] truncate max-w-[160px] block" title={job.filename}>
+            {job.filename}
+          </span>
+        )
+      case 'parsedAt':
+        return (
+          <span className="text-[var(--text-200)]" title={job.completedAt ? formatDateTime(job.completedAt) : ''}>
+            {job.completedAt ? formatDate(job.completedAt) : '—'}
+          </span>
+        )
+      case 'requestedBy':
+        return <span className="text-[var(--text-200)]">{job.requestedByName || '—'}</span>
+      default:
+        return null
+    }
+  }
+
   /* ── Render ── */
   return (
     <div className="space-y-4">
@@ -818,14 +668,11 @@ export default function DocTidyInvoiceAudit() {
       </div>
 
       {/* ── Global error banner ── */}
-      {wsError && (
-        <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>
-      )}
+      {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
 
-      {/* ══════════════════════════════ WORKSPACE LIST VIEW ══════════════════════════════ */}
+      {/* ══════════════════════════════ WORKSPACE LIST ══════════════════════════════ */}
       {view === 'workspaces' && (
         <div className="space-y-5">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-[var(--text-100)]">Invoice Workspaces</h2>
@@ -833,11 +680,8 @@ export default function DocTidyInvoiceAudit() {
                 Create a workspace to scope your invoice audit to specific filter rules.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => openEditor('new')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+            <button type="button" onClick={() => openEditor('new')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
@@ -845,7 +689,6 @@ export default function DocTidyInvoiceAudit() {
             </button>
           </div>
 
-          {/* Loading skeleton */}
           {wsLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -862,7 +705,6 @@ export default function DocTidyInvoiceAudit() {
               ))}
             </div>
           ) : workspaces.length === 0 ? (
-            /* Empty state */
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
                 <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -873,13 +715,9 @@ export default function DocTidyInvoiceAudit() {
               <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces yet</h3>
               <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
                 Workspaces let you scope the invoice audit to a named set of filter rules.
-                Create your first one to get started.
               </p>
-              <button
-                type="button"
-                onClick={() => openEditor('new')}
-                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
-              >
+              <button type="button" onClick={() => openEditor('new')}
+                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
@@ -887,7 +725,6 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
           ) : (
-            /* Workspace grid */
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {workspaces.map((ws) => (
                 <WorkspaceCard
@@ -904,18 +741,15 @@ export default function DocTidyInvoiceAudit() {
         </div>
       )}
 
-      {/* ══════════════════════════════ AUDIT DETAIL VIEW ══════════════════════════════ */}
+      {/* ══════════════════════════════ AUDIT DETAIL ══════════════════════════════ */}
       {view === 'audit' && activeWorkspace && (
         <div className="space-y-4">
 
-          {/* ── Breadcrumb bar ── */}
+          {/* Breadcrumb */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <button
-                type="button"
-                onClick={leaveWorkspace}
-                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors"
-              >
+              <button type="button" onClick={leaveWorkspace}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
@@ -924,16 +758,10 @@ export default function DocTidyInvoiceAudit() {
               <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              <span className="text-sm font-semibold text-[var(--text-100)] truncate">
-                {activeWorkspace.name}
-              </span>
+              <span className="text-sm font-semibold text-[var(--text-100)] truncate">{activeWorkspace.name}</span>
             </div>
-
-            <button
-              type="button"
-              onClick={() => openEditor(activeWorkspace)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-xs text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
-            >
+            <button type="button" onClick={() => openEditor(activeWorkspace)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-xs text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -942,12 +770,9 @@ export default function DocTidyInvoiceAudit() {
             </button>
           </div>
 
-          {/* ── Audit table error ── */}
-          {error && (
-            <Banner kind="error" onDismiss={() => setError(null)}>{error}</Banner>
-          )}
+          {error && <Banner kind="error" onDismiss={() => setError(null)}>{error}</Banner>}
 
-          {/* ── Table card ── */}
+          {/* Table card */}
           <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
             {/* Toolbar */}
@@ -959,17 +784,11 @@ export default function DocTidyInvoiceAudit() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
                   </svg>
                 </span>
-                <input
-                  type="text"
-                  value={vendorSearch}
-                  onChange={(e) => setVendorSearch(e.target.value)}
-                  placeholder="Filter by vendor…"
-                  className={`${inputClass} w-full pl-8 pr-8`}
-                />
+                <input type="text" value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)}
+                  placeholder="Filter by vendor…" className={`${inputClass} w-full pl-8 pr-8`} />
                 {vendorSearch && (
-                  <button onClick={() => setVendorSearch('')}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
-                    aria-label="Clear search">
+                  <button onClick={() => setVendorSearch('')} aria-label="Clear search"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -981,7 +800,7 @@ export default function DocTidyInvoiceAudit() {
                 {pagination.total > 0 ? `${pagination.total.toLocaleString()} document${pagination.total === 1 ? '' : 's'}` : ''}
               </span>
 
-              {/* Column settings button */}
+              {/* Column settings */}
               <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
                 className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1027,7 +846,13 @@ export default function DocTidyInvoiceAudit() {
                 <table className="w-full text-[11px] border-separate border-spacing-0">
                   <thead>
                     <tr>
-                      {visibleCols.map((col) => <Th key={col.id} label={col.label} />)}
+                      {visibleCols.map((col) => (
+                        <Th
+                          key={col.id}
+                          label={col.label}
+                          align={col.numeric ? 'right' : 'left'}
+                        />
+                      ))}
                       <Th label="Actions" align="center" />
                     </tr>
                   </thead>
@@ -1073,112 +898,62 @@ export default function DocTidyInvoiceAudit() {
                         </td>
                       </tr>
                     ) : (
-                      jobs.flatMap((job) => {
+                      /* ── Flattened rows: one row per line item ── */
+                      jobs.flatMap((job, jobIdx) => {
                         const json = job.jsonOutput ?? null
-                        const isExpanded = expandedRows.has(job._id)
-                        const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+                        const lineItems = extractJsonArray(
+                          json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
+                        )
+                        // Always at least one row; null item = no line item data for that row
+                        const rowItems: (Record<string, unknown> | null)[] =
+                          lineItems.length > 0 ? lineItems : [null]
 
-                        const cellFor = (colId: InvoiceAuditColumnId): React.ReactNode => {
-                          switch (colId) {
-                            case 'vendorName':
-                              return (
-                                <span className="font-medium text-[var(--text-100)]">
-                                  {job.vendorName ||
-                                    extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from') ||
-                                    <span className="italic text-[var(--text-200)]">—</span>}
-                                </span>
-                              )
-                            case 'documentType': {
-                              const rawType = extractJsonField(json, 'document_type', 'type', 'doc_type')
-                              const normalized = rawType.toLowerCase().replace(/[\s_-]+/g, '_')
-                              if (normalized.includes('invoice')) return <DocumentTypeBadge value="invoice" />
-                              if (normalized.includes('order') || normalized.includes('confirmation') || normalized.includes('po')) return <DocumentTypeBadge value="order_confirmation" />
-                              if (rawType) return <span className="text-[var(--text-200)]">{rawType}</span>
-                              return <DocumentTypeBadge value={undefined} />
-                            }
-                            case 'invoiceNumber':
-                              return cell(extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'))
-                            case 'poNumber':
-                              return cell(extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
-                            case 'orderDate':
-                              return cell(extractJsonField(json, 'order_date', 'date_of_order', 'order date'))
-                            case 'invoiceDate':
-                              return cell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
-                            case 'terms':
-                              return cell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
-                            case 'trackingNumber':
-                              return cell(extractJsonField(json, 'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number'))
-                            case 'totalValue':
-                              return (
-                                <span className="font-semibold tabular-nums text-[var(--text-100)]">
-                                  {formatTotal(extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')) ||
-                                    <span className="font-normal text-[var(--text-200)]">—</span>}
-                                </span>
-                              )
-                            case 'lineItems':
-                              if (lineItems.length === 0) return <span className="italic text-[var(--text-200)]">—</span>
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); toggleRow(job._id) }}
-                                  className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80"
+                        // Alternate document group background so adjacent docs are visually distinct
+                        const docBg = jobIdx % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'
+                        const isNewDoc = jobIdx > 0
+
+                        return rowItems.map((item, itemIdx) => {
+                          const isFirstItemInDoc = itemIdx === 0
+                          // Top border between document groups (applied per-cell since border-separate is on the table)
+                          const docBorderClass = isNewDoc && isFirstItemInDoc
+                            ? 'border-t-2 border-[var(--bg-300)]'
+                            : ''
+
+                          return (
+                            <tr
+                              key={`${job._id}-${itemIdx}`}
+                              className={`${docBg} hover:bg-[var(--primary-100)]/50 transition-colors align-middle`}
+                            >
+                              {visibleCols.map((col) => (
+                                <td
+                                  key={col.id}
+                                  className={`
+                                    px-3 py-1.5 text-[11px]
+                                    ${docBorderClass}
+                                    ${col.numeric ? 'text-right tabular-nums' : ''}
+                                    ${col.mono ? 'font-mono' : ''}
+                                    ${col.id === 'liDescription' ? 'max-w-[240px]' : ''}
+                                  `}
                                 >
-                                  <svg className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  {isLineItemCol(col.id)
+                                    ? liCellFor(col.id, item)
+                                    : docCellFor(col.id, job)}
+                                </td>
+                              ))}
+                              {/* Actions */}
+                              <td className={`px-3 py-1.5 text-center ${docBorderClass}`}>
+                                <button type="button" onClick={() => setOpenJobId(job._id)}
+                                  title="Open parsed document details"
+                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)]">
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                   </svg>
-                                  {lineItems.length} item{lineItems.length === 1 ? '' : 's'}
                                 </button>
-                              )
-                            case 'filename':
-                              return (
-                                <span className="font-mono text-[var(--text-200)] truncate max-w-[160px] block" title={job.filename}>
-                                  {job.filename}
-                                </span>
-                              )
-                            case 'parsedAt':
-                              return (
-                                <span className="text-[var(--text-200)]" title={job.completedAt ? formatDateTime(job.completedAt) : ''}>
-                                  {job.completedAt ? formatDate(job.completedAt) : '—'}
-                                </span>
-                              )
-                            case 'requestedBy':
-                              return <span className="text-[var(--text-200)]">{job.requestedByName || '—'}</span>
-                            default:
-                              return null
-                          }
-                        }
-
-                        const rows: React.ReactNode[] = [
-                          <tr key={job._id}
-                            className="group align-middle odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50 transition-colors">
-                            {visibleCols.map((col) => (
-                              <td key={col.id} className="px-3 py-1.5 text-[11px]">{cellFor(col.id)}</td>
-                            ))}
-                            <td className="px-3 py-1.5 text-center">
-                              <button type="button" onClick={() => setOpenJobId(job._id)}
-                                title="Open parsed document details"
-                                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)]">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
-                            </td>
-                          </tr>,
-                        ]
-
-                        if (isExpanded && lineItems.length > 0) {
-                          rows.push(
-                            <tr key={`${job._id}-items`}>
-                              <td colSpan={visibleCols.length + 1}
-                                className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-6 pb-4 pt-3">
-                                <LineItemsTable items={lineItems} vendorName={job.vendorName ?? ''} />
                               </td>
                             </tr>
                           )
-                        }
-
-                        return rows
+                        })
                       })
                     )}
                   </tbody>
@@ -1217,7 +992,7 @@ export default function DocTidyInvoiceAudit() {
         />
       )}
 
-      {/* ── Workspace editor dialog ── */}
+      {/* ── Workspace editor ── */}
       {editTarget !== null && (
         <WorkspaceEditorDialog
           initial={editTarget === 'new' ? null : editTarget}
@@ -1231,7 +1006,7 @@ export default function DocTidyInvoiceAudit() {
   )
 }
 
-/** Render a plain scalar cell, or a dash if empty. */
+/** Render a plain scalar doc-level cell, or a dash if empty. */
 function cell(value: string): React.ReactNode {
   return value
     ? <span className="text-[var(--text-100)]">{value}</span>
