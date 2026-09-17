@@ -8,7 +8,6 @@ import {
   Spinner,
   Th,
 } from '../components/docTidy/docTidyUi'
-import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -481,7 +480,6 @@ export default function DocTidyInvoiceAudit() {
   const [debouncedVendor, setDebouncedVendor] = useState('')
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
-  const [openJobId, setOpenJobId] = useState<string | null>(null)
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -778,7 +776,7 @@ export default function DocTidyInvoiceAudit() {
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-2.5">
               {/* Vendor search */}
-              <div className="relative min-w-[200px] flex-1 max-w-xs">
+              <div className="relative min-w-[180px] flex-1 max-w-xs">
                 <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
@@ -796,10 +794,6 @@ export default function DocTidyInvoiceAudit() {
                 )}
               </div>
 
-              <span className="text-[11px] text-[var(--text-200)]">
-                {pagination.total > 0 ? `${pagination.total.toLocaleString()} document${pagination.total === 1 ? '' : 's'}` : ''}
-              </span>
-
               {/* Column settings */}
               <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
                 className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
@@ -815,23 +809,8 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
 
-            {/* Top pagination */}
-            {!loading && !error && pagination.total > 0 && (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                  <span>Rows per page:</span>
-                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                    {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
-                </div>
-                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
-              </div>
-            )}
-
-            {/* Table */}
-            <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
+            {/* Table — horizontally scrollable, vertically unbounded */}
+            <div className="overflow-x-auto">
               {error ? (
                 <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
@@ -853,26 +832,22 @@ export default function DocTidyInvoiceAudit() {
                           align={col.numeric ? 'right' : 'left'}
                         />
                       ))}
-                      <Th label="Actions" align="center" />
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      Array.from({ length: 8 }).map((_, i) => (
-                        <tr key={i}>
+                      Array.from({ length: 12 }).map((_, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                           {visibleCols.map((col) => (
-                            <td key={col.id} className="px-3 py-2">
-                              <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                            <td key={col.id} className="px-2.5 py-1">
+                              <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
-                          <td className="px-3 py-2">
-                            <div className="mx-auto h-6 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
-                          </td>
                         </tr>
                       ))
                     ) : jobs.length === 0 ? (
                       <tr>
-                        <td colSpan={visibleCols.length + 1} className="py-16 text-center">
+                        <td colSpan={visibleCols.length} className="py-16 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                               <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -898,89 +873,64 @@ export default function DocTidyInvoiceAudit() {
                         </td>
                       </tr>
                     ) : (
-                      /* ── Flattened rows: one row per line item ── */
-                      jobs.flatMap((job, jobIdx) => {
-                        const json = job.jsonOutput ?? null
-                        const lineItems = extractJsonArray(
-                          json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
-                        )
-                        // Always at least one row; null item = no line item data for that row
-                        const rowItems: (Record<string, unknown> | null)[] =
-                          lineItems.length > 0 ? lineItems : [null]
-
-                        // Alternate document group background so adjacent docs are visually distinct
-                        const docBg = jobIdx % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'
-                        const isNewDoc = jobIdx > 0
-
-                        return rowItems.map((item, itemIdx) => {
-                          const isFirstItemInDoc = itemIdx === 0
-                          // Top border between document groups (applied per-cell since border-separate is on the table)
-                          const docBorderClass = isNewDoc && isFirstItemInDoc
-                            ? 'border-t-2 border-[var(--bg-300)]'
-                            : ''
-
-                          return (
-                            <tr
-                              key={`${job._id}-${itemIdx}`}
-                              className={`${docBg} hover:bg-[var(--primary-100)]/50 transition-colors align-middle`}
-                            >
-                              {visibleCols.map((col) => (
-                                <td
-                                  key={col.id}
-                                  className={`
-                                    px-3 py-1.5 text-[11px]
-                                    ${docBorderClass}
-                                    ${col.numeric ? 'text-right tabular-nums' : ''}
-                                    ${col.mono ? 'font-mono' : ''}
-                                    ${col.id === 'liDescription' ? 'max-w-[240px]' : ''}
-                                  `}
-                                >
-                                  {isLineItemCol(col.id)
-                                    ? liCellFor(col.id, item)
-                                    : docCellFor(col.id, job)}
-                                </td>
-                              ))}
-                              {/* Actions */}
-                              <td className={`px-3 py-1.5 text-center ${docBorderClass}`}>
-                                <button type="button" onClick={() => setOpenJobId(job._id)}
-                                  title="Open parsed document details"
-                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)]">
-                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                  </svg>
-                                </button>
-                              </td>
-                            </tr>
+                      /* ── Flattened rows: one row per line item, alternating per row ── */
+                      (() => {
+                        let rowIdx = 0
+                        return jobs.flatMap((job) => {
+                          const json = job.jsonOutput ?? null
+                          const lineItems = extractJsonArray(
+                            json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
                           )
+                          const rowItems: (Record<string, unknown> | null)[] =
+                            lineItems.length > 0 ? lineItems : [null]
+
+                          return rowItems.map((item, itemIdx) => {
+                            const isEven = rowIdx % 2 === 0
+                            rowIdx++
+                            return (
+                              <tr
+                                key={`${job._id}-${itemIdx}`}
+                                className={`${isEven ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'} hover:bg-[var(--primary-100)]/50 transition-colors align-middle`}
+                              >
+                                {visibleCols.map((col) => (
+                                  <td
+                                    key={col.id}
+                                    className={`px-2.5 py-1 text-[11px] whitespace-nowrap ${col.numeric ? 'text-right tabular-nums' : ''} ${col.mono ? 'font-mono' : ''}`}
+                                  >
+                                    {isLineItemCol(col.id)
+                                      ? liCellFor(col.id, item)
+                                      : docCellFor(col.id, job)}
+                                  </td>
+                                ))}
+                              </tr>
+                            )
+                          })
                         })
-                      })
+                      })()
                     )}
                   </tbody>
                 </table>
               )}
             </div>
 
-            {/* Bottom pagination */}
-            {!loading && !error && pagination.total > 0 && (
-              <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                <span className="text-[11px] text-[var(--text-200)]">
-                  {startItem}–{endItem} of {pagination.total.toLocaleString()}
-                </span>
-                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+            {/* Bottom pagination — rows-per-page + count + arrows */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                <span>Rows per page:</span>
+                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {pagination.total > 0 && (
+                  <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
+                )}
               </div>
-            )}
+              {pagination.pages > 1 && (
+                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+              )}
+            </div>
           </div>
         </div>
-      )}
-
-      {/* ── Parse job panel ── */}
-      {openJobId && (
-        <ParseJobPanel
-          jobId={openJobId}
-          onClose={() => setOpenJobId(null)}
-          onChanged={() => void fetchJobs()}
-        />
       )}
 
       {/* ── Column settings drawer ── */}
