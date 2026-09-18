@@ -103,7 +103,7 @@ export default function ReasoningStepper({
 
               {/* Reasoning text */}
               <p
-                className={`whitespace-pre-wrap text-sm leading-relaxed ${
+                className={`whitespace-pre-wrap text-xs leading-relaxed ${
                   isCurrent ? 'text-[var(--text-100)]' : 'text-[var(--text-200)]'
                 }`}
               >
