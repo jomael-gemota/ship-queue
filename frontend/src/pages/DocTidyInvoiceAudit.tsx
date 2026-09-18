@@ -485,10 +485,6 @@ export default function DocTidyInvoiceAudit() {
   const fetchEmailsRef = useRef(fetchEmails)
   useEffect(() => { fetchEmailsRef.current = fetchEmails }, [fetchEmails])
 
-  /* Keep a stable ref for fetchJobs too, for the audit tab SSE. */
-  const fetchJobsRef = useRef(fetchJobs)
-  useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
-
   /* SSE — subscribe while on the emails tab to keep parse statuses live */
   useEffect(() => {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
@@ -584,6 +580,11 @@ export default function DocTidyInvoiceAudit() {
   }, [activeWorkspace, page, pageSize, debouncedVendor])
 
   useEffect(() => { void fetchJobs() }, [fetchJobs])
+
+  /* Keep a stable ref so the audit-tab SSE handler always calls the latest
+     fetchJobs without reconnecting when filters change. */
+  const fetchJobsRef = useRef(fetchJobs)
+  useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
 
   /* ── Workspace navigation ── */
   const enterWorkspace = (ws: DocTidyWorkspace) => {
