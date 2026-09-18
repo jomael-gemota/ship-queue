@@ -267,7 +267,7 @@ export const setParseJobVendor = async (req: Request, res: Response): Promise<vo
 
     const job = await DocTidyParseJob.findByIdAndUpdate(
       id,
-      { $set: { vendorName: vendorName.trim() } },
+      { $set: { vendorName: vendorName.trim(), vendorNeedsSetup: false } },
       { new: true }
     ).lean();
 
@@ -542,6 +542,27 @@ export const upsertVendor = async (req: Request, res: Response): Promise<void> =
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     ).lean();
+
+    // Clear vendorNeedsSetup on all existing parse jobs for this vendor within
+    // the workspace, so previously-parsed emails no longer show the setup card.
+    if (vendor) {
+      // Resolve message IDs that belong to this workspace via its rules.
+      const workspaceRules = await DocTidyRule
+        .find({ workspaceId })
+        .select('_id')
+        .lean();
+      const ruleIds = workspaceRules.map((r) => r._id);
+      const messages = await DocTidyMessage.find({ ruleId: { $in: ruleIds } }).select('_id').lean();
+      const messageIds = messages.map((m) => m._id);
+      await DocTidyParseJob.updateMany(
+        {
+          messageId: { $in: messageIds },
+          vendorName: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          vendorNeedsSetup: true,
+        },
+        { $set: { vendorNeedsSetup: false } }
+      );
+    }
 
     res.json({ data: vendor });
   } catch (error) {

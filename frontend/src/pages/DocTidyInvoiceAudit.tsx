@@ -453,9 +453,9 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize])
 
   /* ── Fetch workspace emails (with parse jobs) ── */
-  const fetchEmails = useCallback(async () => {
+  const fetchEmails = useCallback(async (silent = false) => {
     if (!activeWorkspace) return
-    setEmailLoading(true)
+    if (!silent) setEmailLoading(true)
     setEmailError(null)
     try {
       const params = new URLSearchParams({
@@ -472,7 +472,7 @@ export default function DocTidyInvoiceAudit() {
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : 'Failed to load messages')
     } finally {
-      setEmailLoading(false)
+      if (!silent) setEmailLoading(false)
     }
   }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo])
 
@@ -491,11 +491,31 @@ export default function DocTidyInvoiceAudit() {
     return authApi.eventStream<DocTidyEvent>(
       '/doc-tidy/stream',
       (event) => {
-        if (event.type === 'parse_status' || event.type === 'imported') {
-          void fetchEmailsRef.current()
+        if (event.type === 'imported') {
+          void fetchEmailsRef.current(true)
+        }
+        // Only refetch on terminal parse states — intermediate states (pending/running)
+        // would flash the skeleton on every token, causing visible blinking.
+        if (event.type === 'parse_status' &&
+            (event.parseStatus === 'completed' || event.parseStatus === 'failed')) {
+          void fetchEmailsRef.current(true)
         }
       },
       () => {} // silent disconnect — no live badge needed here
+    )
+  }, [workspaceTab, activeWorkspace])
+
+  /* SSE — subscribe while on the audit tab to auto-populate completed results */
+  useEffect(() => {
+    if (workspaceTab !== 'audit' || !activeWorkspace) return
+    return authApi.eventStream<DocTidyEvent>(
+      '/doc-tidy/stream',
+      (event) => {
+        if (event.type === 'parse_status' && event.parseStatus === 'completed') {
+          void fetchJobsRef.current()
+        }
+      },
+      () => {}
     )
   }, [workspaceTab, activeWorkspace])
 
@@ -560,6 +580,11 @@ export default function DocTidyInvoiceAudit() {
   }, [activeWorkspace, page, pageSize, debouncedVendor])
 
   useEffect(() => { void fetchJobs() }, [fetchJobs])
+
+  /* Keep a stable ref so the audit-tab SSE handler always calls the latest
+     fetchJobs without reconnecting when filters change. */
+  const fetchJobsRef = useRef(fetchJobs)
+  useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
 
   /* ── Workspace navigation ── */
   const enterWorkspace = (ws: DocTidyWorkspace) => {
@@ -1023,7 +1048,7 @@ export default function DocTidyInvoiceAudit() {
                                 <AttachmentIcons
                                   message={msg}
                                   onOpenJob={setOpenJobId}
-                                  onChanged={() => void fetchEmails()}
+                                  onChanged={() => void fetchEmails(true)}
                                 />
                               </td>
                             </tr>
@@ -1247,8 +1272,9 @@ export default function DocTidyInvoiceAudit() {
       {openJobId && (
         <ParseJobPanel
           jobId={openJobId}
+          workspaceId={activeWorkspace?._id}
           onClose={() => setOpenJobId(null)}
-          onChanged={() => void fetchEmails()}
+          onChanged={() => void fetchEmails(true)}
         />
       )}
 

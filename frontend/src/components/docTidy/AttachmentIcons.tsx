@@ -33,17 +33,16 @@ export default function AttachmentIcons({
   const [startingIndex, setStartingIndex] = useState<number | null>(null)
   const [failedIndex, setFailedIndex] = useState<{ index: number; message: string } | null>(null)
   const [abortingJobId, setAbortingJobId] = useState<string | null>(null)
-  const [hoveredJobId, setHoveredJobId] = useState<string | null>(null)
 
   const startParse = async (index: number) => {
     setStartingIndex(index)
     setFailedIndex(null)
     try {
-      const res = await authApi.post<{ data: DocTidyParseJob }>(
+      await authApi.post<{ data: DocTidyParseJob }>(
         `/doc-tidy/messages/${message._id}/attachments/${index}/parse`
       )
       onChanged()
-      onOpenJob(res.data._id)
+      // Don't auto-open the panel — the spinner button is now the explicit entry point
     } catch (err) {
       setFailedIndex({ index, message: (err as Error).message })
     } finally {
@@ -79,31 +78,31 @@ export default function AttachmentIcons({
         if (job) {
           const running = isParseRunning(job.status)
           const isAborting = abortingJobId === job._id
-          const isHovered = hoveredJobId === job._id
 
-          // Running jobs show a spinner at rest; on hover they flip to an abort ×
+          // Running jobs: always show a "view progress" button + a separate abort button
           if (running) {
             return (
-              <span
-                key={i}
-                className="relative"
-                onMouseEnter={() => setHoveredJobId(job._id)}
-                onMouseLeave={() => setHoveredJobId(null)}
-              >
+              <span key={i} className="flex items-center gap-0.5">
+                {/* View progress — opens the reasoning panel */}
                 <TableActionButton
-                  label={isHovered ? 'Stop / abort this parse' : 'The agent is working on this — open to watch'}
-                  onClick={() => isHovered ? void abortJob(job) : onOpenJob(job._id)}
+                  label="Open to watch the agent work"
+                  onClick={() => onOpenJob(job._id)}
+                >
+                  <Spinner className="h-5 w-5 text-sky-500" />
+                </TableActionButton>
+
+                {/* Abort — stop the parse */}
+                <TableActionButton
+                  label="Stop / abort this parse"
+                  onClick={() => void abortJob(job)}
                   disabled={isAborting}
                 >
                   {isAborting ? (
                     <Spinner className="h-5 w-5 text-slate-400" />
-                  ) : isHovered ? (
-                    /* Abort "×" glyph */
-                    <svg className="h-5 w-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
                   ) : (
-                    <Spinner className="h-5 w-5 text-sky-500" />
+                    <svg className="h-4 w-4 text-rose-400 hover:text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                   )}
                 </TableActionButton>
               </span>
