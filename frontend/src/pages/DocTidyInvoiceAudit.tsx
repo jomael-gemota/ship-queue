@@ -485,17 +485,41 @@ export default function DocTidyInvoiceAudit() {
   const fetchEmailsRef = useRef(fetchEmails)
   useEffect(() => { fetchEmailsRef.current = fetchEmails }, [fetchEmails])
 
+  /* Keep a stable ref for fetchJobs too, for the audit tab SSE. */
+  const fetchJobsRef = useRef(fetchJobs)
+  useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
+
   /* SSE — subscribe while on the emails tab to keep parse statuses live */
   useEffect(() => {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
     return authApi.eventStream<DocTidyEvent>(
       '/doc-tidy/stream',
       (event) => {
-        if (event.type === 'parse_status' || event.type === 'imported') {
+        if (event.type === 'imported') {
+          void fetchEmailsRef.current()
+        }
+        // Only refetch on terminal parse states — intermediate states (pending/running)
+        // would flash the skeleton skeleton on every token, causing visible blinking.
+        if (event.type === 'parse_status' &&
+            (event.parseStatus === 'completed' || event.parseStatus === 'failed')) {
           void fetchEmailsRef.current()
         }
       },
       () => {} // silent disconnect — no live badge needed here
+    )
+  }, [workspaceTab, activeWorkspace])
+
+  /* SSE — subscribe while on the audit tab to auto-populate completed results */
+  useEffect(() => {
+    if (workspaceTab !== 'audit' || !activeWorkspace) return
+    return authApi.eventStream<DocTidyEvent>(
+      '/doc-tidy/stream',
+      (event) => {
+        if (event.type === 'parse_status' && event.parseStatus === 'completed') {
+          void fetchJobsRef.current()
+        }
+      },
+      () => {}
     )
   }, [workspaceTab, activeWorkspace])
 
@@ -1247,6 +1271,7 @@ export default function DocTidyInvoiceAudit() {
       {openJobId && (
         <ParseJobPanel
           jobId={openJobId}
+          workspaceId={activeWorkspace?._id}
           onClose={() => setOpenJobId(null)}
           onChanged={() => void fetchEmails()}
         />

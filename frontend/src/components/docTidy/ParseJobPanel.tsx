@@ -33,10 +33,12 @@ const TABS: { id: Tab; label: string }[] = [
  */
 export default function ParseJobPanel({
   jobId,
+  workspaceId,
   onClose,
   onChanged,
 }: {
   jobId: string
+  workspaceId?: string
   onClose: () => void
   onChanged: () => void
 }) {
@@ -232,6 +234,7 @@ export default function ParseJobPanel({
           {job?.vendorNeedsSetup && (
             <VendorSetup
               jobId={jobId}
+              workspaceId={workspaceId ?? ''}
               suggestedName={job.vendorName}
               onRegistered={() => {
                 void loadJob()

@@ -13,10 +13,12 @@ import type { DocTidyVendor } from '../../types/docTidy'
  */
 export default function VendorSetup({
   jobId,
+  workspaceId,
   suggestedName,
   onRegistered,
 }: {
   jobId: string
+  workspaceId: string
   suggestedName?: string | null
   onRegistered: (vendor: DocTidyVendor) => void
 }) {
@@ -35,6 +37,7 @@ export default function VendorSetup({
       const res = await authApi.post<{ data: DocTidyVendor }>('/doc-tidy/vendors', {
         name: name.trim(),
         skuSample: sample.trim() || undefined,
+        workspaceId,
       })
       // Bind it to the job too, so the re-run resolves the vendor even if the
       // document never names it.
