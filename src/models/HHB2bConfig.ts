@@ -14,6 +14,8 @@ export interface IHHB2bConfig extends Document {
   accountId: string;
   cookie?: string;
   cookieUpdatedAt?: Date | null;
+  /** When false, Place Order is visible but does not submit to Helly Hansen. */
+  placeOrderEnabled: boolean;
   updatedByName: string;
   updatedByEmail: string;
   createdAt: Date;
@@ -28,6 +30,7 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
     accountId: { type: String, required: true, default: HH_B2B_DEFAULT_ACCOUNT_ID },
     cookie: { type: String, select: false, default: '' },
     cookieUpdatedAt: { type: Date, default: null },
+    placeOrderEnabled: { type: Boolean, default: false },
     updatedByName: { type: String, default: '' },
     updatedByEmail: { type: String, default: '' },
   },

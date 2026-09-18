@@ -13,6 +13,12 @@ import {
   rerunOrderScSync,
   rerunGroupCartDraft,
   rerunOrderCartDraft,
+  rerunGroupCartVerify,
+  rerunOrderCartVerify,
+  compareGroupCart,
+  compareOrderCart,
+  placeGroupCart,
+  placeOrderCart,
   updateGroupNotes,
   updateOrderNotes,
 } from '../controllers/hhSportswear.controller';
@@ -62,6 +68,12 @@ router.post('/:groupId/sc-sync', rerunGroupScSync);
 router.post('/:groupId/orders/:orderId/sc-sync', rerunOrderScSync);
 router.post('/:groupId/cart-draft', rerunGroupCartDraft);
 router.post('/:groupId/orders/:orderId/cart-draft', rerunOrderCartDraft);
+router.post('/:groupId/cart-verify', rerunGroupCartVerify);
+router.post('/:groupId/orders/:orderId/cart-verify', rerunOrderCartVerify);
+router.post('/:groupId/cart-compare', compareGroupCart);
+router.post('/:groupId/orders/:orderId/cart-compare', compareOrderCart);
+router.post('/:groupId/place', placeGroupCart);
+router.post('/:groupId/orders/:orderId/place', placeOrderCart);
 router.get('/:groupId', getGroup);
 router.patch('/:groupId', updateGroupNotes);
 router.patch('/:groupId/orders/:orderId', updateOrderNotes);

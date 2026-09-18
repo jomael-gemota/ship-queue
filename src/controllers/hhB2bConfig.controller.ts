@@ -10,6 +10,7 @@ export interface HhB2bConfigDto {
   accountId: string;
   hasCookie: boolean;
   cookieUpdatedAt: string | null;
+  placeOrderEnabled: boolean;
   updatedAt: string;
   updatedByName: string;
 }
@@ -21,6 +22,7 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
     accountId: doc.accountId,
     hasCookie: Boolean(normalizeCookieHeader(doc.cookie ?? '')),
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
+    placeOrderEnabled: Boolean(doc.placeOrderEnabled),
     updatedAt: doc.updatedAt.toISOString(),
     updatedByName: doc.updatedByName || '',
   };
@@ -72,6 +74,14 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
       return;
     }
     doc.accountId = accountId;
+  }
+
+  if ('placeOrderEnabled' in body) {
+    if (typeof body.placeOrderEnabled !== 'boolean') {
+      res.status(400).json({ message: 'placeOrderEnabled must be a boolean.' });
+      return;
+    }
+    doc.placeOrderEnabled = body.placeOrderEnabled;
   }
 
   if ('cookie' in body) {

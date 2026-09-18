@@ -1,8 +1,10 @@
-import type { HhB2bDraftItem, HhB2bDraftRequest } from './hhB2b';
+import type { HhB2bDraftAddress, HhB2bDraftItem, HhB2bDraftRequest } from './hhB2b';
 import { HhB2bAuthError, HhB2bDraftError } from './hhB2bConfig';
 import type { HhB2bConfig } from './hhB2bConfig';
 
 const FETCH_TIMEOUT_MS = 30_000;
+/** Portal Ship Via option labeled Default. */
+const HH_B2B_DEFAULT_SHIP_VIA = '-';
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -146,8 +148,25 @@ function formatPageItems(raw: unknown, sku: string, quantity: number): PageItem[
   return pageItems;
 }
 
+/** Same keys as submitted Helly Hansen drop-ship carts. Address * binds to address1. */
+function toDropShipAddress(address: HhB2bDraftAddress): Record<string, string> {
+  return {
+    name: asString(address.name),
+    address1: asString(address.line1),
+    address2: asString(address.line2),
+    address3: '',
+    city: asString(address.city),
+    state: asString(address.state),
+    zip: asString(address.postalCode),
+    country: asString(address.country) || 'US',
+    phone: asString(address.phone),
+    email: '',
+  };
+}
+
 function addToCartPayload(
   config: HhB2bConfig,
+  request: HhB2bDraftRequest,
   arriveOn: string,
   cancelOn: string,
   pageProducts: PageProduct[]
@@ -183,13 +202,13 @@ function addToCartPayload(
         note: null,
         arrive_on: arriveOn,
         cancel_on: cancelOn,
-        purchase_order: null,
+        purchase_order: asString(request.po) || null,
         customer_number: config.accountId,
         location_number: null,
-        client_fields: { ship_via: '-' },
+        client_fields: { ship_via: HH_B2B_DEFAULT_SHIP_VIA },
         programs: [],
         page_products: pageProducts,
-        drop_ship_address: null,
+        drop_ship_address: toDropShipAddress(request.address),
       },
     ],
     whiteboard: null,
@@ -227,6 +246,22 @@ async function fetchDocument(
   return asRecord(raw);
 }
 
+export async function fetchHhB2bDocument(
+  config: HhB2bConfig,
+  cookie: string,
+  documentId: string
+): Promise<Record<string, unknown>> {
+  const record = await fetchDocument(config, cookie, documentId);
+  if (!record) {
+    throw new HhB2bDraftError('B2B document lookup returned an empty body');
+  }
+  const error = record.error;
+  if (error) {
+    throw new HhB2bDraftError(`B2B document lookup failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
+  }
+  return record;
+}
+
 export async function fetchHhB2bOrderNumber(
   config: HhB2bConfig,
   cookie: string,
@@ -238,6 +273,47 @@ export async function fetchHhB2bOrderNumber(
     throw new HhB2bDraftError(`B2B document lookup failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
   }
   return parseOrderNumber(record);
+}
+
+export async function submitHellyHansenSportsOrder(
+  config: HhB2bConfig,
+  cookie: string,
+  documentId: string
+): Promise<void> {
+  const id = documentId.trim();
+  if (!id || !looksLikeMongoObjectId(id)) {
+    throw new HhB2bDraftError('Cannot place an order without a live Helly Hansen document id');
+  }
+
+  const document = await fetchHhB2bDocument(config, cookie, id);
+  const payload: Record<string, unknown> = {
+    ...document,
+    _id: asString(document._id) || asString(document.id) || id,
+    do_submit: true,
+    do_review: false,
+    do_reject: false,
+  };
+  delete payload.error;
+
+  let created: unknown;
+  try {
+    created = await b2bRequest(config, cookie, '/api/documents/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    if (!(err instanceof HhB2bDraftError) || !/B2B 404 /.test(err.message)) throw err;
+    created = await b2bRequest(config, cookie, `/api/documents/${id}/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  const record = asRecord(created);
+  const error = record?.error;
+  if (error) {
+    throw new HhB2bDraftError(`B2B place failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
+  }
 }
 
 export async function createHellyHansenSportsDraft(
@@ -291,7 +367,7 @@ export async function createHellyHansenSportsDraft(
     });
   }
 
-  const payload = addToCartPayload(config, arriveOn, cancelOn, pageProducts);
+  const payload = addToCartPayload(config, request, arriveOn, cancelOn, pageProducts);
   const created = await b2bRequest(config, cookie, '/api/documents/', {
     method: 'POST',
     body: JSON.stringify(payload),

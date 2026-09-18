@@ -17,6 +17,10 @@ export function isCartStatus(value: unknown): value is HHCartStatus {
   return typeof value === 'string' && (HH_CART_STATUSES as readonly string[]).includes(value);
 }
 
+export function isHhPlaced(child: { cartStatus?: string }): boolean {
+  return child.cartStatus === 'placed';
+}
+
 export function mapLegacyHhStatus(legacy?: string): {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
@@ -64,6 +68,9 @@ export interface IHHChildOrder {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
+  verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
+  verifyRows: Array<{ field: string; label: string; expected: string; actual: string; matched: boolean }>;
+  verifiedAt: Date | null;
   items: IHHLineItem[];
 }
 
@@ -121,6 +128,32 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
       default: HH_DEFAULT_CART_STATUS,
     },
     b2bDraftId: { type: String, default: '', trim: true },
+    verifyIssues: {
+      type: [
+        {
+          _id: false,
+          field: { type: String, default: '' },
+          label: { type: String, default: '' },
+          expected: { type: String, default: '' },
+          actual: { type: String, default: '' },
+        },
+      ],
+      default: [],
+    },
+    verifyRows: {
+      type: [
+        {
+          _id: false,
+          field: { type: String, default: '' },
+          label: { type: String, default: '' },
+          expected: { type: String, default: '' },
+          actual: { type: String, default: '' },
+          matched: { type: Boolean, default: true },
+        },
+      ],
+      default: [],
+    },
+    verifiedAt: { type: Date, default: null },
     items: { type: [LineItemSchema], default: [] },
   },
   { _id: true }

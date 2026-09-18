@@ -7,6 +7,7 @@ import HHOrderGroup, {
 import { createHhB2bDraft, HhB2bDraftError, HhB2bDraftRequest } from '../lib/hhB2b';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 
 const LOG = '[hh-cart-draft]';
@@ -99,6 +100,7 @@ function isLocalB2bDraft(child: IHHChildOrder): boolean {
 }
 
 function childNeedsDraft(child: IHHChildOrder): boolean {
+  if (child.cartStatus === 'placed') return false;
   if (child.detailsStatus !== 'synced') return false;
   if ((child.items ?? []).length === 0) return false;
   if (child.cartStatus === 'none') return true;
@@ -112,6 +114,7 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
     address: {
       name: child.customerName ?? '',
       line1: child.addressLine1 ?? '',
+      line2: child.addressLine2 ?? '',
       city: child.city ?? '',
       state: child.state ?? '',
       postalCode: child.postalCode ?? '',
@@ -139,6 +142,7 @@ async function persistDraft(
     if (!group) return null;
     const child = group.children.id(childId);
     if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
     if (child.detailsStatus !== 'synced') return child;
     if (child.cartStatus !== 'none' && !isLocalB2bDraft(child)) return child;
     if (!draftId || draftId.startsWith('local:')) return child;
@@ -146,6 +150,7 @@ async function persistDraft(
     child.cartStatus = 'draft';
     child.b2bDraftId = draftId;
     child.referenceNumber = orderNumber;
+    clearHhCartVerification(child);
     applyGroupRollup(group);
     group.markModified('children');
     await group.save();
@@ -182,6 +187,7 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   console.log(
     `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}`
   );
+  enqueueHhCartVerify(String(group._id), childId);
 }
 
 async function draftGroup(job: HhCartDraftJob): Promise<void> {

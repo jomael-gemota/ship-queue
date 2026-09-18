@@ -16,6 +16,7 @@ import {
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { enqueueHhCartDraft } from './hhCartDraft';
+import { childCanVerify, enqueueHhCartVerify, invalidateHhCartVerification } from './hhCartVerify';
 
 const LOG = '[hh-sc-sync]';
 const MAX_ERROR_LEN = 1000;
@@ -108,6 +109,7 @@ export async function countUnsyncedHhOrders(): Promise<number> {
 }
 
 function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetailsStatus): void {
+  if (child.cartStatus === 'placed') return;
   child.customerName = fill.customerName;
   child.customerEmail = fill.customerEmail;
   child.customerPhone = fill.customerPhone;
@@ -120,6 +122,7 @@ function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetail
   const items = child.items as unknown as { splice: (start: number, del: number, ...rest: HhScFill['items']) => void };
   items.splice(0, (child.items as unknown[]).length, ...fill.items);
   child.detailsStatus = detailsStatus;
+  if (detailsStatus === 'synced') invalidateHhCartVerification(child);
 }
 
 function applyGroupRollup(group: IHHOrderGroup): void {
@@ -133,6 +136,7 @@ async function persistChild(groupId: string, childId: string, mutate: (child: IH
     if (!group) return null;
     const child = group.children.id(childId);
     if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
     mutate(child);
     applyGroupRollup(group);
     group.markModified('children');
@@ -149,6 +153,7 @@ class StopGroupError extends Error {
 }
 
 function childNeedsFill(child: IHHChildOrder): boolean {
+  if (child.cartStatus === 'placed') return false;
   if (child.detailsStatus === 'pending') return true;
   if (child.detailsStatus === 'failed') return false;
   return (child.items ?? []).some((item) => item.imageUrl == null || typeof item.tax !== 'number');
@@ -191,6 +196,8 @@ async function fillChild(
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
   if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
     enqueueHhCartDraft(groupId, childId);
+  } else if (saved && childCanVerify(saved)) {
+    enqueueHhCartVerify(groupId, childId);
   }
 }
 

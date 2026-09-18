@@ -10,6 +10,7 @@ import HHOrderGroup, {
   HHDetailsStatus,
   isCartStatus,
   isDetailsStatus,
+  isHhPlaced,
   mapLegacyHhStatus,
   rollupHhCartStatus,
   rollupHhDetailsStatus,
@@ -18,6 +19,17 @@ import { parseHhImportCsv, parseHhImportText } from '../lib/hhImport';
 import { parseHhImportXlsx } from '../lib/hhImportXlsx';
 import { countUnsyncedHhOrders, enqueueHhGroupScSync, getHhScSyncRuntime } from '../services/hhScSync';
 import { countUndraftedHhOrders, enqueueHhCartDraft, getHhCartDraftRuntime } from '../services/hhCartDraft';
+import {
+  childCanPlace,
+  childCanVerify,
+  clearHhCartVerification,
+  enqueueHhCartVerify,
+  getHhCartVerifyQueued,
+  invalidateHhCartVerification,
+  liveCompareHhCarts,
+} from '../services/hhCartVerify';
+import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
+import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
 
 export interface HHLineItemDto {
@@ -48,6 +60,9 @@ export interface HHChildOrderDto {
   notes: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
+  verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
+  verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
+  verifiedAt: string | null;
   items: HHLineItemDto[];
 }
 
@@ -141,6 +156,20 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
     cartStatus: isCartStatus(order.cartStatus)
       ? order.cartStatus
       : mapLegacyHhStatus((order as { status?: string }).status).cartStatus,
+    verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
+      field: issue.field ?? '',
+      label: issue.label ?? '',
+      expected: issue.expected ?? '',
+      actual: issue.actual ?? '',
+    })),
+    verifyRows: (order.verifyRows ?? []).map((row) => ({
+      field: row.field ?? '',
+      label: row.label ?? '',
+      expected: row.expected ?? '',
+      actual: row.actual ?? '',
+      match: Boolean(row.matched),
+    })),
+    verifiedAt: order.verifiedAt instanceof Date ? order.verifiedAt.toISOString() : order.verifiedAt ? String(order.verifiedAt) : null,
     items: (order.items ?? []).map(serializeItem),
   };
 }
@@ -186,6 +215,9 @@ function emptyImportedOrder(orderId: string, po: string) {
     detailsStatus: HH_DEFAULT_DETAILS_STATUS,
     cartStatus: HH_DEFAULT_CART_STATUS,
     b2bDraftId: '',
+    verifyIssues: [],
+    verifyRows: [],
+    verifiedAt: null,
     items: [],
   };
 }
@@ -311,17 +343,24 @@ function parseChildren(raw: unknown): ParsedChildOrder[] | string {
 
 export const getScSyncStatus = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [pendingUnsynced, pendingUndrafted] = await Promise.all([
+    const [pendingUnsynced, pendingUndrafted, config] = await Promise.all([
       countUnsyncedHhOrders(),
       countUndraftedHhOrders(),
+      getOrCreateHhB2bConfig(false),
     ]);
+    const place = getHhCartPlaceRuntime();
     res.json({
       data: {
         ...getHhScSyncRuntime(),
         pendingUnsynced,
+        placeOrderEnabled: Boolean(config.placeOrderEnabled),
         cart: {
           ...getHhCartDraftRuntime(),
           pendingUndrafted,
+          verifying: getHhCartVerifyQueued() > 0,
+          placing: place.running || place.queued > 0,
+          placeCurrentOrderId: place.currentOrderId,
+          placeQueued: place.queued,
         },
       },
     });
@@ -331,14 +370,15 @@ export const getScSyncStatus = async (_req: Request, res: Response): Promise<voi
 };
 
 function resetCartForResync(child: IHHChildOrder): void {
-  if (child.cartStatus === 'ready' || child.cartStatus === 'review' || child.cartStatus === 'placed') return;
+  if (child.cartStatus === 'placed') return;
   child.cartStatus = HH_DEFAULT_CART_STATUS;
   child.b2bDraftId = '';
   child.referenceNumber = '';
+  clearHhCartVerification(child);
 }
 
 function canRedraftCart(child: IHHChildOrder): boolean {
-  if (child.cartStatus === 'ready' || child.cartStatus === 'review' || child.cartStatus === 'placed') return false;
+  if (child.cartStatus === 'placed') return false;
   if (child.detailsStatus !== 'synced') return false;
   return (child.items ?? []).length > 0;
 }
@@ -353,6 +393,7 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
     child.cartStatus = HH_DEFAULT_CART_STATUS;
     child.b2bDraftId = '';
     child.referenceNumber = '';
+    clearHhCartVerification(child);
     prepared += 1;
   }
   group.detailsStatus = rollupHhDetailsStatus(group.children.map((child) => child.detailsStatus));
@@ -361,18 +402,23 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
   return prepared;
 }
 
-function markChildrenPending(group: IHHOrderGroup, childId?: string, options?: { resetCart?: boolean }): void {
+function markChildrenPending(group: IHHOrderGroup, childId?: string, options?: { resetCart?: boolean }): number {
   const resetCart = options?.resetCart !== false;
   const targets = childId
     ? group.children.filter((child) => String(child._id) === childId)
     : [...group.children];
+  let marked = 0;
   for (const child of targets) {
+    if (isHhPlaced(child)) continue;
     child.detailsStatus = HH_DEFAULT_DETAILS_STATUS;
     if (resetCart) resetCartForResync(child);
+    else invalidateHhCartVerification(child);
+    marked += 1;
   }
   group.detailsStatus = rollupHhDetailsStatus(group.children.map((child) => child.detailsStatus));
   group.cartStatus = rollupHhCartStatus(group.children.map((child) => child.cartStatus));
   group.markModified('children');
+  return marked;
 }
 
 export const rerunGroupScSync = async (req: Request, res: Response): Promise<void> => {
@@ -390,6 +436,10 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
     }
     if (group.children.length === 0) {
       res.status(400).json({ message: 'This batch has no orders to re-sync.' });
+      return;
+    }
+    if (group.children.every(isHhPlaced)) {
+      res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
       return;
     }
 
@@ -426,6 +476,10 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
       res.status(404).json({ message: 'Order not found' });
       return;
     }
+    if (isHhPlaced(order)) {
+      res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
+      return;
+    }
 
     const draftCart = parseBoolFlag(req.body?.draftCart, true);
     markChildrenPending(group, String(order._id), { resetCart: draftCart });
@@ -451,10 +505,15 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
       return;
     }
 
+    if (group.children.length > 0 && group.children.every(isHhPlaced)) {
+      res.status(409).json({ message: 'Placed orders cannot have their cart regenerated.' });
+      return;
+    }
+
     const prepared = prepareCartRedraft(group);
     if (prepared === 0) {
       res.status(400).json({
-        message: 'No orders are ready to draft. Details must be Synced, and Cart cannot be Ready, Review, or Placed.',
+        message: 'No orders are ready to draft. Details must be Synced with line items, and Cart cannot be Placed.',
       });
       return;
     }
@@ -490,9 +549,13 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
       res.status(404).json({ message: 'Order not found' });
       return;
     }
+    if (isHhPlaced(order)) {
+      res.status(409).json({ message: 'Placed orders cannot have their cart regenerated.' });
+      return;
+    }
     if (!canRedraftCart(order)) {
       res.status(400).json({
-        message: 'This order is not ready to draft. Details must be Synced, and Cart cannot be Ready, Review, or Placed.',
+        message: 'This order is not ready to draft. Details must be Synced with line items, and Cart cannot be Placed.',
       });
       return;
     }
@@ -506,11 +569,216 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
   }
 };
 
+export const rerunGroupCartVerify = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+    if (!group.children.some(childCanVerify)) {
+      res.status(400).json({
+        message: 'No B2B drafts to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+      });
+      return;
+    }
+
+    enqueueHhCartVerify(String(group._id));
+    res.json({ data: serializeGroup(group) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to re-check HH Sportswear carts', error: (error as Error).message });
+  }
+};
+
+export const rerunOrderCartVerify = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId, orderId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+    if (!isValidObjectId(orderId)) {
+      res.status(400).json({ message: 'Invalid order id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+
+    const order = group.children.id(orderId);
+    if (!order) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+    if (!childCanVerify(order)) {
+      res.status(400).json({
+        message: 'This order has no B2B draft to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+      });
+      return;
+    }
+
+    enqueueHhCartVerify(String(group._id), String(order._id));
+    res.json({ data: serializeGroup(group) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to re-check HH Sportswear cart', error: (error as Error).message });
+  }
+};
+
+async function respondCartCompare(res: Response, groupId: string, orderId?: string): Promise<void> {
+  const compare = await liveCompareHhCarts(groupId, orderId);
+  const fresh = await HHOrderGroup.findById(groupId);
+  if (!fresh) {
+    res.status(404).json({ message: 'Group not found' });
+    return;
+  }
+  res.json({ data: serializeGroup(fresh), compare });
+}
+
+export const compareGroupCart = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+    if (group.children.length === 0) {
+      res.status(400).json({ message: 'This batch has no orders to compare.' });
+      return;
+    }
+
+    await respondCartCompare(res, String(group._id));
+  } catch (error) {
+    if (error instanceof HhB2bAuthError) {
+      res.status(401).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: 'Failed to compare HH Sportswear carts', error: (error as Error).message });
+  }
+};
+
+export const compareOrderCart = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId, orderId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+    if (!isValidObjectId(orderId)) {
+      res.status(400).json({ message: 'Invalid order id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+
+    const order = group.children.id(orderId);
+    if (!order) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+
+    await respondCartCompare(res, String(group._id), String(order._id));
+  } catch (error) {
+    if (error instanceof HhB2bAuthError) {
+      res.status(401).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: 'Failed to compare HH Sportswear cart', error: (error as Error).message });
+  }
+};
+
+export const placeGroupCart = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+    if (!group.children.some(childCanPlace)) {
+      res.status(400).json({
+        message: 'No Ready orders to place. Cart must match the live Helly Hansen draft.',
+      });
+      return;
+    }
+
+    enqueueHhCartPlace(String(group._id));
+    res.json({ data: serializeGroup(group) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to place HH Sportswear orders', error: (error as Error).message });
+  }
+};
+
+export const placeOrderCart = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId, orderId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+    if (!isValidObjectId(orderId)) {
+      res.status(400).json({ message: 'Invalid order id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+
+    const order = group.children.id(orderId);
+    if (!order) {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+    if (isHhPlaced(order)) {
+      res.status(409).json({ message: 'This order is already placed.' });
+      return;
+    }
+    if (!childCanPlace(order)) {
+      res.status(400).json({
+        message: 'This order is not Ready to place. Match the live Helly Hansen cart first.',
+      });
+      return;
+    }
+
+    enqueueHhCartPlace(String(group._id), String(order._id));
+    res.json({ data: serializeGroup(group) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to place HH Sportswear order', error: (error as Error).message });
+  }
+};
+
 export const listGroups = async (_req: Request, res: Response): Promise<void> => {
   try {
     const groups = await HHOrderGroup.find().sort({ createdAt: -1 }).lean();
     queueMissingImageBackfill(groups);
     queueMissingCartDrafts(groups);
+    queueMissingCartVerifies(groups);
     res.json({ data: groups.map(serializeGroup) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch HH Sportswear groups', error: (error as Error).message });
@@ -519,6 +787,7 @@ export const listGroups = async (_req: Request, res: Response): Promise<void> =>
 
 let queuedImageBackfill = false;
 let queuedCartBackfill = false;
+let queuedCartVerifyBackfill = false;
 
 function queueMissingImageBackfill(
   groups: Array<{
@@ -569,6 +838,41 @@ function queueMissingCartDrafts(
           (child.b2bDraftId ?? '').startsWith('local:')
       );
       if (needsDraft) enqueueHhCartDraft(String(group._id));
+    }
+  })();
+}
+
+function queueMissingCartVerifies(
+  groups: Array<{
+    _id: unknown;
+    children?: Array<{
+      detailsStatus?: string;
+      cartStatus?: string;
+      b2bDraftId?: string;
+    }>;
+  }>
+): void {
+  if (queuedCartVerifyBackfill) return;
+  queuedCartVerifyBackfill = true;
+  void (async () => {
+    try {
+      await loadHhB2bCookie();
+    } catch (err) {
+      queuedCartVerifyBackfill = false;
+      if (!(err instanceof HhB2bAuthError)) {
+        console.warn('[hh-cart-verify] Could not check B2B session before backfill', err);
+      }
+      return;
+    }
+    for (const group of groups) {
+      const needsVerify = (group.children ?? []).some(
+        (child) =>
+          child.detailsStatus === 'synced' &&
+          child.cartStatus === 'draft' &&
+          Boolean((child.b2bDraftId ?? '').trim()) &&
+          !String(child.b2bDraftId).startsWith('local:')
+      );
+      if (needsVerify) enqueueHhCartVerify(String(group._id));
     }
   })();
 }
@@ -707,12 +1011,17 @@ export const deleteGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const group = await HHOrderGroup.findByIdAndDelete(groupId);
+    const group = await HHOrderGroup.findById(groupId);
     if (!group) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
+    if (group.children.some(isHhPlaced)) {
+      res.status(409).json({ message: 'This batch has a placed order and cannot be deleted.' });
+      return;
+    }
 
+    await group.deleteOne();
     res.json({ data: { deleted: true } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete HH Sportswear group', error: (error as Error).message });
@@ -740,6 +1049,10 @@ export const deleteOrder = async (req: Request, res: Response): Promise<void> =>
     const order = group.children.id(orderId);
     if (!order) {
       res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+    if (isHhPlaced(order)) {
+      res.status(409).json({ message: 'Placed orders cannot be deleted.' });
       return;
     }
 

@@ -74,6 +74,11 @@ export async function loadHhB2bConfig(): Promise<HhB2bConfig> {
   return { baseUrl, catalog, accountId };
 }
 
+export async function isHhPlaceOrderEnabled(): Promise<boolean> {
+  const stored = await getOrCreateHhB2bConfig(false);
+  return Boolean(stored.placeOrderEnabled);
+}
+
 export async function loadHhB2bCookie(): Promise<string> {
   const fromEnv = normalizeCookieHeader(process.env.HH_B2B_COOKIE || '');
   if (fromEnv) return fromEnv;
