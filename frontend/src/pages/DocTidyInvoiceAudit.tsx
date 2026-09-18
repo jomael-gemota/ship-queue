@@ -1245,26 +1245,58 @@ export default function DocTidyInvoiceAudit() {
                                   <span className="text-[11px] italic text-[var(--text-200)]">—</span>
                                 )}
                               </td>
-                              {/* Attachments — filename + size */}
+                              {/* Attachments — filename + size, linked to GDrive */}
                               <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
                                 {msg.attachments && msg.attachments.length > 0 ? (
                                   <div className="space-y-0.5">
-                                    {msg.attachments.map((att, ai) => (
-                                      <div key={ai} className="flex items-center gap-1.5">
-                                        {/* PDF / file icon */}
-                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                        </svg>
-                                        <span className="truncate max-w-[140px] font-mono text-[10px] text-[var(--text-100)]" title={att.filename}>
-                                          {att.filename}
-                                        </span>
-                                        {att.size > 0 && (
-                                          <span className="shrink-0 text-[10px] text-[var(--text-200)]">
-                                            {formatBytes(att.size)}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ))}
+                                    {msg.attachments.map((att, ai) => {
+                                      const href = att.webViewLink
+                                        || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
+                                      const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
+                                      return (
+                                        <div key={ai} className="flex items-center gap-1.5">
+                                          {href ? (
+                                            <a
+                                              href={href}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              title={att.filename}
+                                              className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline"
+                                            >
+                                              {isPdf ? (
+                                                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                </svg>
+                                              ) : (
+                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                </svg>
+                                              )}
+                                              <span className="truncate max-w-[140px] font-mono text-[10px]">{att.filename}</span>
+                                            </a>
+                                          ) : (
+                                            <>
+                                              {isPdf ? (
+                                                <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                </svg>
+                                              ) : (
+                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                </svg>
+                                              )}
+                                              <span className="truncate max-w-[140px] font-mono text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
+                                            </>
+                                          )}
+                                          {att.size > 0 && (
+                                            <span className="shrink-0 text-[10px] text-[var(--text-200)]">
+                                              {formatBytes(att.size)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
                                   </div>
                                 ) : (
                                   <span className="italic text-[var(--text-200)]">—</span>
