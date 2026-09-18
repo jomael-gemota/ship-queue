@@ -38,11 +38,11 @@ export default function AttachmentIcons({
     setStartingIndex(index)
     setFailedIndex(null)
     try {
-      const res = await authApi.post<{ data: DocTidyParseJob }>(
+      await authApi.post<{ data: DocTidyParseJob }>(
         `/doc-tidy/messages/${message._id}/attachments/${index}/parse`
       )
       onChanged()
-      onOpenJob(res.data._id)
+      // Don't auto-open the panel — the spinner button is now the explicit entry point
     } catch (err) {
       setFailedIndex({ index, message: (err as Error).message })
     } finally {
