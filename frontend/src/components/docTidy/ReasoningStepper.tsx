@@ -1,55 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
-/**
- * Split the agent's streamed narration into discrete steps on blank-line
- * boundaries. Each paragraph becomes one step in the vertical timeline.
- */
+/** Split on blank lines → top-level steps. */
 function parseSteps(content: string): string[] {
-  return content
-    .split(/\n\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
+  return content.split(/\n\n+/).map((s) => s.trim()).filter(Boolean)
 }
 
-/** First sentence of a step, capped at 72 chars, used as the collapsed label. */
-function shortLabel(step: string): string {
-  const firstLine = step.split('\n')[0].replace(/^[\d.)\-\s]+/, '').trim()
-  return firstLine.length <= 72 ? firstLine : `${firstLine.slice(0, 72).trimEnd()}…`
+/** Split a step on single newlines → individual lines within that step. */
+function parseLines(step: string): string[] {
+  return step.split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-    </svg>
-  )
-}
-
-function ChevronDown({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  )
-}
-
-function ChevronUp({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-    </svg>
-  )
-}
-
-/**
- * Vertical timeline of the agent's reasoning steps.
- *
- * Each blank-line-separated paragraph from the stream becomes one step.
- * Completed steps are collapsed by default (clickable to expand).
- * The current live step is always expanded and shows a "Processing" badge.
- * Auto-scrolls to the latest step while the job is running, unless the user
- * has manually selected a different step.
- */
 export default function ReasoningStepper({
   content,
   live,
@@ -59,26 +19,13 @@ export default function ReasoningStepper({
 }) {
   const steps = parseSteps(content)
   const lastIndex = steps.length - 1
-
-  // null = auto (last step); number = user clicked a specific step
-  const [selected, setSelected] = useState<number | null>(null)
   const lastStepRef = useRef<HTMLDivElement>(null)
-  const prevStepCountRef = useRef(steps.length)
 
-  // Reset selection when a new run clears the transcript
   useEffect(() => {
-    if (steps.length === 0 && prevStepCountRef.current > 0) {
-      setSelected(null)
-    }
-    prevStepCountRef.current = steps.length
-  }, [steps.length])
-
-  // Auto-scroll the newest step into view while live
-  useEffect(() => {
-    if (live && selected === null) {
+    if (live) {
       lastStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }, [steps.length, live, selected])
+  }, [steps.length, live])
 
   /* ── Empty state ── */
   if (steps.length === 0) {
@@ -86,156 +33,116 @@ export default function ReasoningStepper({
       <div className="flex flex-col items-center justify-center py-14 text-center">
         {live ? (
           <>
-            <div className="relative mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+            <div className="relative mb-4 flex h-10 w-10 items-center justify-center">
               <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent-200)]/20" />
-              <span className="h-3.5 w-3.5 animate-pulse rounded-full bg-[var(--accent-200)]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--accent-200)]" />
             </div>
-            <p className="text-sm font-medium text-[var(--text-100)]">Agent is starting up…</p>
-            <p className="mt-1 text-xs text-[var(--text-200)]">Reasoning steps will appear here as they are produced.</p>
+            <p className="text-sm text-[var(--text-200)]">Agent is starting up…</p>
           </>
         ) : (
           <>
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
-              <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-[var(--text-100)]">No reasoning recorded</p>
-            <p className="mt-1 text-xs text-[var(--text-200)]">
-              This document was parsed before reasoning capture was introduced.
-              Re-run it to record the agent's thought process.
-            </p>
+            <svg className="mb-3 h-8 w-8 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <p className="text-sm text-[var(--text-200)]">No reasoning recorded — re-run to capture it.</p>
           </>
         )}
       </div>
     )
   }
 
-  const expandedIndex = selected ?? lastIndex
-
-  const toggle = (i: number) => {
-    // Clicking the auto-expanded last step when not live collapses it;
-    // clicking the user-selected step deselects; clicking any other expands it.
-    setSelected((prev) => (prev === i ? null : i))
-  }
-
   return (
-    <div className="py-2">
+    <div className="relative pl-6">
+      {/* Continuous vertical rail */}
+      <div className="absolute left-[9px] top-2 bottom-2 w-px bg-[var(--bg-300)]" />
+
       {steps.map((step, i) => {
         const isLast = i === lastIndex
         const isCurrent = isLast && live
-        const isExpanded = i === expandedIndex
+        const lines = parseLines(step)
+        const headline = lines[0]
+        const subLines = lines.slice(1)
 
         return (
-          <div key={i} ref={isLast ? lastStepRef : undefined} className="flex gap-0">
-            {/* ── Left: vertical timeline ── */}
-            <div className="mr-4 flex w-7 shrink-0 flex-col items-center">
-              {/* Step node */}
-              <div
-                className={`
-                  relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                  transition-all duration-200
-                  ${isCurrent
-                    ? 'bg-[var(--accent-200)] text-white shadow-md shadow-[var(--accent-200)]/25'
-                    : isExpanded
-                      ? 'bg-emerald-500 text-white ring-[3px] ring-emerald-100 dark:ring-emerald-900/40'
-                      : 'bg-emerald-500 text-white'
-                  }
-                `}
-              >
-                {isCurrent && (
-                  <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent-200)]/35" />
-                )}
-                <span className="relative">
-                  {isCurrent
-                    ? <span className="text-[10px] font-bold leading-none">{i + 1}</span>
-                    : <CheckIcon className="h-3.5 w-3.5" />
-                  }
+          <div
+            key={i}
+            ref={isLast ? lastStepRef : undefined}
+            className="relative mb-6 last:mb-2"
+          >
+            {/* Node */}
+            <div className="absolute -left-6 top-[4px] flex items-center justify-center">
+              {isCurrent ? (
+                <span className="relative flex h-[18px] w-[18px] items-center justify-center">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent-200)]/30" />
+                  <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--accent-200)] shadow-sm shadow-[var(--accent-200)]/40" />
                 </span>
-              </div>
-              {/* Connector line to next step */}
-              {!isLast && (
-                <div className="my-1 w-px flex-1 rounded-full bg-[var(--bg-300)] min-h-[16px]" />
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-emerald-400 dark:bg-emerald-500" />
               )}
             </div>
 
-            {/* ── Right: step content ── */}
-            <div className={`min-w-0 flex-1 ${isLast ? 'pb-2' : 'pb-3'}`}>
-              <button
-                type="button"
-                onClick={() => toggle(i)}
-                className="group w-full cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-start gap-2 pt-0.5">
-                  <div className="min-w-0 flex-1">
-                    {/* Step label */}
-                    <span
-                      className={`block text-[10px] font-semibold uppercase tracking-widest leading-none mb-0.5 ${
-                        isCurrent ? 'text-[var(--accent-200)]' : 'text-[var(--text-200)]'
-                      }`}
-                    >
-                      Step {i + 1}
-                    </span>
-                    <p
-                      className={`text-sm leading-snug transition-colors ${
-                        isExpanded
-                          ? 'font-semibold text-[var(--text-100)]'
-                          : 'text-[var(--text-100)] group-hover:text-[var(--accent-200)]'
-                      }`}
-                    >
-                      {shortLabel(step)}
-                    </p>
-                  </div>
+            {/* Content block */}
+            <div className={isCurrent ? 'border-l-2 border-[var(--accent-200)]/35 -ml-3 pl-3' : 'pl-1'}>
 
-                  {/* Status badges / chevron */}
-                  <div className="mt-0.5 shrink-0 flex items-center gap-1.5">
-                    {isCurrent && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)]">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-200)]" />
-                        Processing
+              {/* Step label */}
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                  isCurrent ? 'text-[var(--accent-200)]' : 'text-[var(--text-200)]'
+                }`}>
+                  Step {i + 1}
+                </span>
+                {isCurrent && (
+                  <span className="flex items-center gap-1 text-[10px] text-[var(--accent-200)]/80">
+                    <span className="h-1 w-1 animate-pulse rounded-full bg-[var(--accent-200)]" />
+                    processing
+                  </span>
+                )}
+              </div>
+
+              {/* Headline — the first line of the step */}
+              <p className={`text-xs font-medium leading-relaxed ${
+                isCurrent ? 'text-[var(--text-100)]' : 'text-[var(--text-100)]'
+              }`}>
+                {headline}
+              </p>
+
+              {/* Sub-lines — remaining lines within the same step */}
+              {subLines.length > 0 && (
+                <ul className="mt-1.5 space-y-1 border-l border-[var(--bg-300)] pl-3 ml-0.5">
+                  {subLines.map((line, j) => (
+                    <li key={j} className="flex items-start gap-1.5">
+                      <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-[var(--bg-300)]" />
+                      <span className={`text-[11px] leading-relaxed ${
+                        isCurrent ? 'text-[var(--text-200)]' : 'text-[var(--text-200)]'
+                      }`}>
+                        {line}
                       </span>
-                    )}
-                    {!isCurrent && isExpanded && (
-                      <ChevronUp className="h-3.5 w-3.5 text-[var(--accent-200)]" />
-                    )}
-                    {!isCurrent && !isExpanded && (
-                      <ChevronDown className="h-3.5 w-3.5 text-[var(--text-200)] transition-colors group-hover:text-[var(--accent-200)]" />
-                    )}
-                  </div>
-                </div>
-              </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-              {/* Expanded content */}
-              {isExpanded && (
-                <div className="mt-2.5 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-100)]">
-                    {step}
-                  </p>
-                  {isCurrent && (
-                    <div className="mt-3 flex items-center gap-1.5 border-t border-[var(--bg-300)] pt-2.5 text-[11px] text-[var(--accent-200)]">
-                      <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[var(--accent-200)]" />
-                      Agent is still working on this step…
-                    </div>
-                  )}
-                </div>
+              {/* Typing indicator */}
+              {isCurrent && (
+                <span className="mt-2 inline-flex items-end gap-0.5">
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-[var(--accent-200)]/60 [animation-delay:0ms]" />
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-[var(--accent-200)]/60 [animation-delay:120ms]" />
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-[var(--accent-200)]/60 [animation-delay:240ms]" />
+                </span>
               )}
             </div>
           </div>
         )
       })}
 
-      {/* Trailing "still thinking" node when live and at least one step exists */}
+      {/* Ghost node — more steps incoming */}
       {live && steps.length > 0 && (
-        <div className="flex gap-0">
-          <div className="mr-4 flex w-7 shrink-0 flex-col items-center">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-dashed border-[var(--bg-300)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--text-200)]" />
-            </div>
+        <div className="relative mb-2">
+          <div className="absolute -left-6 top-[3px] flex items-center justify-center">
+            <span className="h-2 w-2 rounded-full border border-dashed border-[var(--bg-300)]" />
           </div>
-          <div className="flex-1 pb-2 pt-1.5">
-            <p className="text-[11px] italic text-[var(--text-200)]">More steps may follow…</p>
-          </div>
+          <p className="pl-1 text-[11px] italic text-[var(--text-200)]">More steps may follow…</p>
         </div>
       )}
     </div>
