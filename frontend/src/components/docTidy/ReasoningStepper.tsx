@@ -1,20 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Split the agent's streamed narration into discrete steps on blank-line
- * boundaries. Each paragraph becomes one step in the vertical timeline.
+ * Split the streamed narration into discrete steps on blank-line boundaries.
+ * Each paragraph becomes one timeline entry.
  */
 function parseSteps(content: string): string[] {
   return content
     .split(/\n\n+/)
     .map((s) => s.trim())
     .filter(Boolean)
-}
-
-/** First sentence of a step, capped at 72 chars, used as the collapsed label. */
-function shortLabel(step: string): string {
-  const firstLine = step.split('\n')[0].replace(/^[\d.)\-\s]+/, '').trim()
-  return firstLine.length <= 72 ? firstLine : `${firstLine.slice(0, 72).trimEnd()}…`
 }
 
 function CheckIcon({ className }: { className?: string }) {
@@ -25,30 +19,13 @@ function CheckIcon({ className }: { className?: string }) {
   )
 }
 
-function ChevronDown({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  )
-}
-
-function ChevronUp({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-    </svg>
-  )
-}
-
 /**
- * Vertical timeline of the agent's reasoning steps.
+ * Vertical timeline of the agent's full reasoning.
  *
- * Each blank-line-separated paragraph from the stream becomes one step.
- * Completed steps are collapsed by default (clickable to expand).
- * The current live step is always expanded and shows a "Processing" badge.
- * Auto-scrolls to the latest step while the job is running, unless the user
- * has manually selected a different step.
+ * Each blank-line-separated paragraph is shown in full — no truncation, no
+ * collapsing. The current live step is highlighted and shows a "Processing"
+ * pulse badge. The timeline auto-scrolls to the newest entry while the job
+ * is running, unless the user has scrolled away.
  */
 export default function ReasoningStepper({
   content,
@@ -59,26 +36,20 @@ export default function ReasoningStepper({
 }) {
   const steps = parseSteps(content)
   const lastIndex = steps.length - 1
-
-  // null = auto (last step); number = user clicked a specific step
-  const [selected, setSelected] = useState<number | null>(null)
   const lastStepRef = useRef<HTMLDivElement>(null)
   const prevStepCountRef = useRef(steps.length)
 
-  // Reset selection when a new run clears the transcript
+  // Auto-scroll the latest step into view while the job is live
   useEffect(() => {
-    if (steps.length === 0 && prevStepCountRef.current > 0) {
-      setSelected(null)
-    }
-    prevStepCountRef.current = steps.length
-  }, [steps.length])
-
-  // Auto-scroll the newest step into view while live
-  useEffect(() => {
-    if (live && selected === null) {
+    if (live) {
       lastStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }, [steps.length, live, selected])
+  }, [steps.length, live])
+
+  // Track step count for reset logic
+  useEffect(() => {
+    prevStepCountRef.current = steps.length
+  }, [steps.length])
 
   /* ── Empty state ── */
   if (steps.length === 0) {
@@ -91,7 +62,9 @@ export default function ReasoningStepper({
               <span className="h-3.5 w-3.5 animate-pulse rounded-full bg-[var(--accent-200)]" />
             </div>
             <p className="text-sm font-medium text-[var(--text-100)]">Agent is starting up…</p>
-            <p className="mt-1 text-xs text-[var(--text-200)]">Reasoning steps will appear here as they are produced.</p>
+            <p className="mt-1 text-xs text-[var(--text-200)]">
+              Reasoning steps will appear here as they are produced.
+            </p>
           </>
         ) : (
           <>
@@ -103,8 +76,7 @@ export default function ReasoningStepper({
             </div>
             <p className="text-sm font-medium text-[var(--text-100)]">No reasoning recorded</p>
             <p className="mt-1 text-xs text-[var(--text-200)]">
-              This document was parsed before reasoning capture was introduced.
-              Re-run it to record the agent's thought process.
+              Re-run the agent to capture its thought process.
             </p>
           </>
         )}
@@ -112,35 +84,28 @@ export default function ReasoningStepper({
     )
   }
 
-  const expandedIndex = selected ?? lastIndex
-
-  const toggle = (i: number) => {
-    // Clicking the auto-expanded last step when not live collapses it;
-    // clicking the user-selected step deselects; clicking any other expands it.
-    setSelected((prev) => (prev === i ? null : i))
-  }
-
   return (
-    <div className="py-2">
+    <div className="py-1">
       {steps.map((step, i) => {
         const isLast = i === lastIndex
         const isCurrent = isLast && live
-        const isExpanded = i === expandedIndex
 
         return (
-          <div key={i} ref={isLast ? lastStepRef : undefined} className="flex gap-0">
-            {/* ── Left: vertical timeline ── */}
+          <div
+            key={i}
+            ref={isLast ? lastStepRef : undefined}
+            className="flex gap-0"
+          >
+            {/* ── Left: timeline rail ── */}
             <div className="mr-4 flex w-7 shrink-0 flex-col items-center">
-              {/* Step node */}
+              {/* Node */}
               <div
                 className={`
                   relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full
                   transition-all duration-200
                   ${isCurrent
-                    ? 'bg-[var(--accent-200)] text-white shadow-md shadow-[var(--accent-200)]/25'
-                    : isExpanded
-                      ? 'bg-emerald-500 text-white ring-[3px] ring-emerald-100 dark:ring-emerald-900/40'
-                      : 'bg-emerald-500 text-white'
+                    ? 'bg-[var(--accent-200)] text-white shadow-md shadow-[var(--accent-200)]/30'
+                    : 'bg-emerald-500 text-white'
                   }
                 `}
               >
@@ -154,70 +119,61 @@ export default function ReasoningStepper({
                   }
                 </span>
               </div>
-              {/* Connector line to next step */}
+              {/* Connector line */}
               {!isLast && (
                 <div className="my-1 w-px flex-1 rounded-full bg-[var(--bg-300)] min-h-[16px]" />
               )}
             </div>
 
-            {/* ── Right: step content ── */}
-            <div className={`min-w-0 flex-1 ${isLast ? 'pb-2' : 'pb-3'}`}>
-              <button
-                type="button"
-                onClick={() => toggle(i)}
-                className="group w-full cursor-pointer text-left focus:outline-none"
-              >
-                <div className="flex items-start gap-2 pt-0.5">
-                  <div className="min-w-0 flex-1">
-                    {/* Step label */}
-                    <span
-                      className={`block text-[10px] font-semibold uppercase tracking-widest leading-none mb-0.5 ${
-                        isCurrent ? 'text-[var(--accent-200)]' : 'text-[var(--text-200)]'
-                      }`}
-                    >
-                      Step {i + 1}
-                    </span>
-                    <p
-                      className={`text-sm leading-snug transition-colors ${
-                        isExpanded
-                          ? 'font-semibold text-[var(--text-100)]'
-                          : 'text-[var(--text-100)] group-hover:text-[var(--accent-200)]'
-                      }`}
-                    >
-                      {shortLabel(step)}
-                    </p>
-                  </div>
+            {/* ── Right: full step content ── */}
+            <div
+              className={`
+                min-w-0 flex-1 rounded-xl px-4 py-3 mb-3
+                ${isCurrent
+                  ? 'border border-[var(--accent-200)]/25 bg-[var(--primary-100)]/60'
+                  : 'border border-[var(--bg-300)] bg-[var(--bg-200)]'
+                }
+              `}
+            >
+              {/* Step header */}
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-widest ${
+                    isCurrent ? 'text-[var(--accent-200)]' : 'text-[var(--text-200)]'
+                  }`}
+                >
+                  Step {i + 1}
+                </span>
+                {isCurrent && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-200)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)] border border-[var(--accent-200)]/20">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-200)]" />
+                    Processing
+                  </span>
+                )}
+                {!isCurrent && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                    <CheckIcon className="h-2.5 w-2.5" />
+                    Done
+                  </span>
+                )}
+              </div>
 
-                  {/* Status badges / chevron */}
-                  <div className="mt-0.5 shrink-0 flex items-center gap-1.5">
-                    {isCurrent && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)]">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-200)]" />
-                        Processing
-                      </span>
-                    )}
-                    {!isCurrent && isExpanded && (
-                      <ChevronUp className="h-3.5 w-3.5 text-[var(--accent-200)]" />
-                    )}
-                    {!isCurrent && !isExpanded && (
-                      <ChevronDown className="h-3.5 w-3.5 text-[var(--text-200)] transition-colors group-hover:text-[var(--accent-200)]" />
-                    )}
-                  </div>
-                </div>
-              </button>
+              {/* Full agent reasoning text */}
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-100)]">
+                {step}
+              </p>
 
-              {/* Expanded content */}
-              {isExpanded && (
-                <div className="mt-2.5 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-100)]">
-                    {step}
-                  </p>
-                  {isCurrent && (
-                    <div className="mt-3 flex items-center gap-1.5 border-t border-[var(--bg-300)] pt-2.5 text-[11px] text-[var(--accent-200)]">
-                      <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[var(--accent-200)]" />
-                      Agent is still working on this step…
-                    </div>
-                  )}
+              {/* Streaming cursor indicator */}
+              {isCurrent && (
+                <div className="mt-3 flex items-center gap-1.5 border-t border-[var(--accent-200)]/15 pt-2.5">
+                  <span className="flex gap-0.5">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-200)]/70 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-200)]/70 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-200)]/70 [animation-delay:300ms]" />
+                  </span>
+                  <span className="text-[11px] text-[var(--accent-200)]">
+                    AI agent is still thinking…
+                  </span>
                 </div>
               )}
             </div>
@@ -225,7 +181,7 @@ export default function ReasoningStepper({
         )
       })}
 
-      {/* Trailing "still thinking" node when live and at least one step exists */}
+      {/* Trailing "more steps" indicator while live */}
       {live && steps.length > 0 && (
         <div className="flex gap-0">
           <div className="mr-4 flex w-7 shrink-0 flex-col items-center">

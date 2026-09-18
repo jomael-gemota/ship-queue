@@ -422,15 +422,14 @@ export const listCorrections = async (req: Request, res: Response): Promise<void
 
     // Scope corrections to vendors that belong to the specified workspace.
     if (workspaceId && isValidObjectId(workspaceId)) {
-      const vendors = await DocTidyVendor.find({ workspaceId }).select('normalizedName').lean();
+      // Select both name and normalizedName so v.name is available for the filter.
+      const vendors = await DocTidyVendor.find({ workspaceId }).select('name normalizedName').lean();
       if (vendors.length === 0) {
         res.json({ data: [] });
         return;
       }
-      // Corrections store vendorName as-entered; match via normalized form.
-      const normalizedNames = new Set(vendors.map((v) => v.normalizedName));
-      // We can't filter by normalized form in a single query without a
-      // $where, so we fetch with a regex candidate set and filter in JS.
+      // Match corrections by exact vendor name (as stored on the correction).
+      // Post-filter by normalizedName handles any capitalisation drift.
       const nameSet = vendors.map((v) => v.name);
       correctionFilter.vendorName = { $in: nameSet };
     }
@@ -483,9 +482,12 @@ export const listVendors = async (req: Request, res: Response): Promise<void> =>
 
     const vendors = await DocTidyVendor.find(filter).sort({ name: 1 }).lean();
 
-    // Correction counts are what tell the user whether a vendor has actually
-    // taught the agent anything, as opposed to merely being registered.
+    // Scope correction counts to exactly these vendors so the badge matches what
+    // the corrections endpoint returns for the same workspace (no cross-workspace bleed).
+    const vendorNames = vendors.map((v) => v.name);
+    const countFilter = vendorNames.length > 0 ? { vendorName: { $in: vendorNames } } : { _id: null };
     const counts = await DocTidyCorrection.aggregate<{ _id: string | null; count: number }>([
+      { $match: countFilter },
       { $group: { _id: '$vendorName', count: { $sum: 1 } } },
     ]);
     const byVendor = new Map<string, number>();
