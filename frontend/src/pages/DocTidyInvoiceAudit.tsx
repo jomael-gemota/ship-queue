@@ -566,14 +566,32 @@ export default function DocTidyInvoiceAudit() {
     try {
       const params = new URLSearchParams({
         status: 'completed',
-        page: String(page),
-        pageSize: String(pageSize),
         workspaceId: activeWorkspace._id,
       })
-      if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
+
+      if (debouncedAuditSearch) {
+        // Fetch all records for this workspace and filter client-side so that
+        // every value in the table (vendor, SKU, invoice #, description, etc.)
+        // is searchable — deeply nested jsonOutput fields can't be queried server-side.
+        params.set('page', '1')
+        params.set('pageSize', '5000')
+      } else {
+        params.set('page', String(page))
+        params.set('pageSize', String(pageSize))
+      }
+
       const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
-      setJobs(res.data)
-      setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+
+      if (debouncedAuditSearch) {
+        const term = debouncedAuditSearch.toLowerCase()
+        const filtered = res.data.filter((j) => jobMatchesSearch(j, term))
+        setJobs(filtered)
+        // Treat the filtered set as one page so pagination arrows stay hidden
+        setPagination({ total: filtered.length, pages: 1 })
+      } else {
+        setJobs(res.data)
+        setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load invoice data')
     } finally {
@@ -1208,7 +1226,7 @@ export default function DocTidyInvoiceAudit() {
                   </svg>
                 </span>
                 <input type="text" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)}
-                  placeholder="Search vendor, filename…" className={`${inputClass} w-full pl-8 pr-8`} />
+                  placeholder="Search anything — vendor, SKU, invoice #, description…" className={`${inputClass} w-full pl-8 pr-8`} />
                 {auditSearch && (
                   <button onClick={() => setAuditSearch('')} aria-label="Clear search"
                     className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -1314,7 +1332,7 @@ export default function DocTidyInvoiceAudit() {
                             </div>
                             <div>
                               <p className="text-[11px] font-medium text-[var(--text-100)]">
-                                {debouncedAuditSearch ? 'No documents match this filter' : 'No parsed documents in this workspace'}
+                                {debouncedAuditSearch ? 'No documents match this search' : 'No parsed documents in this workspace'}
                               </p>
                               <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
                                 {debouncedAuditSearch
@@ -1456,6 +1474,25 @@ function cell(value: string): React.ReactNode {
   return value
     ? <span className="text-[var(--text-100)]">{value}</span>
     : <span className="text-[var(--text-200)]">—</span>
+}
+
+/**
+ * Returns true when any value in the parse job matches the search term.
+ * Checks top-level fields AND the full jsonOutput JSON string so that SKUs,
+ * descriptions, amounts — anything rendered in the table — are searchable.
+ * `term` must already be lower-cased by the caller.
+ */
+function jobMatchesSearch(job: ParseJobListItem, term: string): boolean {
+  if (!term) return true
+  if (job.vendorName?.toLowerCase().includes(term)) return true
+  if (job.filename?.toLowerCase().includes(term)) return true
+  if (job.requestedByName?.toLowerCase().includes(term)) return true
+  if (job.jsonOutput) {
+    try {
+      if (JSON.stringify(job.jsonOutput).toLowerCase().includes(term)) return true
+    } catch { /* ignore malformed output */ }
+  }
+  return false
 }
 
 /** Plain-string value for a document-level column (used by Excel export). */
