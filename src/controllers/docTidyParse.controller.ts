@@ -7,7 +7,7 @@ import DocTidyCorrection, {
 } from '../models/DocTidyCorrection';
 import DocTidyVendor, { normalizeVendorName } from '../models/DocTidyVendor';
 import DocTidyMessage from '../models/DocTidyMessage';
-import DocTidyWorkspace from '../models/DocTidyWorkspace';
+import DocTidyRule from '../models/DocTidyRule';
 import {
   ParseRequestError,
   requestParse,
@@ -115,20 +115,16 @@ export const listParseJobs = async (req: Request, res: Response): Promise<void> 
         return;
       }
 
-      const workspace = await DocTidyWorkspace.findById(workspaceId).lean();
-      if (!workspace) {
-        res.status(404).json({ message: 'Workspace not found' });
-        return;
-      }
-
-      // A workspace with no rules can never have any jobs.
-      if (workspace.ruleIds.length === 0) {
+      // Workspace-scoped: find rules owned by this workspace, then the messages
+      // those rules captured, then filter parse jobs to those messages.
+      const workspaceRules = await DocTidyRule.find({ workspaceId }).select('_id').lean();
+      if (workspaceRules.length === 0) {
         res.json({ data: [], pagination: { page: 1, pageSize: Number(pageSize), total: 0, pages: 1 } });
         return;
       }
 
       const messages = await DocTidyMessage
-        .find({ ruleId: { $in: workspace.ruleIds } })
+        .find({ ruleId: { $in: workspaceRules.map((r) => r._id) } })
         .select('_id')
         .lean();
 

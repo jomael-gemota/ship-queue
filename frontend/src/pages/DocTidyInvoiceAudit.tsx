@@ -12,6 +12,7 @@ import {
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
+import WorkspaceRulesView from './DocTidyRules'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -23,7 +24,6 @@ import {
   type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
-  type DocTidyRule,
   type DocTidyWorkspace,
   type InvoiceAuditColumnId,
   type ParseJobListItem,
@@ -161,21 +161,14 @@ function ColumnSettingsDrawer({
 
 function WorkspaceEditorDialog({
   initial,
-  rules,
-  rulesLoading,
   onSave,
   onClose,
 }: {
   initial: DocTidyWorkspace | null
-  rules: DocTidyRule[]
-  rulesLoading: boolean
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
-  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(
-    new Set(initial?.ruleIds ?? [])
-  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -187,21 +180,12 @@ function WorkspaceEditorDialog({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const toggleRule = (id: string) => {
-    setSelectedRuleIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   const submit = async () => {
     if (!name.trim()) { setError('Please enter a workspace name.'); return }
     setSaving(true)
     setError(null)
     try {
-      const body = { name: name.trim(), ruleIds: [...selectedRuleIds] }
+      const body = { name: name.trim() }
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -233,8 +217,8 @@ function WorkspaceEditorDialog({
             </h2>
             <p className="mt-0.5 text-xs text-[var(--text-200)]">
               {initial
-                ? 'Rename or change which rules this workspace aggregates.'
-                : 'Give your workspace a name and select which rules to include.'}
+                ? 'Rename this workspace. Rules are managed from the Rules tab inside the workspace.'
+                : 'Give your workspace a name. You\'ll add rules from inside the workspace.'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
@@ -245,7 +229,7 @@ function WorkspaceEditorDialog({
           </button>
         </div>
 
-        {/* Body */}
+          {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Name */}
           <div>
@@ -261,53 +245,6 @@ function WorkspaceEditorDialog({
               placeholder="e.g. Acme Invoices, Q3 Orders…"
               className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
-          </div>
-
-          {/* Rules */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Rules</label>
-              <span className="text-[11px] text-[var(--text-200)]">{selectedRuleIds.size} selected</span>
-            </div>
-
-            {rulesLoading ? (
-              <div className="flex items-center gap-2 py-4 text-xs text-[var(--text-200)]">
-                <Spinner className="h-3.5 w-3.5" /> Loading rules…
-              </div>
-            ) : rules.length === 0 ? (
-              <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-6 text-center">
-                <p className="text-xs text-[var(--text-200)]">No rules yet.</p>
-                <p className="mt-1 text-[11px] text-[var(--text-200)]">Create filter rules first.</p>
-              </div>
-            ) : (
-              <ul className="overflow-y-auto rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)]" style={{ maxHeight: '260px' }}>
-                {rules.map((rule) => (
-                  <li key={rule._id}>
-                    <label className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--bg-200)]">
-                      <input
-                        type="checkbox"
-                        checked={selectedRuleIds.has(rule._id)}
-                        onChange={() => toggleRule(rule._id)}
-                        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-[var(--text-100)]">{rule.name}</span>
-                          <DocumentTypeBadge value={rule.documentType} />
-                          {!rule.enabled && (
-                            <span className="text-[10px] italic text-[var(--text-200)]">disabled</span>
-                          )}
-                        </div>
-                        {rule.description && (
-                          <p className="mt-0.5 text-[11px] text-[var(--text-200)] truncate">{rule.description}</p>
-                        )}
-                      </div>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-2 text-[11px] text-[var(--text-200)]">A rule can be part of multiple workspaces.</p>
           </div>
 
           {error && (
@@ -338,22 +275,16 @@ function WorkspaceEditorDialog({
 
 function WorkspaceCard({
   workspace,
-  rules,
   onOpen,
   onEdit,
   onDelete,
 }: {
   workspace: DocTidyWorkspace
-  rules: DocTidyRule[]
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const ruleNames = workspace.ruleIds
-    .map((id) => rules.find((r) => r._id === id)?.name)
-    .filter((n): n is string => Boolean(n))
 
   return (
     <div onClick={onOpen}
@@ -369,27 +300,15 @@ function WorkspaceCard({
         <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] transition-colors line-clamp-2">
           {workspace.name}
         </h3>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {ruleNames.length === 0 && workspace.ruleIds.length === 0 && (
-            <span className="text-[11px] italic text-[var(--text-200)]">No rules assigned</span>
-          )}
-          {ruleNames.slice(0, 3).map((name) => (
-            <span key={name} className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
-              {name}
-            </span>
-          ))}
-          {ruleNames.length > 3 && (
-            <span className="rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] px-2 py-0.5 text-[10px] text-[var(--text-200)]">
-              +{ruleNames.length - 3} more
-            </span>
-          )}
-        </div>
+        <p className="mt-2 text-[11px] text-[var(--text-200)]">
+          Open to manage rules, emails, and audit results.
+        </p>
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
         <span className="text-[11px] text-[var(--text-200)]">
-          {workspace.ruleIds.length} rule{workspace.ruleIds.length !== 1 ? 's' : ''}
+          Created {new Date(workspace.createdAt).toLocaleDateString()}
         </span>
         <div className="flex items-center gap-1">
           {confirmDelete ? (
@@ -465,18 +384,13 @@ export default function DocTidyInvoiceAudit() {
   const [view, setView] = useState<View>('workspaces')
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
   /** Which sub-tab is active inside a workspace detail page. */
-  type WorkspaceTab = 'emails' | 'audit'
+  type WorkspaceTab = 'emails' | 'rules' | 'audit'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('emails')
 
   /* ── Workspaces ── */
   const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
   const [wsLoading, setWsLoading] = useState(true)
   const [wsError, setWsError] = useState<string | null>(null)
-
-  /* ── Rules (loaded once, for the editor) ── */
-  const [rules, setRules] = useState<DocTidyRule[]>([])
-  const [rulesLoading, setRulesLoading] = useState(false)
-  const rulesLoadedRef = useRef(false)
 
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
@@ -528,20 +442,6 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
-  /* ── Load rules lazily ── */
-  const loadRules = useCallback(async () => {
-    if (rulesLoadedRef.current) return
-    rulesLoadedRef.current = true
-    setRulesLoading(true)
-    try {
-      const res = await authApi.get<{ data: DocTidyRule[] }>('/doc-tidy/rules')
-      setRules(res.data)
-    } catch {
-      rulesLoadedRef.current = false
-    } finally {
-      setRulesLoading(false)
-    }
-  }, [])
 
   /* ── Email search debounce ── */
   useEffect(() => {
@@ -692,7 +592,6 @@ export default function DocTidyInvoiceAudit() {
 
   const openEditor = (target: DocTidyWorkspace | 'new') => {
     setEditTarget(target)
-    void loadRules()
   }
 
   const handleWorkspaceSaved = (saved: DocTidyWorkspace) => {
@@ -857,7 +756,6 @@ export default function DocTidyInvoiceAudit() {
                 <WorkspaceCard
                   key={ws._id}
                   workspace={ws}
-                  rules={rules}
                   onOpen={() => enterWorkspace(ws)}
                   onEdit={() => openEditor(ws)}
                   onDelete={() => void handleDeleteWorkspace(ws)}
@@ -899,7 +797,11 @@ export default function DocTidyInvoiceAudit() {
 
           {/* ── Workspace sub-tab bar ─────────────────────────────── */}
           <div className="flex items-center border-b border-[var(--bg-300)] gap-0">
-            {([ ['emails', 'Emails', 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'], ['audit', 'Audit Results', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'] ] as const).map(([tab, label, icon]) => (
+            {([
+              ['emails',  'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
+              ['rules',   'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
+              ['audit',   'Audit Results', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+            ] as const).map(([tab, label, icon]) => (
               <button
                 key={tab}
                 type="button"
@@ -1049,9 +951,7 @@ export default function DocTidyInvoiceAudit() {
                                 <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
                                   {(emailSearch || emailDateFrom || emailDateTo)
                                     ? 'Try adjusting or clearing the filters.'
-                                    : activeWorkspace.ruleIds.length === 0
-                                      ? 'This workspace has no rules — add rules to start capturing emails.'
-                                      : 'Emails matching this workspace\'s rules will appear here.'}
+                                    : 'Emails matching this workspace\'s rules will appear here. Add rules in the Rules tab.'}
                                 </p>
                               </div>
                               {(emailSearch || emailDateFrom || emailDateTo) && (
@@ -1146,6 +1046,11 @@ export default function DocTidyInvoiceAudit() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* ══════════════ RULES TAB ══════════════ */}
+          {workspaceTab === 'rules' && (
+            <WorkspaceRulesView workspaceId={activeWorkspace._id} />
           )}
 
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
@@ -1332,8 +1237,6 @@ export default function DocTidyInvoiceAudit() {
       {editTarget !== null && (
         <WorkspaceEditorDialog
           initial={editTarget === 'new' ? null : editTarget}
-          rules={rules}
-          rulesLoading={rulesLoading}
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
         />

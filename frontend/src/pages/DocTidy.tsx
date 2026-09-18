@@ -21,7 +21,6 @@ import {
   type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
-  type DocTidyRule,
   type DocumentType,
 } from '../types/docTidy'
 
@@ -38,7 +37,6 @@ function formatLastSynced(date: Date): string {
 
 export default function DocTidy() {
   const [messages, setMessages] = useState<DocTidyMessage[]>([])
-  const [rules, setRules] = useState<DocTidyRule[]>([])
   const [config, setConfig] = useState<DocTidyConfig | null>(null)
 
   const [initialLoading, setInitialLoading] = useState(true)
@@ -48,7 +46,6 @@ export default function DocTidy() {
   // Filters
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [ruleId, setRuleId] = useState('')
   const [documentType, setDocumentType] = useState<DocumentType | ''>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -93,7 +90,6 @@ export default function DocTidy() {
       try {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
         if (debouncedSearch) params.set('search', debouncedSearch)
-        if (ruleId) params.set('ruleId', ruleId)
         if (documentType) params.set('documentType', documentType)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
@@ -109,26 +105,19 @@ export default function DocTidy() {
         setRefreshing(false)
       }
     },
-    [page, pageSize, debouncedSearch, ruleId, documentType, dateFrom, dateTo]
+    [page, pageSize, debouncedSearch, documentType, dateFrom, dateTo]
   )
 
-  // Rules populate the filter dropdown; config drives the "not connected" notice.
+  // Config drives the "not connected" notice and seeds the sync countdown.
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      authApi.get<{ data: DocTidyRule[] }>('/doc-tidy/rules').catch(() => ({ data: [] })),
-      authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null),
-    ]).then(([rulesRes, configRes]) => {
-      if (cancelled) return
-      setRules(rulesRes.data)
-      if (configRes) {
-        setConfig(configRes.data)
-        // Seed the countdown from the server's known poll interval + last poll time.
-        const intervalMs = (configRes.data.pollerIntervalSeconds ?? 15) * 1_000
-        pollerIntervalMsRef.current = intervalMs
-        const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
-        setNextSyncAt(new Date(base + intervalMs))
-      }
+    authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null).then((configRes) => {
+      if (cancelled || !configRes) return
+      setConfig(configRes.data)
+      const intervalMs = (configRes.data.pollerIntervalSeconds ?? 15) * 1_000
+      pollerIntervalMsRef.current = intervalMs
+      const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
+      setNextSyncAt(new Date(base + intervalMs))
     })
     return () => {
       cancelled = true
@@ -145,7 +134,7 @@ export default function DocTidy() {
   useEffect(() => {
     setPage(1)
     setSelectedIds(new Set())
-  }, [debouncedSearch, ruleId, documentType, dateFrom, dateTo, pageSize])
+  }, [debouncedSearch, documentType, dateFrom, dateTo, pageSize])
 
   const isFirstRender = useRef(true)
   useEffect(() => {
@@ -189,14 +178,13 @@ export default function DocTidy() {
 
   const clearFilters = () => {
     setSearchInput('')
-    setRuleId('')
     setDocumentType('')
     setDateFrom('')
     setDateTo('')
   }
 
   const hasActiveFilters = Boolean(
-    searchInput || ruleId || documentType || dateFrom || dateTo
+    searchInput || documentType || dateFrom || dateTo
   )
 
   const startItem = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1
@@ -332,13 +320,6 @@ export default function DocTidy() {
             <option value="">All document types</option>
             {DOCUMENT_TYPES.map((type) => (
               <option key={type} value={type}>{DOCUMENT_TYPE_LABELS[type]}</option>
-            ))}
-          </select>
-
-          <select value={ruleId} onChange={(e) => setRuleId(e.target.value)} className={`${inputClass} cursor-pointer`} aria-label="Filter by rule">
-            <option value="">All rules</option>
-            {rules.map((r) => (
-              <option key={r._id} value={r._id}>{r.name}</option>
             ))}
           </select>
 

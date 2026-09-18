@@ -8,7 +8,6 @@ import DocTidyRule, {
 } from '../models/DocTidyRule';
 import DocTidyMessage from '../models/DocTidyMessage';
 import DocTidyParseJob from '../models/DocTidyParseJob';
-import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
@@ -79,9 +78,12 @@ function buildRulePayload(body: Record<string, unknown>) {
 
 /* ------------------------------------------------------------------ rules */
 
-export const listRules = async (_req: Request, res: Response): Promise<void> => {
+export const listRules = async (req: Request, res: Response): Promise<void> => {
   try {
-    const rules = await DocTidyRule.find().sort({ enabled: -1, createdAt: -1 }).lean();
+    const { workspaceId } = req.query as Record<string, string | undefined>;
+    const filter: Record<string, unknown> = {};
+    if (workspaceId && isValidObjectId(workspaceId)) filter.workspaceId = workspaceId;
+    const rules = await DocTidyRule.find(filter).sort({ enabled: -1, createdAt: -1 }).lean();
     res.json({ data: rules });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load rules', error: (error as Error).message });
@@ -97,8 +99,15 @@ export const createRule = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const { workspaceId } = req.body as { workspaceId?: string };
+    if (!workspaceId || !isValidObjectId(workspaceId)) {
+      res.status(400).json({ message: 'A valid workspaceId is required' });
+      return;
+    }
+
     const rule = await DocTidyRule.create({
       ...payload,
+      workspaceId,
       createdByUserId: req.user?.id,
       createdByName: req.user?.name,
     });
@@ -123,7 +132,17 @@ export const updateRule = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const rule = await DocTidyRule.findByIdAndUpdate(id, payload, { new: true });
+    const { workspaceId } = req.body as { workspaceId?: string };
+    const update: Record<string, unknown> = { ...payload };
+    if (workspaceId !== undefined) {
+      if (!isValidObjectId(workspaceId)) {
+        res.status(400).json({ message: 'Invalid workspaceId' });
+        return;
+      }
+      update.workspaceId = workspaceId;
+    }
+
+    const rule = await DocTidyRule.findByIdAndUpdate(id, update, { new: true });
     if (!rule) {
       res.status(404).json({ message: 'Rule not found' });
       return;
@@ -280,12 +299,10 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     // needs parse status to show action icons.
     let includeParseJobs = false;
     if (workspaceId && isValidObjectId(workspaceId)) {
-      const workspace = await DocTidyWorkspace.findById(workspaceId).lean();
-      if (!workspace) {
-        res.status(404).json({ message: 'Workspace not found' });
-        return;
-      }
-      filter.ruleId = { $in: workspace.ruleIds };
+      // Workspace-scoped query: find all rules belonging to this workspace,
+      // then filter messages by those rule IDs.
+      const workspaceRules = await DocTidyRule.find({ workspaceId }).select('_id').lean();
+      filter.ruleId = { $in: workspaceRules.map((r) => r._id) };
       includeParseJobs = true;
     } else if (ruleId && isValidObjectId(ruleId)) {
       filter.ruleId = ruleId;

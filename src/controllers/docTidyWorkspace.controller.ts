@@ -8,13 +8,6 @@ function fail(res: Response, error: unknown, fallback: string): void {
   res.status(500).json({ message: fallback, error: (error as Error).message });
 }
 
-/** Coerce an unknown value to a valid array of ObjectId strings. */
-function toValidObjectIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return (value as unknown[])
-    .filter((id): id is string => typeof id === 'string' && isValidObjectId(id));
-}
-
 /* --------------------------------------------------------------- workspaces */
 
 export const listWorkspaces = async (_req: Request, res: Response): Promise<void> => {
@@ -28,7 +21,7 @@ export const listWorkspaces = async (_req: Request, res: Response): Promise<void
 
 export const createWorkspace = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, ruleIds } = req.body as { name?: unknown; ruleIds?: unknown };
+    const { name } = req.body as { name?: unknown };
 
     if (typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ message: 'name is required' });
@@ -37,7 +30,6 @@ export const createWorkspace = async (req: Request, res: Response): Promise<void
 
     const workspace = await DocTidyWorkspace.create({
       name: name.trim(),
-      ruleIds: toValidObjectIds(ruleIds),
       createdByUserId: req.user?.id,
       createdByName: req.user?.name,
     });
@@ -56,7 +48,7 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { name, ruleIds } = req.body as { name?: unknown; ruleIds?: unknown };
+    const { name } = req.body as { name?: unknown };
     const update: Record<string, unknown> = {};
 
     if (name !== undefined) {
@@ -65,10 +57,6 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
         return;
       }
       update.name = name.trim();
-    }
-
-    if (ruleIds !== undefined) {
-      update.ruleIds = toValidObjectIds(ruleIds);
     }
 
     const workspace = await DocTidyWorkspace.findByIdAndUpdate(

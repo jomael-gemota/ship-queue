@@ -33,9 +33,11 @@ export function documentTypeOf(value?: DocumentType | null): DocumentType {
   return value && DOCUMENT_TYPES.includes(value) ? value : 'other'
 }
 
-/** A named extraction entry. Shared team-wide. */
+/** A named extraction entry. Belongs to exactly one workspace. */
 export interface DocTidyRule {
   _id: string
+  /** The workspace this rule belongs to. */
+  workspaceId?: string
   name: string
   description?: string
   enabled: boolean
@@ -290,14 +292,12 @@ export function normalizeVendorName(name: string): string {
 /* ──────────────────────────────────────────── Invoice Workspaces ── */
 
 /**
- * A named view that aggregates parse jobs from a selected set of rules.
- * Many-to-many with rules: the same rule can be in multiple workspaces.
+ * A named workspace that owns a set of filter rules (one-to-many via
+ * `rule.workspaceId`). Rules are managed from within the workspace.
  */
 export interface DocTidyWorkspace {
   _id: string
   name: string
-  /** Rule IDs included in this workspace. */
-  ruleIds: string[]
   createdByName?: string
   createdAt: string
   updatedAt: string
