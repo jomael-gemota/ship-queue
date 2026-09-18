@@ -402,8 +402,10 @@ export default function DocTidyInvoiceAudit() {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(100)
-  const [vendorSearch, setVendorSearch] = useState('')
-  const [debouncedVendor, setDebouncedVendor] = useState('')
+  const [auditSearch, setAuditSearch] = useState('')
+  const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
+  const [exporting, setExporting] = useState(false)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
 
@@ -548,13 +550,13 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  /* ── Vendor search debounce ── */
+  /* ── Audit search debounce ── */
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedVendor(vendorSearch.trim()), 350)
+    const t = setTimeout(() => setDebouncedAuditSearch(auditSearch.trim()), 350)
     return () => clearTimeout(t)
-  }, [vendorSearch])
+  }, [auditSearch])
 
-  useEffect(() => { setPage(1) }, [debouncedVendor, pageSize])
+  useEffect(() => { setPage(1); setSelectedJobIds(new Set()) }, [debouncedAuditSearch, pageSize])
 
   /* ── Fetch parse jobs ── */
   const fetchJobs = useCallback(async () => {
@@ -568,7 +570,7 @@ export default function DocTidyInvoiceAudit() {
         pageSize: String(pageSize),
         workspaceId: activeWorkspace._id,
       })
-      if (debouncedVendor) params.set('vendorName', debouncedVendor)
+      if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
       const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
       setJobs(res.data)
       setPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
@@ -577,7 +579,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       setLoading(false)
     }
-  }, [activeWorkspace, page, pageSize, debouncedVendor])
+  }, [activeWorkspace, page, pageSize, debouncedAuditSearch])
 
   useEffect(() => { void fetchJobs() }, [fetchJobs])
 
@@ -592,7 +594,9 @@ export default function DocTidyInvoiceAudit() {
     setView('audit')
     setWorkspaceTab('audit')
     setPage(1)
-    setVendorSearch('')
+    setAuditSearch('')
+    setDebouncedAuditSearch('')
+    setSelectedJobIds(new Set())
     setError(null)
     // Reset email sub-view state
     setEmailPage(1)
@@ -611,6 +615,9 @@ export default function DocTidyInvoiceAudit() {
     setJobs([])
     setPagination({ total: 0, pages: 1 })
     setWorkspaceTab('audit')
+    setAuditSearch('')
+    setDebouncedAuditSearch('')
+    setSelectedJobIds(new Set())
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
@@ -652,6 +659,90 @@ export default function DocTidyInvoiceAudit() {
     [colVisibility]
   )
 
+  /* ── Selection helpers (audit table) ── */
+  const pageJobIds = useMemo(() => [...new Set(jobs.map((j) => j._id))], [jobs])
+  const allPageSelected = pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id))
+  const somePageSelected = pageJobIds.some((id) => selectedJobIds.has(id))
+  const auditSelectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (auditSelectAllRef.current) {
+      auditSelectAllRef.current.indeterminate = somePageSelected && !allPageSelected
+    }
+  }, [somePageSelected, allPageSelected])
+
+  const toggleAuditJob = (jobId: string) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(jobId)) next.delete(jobId)
+      else next.add(jobId)
+      return next
+    })
+  }
+  const toggleAllAuditPage = () => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev)
+      for (const id of pageJobIds) {
+        if (allPageSelected) next.delete(id)
+        else next.add(id)
+      }
+      return next
+    })
+  }
+
+  /* ── Excel export ── */
+  const exportToExcel = async (mode: 'selection' | 'all') => {
+    if (!activeWorkspace) return
+    setExporting(true)
+    setError(null)
+    try {
+      const XLSX = await import('xlsx')
+
+      let exportJobs: ParseJobListItem[]
+      if (mode === 'selection') {
+        exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+      } else {
+        // Fetch all matching records regardless of current pagination
+        const params = new URLSearchParams({
+          status: 'completed',
+          page: '1',
+          pageSize: '5000',
+          workspaceId: activeWorkspace._id,
+        })
+        if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
+        const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
+        exportJobs = res.data
+      }
+
+      const rows: Record<string, string>[] = []
+      for (const job of exportJobs) {
+        const json = job.jsonOutput ?? null
+        const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+        const rowItems: (Record<string, unknown> | null)[] = lineItems.length > 0 ? lineItems : [null]
+
+        for (const item of rowItems) {
+          const row: Record<string, string> = {}
+          for (const col of INVOICE_AUDIT_COLUMNS) {
+            if (isLineItemCol(col.id)) {
+              row[col.label] = item ? liField(item as Record<string, unknown>, ...liFieldKeys(col.id)) : ''
+            } else {
+              row[col.label] = docFieldStr(col.id, job)
+            }
+          }
+          rows.push(row)
+        }
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Invoice Audit')
+      XLSX.writeFile(wb, `invoice-audit-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const startItem = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1
   const endItem = Math.min(page * pageSize, pagination.total)
 
@@ -678,7 +769,27 @@ export default function DocTidyInvoiceAudit() {
         if (rawType) return <span className="text-[var(--text-200)]">{rawType}</span>
         return <DocumentTypeBadge value={undefined} />
       }
-      case 'invoiceNumber':   return cell(extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'))
+      case 'invoiceNumber': {
+        const invNum = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
+        if (!invNum) return <span className="text-[var(--text-200)]">—</span>
+        if (job.driveFileId) {
+          return (
+            <a
+              href={`https://drive.google.com/file/d/${job.driveFileId}/view`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline"
+            >
+              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+              </svg>
+              {invNum}
+            </a>
+          )
+        }
+        return cell(invNum)
+      }
       case 'poNumber':        return cell(extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
       case 'orderDate':       return cell(extractJsonField(json, 'order_date', 'date_of_order', 'order date'))
       case 'invoiceDate':     return cell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
@@ -1096,10 +1207,10 @@ export default function DocTidyInvoiceAudit() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
                   </svg>
                 </span>
-                <input type="text" value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)}
-                  placeholder="Filter by vendor…" className={`${inputClass} w-full pl-8 pr-8`} />
-                {vendorSearch && (
-                  <button onClick={() => setVendorSearch('')} aria-label="Clear search"
+                <input type="text" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)}
+                  placeholder="Search vendor, filename…" className={`${inputClass} w-full pl-8 pr-8`} />
+                {auditSearch && (
+                  <button onClick={() => setAuditSearch('')} aria-label="Clear search"
                     className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1107,6 +1218,27 @@ export default function DocTidyInvoiceAudit() {
                   </button>
                 )}
               </div>
+
+              {/* Export button */}
+              {selectedJobIds.size > 0 ? (
+                <button type="button" onClick={() => void exportToExcel('selection')} disabled={exporting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700/40 dark:bg-emerald-900/20 dark:text-emerald-400">
+                  {exporting
+                    ? <Spinner className="h-3.5 w-3.5" />
+                    : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  }
+                  Export {selectedJobIds.size} selected
+                </button>
+              ) : (
+                <button type="button" onClick={() => void exportToExcel('all')} disabled={exporting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)] disabled:opacity-60">
+                  {exporting
+                    ? <Spinner className="h-3.5 w-3.5" />
+                    : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  }
+                  Export all
+                </button>
+              )}
 
               {/* Column settings */}
               <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
@@ -1139,6 +1271,17 @@ export default function DocTidyInvoiceAudit() {
                 <table className="w-full text-[11px] border-separate border-spacing-0">
                   <thead>
                     <tr>
+                      <Th className="w-8">
+                        <input
+                          ref={auditSelectAllRef}
+                          type="checkbox"
+                          checked={allPageSelected}
+                          onChange={toggleAllAuditPage}
+                          disabled={jobs.length === 0}
+                          aria-label={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
+                          className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </Th>
                       {visibleCols.map((col) => (
                         <Th
                           key={col.id}
@@ -1152,6 +1295,7 @@ export default function DocTidyInvoiceAudit() {
                     {loading ? (
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                          <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
                           {visibleCols.map((col) => (
                             <td key={col.id} className="px-2.5 py-1">
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -1161,7 +1305,7 @@ export default function DocTidyInvoiceAudit() {
                       ))
                     ) : jobs.length === 0 ? (
                       <tr>
-                        <td colSpan={visibleCols.length} className="py-16 text-center">
+                        <td colSpan={visibleCols.length + 1} className="py-16 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                               <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1170,16 +1314,16 @@ export default function DocTidyInvoiceAudit() {
                             </div>
                             <div>
                               <p className="text-[11px] font-medium text-[var(--text-100)]">
-                                {debouncedVendor ? 'No documents match this vendor filter' : 'No parsed documents in this workspace'}
+                                {debouncedAuditSearch ? 'No documents match this filter' : 'No parsed documents in this workspace'}
                               </p>
                               <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
-                                {debouncedVendor
+                                {debouncedAuditSearch
                                   ? 'Try clearing the filter above.'
                                     : 'Open the Emails tab to parse documents, then results appear here.'}
                               </p>
                             </div>
-                            {debouncedVendor && (
-                              <button onClick={() => setVendorSearch('')} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                            {debouncedAuditSearch && (
+                              <button onClick={() => setAuditSearch('')} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                 Clear filter
                               </button>
                             )}
@@ -1200,12 +1344,29 @@ export default function DocTidyInvoiceAudit() {
 
                           return rowItems.map((item, itemIdx) => {
                             const isEven = rowIdx % 2 === 0
+                            const isSelected = selectedJobIds.has(job._id)
                             rowIdx++
                             return (
                               <tr
                                 key={`${job._id}-${itemIdx}`}
-                                className={`${isEven ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'} hover:bg-[var(--primary-100)]/50 transition-colors align-middle`}
+                                className={`transition-colors align-middle ${
+                                  isSelected
+                                    ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                    : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
+                                }`}
                               >
+                                {/* Checkbox — only shown on first line-item row of each job */}
+                                <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
+                                  {itemIdx === 0 ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleAuditJob(job._id)}
+                                      aria-label={`Select ${job.filename}`}
+                                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                    />
+                                  ) : null}
+                                </td>
                                 {visibleCols.map((col) => (
                                   <td
                                     key={col.id}
@@ -1295,4 +1456,42 @@ function cell(value: string): React.ReactNode {
   return value
     ? <span className="text-[var(--text-100)]">{value}</span>
     : <span className="text-[var(--text-200)]">—</span>
+}
+
+/** Plain-string value for a document-level column (used by Excel export). */
+function docFieldStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): string {
+  const json = job.jsonOutput ?? null
+  switch (colId) {
+    case 'vendorName':      return job.vendorName || extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from')
+    case 'documentType':    return extractJsonField(json, 'document_type', 'type', 'doc_type')
+    case 'invoiceNumber':   return extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
+    case 'poNumber':        return extractJsonField(json, 'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no')
+    case 'orderDate':       return extractJsonField(json, 'order_date', 'date_of_order', 'order date')
+    case 'invoiceDate':     return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+    case 'terms':           return extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms')
+    case 'trackingNumber':  return extractJsonField(json, 'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number')
+    case 'totalValue':      return formatTotal(extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due'))
+    case 'filename':        return job.filename
+    case 'parsedAt':        return job.completedAt ? new Date(job.completedAt).toLocaleString() : ''
+    case 'requestedBy':     return job.requestedByName || ''
+    default:                return ''
+  }
+}
+
+/** Keys to try for a given line-item column id (for export). */
+function liFieldKeys(colId: InvoiceAuditColumnId): string[] {
+  switch (colId) {
+    case 'liSku':             return ['sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number']
+    case 'liModel':           return ['model', 'model_number', 'model_no', 'style', 'style_number', 'style_no']
+    case 'liDescription':     return ['description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name']
+    case 'liQuantity':        return ['quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount']
+    case 'liUnitPrice':       return ['unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price']
+    case 'liDiscountedPrice': return ['discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price']
+    case 'liDiscountPercent': return ['discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc']
+    case 'liLineTotal':       return ['total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount']
+    case 'liUom':             return ['uom', 'unit', 'unit_of_measure', 'unit_measure']
+    case 'liTaxAmount':       return ['tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst']
+    case 'liNotes':           return ['notes', 'note', 'remarks', 'comments', 'comment']
+    default:                  return []
+  }
 }

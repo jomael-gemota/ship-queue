@@ -102,11 +102,19 @@ export const listParseJobs = async (req: Request, res: Response): Promise<void> 
       page = '1',
       pageSize = '200',
       vendorName,
+      search,
       workspaceId,
     } = req.query as Record<string, string>;
 
     const filter: Record<string, unknown> = { status };
-    if (vendorName) filter.vendorName = { $regex: vendorName, $options: 'i' };
+    // `search` matches vendor name OR filename; `vendorName` kept for back-compat.
+    const term = search || vendorName;
+    if (term) {
+      filter.$or = [
+        { vendorName: { $regex: term, $options: 'i' } },
+        { filename:   { $regex: term, $options: 'i' } },
+      ];
+    }
 
     // Workspace filter: resolve rule IDs → message IDs → parse job filter.
     if (workspaceId) {
