@@ -1,16 +1,14 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document } from 'mongoose';
 
 /**
- * A named view over a subset of filter rules.
+ * A named workspace that owns a set of filter rules.
  *
- * Workspaces are team-wide (like rules and vendors). The relationship to rules
- * is many-to-many: the same rule can be referenced by multiple workspaces, and
- * deleting a workspace never affects the rule itself.
+ * Workspaces are team-wide (like rules and vendors). Rules reference the
+ * workspace via `rule.workspaceId` (one-to-many). Deleting a workspace does
+ * not delete its rules — they become unassigned until reassigned or deleted.
  */
 export interface IDocTidyWorkspace extends Document {
   name: string;
-  /** Rule IDs this workspace aggregates. Order is preserved for display. */
-  ruleIds: Types.ObjectId[];
   createdByUserId?: string;
   createdByName?: string;
   createdAt: Date;
@@ -20,7 +18,6 @@ export interface IDocTidyWorkspace extends Document {
 const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
   {
     name: { type: String, required: true, trim: true },
-    ruleIds: [{ type: Schema.Types.ObjectId, ref: 'DocTidyRule' }],
     createdByUserId: { type: String },
     createdByName: { type: String },
   },

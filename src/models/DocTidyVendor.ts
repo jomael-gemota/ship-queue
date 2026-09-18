@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 
 /** Shared with `worker/collections.py`. See DocTidyParseJob for why it is pinned. */
 export const VENDOR_COLLECTION = 'doctidy_vendors';
@@ -20,6 +20,8 @@ export function normalizeVendorName(name: string): string {
  * the vendor's very first document, before any correction exists.
  */
 export interface IDocTidyVendor extends Document {
+  /** The workspace this vendor belongs to. Optional for legacy vendors. */
+  workspaceId?: Types.ObjectId;
   name: string;
   normalizedName: string;
   skuSamples: string[];
@@ -32,13 +34,19 @@ export interface IDocTidyVendor extends Document {
 
 const DocTidyVendorSchema = new Schema<IDocTidyVendor>(
   {
+    workspaceId: { type: Schema.Types.ObjectId, ref: 'DocTidyWorkspace' },
     name: { type: String, required: true, trim: true },
-    normalizedName: { type: String, required: true, unique: true },
+    // normalizedName is no longer globally unique — uniqueness is enforced
+    // per-workspace via the compound index below.
+    normalizedName: { type: String, required: true },
     skuSamples: { type: [String], default: [] },
     skuSample: { type: String, default: null },
     createdByName: { type: String },
   },
   { timestamps: true, collection: VENDOR_COLLECTION }
 );
+
+// Per-workspace uniqueness: one vendor name per workspace.
+DocTidyVendorSchema.index({ workspaceId: 1, normalizedName: 1 }, { unique: true });
 
 export default model<IDocTidyVendor>('DocTidyVendor', DocTidyVendorSchema);

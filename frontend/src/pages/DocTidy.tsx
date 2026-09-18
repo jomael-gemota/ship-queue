@@ -3,16 +3,13 @@ import { Link } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import {
   Banner,
-  DocTidyTabs,
   DocumentTypeBadge,
   PaginationArrows,
   Spinner,
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
-import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
-import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import { newMessageStore } from '../lib/docTidyStore'
 import {
@@ -23,7 +20,6 @@ import {
   type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
-  type DocTidyRule,
   type DocumentType,
 } from '../types/docTidy'
 
@@ -40,7 +36,6 @@ function formatLastSynced(date: Date): string {
 
 export default function DocTidy() {
   const [messages, setMessages] = useState<DocTidyMessage[]>([])
-  const [rules, setRules] = useState<DocTidyRule[]>([])
   const [config, setConfig] = useState<DocTidyConfig | null>(null)
 
   const [initialLoading, setInitialLoading] = useState(true)
@@ -50,7 +45,6 @@ export default function DocTidy() {
   // Filters
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [ruleId, setRuleId] = useState('')
   const [documentType, setDocumentType] = useState<DocumentType | ''>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -79,8 +73,6 @@ export default function DocTidy() {
     return () => clearInterval(id)
   }, [])
 
-  // The parse job whose reasoning panel is open, if any.
-  const [openJobId, setOpenJobId] = useState<string | null>(null)
   // The message whose detail drawer is open, if any.
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
 
@@ -97,7 +89,6 @@ export default function DocTidy() {
       try {
         const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
         if (debouncedSearch) params.set('search', debouncedSearch)
-        if (ruleId) params.set('ruleId', ruleId)
         if (documentType) params.set('documentType', documentType)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
@@ -113,26 +104,19 @@ export default function DocTidy() {
         setRefreshing(false)
       }
     },
-    [page, pageSize, debouncedSearch, ruleId, documentType, dateFrom, dateTo]
+    [page, pageSize, debouncedSearch, documentType, dateFrom, dateTo]
   )
 
-  // Rules populate the filter dropdown; config drives the "not connected" notice.
+  // Config drives the "not connected" notice and seeds the sync countdown.
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      authApi.get<{ data: DocTidyRule[] }>('/doc-tidy/rules').catch(() => ({ data: [] })),
-      authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null),
-    ]).then(([rulesRes, configRes]) => {
-      if (cancelled) return
-      setRules(rulesRes.data)
-      if (configRes) {
-        setConfig(configRes.data)
-        // Seed the countdown from the server's known poll interval + last poll time.
-        const intervalMs = (configRes.data.pollerIntervalSeconds ?? 15) * 1_000
-        pollerIntervalMsRef.current = intervalMs
-        const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
-        setNextSyncAt(new Date(base + intervalMs))
-      }
+    authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null).then((configRes) => {
+      if (cancelled || !configRes) return
+      setConfig(configRes.data)
+      const intervalMs = (configRes.data.pollerIntervalSeconds ?? 15) * 1_000
+      pollerIntervalMsRef.current = intervalMs
+      const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
+      setNextSyncAt(new Date(base + intervalMs))
     })
     return () => {
       cancelled = true
@@ -149,7 +133,7 @@ export default function DocTidy() {
   useEffect(() => {
     setPage(1)
     setSelectedIds(new Set())
-  }, [debouncedSearch, ruleId, documentType, dateFrom, dateTo, pageSize])
+  }, [debouncedSearch, documentType, dateFrom, dateTo, pageSize])
 
   const isFirstRender = useRef(true)
   useEffect(() => {
@@ -179,13 +163,6 @@ export default function DocTidy() {
           setLive(true)
           return
         }
-        // A parse finishing elsewhere (or in another tab) changes a status chip
-        // on a row this table may already be showing, so it refetches without
-        // the "new messages" cue that an import deserves.
-        if (event.type === 'parse_status') {
-          void fetchRef.current(true)
-          return
-        }
         if (event.type !== 'imported') return
 
         // Increment the cross-page unread badge, reset the next-sync countdown,
@@ -200,14 +177,13 @@ export default function DocTidy() {
 
   const clearFilters = () => {
     setSearchInput('')
-    setRuleId('')
     setDocumentType('')
     setDateFrom('')
     setDateTo('')
   }
 
   const hasActiveFilters = Boolean(
-    searchInput || ruleId || documentType || dateFrom || dateTo
+    searchInput || documentType || dateFrom || dateTo
   )
 
   const startItem = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1
@@ -260,8 +236,6 @@ export default function DocTidy() {
     <div className="space-y-4">
       {/* ── Tab bar ────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
-        <DocTidyTabs />
-
         {/* Sync timestamps — flush with the tab baseline */}
         {(lastSynced ?? nextSyncAt) && (() => {
           /* eslint-disable react-hooks/purity */
@@ -343,13 +317,6 @@ export default function DocTidy() {
             <option value="">All document types</option>
             {DOCUMENT_TYPES.map((type) => (
               <option key={type} value={type}>{DOCUMENT_TYPE_LABELS[type]}</option>
-            ))}
-          </select>
-
-          <select value={ruleId} onChange={(e) => setRuleId(e.target.value)} className={`${inputClass} cursor-pointer`} aria-label="Filter by rule">
-            <option value="">All rules</option>
-            {rules.map((r) => (
-              <option key={r._id} value={r._id}>{r.name}</option>
             ))}
           </select>
 
@@ -463,7 +430,6 @@ export default function DocTidy() {
                   <Th label="Subject" iconPath="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   <Th label="Document type" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   <Th label="Rule" iconPath="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                  <Th label="Actions" align="center" />
                 </tr>
               </thead>
               <tbody>
@@ -495,17 +461,11 @@ export default function DocTidy() {
                       <td className="px-3 py-1">
                         <div className="h-5 w-20 animate-pulse rounded-full bg-[var(--bg-300)]" />
                       </td>
-                      <td className="px-3 py-1">
-                        <div className="flex justify-end gap-1.5">
-                          <div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" />
-                          <div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" />
-                        </div>
-                      </td>
                     </tr>
                   ))
                 ) : messages.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center">
+                    <td colSpan={6} className="py-16 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                           <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -604,14 +564,6 @@ export default function DocTidy() {
                           )}
                         </td>
 
-                        {/* Actions — stop propagation so parse buttons don't also open the drawer */}
-                        <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-                          <AttachmentIcons
-                            message={msg}
-                            onOpenJob={setOpenJobId}
-                            onChanged={() => void fetchMessages(true)}
-                          />
-                        </td>
                       </tr>
                     )
                   })
@@ -629,19 +581,11 @@ export default function DocTidy() {
         )}
       </div>
 
-      {openJobId && (
-        <ParseJobPanel
-          jobId={openJobId}
-          onClose={() => setOpenJobId(null)}
-          onChanged={() => void fetchMessages(true)}
-        />
-      )}
-
       {viewMessage && (
         <MessageDetailDrawer
           message={viewMessage}
           onClose={() => setViewMessage(null)}
-          onOpenJob={setOpenJobId}
+          onOpenJob={() => {/* parse actions moved to workspace Emails view */}}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 
 export type MatchMode = 'any' | 'all';
 export const MATCH_MODES: MatchMode[] = ['any', 'all'];
@@ -11,10 +11,15 @@ export type DocumentType = 'order_confirmation' | 'invoice' | 'other';
 export const DOCUMENT_TYPES: DocumentType[] = ['order_confirmation', 'invoice', 'other'];
 
 /**
- * A named extraction entry. Rules are shared team-wide: any authenticated user
- * can create, edit, run or delete one. `createdBy*` is attribution only.
+ * A named extraction entry. Rules belong to exactly one workspace.
+ * `createdBy*` is attribution only.
  */
 export interface IDocTidyRule extends Document {
+  /**
+   * The workspace this rule belongs to. Optional for legacy rules created
+   * before workspace-scoping was introduced; required for all new rules.
+   */
+  workspaceId?: Types.ObjectId;
   name: string;
   description?: string;
   enabled: boolean;
@@ -67,6 +72,7 @@ export interface IDocTidyRule extends Document {
 
 const DocTidyRuleSchema = new Schema<IDocTidyRule>(
   {
+    workspaceId: { type: Schema.Types.ObjectId, ref: 'DocTidyWorkspace', index: true },
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     enabled: { type: Boolean, default: true },
@@ -99,7 +105,9 @@ const DocTidyRuleSchema = new Schema<IDocTidyRule>(
   { timestamps: true }
 );
 
-// The rules page lists enabled entries first, newest first.
+// The rules page lists enabled entries first, newest first within a workspace.
 DocTidyRuleSchema.index({ enabled: -1, createdAt: -1 });
+// Fast workspace-scoped rule lookup (messages query, parse-jobs query).
+DocTidyRuleSchema.index({ workspaceId: 1, enabled: -1 });
 
 export default model<IDocTidyRule>('DocTidyRule', DocTidyRuleSchema);

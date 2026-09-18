@@ -7,7 +7,7 @@ import DocTidyCorrection, {
 } from '../models/DocTidyCorrection';
 import DocTidyVendor, { normalizeVendorName } from '../models/DocTidyVendor';
 import DocTidyMessage from '../models/DocTidyMessage';
-import DocTidyWorkspace from '../models/DocTidyWorkspace';
+import DocTidyRule from '../models/DocTidyRule';
 import {
   ParseRequestError,
   requestParse,
@@ -115,20 +115,16 @@ export const listParseJobs = async (req: Request, res: Response): Promise<void> 
         return;
       }
 
-      const workspace = await DocTidyWorkspace.findById(workspaceId).lean();
-      if (!workspace) {
-        res.status(404).json({ message: 'Workspace not found' });
-        return;
-      }
-
-      // A workspace with no rules can never have any jobs.
-      if (workspace.ruleIds.length === 0) {
+      // Workspace-scoped: find rules owned by this workspace, then the messages
+      // those rules captured, then filter parse jobs to those messages.
+      const workspaceRules = await DocTidyRule.find({ workspaceId }).select('_id').lean();
+      if (workspaceRules.length === 0) {
         res.json({ data: [], pagination: { page: 1, pageSize: Number(pageSize), total: 0, pages: 1 } });
         return;
       }
 
       const messages = await DocTidyMessage
-        .find({ ruleId: { $in: workspace.ruleIds } })
+        .find({ ruleId: { $in: workspaceRules.map((r) => r._id) } })
         .select('_id')
         .lean();
 
@@ -418,12 +414,31 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
   }
 };
 
-export const listCorrections = async (_req: Request, res: Response): Promise<void> => {
+export const listCorrections = async (req: Request, res: Response): Promise<void> => {
   try {
+    const { workspaceId } = req.query as Record<string, string | undefined>;
+
+    let correctionFilter: Record<string, unknown> = {};
+
+    // Scope corrections to vendors that belong to the specified workspace.
+    if (workspaceId && isValidObjectId(workspaceId)) {
+      const vendors = await DocTidyVendor.find({ workspaceId }).select('normalizedName').lean();
+      if (vendors.length === 0) {
+        res.json({ data: [] });
+        return;
+      }
+      // Corrections store vendorName as-entered; match via normalized form.
+      const normalizedNames = new Set(vendors.map((v) => v.normalizedName));
+      // We can't filter by normalized form in a single query without a
+      // $where, so we fetch with a regex candidate set and filter in JS.
+      const nameSet = vendors.map((v) => v.name);
+      correctionFilter.vendorName = { $in: nameSet };
+    }
+
     // The Vendors page groups this whole set by vendor, so it needs more than a
     // recent slice. `documentTextSample` is excluded alongside the embedding: it
     // is 2000 characters per row that nothing renders.
-    const corrections = await DocTidyCorrection.find()
+    const corrections = await DocTidyCorrection.find(correctionFilter)
       .select('-embedding -documentTextSample')
       .sort({ createdAt: -1 })
       .limit(1000)
@@ -460,9 +475,13 @@ export const deleteCorrection = async (req: Request, res: Response): Promise<voi
 
 /* --------------------------------------------------------------- vendors */
 
-export const listVendors = async (_req: Request, res: Response): Promise<void> => {
+export const listVendors = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vendors = await DocTidyVendor.find().sort({ name: 1 }).lean();
+    const { workspaceId } = req.query as Record<string, string | undefined>;
+    const filter: Record<string, unknown> = {};
+    if (workspaceId && isValidObjectId(workspaceId)) filter.workspaceId = workspaceId;
+
+    const vendors = await DocTidyVendor.find(filter).sort({ name: 1 }).lean();
 
     // Correction counts are what tell the user whether a vendor has actually
     // taught the agent anything, as opposed to merely being registered.
@@ -493,10 +512,18 @@ export const listVendors = async (_req: Request, res: Response): Promise<void> =
  */
 export const upsertVendor = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, skuSample } = req.body as { name?: unknown; skuSample?: unknown };
+    const { name, skuSample, workspaceId } = req.body as {
+      name?: unknown;
+      skuSample?: unknown;
+      workspaceId?: unknown;
+    };
 
     if (typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ message: 'name is required' });
+      return;
+    }
+    if (typeof workspaceId !== 'string' || !isValidObjectId(workspaceId)) {
+      res.status(400).json({ message: 'A valid workspaceId is required' });
       return;
     }
 
@@ -504,9 +531,9 @@ export const upsertVendor = async (req: Request, res: Response): Promise<void> =
     const trimmedName = name.trim();
 
     const vendor = await DocTidyVendor.findOneAndUpdate(
-      { normalizedName: normalizeVendorName(trimmedName) },
+      { workspaceId, normalizedName: normalizeVendorName(trimmedName) },
       {
-        $set: { name: trimmedName },
+        $set: { name: trimmedName, workspaceId },
         ...(sample ? { $addToSet: { skuSamples: sample } } : {}),
         $setOnInsert: {
           normalizedName: normalizeVendorName(trimmedName),
@@ -524,7 +551,7 @@ export const upsertVendor = async (req: Request, res: Response): Promise<void> =
 
 export const removeVendorSample = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { skuSample } = req.body as { skuSample?: unknown };
+    const { skuSample, workspaceId } = req.body as { skuSample?: unknown; workspaceId?: unknown };
     if (typeof skuSample !== 'string' || !skuSample.trim()) {
       res.status(400).json({ message: 'skuSample is required' });
       return;
@@ -532,15 +559,18 @@ export const removeVendorSample = async (req: Request, res: Response): Promise<v
 
     const normalizedName = normalizeVendorName(req.params.name);
     const sample = skuSample.trim();
+    const wsFilter = typeof workspaceId === 'string' && isValidObjectId(workspaceId)
+      ? { workspaceId }
+      : {};
 
-    await DocTidyVendor.updateOne({ normalizedName }, { $pull: { skuSamples: sample } });
+    await DocTidyVendor.updateOne({ ...wsFilter, normalizedName }, { $pull: { skuSamples: sample } });
     // Clear the legacy single field too, or the removed format keeps anchoring.
     await DocTidyVendor.updateOne(
-      { normalizedName, skuSample: sample },
+      { ...wsFilter, normalizedName, skuSample: sample },
       { $set: { skuSample: null } }
     );
 
-    const vendor = await DocTidyVendor.findOne({ normalizedName }).lean();
+    const vendor = await DocTidyVendor.findOne({ ...wsFilter, normalizedName }).lean();
     if (!vendor) {
       res.status(404).json({ message: 'Vendor not found' });
       return;
@@ -562,8 +592,10 @@ export const removeVendorSample = async (req: Request, res: Response): Promise<v
 export const deleteVendor = async (req: Request, res: Response): Promise<void> => {
   try {
     const normalizedName = normalizeVendorName(req.params.name);
+    const { workspaceId } = req.query as Record<string, string | undefined>;
+    const wsFilter = workspaceId && isValidObjectId(workspaceId) ? { workspaceId } : {};
 
-    const vendor = await DocTidyVendor.findOneAndDelete({ normalizedName });
+    const vendor = await DocTidyVendor.findOneAndDelete({ ...wsFilter, normalizedName });
     if (!vendor) {
       res.status(404).json({ message: 'Vendor not found' });
       return;

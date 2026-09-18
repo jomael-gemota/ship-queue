@@ -1,6 +1,3 @@
-import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { newMessageStore } from '../../lib/docTidyStore'
 import {
   DOCUMENT_TYPE_ICONS,
   DOCUMENT_TYPE_LABELS,
@@ -11,83 +8,6 @@ import {
   type DocumentType,
   type ParseJobStatus,
 } from '../../types/docTidy'
-
-/**
- * Full-width underline tab bar shared by all three Doc Tidy sections.
- *
- * The component renders a <nav> without an outer border — callers wrap it in a
- * div that provides the horizontal rule so action buttons can sit flush on the
- * same baseline (flex items-end justify-between border-b …).
- *
- * The active tab's border-b-2 uses -mb-px to overlap the parent's border-b,
- * producing the standard "selected tab" look without a double line.
- */
-export function DocTidyTabs() {
-  // Reactive unread count — survives navigation between sub-pages.
-  const [unread, setUnread] = useState(newMessageStore.get)
-  useEffect(() => newMessageStore.subscribe(() => setUnread(newMessageStore.get())), [])
-
-  const tab = ({ isActive }: { isActive: boolean }) =>
-    `inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 -mb-px cursor-pointer whitespace-nowrap select-none transition-colors ${
-      isActive
-        ? 'border-[var(--accent-200)] text-[var(--accent-200)]'
-        : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)] hover:border-[var(--bg-300)]'
-    }`
-
-  return (
-    <nav className="flex items-end" aria-label="Doc Tidy navigation">
-      <NavLink to="/doc-tidy" end className={tab}>
-        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-          />
-        </svg>
-        Email Records
-        {unread > 0 && (
-          <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent-200)] px-1 text-[10px] font-bold leading-none text-white">
-            {unread > 99 ? '99+' : unread}
-          </span>
-        )}
-      </NavLink>
-      <NavLink to="/doc-tidy/invoice-audit" className={tab}>
-        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-        Invoice Audit
-      </NavLink>
-      <NavLink to="/doc-tidy/rules" className={tab}>
-        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-          />
-        </svg>
-        Filter Rules
-      </NavLink>
-      <NavLink to="/doc-tidy/vendors" className={tab}>
-        <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-          />
-        </svg>
-        Vendors
-      </NavLink>
-    </nav>
-  )
-}
 
 /**
  * Sticky, icon-prefixed header cell matching the Orders table. `children`
