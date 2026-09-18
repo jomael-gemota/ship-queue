@@ -65,7 +65,7 @@ export default function VendorSetup({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p className="text-sm text-emerald-800 dark:text-emerald-300">
-          <span className="font-semibold">{registered.name}</span> was added to your vendors. Re-run the agent to apply it.
+          <span className="font-semibold">{registered.name}</span> was added to your vendors. Re-run with Tidy Agent to apply it.
         </p>
       </div>
     )

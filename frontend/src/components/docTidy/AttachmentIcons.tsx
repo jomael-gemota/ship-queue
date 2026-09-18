@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { authApi } from '../../lib/api'
 import { ErrorIcon, SuccessIcon } from '../labels/labelUi'
-import { BoltIcon, Spinner, TableActionButton } from './docTidyUi'
+import { Spinner, TableActionButton } from './docTidyUi'
 import { PARSEABLE } from './AttachmentCell'
 import { isParseRunning, type DocTidyMessage, type DocTidyParseJob, type ParseJobSummary } from '../../types/docTidy'
 
@@ -85,7 +85,7 @@ export default function AttachmentIcons({
               <span key={i} className="flex items-center gap-0.5">
                 {/* View progress — opens the reasoning panel */}
                 <TableActionButton
-                  label="Open to watch the agent work"
+                  label="Open to watch Tidy Agent work"
                   onClick={() => onOpenJob(job._id)}
                 >
                   <Spinner className="h-5 w-5 text-sky-500" />
@@ -117,7 +117,7 @@ export default function AttachmentIcons({
                 job.error ??
                 (job.status === 'failed'
                   ? 'Parse failed — open to see error'
-                  : 'Open the agent\u2019s reasoning and output')
+                  : 'Open Tidy Agent\u2019s reasoning and output')
               }
               onClick={() => onOpenJob(job._id)}
             >
@@ -130,22 +130,30 @@ export default function AttachmentIcons({
           )
         }
 
-        // No job yet — offer to start one; hidden until the row is hovered
-        // (the `group` class lives on the <tr> in DocTidy.tsx).
+        // No job yet — always-visible "Send to Tidy Agent" button
         return (
-          <span key={i} className="opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            <TableActionButton
-              label={failure ? `Parse failed — ${failure}` : 'Send this document to the agent'}
-              onClick={() => startParse(i)}
-              disabled={startingIndex !== null}
-            >
-              {startingIndex === i ? (
-                <Spinner className="h-5 w-5" />
-              ) : (
-                <BoltIcon className={`h-5 w-5 ${failure ? 'text-rose-500' : ''}`} />
-              )}
-            </TableActionButton>
-          </span>
+          <button
+            key={i}
+            type="button"
+            title={failure ? `Parse failed — ${failure}` : 'Send this document to Tidy Agent for parsing'}
+            onClick={() => void startParse(i)}
+            disabled={startingIndex !== null}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--accent-200)]/25 bg-[var(--primary-100)] px-2 py-1 text-[10px] font-semibold text-[var(--accent-200)] transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {startingIndex === i ? (
+              <Spinner className="h-3 w-3" />
+            ) : failure ? (
+              <svg className="h-3 w-3 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            ) : (
+              /* Sparkle / AI icon */
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+              </svg>
+            )}
+            {failure ? 'Retry' : 'Send to Tidy Agent'}
+          </button>
         )
       })}
     </div>

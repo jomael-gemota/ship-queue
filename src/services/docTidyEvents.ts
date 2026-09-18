@@ -10,7 +10,7 @@ import type { Response } from 'express';
  */
 
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status';
+  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
   /**
@@ -21,6 +21,8 @@ export interface DocTidyEvent {
    */
   parseJobId?: string;
   parseStatus?: string;
+  /** For `worker_status`: whether the Python worker is currently connected. */
+  workerOnline?: boolean;
   at?: string;
 }
 

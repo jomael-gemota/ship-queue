@@ -395,6 +395,9 @@ export default function DocTidyInvoiceAudit() {
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
 
+  /* ── Tidy Agent worker status ── */
+  const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
+
   /* ── Audit table ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
@@ -496,14 +499,15 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'imported') {
           void fetchEmailsRef.current(true)
         }
-        // Only refetch on terminal parse states — intermediate states (pending/running)
-        // would flash the skeleton on every token, causing visible blinking.
         if (event.type === 'parse_status' &&
             (event.parseStatus === 'completed' || event.parseStatus === 'failed')) {
           void fetchEmailsRef.current(true)
         }
+        if (event.type === 'worker_status') {
+          setWorkerOnline(event.workerOnline ?? false)
+        }
       },
-      () => {} // silent disconnect — no live badge needed here
+      () => {}
     )
   }, [workspaceTab, activeWorkspace])
 
@@ -516,10 +520,27 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'parse_status' && event.parseStatus === 'completed') {
           void fetchJobsRef.current()
         }
+        if (event.type === 'worker_status') {
+          setWorkerOnline(event.workerOnline ?? false)
+        }
       },
       () => {}
     )
   }, [workspaceTab, activeWorkspace])
+
+  /* SSE — also track worker status from the emails tab */
+  useEffect(() => {
+    if (workspaceTab !== 'emails' || !activeWorkspace) return
+    // worker_status events are handled within the existing emails SSE — merged below
+  }, [workspaceTab, activeWorkspace])
+
+  /* Fetch initial worker status whenever a workspace is active */
+  useEffect(() => {
+    if (!activeWorkspace) return
+    authApi.get<{ data: { connected: boolean } }>('/doc-tidy/worker/status')
+      .then((res) => setWorkerOnline(res.data.connected))
+      .catch(() => setWorkerOnline(false))
+  }, [activeWorkspace])
 
   /* Indeterminate state on the select-all checkbox */
   const allEmailsOnPageSelected =
@@ -968,6 +989,29 @@ export default function DocTidyInvoiceAudit() {
                 {label}
               </button>
             ))}
+
+            {/* ── Tidy Agent status badge ── */}
+            <div className="ml-auto flex items-center gap-1.5 pr-4 pb-px shrink-0">
+              <span
+                title={workerOnline === null ? 'Checking Tidy Agent status…' : workerOnline ? 'Tidy Agent is connected and ready' : 'Tidy Agent is offline — parses will queue until it reconnects'}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                  workerOnline === null
+                    ? 'bg-[var(--bg-200)] text-[var(--text-200)]'
+                    : workerOnline
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                      : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${
+                  workerOnline === null
+                    ? 'bg-[var(--text-200)] animate-pulse'
+                    : workerOnline
+                      ? 'bg-emerald-500 animate-pulse'
+                      : 'bg-rose-500'
+                }`} />
+                Tidy Agent · {workerOnline === null ? 'Checking…' : workerOnline ? 'Online' : 'Offline'}
+              </span>
+            </div>
           </div>
 
           {/* ══════════════ EMAILS TAB ══════════════ */}
