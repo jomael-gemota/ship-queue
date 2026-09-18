@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HHActionRow, HHCartBadge, HHConfirmModal, HHDetailsBadge, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHCartSummary, HHConfirmModal, HHCopyIdButton, HHDetailsSummary, HHPlaceButton, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
-import { deleteHHGroup, formatCreatedAt, hhFilterSummary } from '../lib/hhSportswear'
+import { deleteHHGroup, formatCreatedAt, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   ClockIcon,
   DeleteBatchButton,
@@ -56,6 +56,9 @@ export default function HHSportswear() {
     resyncBusyId,
     rerunCartDraft,
     cartDraftBusyId,
+    placeOrders,
+    placeBusyId,
+    placeOrderEnabled,
   } = useHHList()
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -202,12 +205,14 @@ export default function HHSportswear() {
                       : `No groups with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
                     : searchInput.trim()
                       ? `No groups match "${searchInput.trim()}".`
-                      : 'No groups yet. Import a spreadsheet to create a batch.'}
+                      : 'No groups yet. Import orders to create a batch.'}
                 </Td>
               </tr>
             ) : (
               paginated.map((group, idx) => {
                 const orderCount = group.children.length
+                const deleteLocked = hhGroupHasPlaced(group)
+                const mutateLocked = hhGroupAllPlaced(group)
                 return (
                   <HHActionRow
                     key={group.id}
@@ -218,7 +223,10 @@ export default function HHSportswear() {
                     onExitEnd={() => finishExit(group.id)}
                   >
                     <Td compact className="whitespace-nowrap text-slate-600 dark:text-[var(--text-100)]">
-                      {formatCreatedAt(group.createdAt)}
+                      <span className="inline-flex items-center gap-1.5">
+                        {formatCreatedAt(group.createdAt)}
+                        <HHCopyIdButton value={group.id} title="Copy batch ID" />
+                      </span>
                     </Td>
                     <Td compact className="max-w-[260px]">
                       <p className="truncate font-medium text-slate-800 dark:text-[var(--text-100)]">
@@ -236,10 +244,10 @@ export default function HHSportswear() {
                       />
                     </Td>
                     <Td compact>
-                      <HHDetailsBadge status={group.detailsStatus} />
+                      <HHDetailsSummary orders={group.children} />
                     </Td>
                     <Td compact>
-                      <HHCartBadge status={group.cartStatus} />
+                      <HHCartSummary orders={group.children} />
                     </Td>
                     <Td compact>
                       <Link
@@ -256,19 +264,38 @@ export default function HHSportswear() {
                     >
                       <HHResyncButton
                         size="sm"
-                        title="Re-sync details for this batch"
+                        title={
+                          mutateLocked
+                            ? 'Placed orders cannot be re-synced'
+                            : 'Re-sync details for this batch'
+                        }
+                        disabled={mutateLocked}
                         busy={resyncBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'resync', target: 'group', group })}
                       />
                       <HHRedraftButton
                         size="sm"
-                        title="Regenerate B2B draft for this batch"
+                        title={
+                          mutateLocked
+                            ? 'Placed orders cannot have their cart regenerated'
+                            : 'Regenerate B2B draft for this batch'
+                        }
+                        disabled={mutateLocked}
                         busy={cartDraftBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
+                      {hhPlaceableOrders(group.children).length > 0 ? (
+                        <HHPlaceButton
+                          size="sm"
+                          title={hhPlaceActionTitle(placeOrderEnabled)}
+                          busy={placeBusyId === group.id}
+                          onClick={() => setPendingAction({ type: 'place', target: 'group', group })}
+                        />
+                      ) : null}
                       <DeleteBatchButton
                         size="sm"
-                        title="Delete"
+                        title={deleteLocked ? 'This batch has a placed order and cannot be deleted' : 'Delete'}
+                        disabled={deleteLocked}
                         onClick={() => setPendingAction({ type: 'delete', target: 'group', group })}
                       />
                     </HHRowActions>
@@ -291,6 +318,7 @@ export default function HHSportswear() {
           pending={pendingAction}
           busy={actionBusy}
           error={actionError}
+          placeOrderEnabled={placeOrderEnabled}
           onCancel={() => {
             if (actionBusy) return
             setPendingAction(null)
@@ -321,7 +349,9 @@ export default function HHSportswear() {
             const request =
               pending.type === 'resync'
                 ? rerunDetails(groupId, undefined, { draftCart: options?.draftCart !== false })
-                : rerunCartDraft(groupId)
+                : pending.type === 'place'
+                  ? placeOrders(groupId)
+                  : rerunCartDraft(groupId)
             request
               .then(() => {
                 setPendingAction(null)
@@ -333,7 +363,9 @@ export default function HHSportswear() {
                     ? error.message
                     : pending.type === 'resync'
                       ? 'Failed to re-sync details'
-                      : 'Failed to regenerate draft',
+                      : pending.type === 'place'
+                        ? 'Failed to place orders'
+                        : 'Failed to regenerate draft',
                 )
               })
               .finally(() => setActionBusy(false))

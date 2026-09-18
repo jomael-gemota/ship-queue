@@ -6,10 +6,15 @@ import {
   hhGroupMatchesQuery,
   hhItemMatchesQuery,
   hhOrderMatchesQuery,
+  getHHB2bConfig,
   listHHGroups,
+  placeHHGroup,
+  placeHHOrder,
   rerunHHGroupCartDraft,
+  rerunHHGroupCartVerify,
   rerunHHGroupScSync,
   rerunHHOrderCartDraft,
+  rerunHHOrderCartVerify,
   rerunHHOrderScSync,
   updateHHGroupNotes,
   updateHHOrderNotes,
@@ -58,6 +63,12 @@ interface HHListContextValue {
   resyncBusyId: string | null
   rerunCartDraft: (groupId: string, orderId?: string) => Promise<void>
   cartDraftBusyId: string | null
+  rerunCartVerify: (groupId: string, orderId?: string) => Promise<void>
+  cartVerifyBusyId: string | null
+  placeOrders: (groupId: string, orderId?: string) => Promise<void>
+  placeBusyId: string | null
+  placeOrderEnabled: boolean
+  setPlaceOrderEnabled: (enabled: boolean) => void
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
   selectedDetailsStatus: HHDetailsStatus | ''
@@ -100,6 +111,9 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const [reloadToken, setReloadToken] = useState(0)
   const [resyncBusyId, setResyncBusyId] = useState<string | null>(null)
   const [cartDraftBusyId, setCartDraftBusyId] = useState<string | null>(null)
+  const [cartVerifyBusyId, setCartVerifyBusyId] = useState<string | null>(null)
+  const [placeBusyId, setPlaceBusyId] = useState<string | null>(null)
+  const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
     orders: { ...EMPTY_FILTERS },
@@ -206,6 +220,20 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     setFiltersByLevel((current) => ({ ...current, [nextLevel]: { ...EMPTY_FILTERS } }))
   }, [location.pathname])
 
+  useEffect(() => {
+    let cancelled = false
+    getHHB2bConfig()
+      .then((res) => {
+        if (!cancelled) setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
+      })
+      .catch(() => {
+        if (!cancelled) setPlaceOrderEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [location.pathname, reloadToken])
+
   const currentFilters = filtersByLevel[level]
   const selectedDetailsStatus = currentFilters.detailsStatus
   const selectedCartStatus = currentFilters.cartStatus
@@ -301,6 +329,38 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       }
     },
     cartDraftBusyId,
+    rerunCartVerify: async (groupId, orderId) => {
+      const busyId = orderId ?? groupId
+      setCartVerifyBusyId(busyId)
+      try {
+        const res = orderId
+          ? await rerunHHOrderCartVerify(groupId, orderId)
+          : await rerunHHGroupCartVerify(groupId)
+        setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+      } catch (error) {
+        console.error(error)
+        throw error
+      } finally {
+        setCartVerifyBusyId((current) => (current === busyId ? null : current))
+      }
+    },
+    cartVerifyBusyId,
+    placeOrders: async (groupId, orderId) => {
+      const busyId = orderId ?? groupId
+      setPlaceBusyId(busyId)
+      try {
+        const res = orderId ? await placeHHOrder(groupId, orderId) : await placeHHGroup(groupId)
+        setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+      } catch (error) {
+        console.error(error)
+        throw error
+      } finally {
+        setPlaceBusyId((current) => (current === busyId ? null : current))
+      }
+    },
+    placeBusyId,
+    placeOrderEnabled,
+    setPlaceOrderEnabled,
     updateNotes: async (groupId, notes) => {
       const res = await updateHHGroupNotes(groupId, notes)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))

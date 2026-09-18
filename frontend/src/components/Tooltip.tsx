@@ -76,7 +76,9 @@ export function Tooltip({
           <div
             ref={tipRef}
             role="tooltip"
-            className="pointer-events-none fixed z-[80] max-w-xs rounded-md bg-slate-800 px-2.5 py-1 text-center text-xs font-medium leading-snug text-white shadow-lg dark:bg-[var(--bg-300)] dark:text-[var(--text-100)]"
+            className={`pointer-events-none fixed z-[80] max-w-xs rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium leading-snug text-white shadow-lg dark:bg-[var(--bg-300)] dark:text-[var(--text-100)] ${
+              content.includes('\n') ? 'whitespace-pre-line text-left' : 'text-center'
+            }`}
             style={{
               top: coords.top,
               left: coords.left,

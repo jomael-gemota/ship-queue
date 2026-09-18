@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { HHCartBadge, HHDetailsBadge } from '../components/hh/hhUi'
+import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton } from '../components/hh/hhUi'
+import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
+import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { hhItemSubtotal, hhItemTax, hhItemTotal } from '../lib/hhSportswear'
+import { hhItemSubtotal, hhItemTax, hhItemTotal, hhOrderCanPlace, hhPlaceActionTitle } from '../lib/hhSportswear'
 import type { HHLineItem } from '../lib/hhSportswear'
 import {
   AmazonIcon,
@@ -98,8 +100,11 @@ function ProceedsCell({
 
 export default function HHSportswearItems() {
   const { groupId = '', orderId = '' } = useParams<{ groupId: string; orderId: string }>()
-  const { getOrder, filteredItems, searchInput, loadState, loadError, reload } = useHHList()
+  const { getOrder, filteredItems, searchInput, loadState, loadError, reload, placeOrders, placeBusyId, placeOrderEnabled } = useHHList()
   const match = getOrder(groupId, orderId)
+  const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const totals = useMemo(() => {
     return filteredItems.reduce(
@@ -140,29 +145,40 @@ export default function HHSportswearItems() {
 
   return (
     <>
-      <div className="border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
-        <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-          <span className="inline-flex items-center gap-1.5 font-mono">
-            <AmazonIcon className="h-4 w-4 shrink-0" />
-            {order.orderId}
-          </span>
-          <HHDetailsBadge status={order.detailsStatus} />
-          <HHCartBadge status={order.cartStatus} />
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-          PO {order.po}
-          {order.referenceNumber ? ` · Ref ${order.referenceNumber}` : ''}
-          {' · '}
-          {order.items.length} item{order.items.length === 1 ? '' : 's'}
-        </p>
-        <div className="mt-3 max-w-xl text-sm">
-          <HHBuyerInfo order={order} />
-          <HHNotesField
-            groupId={groupId}
-            orderId={order.id}
-            notes={order.notes ?? ''}
-            variant="header"
-          />
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
+        <div className="min-w-0">
+          <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            <span className="inline-flex items-center gap-1.5 font-mono">
+              <AmazonIcon className="h-4 w-4 shrink-0" />
+              {order.orderId}
+            </span>
+            <HHDetailsBadge status={order.detailsStatus} />
+            <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} />
+            <HHVerifiedCell groupId={groupId} order={order} />
+            {hhOrderCanPlace(order) ? (
+              <HHPlaceButton
+                size="sm"
+                title={hhPlaceActionTitle(placeOrderEnabled)}
+                busy={placeBusyId === order.id}
+                onClick={() => setPendingAction({ type: 'place', target: 'order', order })}
+              />
+            ) : null}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+            PO {order.po}
+            {order.referenceNumber ? ` · Ref ${order.referenceNumber}` : ''}
+            {' · '}
+            {order.items.length} item{order.items.length === 1 ? '' : 's'}
+          </p>
+          <div className="mt-3 max-w-xl text-sm">
+            <HHBuyerInfo order={order} />
+            <HHNotesField
+              groupId={groupId}
+              orderId={order.id}
+              notes={order.notes ?? ''}
+              variant="header"
+            />
+          </div>
         </div>
       </div>
 
@@ -259,6 +275,34 @@ export default function HHSportswearItems() {
           )}
         </table>
       </div>
+
+      {pendingAction ? (
+        <HHConfirmModal
+          pending={pendingAction}
+          busy={actionBusy}
+          error={actionError}
+          placeOrderEnabled={placeOrderEnabled}
+          onCancel={() => {
+            if (actionBusy) return
+            setPendingAction(null)
+            setActionError(null)
+          }}
+          onConfirm={() => {
+            if (actionBusy || pendingAction.type !== 'place' || pendingAction.target !== 'order') return
+            setActionBusy(true)
+            setActionError(null)
+            placeOrders(groupId, pendingAction.order.id)
+              .then(() => {
+                setPendingAction(null)
+                setActionError(null)
+              })
+              .catch((error: unknown) => {
+                setActionError(error instanceof Error ? error.message : 'Failed to place order')
+              })
+              .finally(() => setActionBusy(false))
+          }}
+        />
+      ) : null}
     </>
   )
 }

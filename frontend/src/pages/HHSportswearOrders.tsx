@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { HHActionRow, HHCartBadge, HHConfirmModal, HHDetailsBadge, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
+import { HHVerifyCompare, HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { deleteHHGroup, deleteHHOrder, formatCreatedAt, hhFilterSummary } from '../lib/hhSportswear'
+import { deleteHHGroup, deleteHHOrder, formatCreatedAt, hhCartCanVerify, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhOrderCanPlace, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   AmazonIcon,
   DeleteBatchButton,
@@ -55,7 +56,7 @@ function NotesIcon({ className = '' }: { className?: string }) {
 export default function HHSportswearOrders() {
   const { groupId = '' } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
-  const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId, rerunCartDraft, cartDraftBusyId } =
+  const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId, rerunCartDraft, cartDraftBusyId, placeOrders, placeBusyId, placeOrderEnabled } =
     useHHList()
   const group = getGroup(groupId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
@@ -107,7 +108,9 @@ export default function HHSportswearOrders() {
     const request =
       pendingAction.type === 'resync'
         ? rerunDetails(group.id, orderId, { draftCart: options?.draftCart !== false })
-        : rerunCartDraft(group.id, orderId)
+        : pendingAction.type === 'place'
+          ? placeOrders(group.id, orderId)
+          : rerunCartDraft(group.id, orderId)
 
     request
       .then(() => {
@@ -120,7 +123,9 @@ export default function HHSportswearOrders() {
             ? error.message
             : pendingAction.type === 'resync'
               ? 'Failed to re-sync details'
-              : 'Failed to regenerate draft',
+              : pendingAction.type === 'place'
+                ? 'Failed to place orders'
+                : 'Failed to regenerate draft',
         )
       })
       .finally(() => {
@@ -157,8 +162,8 @@ export default function HHSportswearOrders() {
         <div className="min-w-0">
           <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
             <span>{formatCreatedAt(group.createdAt)}</span>
-            <HHDetailsBadge status={group.detailsStatus} />
-            <HHCartBadge status={group.cartStatus} />
+            <HHDetailsSummary orders={group.children} />
+            <HHCartSummary orders={group.children} />
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
             {group.children.length} order{group.children.length === 1 ? '' : 's'}
@@ -173,21 +178,30 @@ export default function HHSportswearOrders() {
           />
         </div>
         <div className="flex items-center gap-2.5">
-          <HHResyncButton
-            size="md"
-            title="Re-sync details for this batch"
-            busy={resyncBusyId === group.id}
-            onClick={() => setPendingAction({ type: 'resync', target: 'group', group })}
-          />
-          <HHRedraftButton
-            size="md"
-            title="Regenerate B2B draft for this batch"
-            busy={cartDraftBusyId === group.id}
-            onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
-          />
-          <DeleteBatchButton
-            title="Delete group"
-            onClick={() => setPendingAction({ type: 'delete', target: 'group', group })}
+          {group.children.some((order) => hhCartCanVerify(order.cartStatus)) ? (
+            <HHVerifyCompare
+              size="md"
+              groupId={group.id}
+              orders={group.children}
+            />
+          ) : null}
+          {hhPlaceableOrders(group.children).length > 0 ? (
+            <HHPlaceButton
+              size="md"
+              title={hhPlaceActionTitle(placeOrderEnabled)}
+              busy={placeBusyId === group.id}
+              onClick={() => setPendingAction({ type: 'place', target: 'group', group })}
+            />
+          ) : null}
+          <HHBatchHeaderMenu
+            groupId={group.id}
+            allPlaced={hhGroupAllPlaced(group)}
+            hasPlaced={hhGroupHasPlaced(group)}
+            resyncBusy={resyncBusyId === group.id}
+            redraftBusy={cartDraftBusyId === group.id}
+            onResync={() => setPendingAction({ type: 'resync', target: 'group', group })}
+            onRedraft={() => setPendingAction({ type: 'redraft', target: 'group', group })}
+            onDelete={() => setPendingAction({ type: 'delete', target: 'group', group })}
           />
         </div>
       </div>
@@ -218,6 +232,9 @@ export default function HHSportswearOrders() {
                 <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Cart" />
               </Th>
               <Th>
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Verified" />
+              </Th>
+              <Th>
                 <HeaderLabel icon={<EyeIcon className="h-3.5 w-3.5" />} text="Items" />
               </Th>
               <HHRowActionsHeader />
@@ -226,7 +243,7 @@ export default function HHSportswearOrders() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {filteredOrders.length === 0 ? (
               <tr>
-                <Td colSpan={9} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={10} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {group.children.length === 0
                     ? 'No orders in this group.'
                     : selectedDetailsStatus || selectedCartStatus
@@ -240,6 +257,7 @@ export default function HHSportswearOrders() {
               </tr>
             ) : (
               filteredOrders.map((order, idx) => {
+                const locked = hhOrderIsLocked(order)
                 return (
                   <HHActionRow
                     key={order.id}
@@ -274,7 +292,10 @@ export default function HHSportswearOrders() {
                       <HHDetailsBadge status={order.detailsStatus} />
                     </Td>
                     <Td compact>
-                      <HHCartBadge status={order.cartStatus} />
+                      <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} />
+                    </Td>
+                    <Td compact>
+                      <HHVerifiedCell groupId={group.id} order={order} />
                     </Td>
                     <Td compact>
                       <Link
@@ -291,19 +312,34 @@ export default function HHSportswearOrders() {
                     >
                       <HHResyncButton
                         size="sm"
-                        title="Re-sync details for this order"
+                        title={locked ? 'Placed orders cannot be re-synced' : 'Re-sync details for this order'}
+                        disabled={locked}
                         busy={resyncBusyId === order.id}
                         onClick={() => setPendingAction({ type: 'resync', target: 'order', order })}
                       />
                       <HHRedraftButton
                         size="sm"
-                        title="Regenerate B2B draft for this order"
+                        title={
+                          locked
+                            ? 'Placed orders cannot have their cart regenerated'
+                            : 'Regenerate B2B draft for this order'
+                        }
+                        disabled={locked}
                         busy={cartDraftBusyId === order.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
                       />
+                      {hhOrderCanPlace(order) ? (
+                        <HHPlaceButton
+                          size="sm"
+                          title={hhPlaceActionTitle(placeOrderEnabled)}
+                          busy={placeBusyId === order.id}
+                          onClick={() => setPendingAction({ type: 'place', target: 'order', order })}
+                        />
+                      ) : null}
                       <DeleteBatchButton
                         size="sm"
-                        title="Delete"
+                        title={locked ? 'Placed orders cannot be deleted' : 'Delete'}
+                        disabled={locked}
                         onClick={() => setPendingAction({ type: 'delete', target: 'order', order })}
                       />
                     </HHRowActions>
@@ -320,6 +356,7 @@ export default function HHSportswearOrders() {
           pending={pendingAction}
           busy={actionBusy}
           error={actionError}
+          placeOrderEnabled={placeOrderEnabled}
           onCancel={() => {
             if (actionBusy) return
             setPendingAction(null)

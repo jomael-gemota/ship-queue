@@ -23,14 +23,20 @@ function statusLabel(data: HHScSyncSnapshot): string {
       ? `Filling ${data.currentOrderId}`
       : 'Filling this batch'
     : null
+  const placing = cart?.placing
+    ? cart.placeCurrentOrderId
+      ? `Placing ${cart.placeCurrentOrderId}`
+      : 'Placing orders'
+    : null
   const drafting = cart?.running
     ? cart.currentOrderId
       ? `Drafting ${cart.currentOrderId}`
       : 'Drafting carts'
-    : null
-  if (filling && drafting) return `${filling} · ${drafting}`
-  if (filling) return filling
-  if (drafting) return drafting
+    : cart?.verifying
+      ? 'Checking carts'
+      : null
+  const parts = [filling, placing, drafting].filter(Boolean)
+  if (parts.length > 0) return parts.join(' · ')
   if (data.queuedGroups > 0) return `${data.queuedGroups} batch${data.queuedGroups === 1 ? '' : 'es'} queued`
   if (cart && cart.queued > 0) return `${cart.queued} cart${cart.queued === 1 ? '' : 's'} queued`
   if (data.lastError) return 'Details fill paused'
@@ -66,7 +72,11 @@ export function HHScSyncStatus() {
         .then((res) => {
           if (cancelled) return
           setData(res.data)
-          running = res.data.running || Boolean(res.data.cart?.running)
+          running =
+            res.data.running ||
+            Boolean(res.data.cart?.running) ||
+            Boolean(res.data.cart?.verifying) ||
+            Boolean(res.data.cart?.placing)
           if (running || wasRunningRef.current) refreshSilentRef.current()
           wasRunningRef.current = running
         })
@@ -93,7 +103,7 @@ export function HHScSyncStatus() {
   const tone =
     (data.lastError || cart?.lastError) && !data.running && !cart?.running
       ? 'error'
-      : data.running || cart?.running
+      : data.running || cart?.running || cart?.verifying || cart?.placing
         ? 'run'
         : data.pendingUnsynced > 0 ||
             data.queuedGroups > 0 ||
@@ -106,7 +116,7 @@ export function HHScSyncStatus() {
     data.lastError ? `Details error: ${data.lastError}` : null,
     cart?.lastError ? `Cart error: ${cart.lastError}` : null,
     ago ? `Last success ${ago}` : null,
-    'Fills details after upload, then drafts a cart for each synced Order ID',
+    'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
   ]
     .filter(Boolean)
     .join(' · ')

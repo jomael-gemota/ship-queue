@@ -24,6 +24,85 @@ export function hhDetailsStatusLabel(status: string): string {
   return HH_DETAILS_STATUS_LABELS[status as HHDetailsStatus] ?? status
 }
 
+export function hhCartCanVerify(status: HHCartStatus): boolean {
+  return status === 'draft' || status === 'ready' || status === 'review'
+}
+
+export function hhOrderVerifiedResult(
+  order: Pick<HHChildOrder, 'cartStatus' | 'verifyIssues'>,
+): 'match' | 'review' | null {
+  if (order.cartStatus === 'ready') return 'match'
+  if (order.cartStatus === 'review') return 'review'
+  if (order.cartStatus === 'placed') {
+    return (order.verifyIssues ?? []).length > 0 ? 'review' : 'match'
+  }
+  return null
+}
+
+export function hhOrderCanPlace(order: Pick<HHChildOrder, 'cartStatus'>): boolean {
+  return order.cartStatus === 'ready'
+}
+
+export function hhPlaceableOrders<T extends Pick<HHChildOrder, 'cartStatus'>>(orders: T[]): T[] {
+  return orders.filter(hhOrderCanPlace)
+}
+
+export type HHPlaceSkipReason = Exclude<HHCartStatus, 'ready'>
+
+export const HH_PLACE_SKIP_LABELS: Record<HHPlaceSkipReason, string> = {
+  none: 'No cart',
+  draft: 'Draft',
+  review: 'Mismatch',
+  placed: 'Already placed',
+}
+
+const HH_PLACE_SKIP_ORDER: HHPlaceSkipReason[] = ['review', 'draft', 'none', 'placed']
+
+export function hhPlaceSkipReason(status: HHCartStatus): HHPlaceSkipReason | null {
+  return status === 'ready' ? null : status
+}
+
+export function hhPlacePlan<T extends Pick<HHChildOrder, 'orderId' | 'cartStatus'>>(orders: T[]) {
+  const placing = orders.filter(hhOrderCanPlace)
+  const skipped = orders.flatMap((order) => {
+    const reason = hhPlaceSkipReason(order.cartStatus)
+    return reason ? [{ orderId: order.orderId, reason }] : []
+  })
+  const skipGroups = HH_PLACE_SKIP_ORDER.flatMap((reason) => {
+    const ids = skipped.filter((row) => row.reason === reason).map((row) => row.orderId)
+    return ids.length > 0 ? [{ reason, label: HH_PLACE_SKIP_LABELS[reason], ids }] : []
+  })
+  return {
+    placing,
+    placingIds: placing.map((order) => order.orderId),
+    skipped,
+    skipGroups,
+    total: orders.length,
+  }
+}
+
+export function hhPlaceActionTitle(enabled: boolean): string {
+  return enabled
+    ? 'Place matching orders on Helly Hansen'
+    : 'Place Order is off in Configurations — re-checks the live cart only'
+}
+
+export function hhCartIsPlaced(status: HHCartStatus): boolean {
+  return status === 'placed'
+}
+
+export function hhOrderIsLocked(order: Pick<HHChildOrder, 'cartStatus'>): boolean {
+  return hhCartIsPlaced(order.cartStatus)
+}
+
+export function hhGroupHasPlaced(group: Pick<HHOrderGroup, 'children'>): boolean {
+  return group.children.some((order) => hhCartIsPlaced(order.cartStatus))
+}
+
+export function hhGroupAllPlaced(group: Pick<HHOrderGroup, 'children'>): boolean {
+  return group.children.length > 0 && group.children.every((order) => hhCartIsPlaced(order.cartStatus))
+}
+
 export function hhCartStatusLabel(status: string): string {
   if (status === 'none') return '—'
   return HH_CART_STATUS_LABELS[status as HHCartStatus] ?? status
@@ -47,6 +126,21 @@ export interface HHLineItem {
   tax: number
 }
 
+export interface HHVerifyIssue {
+  field: string
+  label: string
+  expected: string
+  actual: string
+}
+
+export interface HHCompareRow {
+  field: string
+  label: string
+  expected: string
+  actual: string
+  match: boolean
+}
+
 export interface HHChildOrder {
   id: string
   orderId: string
@@ -64,6 +158,9 @@ export interface HHChildOrder {
   notes: string
   detailsStatus: HHDetailsStatus
   cartStatus: HHCartStatus
+  verifyIssues: HHVerifyIssue[]
+  verifyRows?: HHCompareRow[]
+  verifiedAt: string | null
   items: HHLineItem[]
 }
 
@@ -77,6 +174,93 @@ export interface HHOrderGroup {
   detailsStatus: HHDetailsStatus
   cartStatus: HHCartStatus
   children: HHChildOrder[]
+}
+
+export const HH_DETAILS_COUNT_ORDER: HHDetailsStatus[] = ['synced', 'pending', 'failed']
+export const HH_CART_COUNT_ORDER: HHCartStatus[] = ['placed', 'ready', 'review', 'draft', 'none']
+
+export function hhDetailsCounts(orders: Array<Pick<HHChildOrder, 'detailsStatus'>>): Record<HHDetailsStatus, number> {
+  const counts: Record<HHDetailsStatus, number> = { pending: 0, synced: 0, failed: 0 }
+  for (const order of orders) counts[order.detailsStatus] += 1
+  return counts
+}
+
+export function hhCartCounts(orders: Array<Pick<HHChildOrder, 'cartStatus'>>): Record<HHCartStatus, number> {
+  const counts: Record<HHCartStatus, number> = { none: 0, draft: 0, ready: 0, review: 0, placed: 0 }
+  for (const order of orders) counts[order.cartStatus] += 1
+  return counts
+}
+
+export interface HHVerifySnapshot {
+  name: string
+  address1: string
+  address2: string
+  city: string
+  state: string
+  zip: string
+  country: string
+  po: string
+  orderNumber: string
+  items: Array<{ sku: string; quantity: number }>
+}
+
+export interface HHCartCompareOrder {
+  id: string
+  orderId: string
+  cartStatus: HHCartStatus
+  skipped?: string
+  error?: string
+  rows: HHCompareRow[]
+  details: HHVerifySnapshot
+  cart: HHVerifySnapshot | null
+  canPlace: boolean
+  verifiedAt: string | null
+}
+
+export function emptyHHVerifySnapshot(): HHVerifySnapshot {
+  return {
+    name: '',
+    address1: '',
+    address2: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: '',
+    po: '',
+    orderNumber: '',
+    items: [],
+  }
+}
+
+export function hhStoredCartCompare(order: HHChildOrder): HHCartCompareOrder {
+  const verified = hhOrderVerifiedResult(order)
+  const rows =
+    order.verifyRows && order.verifyRows.length > 0
+      ? order.verifyRows
+      : (order.verifyIssues ?? []).map((issue) => ({ ...issue, match: false }))
+  if (!verified) {
+    return {
+      id: order.id,
+      orderId: order.orderId,
+      cartStatus: order.cartStatus,
+      skipped: order.cartStatus === 'none' ? 'No B2B cart' : 'Not checked yet',
+      rows: [],
+      details: emptyHHVerifySnapshot(),
+      cart: null,
+      canPlace: false,
+      verifiedAt: order.verifiedAt,
+    }
+  }
+  return {
+    id: order.id,
+    orderId: order.orderId,
+    cartStatus: order.cartStatus,
+    rows,
+    details: emptyHHVerifySnapshot(),
+    cart: null,
+    canPlace: hhOrderCanPlace(order),
+    verifiedAt: order.verifiedAt,
+  }
 }
 
 export interface HHImportMeta {
@@ -99,6 +283,10 @@ export interface HHCartDraftStatus {
   lastError: string | null
   lastRun: { drafted: number; skipped: number; failed: number } | null
   pendingUndrafted: number
+  verifying?: boolean
+  placing?: boolean
+  placeCurrentOrderId?: string | null
+  placeQueued?: number
 }
 
 export interface HHScSyncStatus {
@@ -111,6 +299,7 @@ export interface HHScSyncStatus {
   lastError: string | null
   lastRun: { synced: number; flagged: number; failed: number } | null
   pendingUnsynced: number
+  placeOrderEnabled?: boolean
   cart?: HHCartDraftStatus
 }
 
@@ -124,6 +313,7 @@ export interface HHB2bConfig {
   accountId: string
   hasCookie: boolean
   cookieUpdatedAt: string | null
+  placeOrderEnabled: boolean
   updatedAt: string
   updatedByName: string
 }
@@ -133,6 +323,7 @@ export type HHB2bConfigPatch = Partial<{
   catalog: string
   accountId: string
   cookie: string
+  placeOrderEnabled: boolean
 }>
 
 export function getHHB2bConfig() {
@@ -173,6 +364,29 @@ export function rerunHHGroupCartDraft(groupId: string) {
 
 export function rerunHHOrderCartDraft(groupId: string, orderId: string) {
   return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/cart-draft`)
+}
+
+export function rerunHHGroupCartVerify(groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/cart-verify`)
+}
+
+export function rerunHHOrderCartVerify(groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/cart-verify`)
+}
+
+export function compareHHCart(groupId: string, orderId?: string) {
+  const path = orderId
+    ? `/hh-sportswear/${groupId}/orders/${orderId}/cart-compare`
+    : `/hh-sportswear/${groupId}/cart-compare`
+  return authApi.post<{ data: HHOrderGroup; compare: HHCartCompareOrder[] }>(path)
+}
+
+export function placeHHGroup(groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/place`)
+}
+
+export function placeHHOrder(groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/place`)
 }
 
 export function updateHHGroupNotes(id: string, notes: string) {
@@ -346,7 +560,10 @@ export function hhOrderMatchesQuery(order: HHChildOrder, rawQuery: string): bool
     includesQuery(order.country, query) ||
     includesQuery(order.notes, query) ||
     includesQuery(hhDetailsStatusLabel(order.detailsStatus), query) ||
-    includesQuery(hhCartStatusLabel(order.cartStatus), query)
+    includesQuery(hhCartStatusLabel(order.cartStatus), query) ||
+    (order.verifyIssues ?? []).some(
+      (issue) => includesQuery(issue.label, query) || includesQuery(issue.expected, query) || includesQuery(issue.actual, query),
+    )
   ) {
     return true
   }

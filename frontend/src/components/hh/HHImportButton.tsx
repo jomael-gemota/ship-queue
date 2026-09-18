@@ -70,7 +70,7 @@ function formatFileSize(bytes: number): string {
 export function HHImportButton() {
   const { setGroups, handleClearFilters, setPage } = useHHList()
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<ImportTab>('file')
+  const [tab, setTab] = useState<ImportTab>('paste')
   const [paste, setPaste] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importBusy, setImportBusy] = useState(false)
@@ -80,6 +80,7 @@ export function HHImportButton() {
   const [draftCart, setDraftCart] = useState(true)
   const dragDepth = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pasteRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -92,6 +93,11 @@ export function HHImportButton() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, importBusy])
 
+  useEffect(() => {
+    if (!open || tab !== 'paste' || importBusy) return
+    pasteRef.current?.focus()
+  }, [open, tab, importBusy])
+
   const resetFileInput = () => {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -99,7 +105,7 @@ export function HHImportButton() {
   const resetPicker = () => {
     setSelectedFile(null)
     setPaste('')
-    setTab('file')
+    setTab('paste')
     setFetchDetails(true)
     setDraftCart(true)
     setDragging(false)
@@ -270,11 +276,11 @@ export function HHImportButton() {
             </div>
 
             <div className="grid grid-cols-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-0.5 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]">
-              <button type="button" className={tabClass('file')} onClick={() => { setTab('file'); setImportError(null) }} disabled={importBusy}>
-                File
-              </button>
               <button type="button" className={tabClass('paste')} onClick={() => { setTab('paste'); setImportError(null) }} disabled={importBusy}>
                 Paste
+              </button>
+              <button type="button" className={tabClass('file')} onClick={() => { setTab('file'); setImportError(null) }} disabled={importBusy}>
+                File
               </button>
             </div>
 
@@ -361,6 +367,7 @@ export function HHImportButton() {
                   Paste PO and Order ID rows
                 </label>
                 <textarea
+                  ref={pasteRef}
                   id="hh-import-paste"
                   value={paste}
                   disabled={importBusy}

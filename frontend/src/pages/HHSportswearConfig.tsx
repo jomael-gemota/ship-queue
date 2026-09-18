@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatCreatedAt, getHHB2bConfig, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig } from '../lib/hhSportswear'
+import { useHHList } from '../context/HHListContext'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -9,6 +10,7 @@ const labelClass = 'block text-sm font-medium text-slate-700 dark:text-[var(--te
 const hintClass = 'block text-xs text-slate-500 dark:text-[var(--text-200)]'
 
 export default function HHSportswearConfig() {
+  const { setPlaceOrderEnabled: setPlaceOrderEnabledContext } = useHHList()
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState<HHB2bConfig | null>(null)
@@ -17,6 +19,7 @@ export default function HHSportswearConfig() {
   const [accountId, setAccountId] = useState('')
   const [cookie, setCookie] = useState('')
   const [clearCookie, setClearCookie] = useState(false)
+  const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveNotice, setSaveNotice] = useState<string | null>(null)
@@ -44,6 +47,7 @@ export default function HHSportswearConfig() {
     setBaseUrl(data.baseUrl)
     setCatalog(data.catalog)
     setAccountId(data.accountId)
+    setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
     setCookie('')
     setClearCookie(false)
   }
@@ -58,11 +62,13 @@ export default function HHSportswearConfig() {
         baseUrl,
         catalog,
         accountId,
+        placeOrderEnabled,
       }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
       const res = await updateHHB2bConfig(patch)
       applySaved(res.data)
+      setPlaceOrderEnabledContext(Boolean(res.data.placeOrderEnabled))
       setSaveNotice('Saved.')
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configurations')
@@ -91,7 +97,7 @@ export default function HHSportswearConfig() {
         <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">B2B Sports account</h2>
         <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
           Cart drafts POST to this Helly Hansen Sports B2B account. Sphere does not refresh the session — paste a
-          cookie from a logged-in browser. This app never sends Place Order.
+          cookie from a logged-in browser. Place Order stays off until you enable it below.
         </p>
       </div>
 
@@ -141,6 +147,36 @@ export default function HHSportswearConfig() {
           <p className={hintClass}>
             B2B customer number sent as <span className="font-mono">customer</span>.
           </p>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-[var(--bg-300)] pt-5 dark:border-[var(--bg-300)]">
+        <div className="flex items-start gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
+          <div className="min-w-0 flex-1">
+            <p className={labelClass}>Place Order</p>
+            <p className={`mt-0.5 ${hintClass}`}>
+              {placeOrderEnabled
+                ? 'Enabled. Place Order re-checks the live cart, then submits matching Ready orders to Helly Hansen.'
+                : 'Off. Place Order still appears and re-checks the live cart, but Helly Hansen does not receive a submit.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={placeOrderEnabled}
+            aria-label="Place Order enabled"
+            disabled={busy}
+            onClick={() => setPlaceOrderEnabled((current) => !current)}
+            className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+              busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+            } ${placeOrderEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                placeOrderEnabled ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
         </div>
       </div>
 
