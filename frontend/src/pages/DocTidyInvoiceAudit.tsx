@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { authApi } from '../lib/api'
 import {
   Banner,
-  DocTidyTabs,
   DocumentTypeBadge,
   PaginationArrows,
   Spinner,
@@ -689,11 +688,6 @@ export default function DocTidyInvoiceAudit() {
   /* ── Render ── */
   return (
     <div className="space-y-4">
-      {/* ── Tab bar ── */}
-      <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
-        <DocTidyTabs />
-      </div>
-
       {/* ── Global error banner ── */}
       {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
 
@@ -799,7 +793,7 @@ export default function DocTidyInvoiceAudit() {
           {/* ── Workspace sub-tab bar ─────────────────────────────── */}
           <div className="flex items-center border-b border-[var(--bg-300)] gap-0">
             {([
-              ['audit',   'Audit Results', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['audit',   'Invoice Audit', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['emails',  'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
               ['rules',   'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
               ['vendors', 'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
@@ -1156,7 +1150,7 @@ export default function DocTidyInvoiceAudit() {
                               <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
                                 {debouncedVendor
                                   ? 'Try clearing the filter above.'
-                                  : 'Open the Emails tab above to parse documents in this workspace.'}
+                                    : 'Open the Emails tab to parse documents, then results appear here.'}
                               </p>
                             </div>
                             {debouncedVendor && (

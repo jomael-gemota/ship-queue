@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import {
   Banner,
-  DocTidyTabs,
   DocumentTypeBadge,
   PaginationArrows,
   Spinner,
@@ -237,8 +236,6 @@ export default function DocTidy() {
     <div className="space-y-4">
       {/* ── Tab bar ────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
-        <DocTidyTabs />
-
         {/* Sync timestamps — flush with the tab baseline */}
         {(lastSynced ?? nextSyncAt) && (() => {
           /* eslint-disable react-hooks/purity */
