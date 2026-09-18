@@ -10,9 +10,7 @@ import {
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
-import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
-import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import { formatDate, formatDateTime } from '../lib/format'
 import { newMessageStore } from '../lib/docTidyStore'
 import {
@@ -79,8 +77,6 @@ export default function DocTidy() {
     return () => clearInterval(id)
   }, [])
 
-  // The parse job whose reasoning panel is open, if any.
-  const [openJobId, setOpenJobId] = useState<string | null>(null)
   // The message whose detail drawer is open, if any.
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
 
@@ -177,13 +173,6 @@ export default function DocTidy() {
       (event) => {
         if (event.type === 'connected') {
           setLive(true)
-          return
-        }
-        // A parse finishing elsewhere (or in another tab) changes a status chip
-        // on a row this table may already be showing, so it refetches without
-        // the "new messages" cue that an import deserves.
-        if (event.type === 'parse_status') {
-          void fetchRef.current(true)
           return
         }
         if (event.type !== 'imported') return
@@ -463,7 +452,6 @@ export default function DocTidy() {
                   <Th label="Subject" iconPath="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   <Th label="Document type" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   <Th label="Rule" iconPath="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                  <Th label="Actions" align="center" />
                 </tr>
               </thead>
               <tbody>
@@ -495,17 +483,11 @@ export default function DocTidy() {
                       <td className="px-3 py-1">
                         <div className="h-5 w-20 animate-pulse rounded-full bg-[var(--bg-300)]" />
                       </td>
-                      <td className="px-3 py-1">
-                        <div className="flex justify-end gap-1.5">
-                          <div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" />
-                          <div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" />
-                        </div>
-                      </td>
                     </tr>
                   ))
                 ) : messages.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center">
+                    <td colSpan={6} className="py-16 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                           <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -604,14 +586,6 @@ export default function DocTidy() {
                           )}
                         </td>
 
-                        {/* Actions — stop propagation so parse buttons don't also open the drawer */}
-                        <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-                          <AttachmentIcons
-                            message={msg}
-                            onOpenJob={setOpenJobId}
-                            onChanged={() => void fetchMessages(true)}
-                          />
-                        </td>
                       </tr>
                     )
                   })
@@ -629,19 +603,11 @@ export default function DocTidy() {
         )}
       </div>
 
-      {openJobId && (
-        <ParseJobPanel
-          jobId={openJobId}
-          onClose={() => setOpenJobId(null)}
-          onChanged={() => void fetchMessages(true)}
-        />
-      )}
-
       {viewMessage && (
         <MessageDetailDrawer
           message={viewMessage}
           onClose={() => setViewMessage(null)}
-          onOpenJob={setOpenJobId}
+          onOpenJob={() => {/* parse actions moved to workspace Emails view */}}
         />
       )}
     </div>
