@@ -249,6 +249,8 @@ export interface DocTidyCorrection {
 
 export interface DocTidyVendor {
   _id: string
+  /** The workspace this vendor belongs to. */
+  workspaceId?: string
   name: string
   normalizedName: string
   skuSamples: string[]

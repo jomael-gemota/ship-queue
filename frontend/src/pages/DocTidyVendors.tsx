@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { authApi } from '../lib/api'
 import {
   Banner,
-  DocTidyTabs,
   IconButton,
   PaginationArrows,
   Spinner,
@@ -28,10 +27,12 @@ import {
  */
 function VendorEditor({
   vendor,
+  workspaceId,
   onClose,
   onSaved,
 }: {
   vendor: DocTidyVendor | null
+  workspaceId: string
   onClose: () => void
   onSaved: (notice: string) => void
 }) {
@@ -104,10 +105,10 @@ function VendorEditor({
       if (isNew) {
         // Create: upsert once per sample (the first call also creates the vendor).
         if (pendingAdds.length === 0) {
-          await authApi.post('/doc-tidy/vendors', { name: name.trim() })
+          await authApi.post('/doc-tidy/vendors', { name: name.trim(), workspaceId })
         } else {
           for (const sample of pendingAdds) {
-            await authApi.post('/doc-tidy/vendors', { name: name.trim(), skuSample: sample })
+            await authApi.post('/doc-tidy/vendors', { name: name.trim(), skuSample: sample, workspaceId })
           }
         }
         onSaved('Vendor saved.')
@@ -116,11 +117,11 @@ function VendorEditor({
         for (const sample of pendingRemoves) {
           await authApi.post(
             `/doc-tidy/vendors/${encodeURIComponent(vendor!.name)}/samples/remove`,
-            { skuSample: sample }
+            { skuSample: sample, workspaceId }
           )
         }
         for (const sample of pendingAdds) {
-          await authApi.post('/doc-tidy/vendors', { name: vendor!.name, skuSample: sample })
+          await authApi.post('/doc-tidy/vendors', { name: vendor!.name, skuSample: sample, workspaceId })
         }
         onSaved('Vendor updated.')
       }
@@ -475,7 +476,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 type CorrectionFilter = '' | 'has' | 'none'
 
-export default function DocTidyVendors() {
+export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: string }) {
   const [vendors, setVendors] = useState<DocTidyVendor[]>([])
   const [corrections, setCorrections] = useState<DocTidyCorrection[]>([])
   const [loading, setLoading] = useState(true)
@@ -502,8 +503,8 @@ export default function DocTidyVendors() {
     setError(null)
     try {
       const [vendorRes, correctionRes] = await Promise.all([
-        authApi.get<{ data: DocTidyVendor[] }>('/doc-tidy/vendors'),
-        authApi.get<{ data: DocTidyCorrection[] }>('/doc-tidy/corrections'),
+        authApi.get<{ data: DocTidyVendor[] }>(`/doc-tidy/vendors?workspaceId=${workspaceId}`),
+        authApi.get<{ data: DocTidyCorrection[] }>(`/doc-tidy/corrections?workspaceId=${workspaceId}`),
       ])
       setVendors(vendorRes.data)
       setCorrections(correctionRes.data)
@@ -512,7 +513,7 @@ export default function DocTidyVendors() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
     void load()
@@ -537,7 +538,7 @@ export default function DocTidyVendors() {
     if (!pendingDelete) return
     try {
       const res = await authApi.delete<{ data: { correctionsDeleted: number } }>(
-        `/doc-tidy/vendors/${encodeURIComponent(pendingDelete.name)}`
+        `/doc-tidy/vendors/${encodeURIComponent(pendingDelete.name)}?workspaceId=${workspaceId}`
       )
       setNotice(
         res.data.correctionsDeleted > 0
@@ -631,22 +632,6 @@ export default function DocTidyVendors() {
   /* ─────────────────────────────────────────────────────────── render ── */
   return (
     <div className="space-y-5">
-      {/* ── Tab bar + New vendor button ───────────────────────────── */}
-      <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
-        <DocTidyTabs />
-        <div className="pb-1.5 pl-4 shrink-0">
-          <button
-            onClick={openNew}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--accent-200)] text-white text-sm font-medium shadow-[0_14px_24px_-18px_rgba(0,102,140,0.75)] hover:-translate-y-[1px] transition-all cursor-pointer"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New vendor
-          </button>
-        </div>
-      </div>
-
       {error && (
         <Banner kind="error" onDismiss={() => setError(null)}>
           {error}
@@ -705,7 +690,7 @@ export default function DocTidyVendors() {
             </button>
           )}
 
-          {/* Summary stats */}
+          {/* Summary stats + New vendor */}
           <div className="ml-auto flex items-center gap-3">
             <span className="text-[11px] text-gray-500 dark:text-[var(--text-200)]">
               {hasActiveFilters
@@ -723,6 +708,13 @@ export default function DocTidyVendors() {
                 {totalCorrections} correction{totalCorrections !== 1 ? 's' : ''} learned
               </span>
             )}
+            <button onClick={openNew}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 cursor-pointer">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New vendor
+            </button>
           </div>
         </div>
 
@@ -1043,6 +1035,7 @@ export default function DocTidyVendors() {
       {editing !== undefined && (
         <VendorEditor
           vendor={editing}
+          workspaceId={workspaceId}
           onClose={closeEditor}
           onSaved={(msg) => void handleSaved(msg)}
         />

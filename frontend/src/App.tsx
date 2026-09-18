@@ -10,8 +10,6 @@ import CreateShippingLabel from './pages/CreateShippingLabel'
 import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
 import DropboxFetcher from './pages/DropboxFetcher'
-import DocTidy from './pages/DocTidy'
-import DocTidyVendors from './pages/DocTidyVendors'
 import DocTidyInvoiceAudit from './pages/DocTidyInvoiceAudit'
 import AdminUsers from './pages/AdminUsers'
 
@@ -33,9 +31,8 @@ function App() {
                 <Route path="/create-label" element={<CreateShippingLabel />} />
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
-                <Route path="/doc-tidy" element={<DocTidy />} />
+                <Route path="/doc-tidy" element={<Navigate to="/doc-tidy/invoice-audit" replace />} />
                 <Route path="/doc-tidy/invoice-audit" element={<DocTidyInvoiceAudit />} />
-                <Route path="/doc-tidy/vendors" element={<DocTidyVendors />} />
                 <Route path="/settings" element={<Settings />} />
                 {/* Reachable by all authenticated users; the page itself shows a
                     blocking note and skips data loading for non-admins. */}

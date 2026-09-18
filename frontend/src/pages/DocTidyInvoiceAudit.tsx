@@ -13,6 +13,7 @@ import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
+import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -384,8 +385,8 @@ export default function DocTidyInvoiceAudit() {
   const [view, setView] = useState<View>('workspaces')
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
   /** Which sub-tab is active inside a workspace detail page. */
-  type WorkspaceTab = 'emails' | 'rules' | 'audit'
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('emails')
+  type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors'
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
 
   /* ── Workspaces ── */
   const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
@@ -565,7 +566,7 @@ export default function DocTidyInvoiceAudit() {
   const enterWorkspace = (ws: DocTidyWorkspace) => {
     setActiveWorkspace(ws)
     setView('audit')
-    setWorkspaceTab('emails')
+    setWorkspaceTab('audit')
     setPage(1)
     setVendorSearch('')
     setError(null)
@@ -585,7 +586,7 @@ export default function DocTidyInvoiceAudit() {
     setActiveWorkspace(null)
     setJobs([])
     setPagination({ total: 0, pages: 1 })
-    setWorkspaceTab('emails')
+    setWorkspaceTab('audit')
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
@@ -798,9 +799,10 @@ export default function DocTidyInvoiceAudit() {
           {/* ── Workspace sub-tab bar ─────────────────────────────── */}
           <div className="flex items-center border-b border-[var(--bg-300)] gap-0">
             {([
+              ['audit',   'Audit Results', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['emails',  'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
               ['rules',   'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
-              ['audit',   'Audit Results', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['vendors', 'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
             ] as const).map(([tab, label, icon]) => (
               <button
                 key={tab}
@@ -1051,6 +1053,11 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ RULES TAB ══════════════ */}
           {workspaceTab === 'rules' && (
             <WorkspaceRulesView workspaceId={activeWorkspace._id} />
+          )}
+
+          {/* ══════════════ VENDORS TAB ══════════════ */}
+          {workspaceTab === 'vendors' && (
+            <WorkspaceVendorsView workspaceId={activeWorkspace._id} />
           )}
 
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
