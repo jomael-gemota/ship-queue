@@ -35,6 +35,13 @@ function formatTotal(raw: string): string {
   return raw.trim()
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 /* ──────────────────────────────── Column Settings Drawer ── */
 
 function ColumnSettingsDrawer({
@@ -1102,9 +1109,11 @@ export default function DocTidyInvoiceAudit() {
                         </Th>
                         <Th label="Received" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
                         <Th label="From" iconPath="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                        <Th label="To" iconPath="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                         <Th label="Subject" iconPath="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         <Th label="Document type" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         <Th label="Rule" iconPath="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
+                        <Th label="Attachments" iconPath="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                         <Th label="Actions" align="center" />
                       </tr>
                     </thead>
@@ -1123,15 +1132,17 @@ export default function DocTidyInvoiceAudit() {
                                 </div>
                               </div>
                             </td>
+                            <td className="px-3 py-1"><div className="h-3 w-28 animate-pulse rounded bg-[var(--bg-300)]" /></td>
                             <td className="px-3 py-1"><div className="h-3 w-48 animate-pulse rounded bg-[var(--bg-300)]" /></td>
                             <td className="px-3 py-1"><div className="h-5 w-28 animate-pulse rounded-full bg-[var(--bg-300)]" /></td>
                             <td className="px-3 py-1"><div className="h-5 w-20 animate-pulse rounded-full bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1"><div className="h-3 w-32 animate-pulse rounded bg-[var(--bg-300)]" /></td>
                             <td className="px-3 py-1"><div className="flex justify-center gap-1.5"><div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" /></div></td>
                           </tr>
                         ))
                       ) : emailMessages.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-16 text-center">
+                          <td colSpan={9} className="py-16 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                                 <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1192,6 +1203,24 @@ export default function DocTidyInvoiceAudit() {
                                   </div>
                                 </div>
                               </td>
+                              {/* To */}
+                              <td className="px-3 py-1 min-w-0 max-w-[180px]">
+                                {msg.to && msg.to.length > 0 ? (
+                                  <div
+                                    className="truncate text-[var(--text-200)]"
+                                    title={msg.to.join(', ')}
+                                  >
+                                    {msg.to[0]}
+                                    {msg.to.length > 1 && (
+                                      <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                        +{msg.to.length - 1}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="italic text-[var(--text-200)]">—</span>
+                                )}
+                              </td>
                               {/* Subject */}
                               <td className="px-3 py-1 min-w-0">
                                 <div className="truncate text-[var(--text-100)]" title={msg.subject}>
@@ -1214,6 +1243,31 @@ export default function DocTidyInvoiceAudit() {
                                   </span>
                                 ) : (
                                   <span className="text-[11px] italic text-[var(--text-200)]">—</span>
+                                )}
+                              </td>
+                              {/* Attachments — filename + size */}
+                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                                {msg.attachments && msg.attachments.length > 0 ? (
+                                  <div className="space-y-0.5">
+                                    {msg.attachments.map((att, ai) => (
+                                      <div key={ai} className="flex items-center gap-1.5">
+                                        {/* PDF / file icon */}
+                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                        </svg>
+                                        <span className="truncate max-w-[140px] font-mono text-[10px] text-[var(--text-100)]" title={att.filename}>
+                                          {att.filename}
+                                        </span>
+                                        {att.size > 0 && (
+                                          <span className="shrink-0 text-[10px] text-[var(--text-200)]">
+                                            {formatBytes(att.size)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="italic text-[var(--text-200)]">—</span>
                                 )}
                               </td>
                               {/* Actions — parse icons; stop propagation so they don't open the drawer */}
