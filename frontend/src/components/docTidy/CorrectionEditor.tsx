@@ -105,7 +105,7 @@ export default function CorrectionEditor({
         res.data.duplicate
           ? 'That correction was already recorded.'
           : res.data.embedded
-            ? 'Saved. The agent will use this on similar documents.'
+            ? 'Saved. Tidy Agent will use this on similar documents.'
             : 'Saved, but not indexed for reuse — set OPENAI_API_KEY to enable retrieval.'
       )
       onSaved()
@@ -140,7 +140,7 @@ export default function CorrectionEditor({
         <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
           What was wrong?
           <span className="ml-1.5 font-normal text-[var(--text-200)]">
-            Written as an instruction, this becomes a rule the agent follows on this
+            Written as an instruction, this becomes a rule Tidy Agent follows on this
             vendor&apos;s future documents.
           </span>
         </label>

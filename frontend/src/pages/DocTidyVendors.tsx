@@ -151,7 +151,7 @@ function VendorEditor({
             </h2>
             <p className="mt-0.5 text-xs text-[var(--text-200)]">
               {isNew
-                ? 'Register a supplier so the agent scopes its corrections correctly.'
+                ? 'Register a supplier so Tidy Agent scopes its corrections correctly.'
                 : 'Add or remove SKU format samples. Corrections are managed by the parsing process.'}
             </p>
           </div>
@@ -210,7 +210,7 @@ function VendorEditor({
             <div>
               <p className="text-sm font-medium text-[var(--text-100)]">SKU format samples</p>
               <p className="text-xs text-[var(--text-200)]">
-                Real SKU codes anchor the agent to this vendor's format from the very first document.
+                Real SKU codes anchor Tidy Agent to this vendor's format from the very first document.
               </p>
             </div>
 
@@ -300,7 +300,7 @@ function VendorEditor({
             <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-3">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-[var(--text-100)]">Agent corrections</p>
+                  <p className="text-sm font-medium text-[var(--text-100)]">Tidy Agent corrections</p>
                   <p className="text-xs text-[var(--text-200)]">
                     Learned automatically during the PDF parsing process.
                   </p>
@@ -542,7 +542,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
       )
       setNotice(
         res.data.correctionsDeleted > 0
-          ? `Deleted ${pendingDelete.name} and ${res.data.correctionsDeleted} correction(s) it had taught the agent.`
+          ? `Deleted ${pendingDelete.name} and ${res.data.correctionsDeleted} correction(s) it had taught Tidy Agent.`
           : `Deleted ${pendingDelete.name}.`
       )
       setPendingDelete(null)
@@ -557,7 +557,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
     if (!pendingCorrectionDelete) return
     try {
       await authApi.delete(`/doc-tidy/corrections/${pendingCorrectionDelete._id}`)
-      setNotice('Correction deleted — the agent stops using it on the next parse.')
+      setNotice('Correction deleted — Tidy Agent stops using it on the next parse.')
       setPendingCorrectionDelete(null)
       await load()
     } catch (err) {
@@ -833,7 +833,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
                             </svg>
                             {vendor.correctionCount === 0
                               ? 'No corrections yet'
-                              : `${vendor.correctionCount} correction${vendor.correctionCount === 1 ? '' : 's'} taught to agent`}
+                              : `${vendor.correctionCount} correction${vendor.correctionCount === 1 ? '' : 's'} taught to Tidy Agent`}
                           </span>
 
                           {/* SKU samples — compact, read-only chips */}
@@ -894,7 +894,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
                     {isOpen && (
                       <div className="border-t border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-5 py-4">
                         <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                          What {vendor.name} has taught the agent
+                          What {vendor.name} has taught Tidy Agent
                         </p>
 
                         {learned.length === 0 ? (
@@ -983,7 +983,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
                 vendor
               </p>
               <p className="mt-0.5 text-xs text-[var(--text-200)]">
-                These have no vendor name, or a name that matches no registered vendor. The agent
+                These have no vendor name, or a name that matches no registered vendor. Tidy Agent
                 never retrieves them, so they are teaching it nothing.
               </p>
             </div>
@@ -1068,8 +1068,8 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
             <div className="px-5 py-4">
               <p className="text-sm text-[var(--text-200)]">
                 {pendingDelete.correctionCount > 0
-                  ? `This also deletes the ${pendingDelete.correctionCount} correction${pendingDelete.correctionCount === 1 ? '' : 's'} this vendor taught the agent — it will go back to guessing their format.`
-                  : 'This vendor has taught the agent nothing yet, so only the profile is removed.'}
+                  ? `This also deletes the ${pendingDelete.correctionCount} correction${pendingDelete.correctionCount === 1 ? '' : 's'} this vendor taught Tidy Agent — it will go back to guessing their format.`
+                  : 'This vendor has taught Tidy Agent nothing yet, so only the profile is removed.'}
               </p>
             </div>
 
@@ -1117,7 +1117,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
 
             <div className="px-5 py-4">
               <p className="text-sm text-[var(--text-200)]">
-                The agent stops applying this to{' '}
+                Tidy Agent stops applying this to{' '}
                 {pendingCorrectionDelete.vendorName ?? 'this vendor'}'s documents from the next
                 parse onward. Anything it already learned from other corrections is unaffected.
               </p>

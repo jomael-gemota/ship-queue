@@ -37,7 +37,7 @@ export default function ReasoningStepper({
               <span className="absolute inset-0 animate-ping rounded-full bg-[var(--accent-200)]/20" />
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--accent-200)]" />
             </div>
-            <p className="text-sm text-[var(--text-200)]">Agent is starting up…</p>
+            <p className="text-sm text-[var(--text-200)]">Tidy Agent is starting up…</p>
           </>
         ) : (
           <>

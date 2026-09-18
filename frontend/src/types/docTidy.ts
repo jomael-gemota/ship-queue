@@ -169,11 +169,13 @@ export interface RunAllResult {
 
 /** Pushed over `/doc-tidy/stream` when the server stores new messages. */
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status'
+  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status'
   imported?: number
   /** For `parse_status`, so a table can move one chip without refetching. */
   parseJobId?: string
   parseStatus?: ParseJobStatus
+  /** For `worker_status`: whether the Python worker is currently connected. */
+  workerOnline?: boolean
   at?: string
 }
 

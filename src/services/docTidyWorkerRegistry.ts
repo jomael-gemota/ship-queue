@@ -238,6 +238,7 @@ export function startDocTidyWorkerServer(server: Server): WebSocketServer {
     }
     workerSocket = ws;
     console.log('[doc-tidy worker] connected');
+    broadcast({ type: 'worker_status', workerOnline: true });
 
     ws.on('message', raw => {
       let msg: WorkerMessage;
@@ -264,6 +265,7 @@ export function startDocTidyWorkerServer(server: Server): WebSocketServer {
       if (workerSocket === ws) {
         workerSocket = null;
         console.log('[doc-tidy worker] disconnected');
+        broadcast({ type: 'worker_status', workerOnline: false });
       }
     });
 

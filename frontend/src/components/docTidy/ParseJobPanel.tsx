@@ -156,7 +156,7 @@ export default function ParseJobPanel({
               {job?.completedAt
                 ? `Parsed ${new Date(job.completedAt).toLocaleString()}`
                 : isParseRunning(status)
-                  ? 'The agent is working on this now'
+                  ? 'Tidy Agent is working on this now'
                   : 'Not parsed yet'}
             </p>
           </div>
@@ -267,7 +267,7 @@ export default function ParseJobPanel({
                 />
               ) : (
                 <p className="text-sm text-[var(--text-200)]">
-                  There is nothing to correct until the agent produces output.
+                  There is nothing to correct until Tidy Agent produces output.
                 </p>
               )}
 
