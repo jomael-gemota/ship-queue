@@ -2,7 +2,13 @@ import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
 
-export default function Navbar() {
+export default function Navbar({
+  onToggleSidebar,
+  sidebarOpen,
+}: {
+  onToggleSidebar: () => void
+  sidebarOpen: boolean
+}) {
   const { pathname } = useLocation()
   const { theme, toggleTheme } = useTheme()
   const isDarkTheme = theme === 'dark'
@@ -30,15 +36,30 @@ export default function Navbar() {
   )
 
   return (
-    <header className="h-16 bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] backdrop-blur">
+    <header className="sticky top-0 z-40 h-16 bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] backdrop-blur">
       <div className="h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--text-200)]">
-            Enterprise Shipping Platform
-          </p>
-          <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] truncate">
-            {pageTitle}
-          </h1>
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Sidebar burger toggle */}
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-1.5 text-[var(--text-200)] hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] transition-colors cursor-pointer"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--text-200)]">
+              Enterprise Shipping Platform
+            </p>
+            <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] truncate">
+              {pageTitle}
+            </h1>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-1.5 px-1 text-[var(--text-200)] dark:text-[var(--text-200)]">
