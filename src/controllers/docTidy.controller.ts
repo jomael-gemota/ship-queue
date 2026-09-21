@@ -542,3 +542,60 @@ export const listConfigFolders = async (req: Request, res: Response): Promise<vo
     res.status(400).json({ message: (error as Error).message || 'Failed to list Drive folders' });
   }
 };
+
+/* -------------------------------------------------------- shared UI prefs */
+
+/**
+ * Returns the team-wide shared UI preferences (column orders).
+ * Any authenticated user may call this.
+ */
+export const getUiPrefs = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const config = await getDocTidyConfigDoc();
+    res.json({
+      data: {
+        auditColumnOrder: config.auditColumnOrder ?? [],
+        wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load UI prefs', error: (error as Error).message });
+  }
+};
+
+/**
+ * Saves the team-wide shared UI preferences (column orders) and broadcasts
+ * the new values to all connected SSE clients so every open tab updates
+ * immediately without a page reload.
+ * Any authenticated user may call this.
+ */
+export const putUiPrefs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { auditColumnOrder, wsEmailColumnOrder } = req.body as {
+      auditColumnOrder?: string[];
+      wsEmailColumnOrder?: string[];
+    };
+
+    const config = await getDocTidyConfigDoc();
+
+    if (Array.isArray(auditColumnOrder)) config.auditColumnOrder = auditColumnOrder;
+    if (Array.isArray(wsEmailColumnOrder)) config.wsEmailColumnOrder = wsEmailColumnOrder;
+    await config.save();
+
+    // Broadcast to all connected clients so they reflect the change live.
+    broadcast({
+      type: 'ui_prefs',
+      auditColumnOrder: config.auditColumnOrder,
+      wsEmailColumnOrder: config.wsEmailColumnOrder,
+    });
+
+    res.json({
+      data: {
+        auditColumnOrder: config.auditColumnOrder ?? [],
+        wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to save UI prefs', error: (error as Error).message });
+  }
+};
