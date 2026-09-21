@@ -169,13 +169,19 @@ export interface RunAllResult {
 
 /** Pushed over `/doc-tidy/stream` when the server stores new messages. */
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status'
+  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status' | 'ui_prefs'
   imported?: number
   /** For `parse_status`, so a table can move one chip without refetching. */
   parseJobId?: string
   parseStatus?: ParseJobStatus
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean
+  /**
+   * For `ui_prefs`: updated column orders broadcast to all open clients so
+   * every tab reflects the change immediately.
+   */
+  auditColumnOrder?: string[]
+  wsEmailColumnOrder?: string[]
   at?: string
 }
 
@@ -307,6 +313,65 @@ export interface DocTidyWorkspace {
   updatedAt: string
 }
 
+/* ──────────────────────────────── Workspace Emails column types ── */
+
+/**
+ * Draggable column ids for the Workspace Emails table.
+ * The fixed checkbox (first) and actions (last) columns are not included.
+ */
+export type WorkspaceEmailColumnId =
+  | 'received'
+  | 'from'
+  | 'to'
+  | 'subject'
+  | 'documentType'
+  | 'rule'
+  | 'attachments'
+
+export interface WorkspaceEmailColumn {
+  id: WorkspaceEmailColumnId
+  label: string
+  iconPath: string
+}
+
+export const WORKSPACE_EMAIL_COLUMNS: WorkspaceEmailColumn[] = [
+  {
+    id: 'received',
+    label: 'Received',
+    iconPath: 'M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z',
+  },
+  {
+    id: 'from',
+    label: 'From',
+    iconPath: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207',
+  },
+  {
+    id: 'to',
+    label: 'To',
+    iconPath: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
+  },
+  {
+    id: 'subject',
+    label: 'Subject',
+    iconPath: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  },
+  {
+    id: 'documentType',
+    label: 'Document type',
+    iconPath: 'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  },
+  {
+    id: 'rule',
+    label: 'Rule',
+    iconPath: 'M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z',
+  },
+  {
+    id: 'attachments',
+    label: 'Attachments',
+    iconPath: 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13',
+  },
+]
+
 /* ─────────────────────────────────────────────── Invoice Audit ── */
 
 /** A completed parse job as returned by `GET /doc-tidy/parse-jobs`. */
@@ -407,6 +472,12 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'liTaxAmount',       section: 'lineItem',  label: 'Tax',           description: 'Tax amount for this line',                     defaultVisible: false, numeric: true },
   { id: 'liNotes',           section: 'lineItem',  label: 'Notes',         description: 'Additional notes or remarks on this line',     defaultVisible: false },
 ]
+
+/** Default order mirrors the declaration order in INVOICE_AUDIT_COLUMNS. */
+export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COLUMNS.map((c) => c.id)
+
+/** Default order mirrors the declaration order in WORKSPACE_EMAIL_COLUMNS. */
+export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns'
 
