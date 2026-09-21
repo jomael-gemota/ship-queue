@@ -4,7 +4,7 @@ import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar({
   onToggleSidebar,
-  sidebarOpen,
+  sidebarOpen: _sidebarOpen,
 }: {
   onToggleSidebar: () => void
   sidebarOpen: boolean
