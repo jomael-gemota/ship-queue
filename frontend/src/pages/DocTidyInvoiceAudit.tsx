@@ -816,6 +816,13 @@ export default function DocTidyInvoiceAudit() {
   const fetchJobsRef = useRef(fetchJobs)
   useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
 
+  /* Re-fetch whenever the user switches to the audit tab so results that
+     completed while the user was on the Emails tab appear immediately —
+     the audit SSE is disconnected during that time and misses the event. */
+  useEffect(() => {
+    if (workspaceTab === 'audit') void fetchJobsRef.current()
+  }, [workspaceTab])
+
   /* ── Workspace navigation ── */
   const enterWorkspace = (ws: DocTidyWorkspace) => {
     setActiveWorkspace(ws)
