@@ -9,11 +9,15 @@ The PDFs originate in Google Drive; the server mirrors the bytes into GridFS
 when a parse is requested, so this worker needs no Google credentials.
 
 Run:
-    python worker.py
+    python worker.py                        # loads .env (default)
+    python worker.py --env .env.local       # loads .env.local (e.g. Windows localhost)
+    python worker.py --env .env.staging     # loads .env.staging
+    python worker.py --env .env.production  # loads .env.production
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -40,7 +44,20 @@ from sku import (
 )
 from tidy_agent import TokenType, extract_json, generate_table_data, stream_tidy
 
-load_dotenv()
+# ── Environment profile ───────────────────────────────────────────────────────
+# Use --env to load a named profile, e.g.:
+#   python worker.py --env .env.local       # → localhost dev server
+#   python worker.py --env .env.staging     # → staging (default)
+#   python worker.py --env .env.production  # → production
+_arg_parser = argparse.ArgumentParser(description="Doc Tidy Worker", add_help=False)
+_arg_parser.add_argument(
+    "--env",
+    default=".env",
+    metavar="FILE",
+    help="Path to the .env profile to load (default: .env)",
+)
+_args, _ = _arg_parser.parse_known_args()
+load_dotenv(_args.env)
 
 logging.basicConfig(
     level=logging.INFO,

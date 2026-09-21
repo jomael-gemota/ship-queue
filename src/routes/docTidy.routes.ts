@@ -14,6 +14,8 @@ import {
   updateConfig,
   disconnectMailbox,
   listConfigFolders,
+  getUiPrefs,
+  putUiPrefs,
 } from '../controllers/docTidy.controller';
 import {
   getWorkerStatus,
@@ -92,5 +94,9 @@ router.get('/config', getConfig);
 router.put('/config', requireAdmin, updateConfig);
 router.delete('/config/mailbox', requireAdmin, disconnectMailbox);
 router.get('/config/folders', requireAdmin, listConfigFolders);
+
+// Shared UI preferences (column orders). Any authenticated user may read/write.
+router.get('/ui-prefs', getUiPrefs);
+router.put('/ui-prefs', putUiPrefs);
 
 export default router;

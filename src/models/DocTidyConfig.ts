@@ -22,6 +22,20 @@ export interface IDocTidyConfig extends Document {
   /** Set when the destination lives in a Shared Drive rather than My Drive. */
   driveId?: string;
 
+  /**
+   * Shared column order for the Invoice Audit table.
+   * Stored as an ordered array of InvoiceAuditColumnId strings.
+   * Absent or empty = use the default order from INVOICE_AUDIT_COLUMNS.
+   */
+  auditColumnOrder?: string[];
+
+  /**
+   * Shared column order for the Workspace Emails table.
+   * Stored as an ordered array of WorkspaceEmailColumnId strings.
+   * Absent or empty = use the default order from WORKSPACE_EMAIL_COLUMNS.
+   */
+  wsEmailColumnOrder?: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +52,8 @@ const DocTidyConfigSchema = new Schema<IDocTidyConfig>(
     driveFolderId: { type: String },
     driveFolderName: { type: String },
     driveId: { type: String },
+    auditColumnOrder: { type: [String], default: undefined },
+    wsEmailColumnOrder: { type: [String], default: undefined },
   },
   { timestamps: true }
 );
