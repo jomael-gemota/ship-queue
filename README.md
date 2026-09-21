@@ -11,6 +11,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google Drive uploads** — Optionally archive generated labels to Google Drive (any connected Google account, not just the login account).
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
+- **Dropship B2B (Helly Hansen)** — Import Amazon Order ID + PO batches for HH Sportswear and HH Workwear, fill details from Seller Central, draft/verify Helly Hansen carts, and (when enabled) Place Order.
 
 ## User Guide
 
@@ -103,7 +104,7 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `COOKIE_JAR_PORT`                         | Cookie Jar health port (local; default 5001)       |
 | `COOKIE_JAR_OE_US_TOKEN`                  | Sphere API token for Seller Central OE US cookies  |
-| `HH_B2B_COOKIE` / `HH_B2B_BASE_URL` / `HH_B2B_CATALOG` / `HH_B2B_ACCOUNT_ID` | Helly Hansen Sports B2B session (cookie optional if Cookie Jar has it) |
+| `HH_B2B_COOKIE` / `HH_B2B_BASE_URL` / `HH_B2B_CATALOG` / `HH_B2B_ACCOUNT_ID` | Optional Sportswear-only Helly Hansen overrides (cookie optional if Configurations / Cookie Jar has it). Workwear is not overridden by these. |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
 
 ### 3. Run in development
@@ -219,18 +220,31 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | PUT    | `/:id` | Update a shipment    |
 | DELETE | `/:id` | Delete a shipment    |
 
-### HH Sportswear — `/api/hh-sportswear`
+### HH B2B — `/api/hh-sportswear` and `/api/hh-workwear`
 
-B2B order groups with nested orders and line items. All routes require a JWT.
+Same route module, scoped by brand. Sportswear uses portal
+`https://b2bsport.hellyhansen.com` (catalog `ASAPSPORT`, account `9014876`).
+Workwear uses `https://b2bwork.hellyhansen.com` (`ASAPWW`, `9062220`). All
+routes require a JWT.
 
 | Method | Path                         | Description                           |
 | ------ | ---------------------------- | ------------------------------------- |
-| GET    | `/`                          | List groups (full tree, newest first) |
+| GET    | `/`                          | List groups for this brand (full tree, newest first) |
 | POST   | `/`                          | Create a group (JSON)                 |
 | POST   | `/import`                    | Upload .xlsx/.csv or paste Order ID + PO |
-| GET    | `/sc-sync`                   | Details fill runtime (chip)           |
+| GET    | `/config`                    | Brand B2B config (no cookie value)    |
+| PATCH  | `/config`                    | Update baseUrl / catalog / account / cookie / Place Order gate |
+| GET    | `/sc-sync`                   | Details fill / cart draft / place runtime (chip) |
 | POST   | `/:groupId/sc-sync`          | Re-sync details for a whole batch     |
 | POST   | `/:groupId/orders/:orderId/sc-sync` | Re-sync details for one order  |
+| POST   | `/:groupId/cart-draft`       | Draft or regenerate B2B carts         |
+| POST   | `/:groupId/orders/:orderId/cart-draft` | Draft or regenerate one cart |
+| POST   | `/:groupId/cart-verify`      | Re-check live B2B carts vs details    |
+| POST   | `/:groupId/orders/:orderId/cart-verify` | Re-check one cart           |
+| POST   | `/:groupId/cart-compare`     | Return live compare rows              |
+| POST   | `/:groupId/orders/:orderId/cart-compare` | Compare one cart            |
+| POST   | `/:groupId/place`            | Place Ready orders (gated by config)  |
+| POST   | `/:groupId/orders/:orderId/place` | Place one Ready order            |
 | PATCH  | `/:groupId`                  | Update batch notes                    |
 | PATCH  | `/:groupId/orders/:orderId`  | Update order notes                    |
 | GET    | `/:groupId`                  | Get one group                         |
@@ -242,15 +256,19 @@ Number pair. Duplicate rows are skipped. Files can list those columns in either
 order when headers are present (`Order ID` / `PO Number`). You can also paste
 rows in the import modal; headers are optional if one column is an Amazon Order
 ID. New orders start with Details
-`pending` and Cart `none`. Customer, address, and line items stay empty until
+`pending` and Cart `none`. Buyer info and line items stay empty until
 the Seller Central fill that runs right after upload. As soon as an Order ID
-is **Synced**, a cart-draft job runs for that order against Helly Hansen Sports
-B2B (`POST /api/documents/` with `do_submit: false` — no Place Order). Catalog
-`ASAPSPORT` and account `9014876` are the Order Swift Sports brand defaults.
-The session cookie lives in Cookie Jar `helly-hansen-sports-b2b` (or `HH_B2B_COOKIE`).
-Cart becomes **Draft** when that step finishes. The Notes column starts
-as the uploaded filename and can be edited later (for example `Skip: Cancelled`).
-Each order also has its own Notes field.
+is **Synced**, a cart-draft job runs for that order against that brand’s Helly
+Hansen B2B (`POST /api/documents/` with `do_submit: false`). Cart becomes
+**Draft** and **Reference Number** holds the B2B order number. A live
+cross-check then sets Cart to **Ready** or **Review**. Place Order only
+submits Ready orders, and only when Configurations has Place Order on
+(default off). The session cookie lives in that brand’s Configurations page
+or Cookie Jar (`helly-hansen-sports-b2b` / `helly-hansen-work-b2b`). Env
+`HH_B2B_*` overrides Sportswear only. The Notes column starts as the uploaded
+filename and can be edited later (for example `Skip: Cancelled`). Each order
+also has its own Notes field. Batch export of Order ID / PO / B2B order # for
+DS OM is not built yet.
 
 ### Cookie Jar worker
 

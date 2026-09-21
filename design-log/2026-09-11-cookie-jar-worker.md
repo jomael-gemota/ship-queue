@@ -1,6 +1,7 @@
 # Cookie Jar worker
 
 **Date:** 2026-09-11
+**Updated:** 2026-09-21
 **Status:** accepted
 **Author:** collaborative
 
@@ -45,8 +46,11 @@ Admins should be able to change name / enabled / cron from a UI later. Adding a
 
 - Railway needs a second service with start command `npm run cookie-jar`
   (after `npm run build`), sharing `MONGODB_URI`.
-- Settings **Cookie Jar** card is the admin UI. Adding jar type #2 is still a
-  new fetcher + a new seed row.
+- Settings **Cookie Jar** card is the admin UI. Adding a *fetched* jar type is
+  still a new fetcher + a new seed row. Helly Hansen Sports and Work B2B are
+  **manual** jars (`helly-hansen-sports-b2b`, `helly-hansen-work-b2b`): seeded
+  and listed, not refreshed by Sphere. Prefer Dropship (B2B) → brand →
+  Configurations for those cookies.
 - Cron is UTC. Set the schedule shorter than the cookie’s real TTL.
 - Seller Central Outdoor Equipped US GETs Sphere
   `/api/v1/cookie/provide/seller-central-oe-us` (up to 3 tries) and stores
