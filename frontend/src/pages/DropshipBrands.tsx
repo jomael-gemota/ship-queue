@@ -16,6 +16,13 @@ function BagIcon({ className = '' }: { className?: string }) {
 
 function BrandMark({ brand }: { brand: DropshipBrand }) {
   if (brand.logo) {
+    if (brand.id === 'hh-workwear') {
+      return (
+        <span className="inline-flex h-28 w-36 shrink-0 items-center justify-center bg-black sm:h-32 sm:w-40">
+          <img src={brand.logo} alt="" className="h-full w-full object-contain" />
+        </span>
+      )
+    }
     return (
       <img
         src={brand.logo}
@@ -42,38 +49,36 @@ export default function DropshipBrands() {
         </p>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
-        <ul className="divide-y divide-slate-200 dark:divide-[var(--bg-300)]">
-          {DROPSHIP_BRANDS.map((brand) => (
-            <li key={brand.id}>
-              <Link
-                to={brand.path}
-                className="flex items-stretch overflow-hidden transition-colors hover:bg-[var(--primary-100)]"
-              >
-                <BrandMark brand={brand} />
-                <span className="flex min-w-0 flex-1 items-center gap-4 px-5 py-4">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">
-                      {brand.name}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-[var(--text-200)]">
-                      {brand.supplier}
-                      <span className="text-slate-400 dark:text-[var(--text-200)]"> · </span>
-                      {brand.catalog}
-                    </span>
+      <ul className="space-y-3">
+        {DROPSHIP_BRANDS.map((brand) => (
+          <li key={brand.id}>
+            <Link
+              to={brand.path}
+              className="flex items-stretch overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm transition-colors hover:bg-[var(--primary-100)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+            >
+              <BrandMark brand={brand} />
+              <span className="flex min-w-0 flex-1 items-center gap-4 px-5 py-4">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">
+                    {brand.name}
                   </span>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[var(--accent-200)]">
-                    Open
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    {brand.supplier}
+                    <span className="text-slate-400 dark:text-[var(--text-200)]"> · </span>
+                    {brand.catalog}
                   </span>
                 </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+                <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[var(--accent-200)]">
+                  Open
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

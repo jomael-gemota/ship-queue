@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { formatCreatedAt, getHHB2bConfig, updateHHB2bConfig } from '../lib/hhSportswear'
-import type { HHB2bConfig } from '../lib/hhSportswear'
+import type { HHB2bConfig, HHB2bConfigPatch } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
+import { hhBrand } from '../lib/hhBrand'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -10,7 +11,8 @@ const labelClass = 'block text-sm font-medium text-slate-700 dark:text-[var(--te
 const hintClass = 'block text-xs text-slate-500 dark:text-[var(--text-200)]'
 
 export default function HHSportswearConfig() {
-  const { setPlaceOrderEnabled: setPlaceOrderEnabledContext } = useHHList()
+  const { brand, setPlaceOrderEnabled: setPlaceOrderEnabledContext } = useHHList()
+  const brandDef = hhBrand(brand)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState<HHB2bConfig | null>(null)
@@ -26,7 +28,8 @@ export default function HHSportswearConfig() {
 
   useEffect(() => {
     let cancelled = false
-    getHHB2bConfig()
+    setLoadState('loading')
+    getHHB2bConfig(brand)
       .then((res) => {
         if (cancelled) return
         applySaved(res.data)
@@ -40,7 +43,7 @@ export default function HHSportswearConfig() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [brand])
 
   const applySaved = (data: HHB2bConfig) => {
     setSaved(data)
@@ -58,7 +61,7 @@ export default function HHSportswearConfig() {
     setSaveError(null)
     setSaveNotice(null)
     try {
-      const patch: Parameters<typeof updateHHB2bConfig>[0] = {
+      const patch: HHB2bConfigPatch = {
         baseUrl,
         catalog,
         accountId,
@@ -66,7 +69,7 @@ export default function HHSportswearConfig() {
       }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
-      const res = await updateHHB2bConfig(patch)
+      const res = await updateHHB2bConfig(brand, patch)
       applySaved(res.data)
       setPlaceOrderEnabledContext(Boolean(res.data.placeOrderEnabled))
       setSaveNotice('Saved.')
@@ -94,9 +97,11 @@ export default function HHSportswearConfig() {
       }}
     >
       <div className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">B2B Sports account</h2>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+          B2B {brand === 'workwear' ? 'Work' : 'Sports'} account
+        </h2>
         <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-          Cart drafts POST to this Helly Hansen Sports B2B account. Sphere does not refresh the session — paste a
+          Cart drafts POST to this {brandDef.supplier} B2B account. Sphere does not refresh the session — paste a
           cookie from a logged-in browser. Place Order stays off until you enable it below.
         </p>
       </div>
@@ -114,7 +119,9 @@ export default function HHSportswearConfig() {
             autoComplete="off"
             spellCheck={false}
           />
-          <p className={hintClass}>Sports portal, e.g. https://b2bsport.hellyhansen.com</p>
+          <p className={hintClass}>
+            {brand === 'workwear' ? 'Work' : 'Sports'} portal, e.g. {brandDef.baseUrl}
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -129,7 +136,9 @@ export default function HHSportswearConfig() {
             autoComplete="off"
             spellCheck={false}
           />
-          <p className={hintClass}>ASAPSPORT for Sports; not the Fashion catalog.</p>
+          <p className={hintClass}>
+            {brandDef.catalog} for {brand === 'workwear' ? 'Work' : 'Sports'}; not the Fashion catalog.
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -197,7 +206,8 @@ export default function HHSportswearConfig() {
           <p className={hintClass}>Last updated {formatCreatedAt(saved.cookieUpdatedAt)}</p>
         ) : (
           <p className={hintClass}>
-            Paste the Cookie header from a logged-in b2bsport.hellyhansen.com tab. It is never shown again.
+            Paste the Cookie header from a logged-in {brandDef.baseUrl.replace(/^https?:\/\//, '')} tab. It is never
+            shown again.
           </p>
         )}
         <textarea

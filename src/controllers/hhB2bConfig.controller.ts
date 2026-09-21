@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import type { IHHB2bConfig } from '../models/HHB2bConfig';
+import { hhBrandFromRequest } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
 import { normalizeHhB2bAccountId, parseHhB2bBaseUrl } from '../lib/hhB2bConfig';
 
@@ -28,14 +29,14 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
   };
 }
 
-export async function getHhB2bConfig(_req: Request, res: Response): Promise<void> {
-  const doc = await getOrCreateHhB2bConfig(true);
+export async function getHhB2bConfig(req: Request, res: Response): Promise<void> {
+  const doc = await getOrCreateHhB2bConfig(hhBrandFromRequest(req), true);
   res.json({ data: serializeConfig(doc) });
 }
 
 export async function updateHhB2bConfig(req: Request, res: Response): Promise<void> {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-  const doc = await getOrCreateHhB2bConfig(true);
+  const doc = await getOrCreateHhB2bConfig(hhBrandFromRequest(req), true);
 
   if ('baseUrl' in body) {
     if (typeof body.baseUrl !== 'string') {

@@ -6,6 +6,7 @@ import HHOrderGroup, {
 } from '../models/HHOrderGroup';
 import { createHhB2bDraft, HhB2bDraftError, HhB2bDraftRequest } from '../lib/hhB2b';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { hhBrandId } from '../lib/hhBrand';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
@@ -76,8 +77,9 @@ export function getHhCartDraftRuntime(): HhCartDraftRuntime {
   };
 }
 
-export async function countUndraftedHhOrders(): Promise<number> {
+export async function countUndraftedHhOrders(brand?: string): Promise<number> {
   const rows = await HHOrderGroup.aggregate<{ count: number }>([
+    ...(brand ? [{ $match: { brand } }] : []),
     { $unwind: '$children' },
     {
       $match: {
@@ -150,6 +152,7 @@ async function persistDraft(
     child.cartStatus = 'draft';
     child.b2bDraftId = draftId;
     child.referenceNumber = orderNumber;
+    child.placeError = '';
     clearHhCartVerification(child);
     applyGroupRollup(group);
     group.markModified('children');
@@ -174,7 +177,7 @@ function pickNextChild(
 async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCartDraftRunResult): Promise<void> {
   currentOrderId = child.orderId;
   const childId = String(child._id);
-  const result = await createHhB2bDraft(toDraftRequest(child));
+  const result = await createHhB2bDraft(toDraftRequest(child), group.brand);
   const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
   if (!saved || saved.cartStatus !== 'draft') {
     run.skipped += 1;
@@ -278,18 +281,19 @@ export async function repairHhB2bReferenceNumbers(): Promise<void> {
   );
   if (targets.length === 0) return;
 
-  let config;
-  let cookie;
-  try {
-    config = await loadHhB2bConfig();
-    cookie = await loadHhB2bCookie();
-  } catch (err) {
-    if (err instanceof HhB2bAuthError) return;
-    throw err;
-  }
-
   let updated = 0;
   for (const group of groups) {
+    const brand = hhBrandId(group.brand);
+    let config;
+    let cookie;
+    try {
+      config = await loadHhB2bConfig(brand);
+      cookie = await loadHhB2bCookie(brand);
+    } catch (err) {
+      if (err instanceof HhB2bAuthError) continue;
+      throw err;
+    }
+
     let changed = false;
     for (const child of group.children) {
       if (child.cartStatus !== 'draft') continue;

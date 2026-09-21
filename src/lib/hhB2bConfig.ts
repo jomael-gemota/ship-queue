@@ -1,11 +1,7 @@
-import CookieJar, { HELLY_HANSEN_SPORTS_B2B_KEY } from '../models/CookieJar';
+import CookieJar from '../models/CookieJar';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { normalizeCookieHeader } from './hhSellerCentral';
-import {
-  HH_B2B_DEFAULT_ACCOUNT_ID,
-  HH_B2B_DEFAULT_BASE_URL,
-  HH_B2B_DEFAULT_CATALOG,
-} from './hhB2bDefaults';
+import { hhBrand, HH_DEFAULT_BRAND, type HHBrandId } from './hhBrand';
 
 export {
   HH_B2B_DEFAULT_ACCOUNT_ID,
@@ -61,40 +57,50 @@ function firstNonEmpty(...values: Array<string | undefined>): string {
   return '';
 }
 
-export async function loadHhB2bConfig(): Promise<HhB2bConfig> {
-  const stored = await getOrCreateHhB2bConfig(false);
-  const baseUrl =
-    parseHhB2bBaseUrl(firstNonEmpty(process.env.HH_B2B_BASE_URL, stored.baseUrl, HH_B2B_DEFAULT_BASE_URL)) ||
-    HH_B2B_DEFAULT_BASE_URL;
-  const catalog = firstNonEmpty(process.env.HH_B2B_CATALOG, stored.catalog, HH_B2B_DEFAULT_CATALOG) || HH_B2B_DEFAULT_CATALOG;
+function envOverrides(brand: HHBrandId): { baseUrl?: string; catalog?: string; accountId?: string; cookie?: string } {
+  if (brand !== HH_DEFAULT_BRAND) return {};
+  return {
+    baseUrl: process.env.HH_B2B_BASE_URL,
+    catalog: process.env.HH_B2B_CATALOG,
+    accountId: process.env.HH_B2B_ACCOUNT_ID,
+    cookie: process.env.HH_B2B_COOKIE,
+  };
+}
+
+export async function loadHhB2bConfig(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<HhB2bConfig> {
+  const def = hhBrand(brand);
+  const stored = await getOrCreateHhB2bConfig(brand, false);
+  const env = envOverrides(brand);
+  const baseUrl = parseHhB2bBaseUrl(firstNonEmpty(env.baseUrl, stored.baseUrl, def.baseUrl)) || def.baseUrl;
+  const catalog = firstNonEmpty(env.catalog, stored.catalog, def.catalog) || def.catalog;
   const accountId =
-    normalizeHhB2bAccountId(
-      firstNonEmpty(process.env.HH_B2B_ACCOUNT_ID, stored.accountId, HH_B2B_DEFAULT_ACCOUNT_ID)
-    ) || HH_B2B_DEFAULT_ACCOUNT_ID;
+    normalizeHhB2bAccountId(firstNonEmpty(env.accountId, stored.accountId, def.accountId)) || def.accountId;
   return { baseUrl, catalog, accountId };
 }
 
-export async function isHhPlaceOrderEnabled(): Promise<boolean> {
-  const stored = await getOrCreateHhB2bConfig(false);
+export async function isHhPlaceOrderEnabled(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<boolean> {
+  const stored = await getOrCreateHhB2bConfig(brand, false);
   return Boolean(stored.placeOrderEnabled);
 }
 
-export async function loadHhB2bCookie(): Promise<string> {
-  const fromEnv = normalizeCookieHeader(process.env.HH_B2B_COOKIE || '');
+export async function loadHhB2bCookie(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<string> {
+  const def = hhBrand(brand);
+  const env = envOverrides(brand);
+  const fromEnv = normalizeCookieHeader(env.cookie || '');
   if (fromEnv) return fromEnv;
 
-  const stored = await getOrCreateHhB2bConfig(true);
+  const stored = await getOrCreateHhB2bConfig(brand, true);
   const fromConfig = normalizeCookieHeader(stored.cookie ?? '');
   if (fromConfig) return fromConfig;
 
-  const jar = await CookieJar.findOne({ key: HELLY_HANSEN_SPORTS_B2B_KEY }).select('+cookie');
+  const jar = await CookieJar.findOne({ key: def.cookieJarKey }).select('+cookie');
   if (jar?.enabled) {
     const fromJar = normalizeCookieHeader(jar.cookie ?? '');
     if (fromJar) return fromJar;
   }
 
   throw new HhB2bAuthError(
-    'Helly Hansen Sports B2B cookie is empty — paste a session on Dropship (B2B) → HH Sportswear → Configurations'
+    `${def.cookieJarName} cookie is empty — paste a session on Dropship (B2B) → ${def.name} → Configurations`
   );
 }
 

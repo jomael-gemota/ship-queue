@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { hhBrand, hhBrandFromPath } from '../lib/hhBrand'
+import { hhBreadcrumbPage } from '../lib/hhNav'
 
 export default function Navbar() {
   const { pathname } = useLocation()
@@ -13,14 +15,13 @@ export default function Navbar() {
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/dropbox-fetcher') return 'Dropbox Fetcher'
-    if (pathname.includes('/ordering/hh-sportswear/') && pathname.includes('/orders/')) {
-      return 'HH Sportswear Items'
+    if (pathname.includes('/ordering/hh-sportswear') || pathname.includes('/ordering/hh-workwear')) {
+      const name = hhBrand(hhBrandFromPath(pathname)).name
+      const page = hhBreadcrumbPage(pathname)
+      if (page === 'items') return `${name} Items`
+      if (page === 'orders') return `${name} Orders`
+      return name
     }
-    if (pathname === '/ordering/hh-sportswear/configurations') return 'HH Sportswear'
-    if (pathname.startsWith('/ordering/hh-sportswear/') && pathname !== '/ordering/hh-sportswear/') {
-      return 'HH Sportswear Orders'
-    }
-    if (pathname.startsWith('/ordering/hh-sportswear')) return 'HH Sportswear'
     if (pathname === '/ordering' || pathname === '/ordering/') return 'Dropship (B2B)'
     if (pathname === '/settings') return 'Settings'
     if (pathname === '/admin/users') return 'User Management'

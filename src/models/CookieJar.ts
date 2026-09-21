@@ -10,6 +10,9 @@ export const SELLER_CENTRAL_OE_US_CRON = '0 */6 * * *';
 /** Helly Hansen Sports B2B session. Stored manually — no Sphere fetcher. */
 export const HELLY_HANSEN_SPORTS_B2B_KEY = 'helly-hansen-sports-b2b';
 export const HELLY_HANSEN_SPORTS_B2B_NAME = 'Helly Hansen Sports B2B';
+/** Helly Hansen Work B2B session. Stored manually — no Sphere fetcher. */
+export const HELLY_HANSEN_WORK_B2B_KEY = 'helly-hansen-work-b2b';
+export const HELLY_HANSEN_WORK_B2B_NAME = 'Helly Hansen Work B2B';
 
 /** Previous key — renamed in place on seed so existing cookies are kept. */
 const LEGACY_SELLER_CENTRAL_OE_US_KEY = 'outdoor-equipped-us';
@@ -65,7 +68,7 @@ const CookieJarSchema = new Schema<ICookieJar>(
 );
 
 export function isManualCookieJar(key: string): boolean {
-  return key === HELLY_HANSEN_SPORTS_B2B_KEY;
+  return key === HELLY_HANSEN_SPORTS_B2B_KEY || key === HELLY_HANSEN_WORK_B2B_KEY;
 }
 
 const CookieJar = model<ICookieJar>('CookieJar', CookieJarSchema);
@@ -108,6 +111,7 @@ export async function seedCookieJars(): Promise<void> {
 
   await seedJar(SELLER_CENTRAL_OE_US_KEY, SELLER_CENTRAL_OE_US_NAME, SELLER_CENTRAL_OE_US_CRON, true);
   await seedJar(HELLY_HANSEN_SPORTS_B2B_KEY, HELLY_HANSEN_SPORTS_B2B_NAME, DEFAULT_JAR_CRON, true);
+  await seedJar(HELLY_HANSEN_WORK_B2B_KEY, HELLY_HANSEN_WORK_B2B_NAME, DEFAULT_JAR_CRON, true);
 }
 
 export default CookieJar;

@@ -9,7 +9,7 @@ import { useHHList } from '../../context/HHListContext'
 import { HHScSyncStatus } from './HHScSyncStatus'
 
 const SEARCH_PLACEHOLDERS = {
-  list: 'Search order ID, SKU, PO, reference, customer, notes…',
+  list: 'Search batch ID, order ID, SKU, PO, reference, customer, notes…',
   orders: 'Search order ID, SKU, PO, reference, customer, notes…',
   items: 'Search title, SKU, ASIN…',
   config: '',

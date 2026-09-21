@@ -4,38 +4,43 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup, HHVerifyIssue } from '../../lib/hhSportswear'
 import {
-  HH_CART_COUNT_ORDER,
   HH_CART_STATUS_LABELS,
   HH_DETAILS_COUNT_ORDER,
   HH_DETAILS_STATUS_LABELS,
   hhCartCounts,
   hhDetailsCounts,
+  hhHasCartDraft,
+  hhHasSyncedDetails,
   hhPlacePlan,
 } from '../../lib/hhSportswear'
 import { BackIcon, Spinner } from '../labels/labelUi'
 import { Tooltip } from '../Tooltip'
 import type { HHPage } from '../../lib/hhNav'
 import { prefersReducedMotion } from '../../lib/hhNav'
-import { DROPSHIP_PATH, HH_SPORTSWEAR_PATH } from '../../lib/dropship'
+import { DROPSHIP_PATH } from '../../lib/dropship'
 
 export function HHBreadcrumb({
   groupId,
   current,
+  brandName,
+  brandPath,
 }: {
   groupId?: string
   current: HHPage
+  brandName: string
+  brandPath: string
 }) {
   const crumbs: { label: string; to?: string }[] = [
     { label: 'Dropship (B2B)', to: DROPSHIP_PATH },
     {
-      label: 'HH Sportswear',
-      to: current === 'list' ? undefined : HH_SPORTSWEAR_PATH,
+      label: brandName,
+      to: current === 'list' ? undefined : brandPath,
     },
   ]
   if (current === 'orders' || current === 'items') {
     crumbs.push({
       label: 'Orders',
-      to: current === 'items' && groupId ? `${HH_SPORTSWEAR_PATH}/${groupId}` : undefined,
+      to: current === 'items' && groupId ? `${brandPath}/${groupId}` : undefined,
     })
   }
   if (current === 'items') {
@@ -406,6 +411,9 @@ export function HHBatchHeaderMenu({
   groupId,
   allPlaced,
   hasPlaced,
+  canRedraft = true,
+  hasSyncedDetails = false,
+  hasCartDraft = false,
   resyncBusy = false,
   redraftBusy = false,
   onResync,
@@ -415,6 +423,9 @@ export function HHBatchHeaderMenu({
   groupId: string
   allPlaced: boolean
   hasPlaced: boolean
+  canRedraft?: boolean
+  hasSyncedDetails?: boolean
+  hasCartDraft?: boolean
   resyncBusy?: boolean
   redraftBusy?: boolean
   onResync: () => void
@@ -529,20 +540,26 @@ export function HHBatchHeaderMenu({
                   }}
                 >
                   {resyncBusy ? <Spinner className="h-4 w-4" /> : <DetailsResyncIcon className="h-4 w-4" />}
-                  {allPlaced ? 'Re-sync unavailable' : 'Re-sync details'}
+                  {allPlaced ? 'Re-sync unavailable' : hasSyncedDetails ? 'Re-sync details' : 'Sync details'}
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={allPlaced || redraftBusy}
-                  className={itemClass(false, allPlaced || redraftBusy)}
+                  disabled={allPlaced || !canRedraft || redraftBusy}
+                  className={itemClass(false, allPlaced || !canRedraft || redraftBusy)}
                   onClick={() => {
-                    if (allPlaced || redraftBusy) return
+                    if (allPlaced || !canRedraft || redraftBusy) return
                     run(onRedraft)
                   }}
                 >
                   {redraftBusy ? <Spinner className="h-4 w-4" /> : <CartDraftIcon className="h-4 w-4" />}
-                  {allPlaced ? 'Regenerate unavailable' : 'Regenerate B2B draft'}
+                  {allPlaced
+                    ? 'Regenerate unavailable'
+                    : !canRedraft
+                      ? 'Needs synced details'
+                      : hasCartDraft
+                        ? 'Regenerate B2B draft'
+                        : 'Draft B2B cart'}
                 </button>
                 <div className="my-1 border-t border-[var(--bg-300)]" />
                 <button
@@ -736,25 +753,40 @@ export type HHPendingAction =
   | { type: 'delete' | 'resync' | 'redraft' | 'place'; target: 'group'; group: HHOrderGroup }
   | { type: 'delete' | 'resync' | 'redraft' | 'place'; target: 'order'; order: HHChildOrder }
 
-const DETAILS_BADGE_CLASS: Record<HHDetailsStatus, string> = {
-  pending: 'bg-[var(--primary-100)] text-slate-700 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]',
-  synced: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+type HHBadgeTone = 'ok' | 'warn' | 'error'
+
+const HH_BADGE_TONE_CLASS: Record<HHBadgeTone, string> = {
+  ok: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+  warn: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 }
 
-const CART_BADGE_CLASS: Record<Exclude<HHCartStatus, 'none'>, string> = {
-  draft: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-  ready: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
-  review: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  placed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+function HHToneBadge({ tone, children }: { tone: HHBadgeTone; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${HH_BADGE_TONE_CLASS[tone]}`}>
+      {children}
+    </span>
+  )
+}
+
+function HHSummaryDash() {
+  return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+}
+
+function detailsTone(status: HHDetailsStatus): HHBadgeTone {
+  if (status === 'synced') return 'ok'
+  if (status === 'failed') return 'error'
+  return 'warn'
+}
+
+function cartTone(status: Exclude<HHCartStatus, 'none'>): HHBadgeTone {
+  if (status === 'ready' || status === 'placed') return 'ok'
+  if (status === 'review') return 'error'
+  return 'warn'
 }
 
 export function HHDetailsBadge({ status }: { status: HHDetailsStatus }) {
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${DETAILS_BADGE_CLASS[status]}`}>
-      {HH_DETAILS_STATUS_LABELS[status]}
-    </span>
-  )
+  return <HHToneBadge tone={detailsTone(status)}>{HH_DETAILS_STATUS_LABELS[status]}</HHToneBadge>
 }
 
 export function HHCartBadge({
@@ -764,14 +796,8 @@ export function HHCartBadge({
   status: HHCartStatus
   issues?: HHVerifyIssue[]
 }) {
-  if (status === 'none') {
-    return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
-  }
-  const badge = (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${CART_BADGE_CLASS[status]}`}>
-      {HH_CART_STATUS_LABELS[status]}
-    </span>
-  )
+  if (status === 'none' || status === 'placed') return <HHSummaryDash />
+  const badge = <HHToneBadge tone={cartTone(status)}>{HH_CART_STATUS_LABELS[status]}</HHToneBadge>
   const content =
     status === 'review' && issues && issues.length > 0
       ? issues.map((issue) => `${issue.label}: ${issue.expected} → ${issue.actual}`).join('\n')
@@ -782,8 +808,21 @@ export function HHCartBadge({
   return <Tooltip content={content}>{badge}</Tooltip>
 }
 
-function HHSummaryDash() {
-  return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+export function HHPlacedBadge({
+  status,
+  error,
+}: {
+  status: HHCartStatus
+  error?: string
+}) {
+  if (status === 'placed') return <HHToneBadge tone="ok">Placed</HHToneBadge>
+  const message = (error ?? '').trim()
+  if (!message) return <HHSummaryDash />
+  return (
+    <Tooltip content={message}>
+      <HHToneBadge tone="error">Failed</HHToneBadge>
+    </Tooltip>
+  )
 }
 
 function HHSummaryChips({
@@ -808,19 +847,33 @@ export function HHDetailsSummary({
   const total = orders.length
   if (total === 0) return <HHSummaryDash />
   const counts = hhDetailsCounts(orders)
-  const present = HH_DETAILS_COUNT_ORDER.filter((status) => counts[status] > 0)
-  if (present.length === 0) return <HHSummaryDash />
-  const unanimous = present.length === 1
-  const tooltip = present.map((status) => `${counts[status]} ${HH_DETAILS_STATUS_LABELS[status]}`).join(' · ')
+  const chips: Array<{ key: string; tone: HHBadgeTone; label: string }> = []
+  if (counts.synced === total) {
+    chips.push({ key: 'synced', tone: 'ok', label: 'Synced' })
+  } else if (counts.synced > 0) {
+    chips.push({ key: 'synced', tone: 'warn', label: `${counts.synced}/${total} Synced` })
+  } else if (counts.pending === total) {
+    chips.push({ key: 'pending', tone: 'warn', label: 'Pending' })
+  } else if (counts.pending > 0) {
+    chips.push({ key: 'pending', tone: 'warn', label: `${counts.pending} Pending` })
+  }
+  if (counts.failed > 0) {
+    chips.push({
+      key: 'failed',
+      tone: 'error',
+      label: counts.failed === total ? 'Failed' : `${counts.failed} Failed`,
+    })
+  }
+  if (chips.length === 0) return <HHSummaryDash />
+  const tooltip = HH_DETAILS_COUNT_ORDER.filter((status) => counts[status] > 0)
+    .map((status) => `${counts[status]} ${HH_DETAILS_STATUS_LABELS[status]}`)
+    .join(' · ')
   return (
     <HHSummaryChips tooltip={tooltip}>
-      {present.map((status) => (
-        <span
-          key={status}
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${DETAILS_BADGE_CLASS[status]}`}
-        >
-          {unanimous ? HH_DETAILS_STATUS_LABELS[status] : `${counts[status]} ${HH_DETAILS_STATUS_LABELS[status]}`}
-        </span>
+      {chips.map((chip) => (
+        <HHToneBadge key={chip.key} tone={chip.tone}>
+          {chip.label}
+        </HHToneBadge>
       ))}
     </HHSummaryChips>
   )
@@ -831,30 +884,82 @@ export function HHCartSummary({
 }: {
   orders: Array<Pick<HHChildOrder, 'cartStatus'>>
 }) {
-  const total = orders.length
-  if (total === 0) return <HHSummaryDash />
-  const counts = hhCartCounts(orders)
-  const present = HH_CART_COUNT_ORDER.filter(
-    (status): status is Exclude<HHCartStatus, 'none'> => status !== 'none' && counts[status] > 0,
-  )
-  if (present.length === 0) return <HHSummaryDash />
-  const none = counts.none
-  const unanimous = present.length === 1 && none === 0
+  const open = orders.filter((order) => order.cartStatus !== 'placed')
+  if (open.length === 0) return <HHSummaryDash />
+  const counts = hhCartCounts(open)
+  const total = open.length
+  const chips: Array<{ key: string; tone: HHBadgeTone; label: string }> = []
+  if (counts.ready === total) {
+    chips.push({ key: 'ready', tone: 'ok', label: 'Ready' })
+  } else if (counts.ready > 0) {
+    chips.push({ key: 'ready', tone: 'warn', label: `${counts.ready}/${total} Ready` })
+  } else if (counts.draft === total) {
+    chips.push({ key: 'draft', tone: 'warn', label: 'Draft' })
+  } else if (counts.draft > 0) {
+    chips.push({ key: 'draft', tone: 'warn', label: `${counts.draft} Draft` })
+  }
+  if (counts.review > 0) {
+    chips.push({
+      key: 'review',
+      tone: 'error',
+      label: counts.review === total ? 'Review' : `${counts.review} Review`,
+    })
+  }
+  if (chips.length === 0) return <HHSummaryDash />
   const tooltip = [
-    ...present.map((status) => `${counts[status]} ${HH_CART_STATUS_LABELS[status]}`),
-    none > 0 ? `${none} none` : '',
+    counts.ready > 0 ? `${counts.ready} Ready` : '',
+    counts.review > 0 ? `${counts.review} Review` : '',
+    counts.draft > 0 ? `${counts.draft} Draft` : '',
+    counts.none > 0 ? `${counts.none} none` : '',
   ]
     .filter(Boolean)
     .join(' · ')
   return (
     <HHSummaryChips tooltip={tooltip}>
-      {present.map((status) => (
-        <span
-          key={status}
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${CART_BADGE_CLASS[status]}`}
-        >
-          {unanimous ? HH_CART_STATUS_LABELS[status] : `${counts[status]} ${HH_CART_STATUS_LABELS[status]}`}
-        </span>
+      {chips.map((chip) => (
+        <HHToneBadge key={chip.key} tone={chip.tone}>
+          {chip.label}
+        </HHToneBadge>
+      ))}
+    </HHSummaryChips>
+  )
+}
+
+export function HHPlacedSummary({
+  orders,
+}: {
+  orders: Array<Pick<HHChildOrder, 'cartStatus' | 'placeError'>>
+}) {
+  const total = orders.length
+  if (total === 0) return <HHSummaryDash />
+  const placed = orders.filter((order) => order.cartStatus === 'placed').length
+  const failed = orders.filter((order) => order.cartStatus !== 'placed' && (order.placeError ?? '').trim()).length
+  const chips: Array<{ key: string; tone: HHBadgeTone; label: string }> = []
+  if (placed === total) {
+    chips.push({ key: 'placed', tone: 'ok', label: 'Placed' })
+  } else if (placed > 0) {
+    chips.push({ key: 'placed', tone: 'warn', label: `${placed}/${total} Placed` })
+  }
+  if (failed > 0) {
+    chips.push({
+      key: 'failed',
+      tone: 'error',
+      label: failed === total ? 'Failed' : `${failed} Failed`,
+    })
+  }
+  if (chips.length === 0) return <HHSummaryDash />
+  const tooltip = [
+    placed > 0 ? `${placed} Placed` : '',
+    failed > 0 ? `${failed} Failed` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <HHSummaryChips tooltip={tooltip}>
+      {chips.map((chip) => (
+        <HHToneBadge key={chip.key} tone={chip.tone}>
+          {chip.label}
+        </HHToneBadge>
       ))}
     </HHSummaryChips>
   )
@@ -914,6 +1019,9 @@ function confirmCopy(pending: HHPendingAction, placeOrderEnabled: boolean) {
   const isGroup = pending.target === 'group'
   const orderId = pending.target === 'order' ? pending.order.orderId : null
   const createdBy = pending.target === 'group' ? pending.group.createdByName.trim() : null
+  const orders = pending.target === 'group' ? pending.group.children : [pending.order]
+  const again = hhHasSyncedDetails(orders)
+  const replaceCart = hhHasCartDraft(orders)
 
   if (pending.type === 'place') {
     const plan =
@@ -967,42 +1075,66 @@ function confirmCopy(pending: HHPendingAction, placeOrderEnabled: boolean) {
 
   if (pending.type === 'resync') {
     return {
-      title: isGroup ? 'Re-sync batch details?' : 'Re-sync order details?',
+      title: isGroup
+        ? again
+          ? 'Re-sync batch details?'
+          : 'Sync batch details?'
+        : again
+          ? 'Re-sync order details?'
+          : 'Sync order details?',
       body: isGroup ? (
         <>
-          This will pull Seller Central details again for every order in the batch created by{' '}
+          This will pull Seller Central details{again ? ' again' : ''} for every order in the batch created by{' '}
           <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{createdBy}</span>
           . Placed orders are not changed.
         </>
       ) : (
         <>
-          This will pull Seller Central details again for order{' '}
+          This will pull Seller Central details{again ? ' again' : ''} for order{' '}
           <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
         </>
       ),
-      confirm: 'Re-sync',
-      busy: 'Re-syncing…',
+      confirm: again ? 'Re-sync' : 'Sync',
+      busy: again ? 'Re-syncing…' : 'Syncing…',
       danger: false,
     }
   }
 
   if (pending.type === 'redraft') {
     return {
-      title: isGroup ? 'Regenerate B2B drafts?' : 'Regenerate B2B draft?',
+      title: isGroup
+        ? replaceCart
+          ? 'Regenerate B2B drafts?'
+          : 'Draft B2B carts?'
+        : replaceCart
+          ? 'Regenerate B2B draft?'
+          : 'Draft B2B cart?',
       body: isGroup ? (
-        <>
-          This will create new Helly Hansen B2B drafts for orders in this batch that are not placed.
-          Existing drafts will be replaced.
-        </>
-      ) : (
+        replaceCart ? (
+          <>
+            This will create new Helly Hansen B2B drafts for orders in this batch whose details are Synced.
+            Orders still missing details are skipped. Existing drafts will be replaced.
+          </>
+        ) : (
+          <>
+            This will create Helly Hansen B2B drafts for orders in this batch whose details are Synced.
+            Orders still missing details are skipped.
+          </>
+        )
+      ) : replaceCart ? (
         <>
           This will create a new Helly Hansen B2B draft for order{' '}
           <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
           {' '}The existing draft will be replaced.
         </>
+      ) : (
+        <>
+          This will create a Helly Hansen B2B draft for order{' '}
+          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+        </>
       ),
-      confirm: 'Regenerate',
-      busy: 'Regenerating…',
+      confirm: replaceCart ? 'Regenerate' : 'Draft',
+      busy: replaceCart ? 'Regenerating…' : 'Drafting…',
       danger: false,
     }
   }
@@ -1088,6 +1220,9 @@ export function HHConfirmModal({
   const [draftCart, setDraftCart] = useState(true)
   const isResync = pending.type === 'resync'
   const isPlace = pending.type === 'place'
+  const replaceCart = hhHasCartDraft(
+    pending.target === 'group' ? pending.group.children : [pending.order],
+  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1099,11 +1234,15 @@ export function HHConfirmModal({
           <HHConfirmSwitch
             checked={draftCart}
             disabled={busy}
-            label="Also regenerate B2B cart"
+            label={replaceCart ? 'Also regenerate B2B cart' : 'Also draft B2B cart'}
             description={
               draftCart
-                ? 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
-                : 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
+                ? replaceCart
+                  ? 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
+                  : 'Creates a Helly Hansen draft after details sync. The order is not placed.'
+                : replaceCart
+                  ? 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
+                  : 'You can draft a cart later after details sync.'
             }
             onChange={setDraftCart}
           />

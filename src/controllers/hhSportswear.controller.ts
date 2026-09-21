@@ -31,6 +31,7 @@ import {
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
 
 export interface HHLineItemDto {
   id: string;
@@ -60,6 +61,7 @@ export interface HHChildOrderDto {
   notes: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
+  placeError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -156,6 +158,7 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
     cartStatus: isCartStatus(order.cartStatus)
       ? order.cartStatus
       : mapLegacyHhStatus((order as { status?: string }).status).cartStatus,
+    placeError: order.placeError ?? '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -215,6 +218,7 @@ function emptyImportedOrder(orderId: string, po: string) {
     detailsStatus: HH_DEFAULT_DETAILS_STATUS,
     cartStatus: HH_DEFAULT_CART_STATUS,
     b2bDraftId: '',
+    placeError: '',
     verifyIssues: [],
     verifyRows: [],
     verifiedAt: null,
@@ -341,12 +345,21 @@ function parseChildren(raw: unknown): ParsedChildOrder[] | string {
   return children;
 }
 
-export const getScSyncStatus = async (_req: Request, res: Response): Promise<void> => {
+function requestBrand(req: Request): HHBrandId {
+  return hhBrandFromRequest(req);
+}
+
+function isBrandGroup(group: { brand?: string } | null | undefined, req: Request): group is NonNullable<typeof group> {
+  return Boolean(group) && hhBrandId(group?.brand) === requestBrand(req);
+}
+
+export const getScSyncStatus = async (req: Request, res: Response): Promise<void> => {
   try {
+    const brand = requestBrand(req);
     const [pendingUnsynced, pendingUndrafted, config] = await Promise.all([
-      countUnsyncedHhOrders(),
-      countUndraftedHhOrders(),
-      getOrCreateHhB2bConfig(false),
+      countUnsyncedHhOrders(brand),
+      countUndraftedHhOrders(brand),
+      getOrCreateHhB2bConfig(brand, false),
     ]);
     const place = getHhCartPlaceRuntime();
     res.json({
@@ -374,6 +387,7 @@ function resetCartForResync(child: IHHChildOrder): void {
   child.cartStatus = HH_DEFAULT_CART_STATUS;
   child.b2bDraftId = '';
   child.referenceNumber = '';
+  child.placeError = '';
   clearHhCartVerification(child);
 }
 
@@ -393,6 +407,7 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
     child.cartStatus = HH_DEFAULT_CART_STATUS;
     child.b2bDraftId = '';
     child.referenceNumber = '';
+    child.placeError = '';
     clearHhCartVerification(child);
     prepared += 1;
   }
@@ -430,7 +445,7 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -466,7 +481,7 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -500,7 +515,7 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -539,7 +554,7 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -578,7 +593,7 @@ export const rerunGroupCartVerify = async (req: Request, res: Response): Promise
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -609,7 +624,7 @@ export const rerunOrderCartVerify = async (req: Request, res: Response): Promise
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -633,10 +648,10 @@ export const rerunOrderCartVerify = async (req: Request, res: Response): Promise
   }
 };
 
-async function respondCartCompare(res: Response, groupId: string, orderId?: string): Promise<void> {
+async function respondCartCompare(req: Request, res: Response, groupId: string, orderId?: string): Promise<void> {
   const compare = await liveCompareHhCarts(groupId, orderId);
   const fresh = await HHOrderGroup.findById(groupId);
-  if (!fresh) {
+  if (!isBrandGroup(fresh, req)) {
     res.status(404).json({ message: 'Group not found' });
     return;
   }
@@ -652,7 +667,7 @@ export const compareGroupCart = async (req: Request, res: Response): Promise<voi
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -661,7 +676,7 @@ export const compareGroupCart = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    await respondCartCompare(res, String(group._id));
+    await respondCartCompare(req, res, String(group._id));
   } catch (error) {
     if (error instanceof HhB2bAuthError) {
       res.status(401).json({ message: error.message });
@@ -684,7 +699,7 @@ export const compareOrderCart = async (req: Request, res: Response): Promise<voi
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -695,7 +710,7 @@ export const compareOrderCart = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    await respondCartCompare(res, String(group._id), String(order._id));
+    await respondCartCompare(req, res, String(group._id), String(order._id));
   } catch (error) {
     if (error instanceof HhB2bAuthError) {
       res.status(401).json({ message: error.message });
@@ -714,7 +729,7 @@ export const placeGroupCart = async (req: Request, res: Response): Promise<void>
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -745,7 +760,7 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -773,30 +788,32 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
   }
 };
 
-export const listGroups = async (_req: Request, res: Response): Promise<void> => {
+export const listGroups = async (req: Request, res: Response): Promise<void> => {
   try {
-    const groups = await HHOrderGroup.find().sort({ createdAt: -1 }).lean();
-    queueMissingImageBackfill(groups);
-    queueMissingCartDrafts(groups);
-    queueMissingCartVerifies(groups);
+    const brand = requestBrand(req);
+    const groups = await HHOrderGroup.find({ brand }).sort({ createdAt: -1 }).lean();
+    queueMissingImageBackfill(brand, groups);
+    queueMissingCartDrafts(brand, groups);
+    queueMissingCartVerifies(brand, groups);
     res.json({ data: groups.map(serializeGroup) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch HH Sportswear groups', error: (error as Error).message });
   }
 };
 
-let queuedImageBackfill = false;
-let queuedCartBackfill = false;
-let queuedCartVerifyBackfill = false;
+const queuedImageBackfill = new Set<string>();
+const queuedCartBackfill = new Set<string>();
+const queuedCartVerifyBackfill = new Set<string>();
 
 function queueMissingImageBackfill(
+  brand: HHBrandId,
   groups: Array<{
     _id: unknown;
     children?: Array<{ detailsStatus?: string; items?: Array<{ imageUrl?: string; tax?: number }> }>;
   }>
 ): void {
-  if (queuedImageBackfill) return;
-  queuedImageBackfill = true;
+  if (queuedImageBackfill.has(brand)) return;
+  queuedImageBackfill.add(brand);
   for (const group of groups) {
     const needsImages = (group.children ?? []).some(
       (child) =>
@@ -808,6 +825,7 @@ function queueMissingImageBackfill(
 }
 
 function queueMissingCartDrafts(
+  brand: HHBrandId,
   groups: Array<{
     _id: unknown;
     children?: Array<{
@@ -818,13 +836,13 @@ function queueMissingCartDrafts(
     }>;
   }>
 ): void {
-  if (queuedCartBackfill) return;
-  queuedCartBackfill = true;
+  if (queuedCartBackfill.has(brand)) return;
+  queuedCartBackfill.add(brand);
   void (async () => {
     try {
-      await loadHhB2bCookie();
+      await loadHhB2bCookie(brand);
     } catch (err) {
-      queuedCartBackfill = false;
+      queuedCartBackfill.delete(brand);
       if (!(err instanceof HhB2bAuthError)) {
         console.warn('[hh-cart-draft] Could not check B2B session before backfill', err);
       }
@@ -843,6 +861,7 @@ function queueMissingCartDrafts(
 }
 
 function queueMissingCartVerifies(
+  brand: HHBrandId,
   groups: Array<{
     _id: unknown;
     children?: Array<{
@@ -852,13 +871,13 @@ function queueMissingCartVerifies(
     }>;
   }>
 ): void {
-  if (queuedCartVerifyBackfill) return;
-  queuedCartVerifyBackfill = true;
+  if (queuedCartVerifyBackfill.has(brand)) return;
+  queuedCartVerifyBackfill.add(brand);
   void (async () => {
     try {
-      await loadHhB2bCookie();
+      await loadHhB2bCookie(brand);
     } catch (err) {
-      queuedCartVerifyBackfill = false;
+      queuedCartVerifyBackfill.delete(brand);
       if (!(err instanceof HhB2bAuthError)) {
         console.warn('[hh-cart-verify] Could not check B2B session before backfill', err);
       }
@@ -886,7 +905,7 @@ export const getGroup = async (req: Request, res: Response): Promise<void> => {
     }
 
     const group = await HHOrderGroup.findById(groupId).lean();
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -918,6 +937,7 @@ export const createGroup = async (req: Request, res: Response): Promise<void> =>
     }
 
     const group = await HHOrderGroup.create({
+      brand: requestBrand(req),
       notes: asString(body.notes, 4000),
       detailsStatus: split.detailsStatus,
       cartStatus: split.cartStatus,
@@ -947,8 +967,8 @@ export const updateGroupNotes = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const group = await HHOrderGroup.findByIdAndUpdate(
-      groupId,
+    const group = await HHOrderGroup.findOneAndUpdate(
+      { _id: groupId, brand: requestBrand(req) },
       { notes: asString(body.notes, 4000) },
       { new: true }
     );
@@ -982,7 +1002,7 @@ export const updateOrderNotes = async (req: Request, res: Response): Promise<voi
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -1012,7 +1032,7 @@ export const deleteGroup = async (req: Request, res: Response): Promise<void> =>
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -1041,7 +1061,7 @@ export const deleteOrder = async (req: Request, res: Response): Promise<void> =>
     }
 
     const group = await HHOrderGroup.findById(groupId);
-    if (!group) {
+    if (!isBrandGroup(group, req)) {
       res.status(404).json({ message: 'Group not found' });
       return;
     }
@@ -1114,6 +1134,7 @@ export const importGroup = async (req: Request, res: Response): Promise<void> =>
     }
 
     const group = await HHOrderGroup.create({
+      brand: requestBrand(req),
       notes: '',
       sourceFileName,
       detailsStatus: HH_DEFAULT_DETAILS_STATUS,

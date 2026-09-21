@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { getHHScSyncStatus } from '../../lib/hhSportswear'
+import { useParams } from 'react-router-dom'
+import { getHHScSyncStatus, hhWaitingForCartCount } from '../../lib/hhSportswear'
 import type { HHScSyncStatus as HHScSyncSnapshot } from '../../lib/hhSportswear'
 import { useHHList } from '../../context/HHListContext'
 
@@ -16,7 +17,23 @@ function formatAgo(iso: string | null): string {
   return `${Math.max(1, Math.round(ms / 3_600_000))}h ago`
 }
 
-function statusLabel(data: HHScSyncSnapshot): string {
+function isWorkerBusy(data: HHScSyncSnapshot): boolean {
+  const cart = data.cart
+  return Boolean(
+    data.running ||
+      data.queuedGroups > 0 ||
+      cart?.running ||
+      cart?.verifying ||
+      cart?.placing ||
+      (cart?.queued ?? 0) > 0,
+  )
+}
+
+function isWorkerError(data: HHScSyncSnapshot): boolean {
+  return Boolean((data.lastError || data.cart?.lastError) && !data.running && !data.cart?.running)
+}
+
+function statusLabel(data: HHScSyncSnapshot, waitingForCart: number): string {
   const cart = data.cart
   const filling = data.running
     ? data.currentOrderId
@@ -41,15 +58,14 @@ function statusLabel(data: HHScSyncSnapshot): string {
   if (cart && cart.queued > 0) return `${cart.queued} cart${cart.queued === 1 ? '' : 's'} queued`
   if (data.lastError) return 'Details fill paused'
   if (cart?.lastError) return 'Cart draft paused'
-  if (data.pendingUnsynced > 0) return `${data.pendingUnsynced} pending details`
-  if (cart && cart.pendingUndrafted > 0) {
-    return `${cart.pendingUndrafted} waiting for cart`
-  }
+  if (waitingForCart > 0) return `${waitingForCart} waiting for cart`
   return 'Idle'
 }
 
 export function HHScSyncStatus() {
-  const { refreshSilent } = useHHList()
+  const { refreshSilent, brand, level, getGroup } = useHHList()
+  const { groupId = '' } = useParams<{ groupId: string }>()
+  const group = groupId ? getGroup(groupId) : undefined
   const [data, setData] = useState<HHScSyncSnapshot | null>(null)
   const refreshSilentRef = useRef(refreshSilent)
   refreshSilentRef.current = refreshSilent
@@ -68,7 +84,7 @@ export function HHScSyncStatus() {
     }
 
     const load = () => {
-      getHHScSyncStatus()
+      getHHScSyncStatus(brand)
         .then((res) => {
           if (cancelled) return
           setData(res.data)
@@ -95,22 +111,18 @@ export function HHScSyncStatus() {
       cancelled = true
       stop()
     }
-  }, [])
+  }, [brand])
 
   if (!data) return null
 
+  const waitingForCart = level === 'orders' && group ? hhWaitingForCartCount(group.children) : 0
+  const busy = isWorkerBusy(data)
+  const error = isWorkerError(data)
+  const showWaiting = level === 'orders' && waitingForCart > 0
+  if (!busy && !error && !showWaiting) return null
+
   const cart = data.cart
-  const tone =
-    (data.lastError || cart?.lastError) && !data.running && !cart?.running
-      ? 'error'
-      : data.running || cart?.running || cart?.verifying || cart?.placing
-        ? 'run'
-        : data.pendingUnsynced > 0 ||
-            data.queuedGroups > 0 ||
-            (cart?.pendingUndrafted ?? 0) > 0 ||
-            (cart?.queued ?? 0) > 0
-          ? 'wait'
-          : 'idle'
+  const tone = error ? 'error' : busy ? 'run' : 'wait'
   const ago = formatAgo(data.lastSuccessAt || cart?.lastSuccessAt || null)
   const title = [
     data.lastError ? `Details error: ${data.lastError}` : null,
@@ -128,9 +140,7 @@ export function HHScSyncStatus() {
           ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
           : tone === 'run'
             ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:text-[var(--accent-200)]'
-            : tone === 'wait'
-              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-              : 'bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]'
+            : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
       }`}
       title={title}
     >
@@ -140,13 +150,11 @@ export function HHScSyncStatus() {
             ? 'bg-red-500'
             : tone === 'run'
               ? 'animate-pulse bg-[var(--accent-100)]'
-              : tone === 'wait'
-                ? 'bg-amber-500'
-                : 'bg-slate-400 dark:bg-[var(--bg-300)]'
+              : 'bg-amber-500'
         }`}
         aria-hidden="true"
       />
-      <span className="truncate">{statusLabel(data)}</span>
+      <span className="truncate">{statusLabel(data, waitingForCart)}</span>
     </span>
   )
 }

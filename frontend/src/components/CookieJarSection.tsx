@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { authApi } from '../lib/api'
+import { HH_BRANDS } from '../lib/hhBrand'
 import type { CookieJar, CookieJarListResponse, CookieJarResponse } from '../types/label'
+
+function hhJarHelp(key: string): string | null {
+  const brand = Object.values(HH_BRANDS).find((item) => item.cookieJarKey === key)
+  if (!brand) return null
+  return `Manual session for ${brand.supplier} B2B (${brand.catalog}). Prefer Dropship (B2B) → ${brand.name} → Configurations. Not refreshed by Sphere.`
+}
 
 interface Draft {
   name: string
@@ -139,7 +146,8 @@ export default function CookieJarSection({
           </div>
           <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
             Schedule background cookie refreshes. The worker stores the latest cookie; this page never shows it.
-            Helly Hansen Sports B2B is stored here too, but that session is pasted — Sphere does not refresh it.
+            Helly Hansen Sports and Work B2B sessions are stored here too, but those are pasted — Sphere does not
+            refresh them.
           </p>
         </div>
       </div>
@@ -224,7 +232,8 @@ export default function CookieJarSection({
 
                 {jar.manual && (
                   <p className="px-4 py-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
-                    Manual session for Helly Hansen Sports B2B (ASAPSPORT). Prefer Dropship (B2B) → HH Sportswear → Configurations. Not refreshed by Sphere.
+                    {hhJarHelp(jar.key) ||
+                      'Manual session. Prefer Dropship (B2B) → Configurations. Not refreshed by Sphere.'}
                   </p>
                 )}
 

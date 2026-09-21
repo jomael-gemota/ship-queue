@@ -68,7 +68,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export function HHImportButton() {
-  const { setGroups, handleClearFilters, setPage } = useHHList()
+  const { brand, setGroups, handleClearFilters, setPage } = useHHList()
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<ImportTab>('paste')
   const [paste, setPaste] = useState('')
@@ -139,8 +139,8 @@ export function HHImportButton() {
     setImportBusy(true)
     setImportError(null)
     const request = usingPaste
-      ? importHHSpreadsheet({ text: paste }, { fetchDetails, draftCart: fetchDetails && draftCart })
-      : importHHSpreadsheet(file!, { fetchDetails, draftCart: fetchDetails && draftCart })
+      ? importHHSpreadsheet(brand, { text: paste }, { fetchDetails, draftCart: fetchDetails && draftCart })
+      : importHHSpreadsheet(brand, file!, { fetchDetails, draftCart: fetchDetails && draftCart })
     request
       .then((res) => {
         flashHHGroupRow(res.data.id)
@@ -454,7 +454,7 @@ export function HHImportButton() {
               <button
                 type="button"
                 disabled={importBusy}
-                onClick={downloadHHImportTemplate}
+                onClick={() => downloadHHImportTemplate(brand)}
                 className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-[var(--accent-200)] bg-transparent px-3 py-2.5 text-sm font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[var(--accent-200)] dark:text-[var(--accent-200)] dark:hover:bg-[var(--primary-100)]"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

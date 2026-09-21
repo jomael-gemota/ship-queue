@@ -330,7 +330,7 @@ function lastCheckedSubtitle(orders: HHChildOrder[], live: boolean): string {
 }
 
 function useCompareModal(groupId: string, orderId?: string) {
-  const { setGroups } = useHHList()
+  const { setGroups, brand } = useHHList()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -348,7 +348,7 @@ function useCompareModal(groupId: string, orderId?: string) {
   const runCompare = () => {
     setBusy(true)
     setError(null)
-    compareHHCart(groupId, orderId)
+    compareHHCart(brand, groupId, orderId)
       .then((res) => {
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
         setResults(res.compare)

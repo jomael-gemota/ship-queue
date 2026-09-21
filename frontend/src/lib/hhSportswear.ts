@@ -1,4 +1,9 @@
+import { hhApiPath, type HHBrandId } from './hhBrand'
 import { authApi } from './api'
+
+function hhPath(brand: HHBrandId, rest = '') {
+  return hhApiPath(brand, rest)
+}
 
 export type HHDetailsStatus = 'pending' | 'synced' | 'failed'
 export type HHCartStatus = 'none' | 'draft' | 'ready' | 'review' | 'placed'
@@ -39,8 +44,72 @@ export function hhOrderVerifiedResult(
   return null
 }
 
+export function hhHasSyncedDetails(orders: Array<Pick<HHChildOrder, 'detailsStatus'>>): boolean {
+  return orders.some((order) => order.detailsStatus === 'synced')
+}
+
+export function hhHasCartDraft(orders: Array<Pick<HHChildOrder, 'cartStatus'>>): boolean {
+  return orders.some((order) => order.cartStatus !== 'none')
+}
+
+export function hhOrderDetailsTitle(order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus'>): string {
+  if (order.cartStatus === 'placed') return 'Placed orders cannot be re-synced'
+  return order.detailsStatus === 'synced' ? 'Re-sync details for this order' : 'Sync details for this order'
+}
+
+export function hhGroupDetailsTitle(
+  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus'>>,
+): string {
+  if (orders.length > 0 && orders.every((order) => order.cartStatus === 'placed')) {
+    return 'Placed orders cannot be re-synced'
+  }
+  return hhHasSyncedDetails(orders) ? 'Re-sync details for this batch' : 'Sync details for this batch'
+}
+
 export function hhOrderCanPlace(order: Pick<HHChildOrder, 'cartStatus'>): boolean {
   return order.cartStatus === 'ready'
+}
+
+export function hhOrderCanDraft(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
+): boolean {
+  if (order.cartStatus === 'placed') return false
+  if (order.detailsStatus !== 'synced') return false
+  return order.items.length > 0
+}
+
+export function hhOrderWaitingForCart(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
+): boolean {
+  return order.cartStatus === 'none' && hhOrderCanDraft(order)
+}
+
+export function hhWaitingForCartCount(
+  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+): number {
+  return orders.filter(hhOrderWaitingForCart).length
+}
+
+export function hhDraftableOrders(
+  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+) {
+  return orders.filter(hhOrderCanDraft)
+}
+
+export function hhOrderDraftTitle(order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>): string {
+  if (order.cartStatus === 'placed') return 'Placed orders cannot have their cart regenerated'
+  if (!hhOrderCanDraft(order)) return 'Cart draft needs synced order details'
+  return order.cartStatus === 'none' ? 'Draft B2B cart for this order' : 'Regenerate B2B draft for this order'
+}
+
+export function hhGroupDraftTitle(
+  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+): string {
+  if (orders.length > 0 && orders.every((order) => order.cartStatus === 'placed')) {
+    return 'Placed orders cannot have their cart regenerated'
+  }
+  if (hhDraftableOrders(orders).length === 0) return 'Cart draft needs synced order details'
+  return hhHasCartDraft(orders) ? 'Regenerate B2B draft for this batch' : 'Draft B2B cart for this batch'
 }
 
 export function hhPlaceableOrders<T extends Pick<HHChildOrder, 'cartStatus'>>(orders: T[]): T[] {
@@ -158,6 +227,7 @@ export interface HHChildOrder {
   notes: string
   detailsStatus: HHDetailsStatus
   cartStatus: HHCartStatus
+  placeError: string
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null
@@ -269,8 +339,8 @@ export interface HHImportMeta {
   incompleteRowsSkipped: number
 }
 
-export function listHHGroups() {
-  return authApi.get<{ data: HHOrderGroup[] }>('/hh-sportswear')
+export function listHHGroups(brand: HHBrandId) {
+  return authApi.get<{ data: HHOrderGroup[] }>(hhPath(brand))
 }
 
 export interface HHCartDraftStatus {
@@ -303,8 +373,8 @@ export interface HHScSyncStatus {
   cart?: HHCartDraftStatus
 }
 
-export function getHHScSyncStatus() {
-  return authApi.get<{ data: HHScSyncStatus }>('/hh-sportswear/sc-sync')
+export function getHHScSyncStatus(brand: HHBrandId) {
+  return authApi.get<{ data: HHScSyncStatus }>(hhPath(brand, '/sc-sync'))
 }
 
 export interface HHB2bConfig {
@@ -326,15 +396,16 @@ export type HHB2bConfigPatch = Partial<{
   placeOrderEnabled: boolean
 }>
 
-export function getHHB2bConfig() {
-  return authApi.get<{ data: HHB2bConfig }>('/hh-sportswear/config')
+export function getHHB2bConfig(brand: HHBrandId) {
+  return authApi.get<{ data: HHB2bConfig }>(hhPath(brand, '/config'))
 }
 
-export function updateHHB2bConfig(patch: HHB2bConfigPatch) {
-  return authApi.patch<{ data: HHB2bConfig }>('/hh-sportswear/config', patch)
+export function updateHHB2bConfig(brand: HHBrandId, patch: HHB2bConfigPatch) {
+  return authApi.patch<{ data: HHB2bConfig }>(hhPath(brand, '/config'), patch)
 }
 
 export function importHHSpreadsheet(
+  brand: HHBrandId,
   input: File | { text: string },
   options?: { fetchDetails?: boolean; draftCart?: boolean },
 ) {
@@ -343,75 +414,80 @@ export function importHHSpreadsheet(
   else body.append('text', input.text)
   body.append('fetchDetails', options?.fetchDetails === false ? 'false' : 'true')
   body.append('draftCart', options?.draftCart === false ? 'false' : 'true')
-  return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>('/hh-sportswear/import', body)
+  return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>(hhPath(brand, '/import'), body)
 }
 
-export function rerunHHGroupScSync(groupId: string, options?: { draftCart?: boolean }) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/sc-sync`, {
+export function rerunHHGroupScSync(brand: HHBrandId, groupId: string, options?: { draftCart?: boolean }) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
   })
 }
 
-export function rerunHHOrderScSync(groupId: string, orderId: string, options?: { draftCart?: boolean }) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/sc-sync`, {
+export function rerunHHOrderScSync(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  options?: { draftCart?: boolean },
+) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
   })
 }
 
-export function rerunHHGroupCartDraft(groupId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/cart-draft`)
+export function rerunHHGroupCartDraft(brand: HHBrandId, groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/cart-draft`))
 }
 
-export function rerunHHOrderCartDraft(groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/cart-draft`)
+export function rerunHHOrderCartDraft(brand: HHBrandId, groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/cart-draft`))
 }
 
-export function rerunHHGroupCartVerify(groupId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/cart-verify`)
+export function rerunHHGroupCartVerify(brand: HHBrandId, groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/cart-verify`))
 }
 
-export function rerunHHOrderCartVerify(groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/cart-verify`)
+export function rerunHHOrderCartVerify(brand: HHBrandId, groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/cart-verify`))
 }
 
-export function compareHHCart(groupId: string, orderId?: string) {
+export function compareHHCart(brand: HHBrandId, groupId: string, orderId?: string) {
   const path = orderId
-    ? `/hh-sportswear/${groupId}/orders/${orderId}/cart-compare`
-    : `/hh-sportswear/${groupId}/cart-compare`
+    ? hhPath(brand, `/${groupId}/orders/${orderId}/cart-compare`)
+    : hhPath(brand, `/${groupId}/cart-compare`)
   return authApi.post<{ data: HHOrderGroup; compare: HHCartCompareOrder[] }>(path)
 }
 
-export function placeHHGroup(groupId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/place`)
+export function placeHHGroup(brand: HHBrandId, groupId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/place`))
 }
 
-export function placeHHOrder(groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}/place`)
+export function placeHHOrder(brand: HHBrandId, groupId: string, orderId: string) {
+  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/place`))
 }
 
-export function updateHHGroupNotes(id: string, notes: string) {
-  return authApi.patch<{ data: HHOrderGroup }>(`/hh-sportswear/${id}`, { notes })
+export function updateHHGroupNotes(brand: HHBrandId, id: string, notes: string) {
+  return authApi.patch<{ data: HHOrderGroup }>(hhPath(brand, `/${id}`), { notes })
 }
 
-export function updateHHOrderNotes(groupId: string, orderId: string, notes: string) {
-  return authApi.patch<{ data: HHOrderGroup }>(`/hh-sportswear/${groupId}/orders/${orderId}`, { notes })
+export function updateHHOrderNotes(brand: HHBrandId, groupId: string, orderId: string, notes: string) {
+  return authApi.patch<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}`), { notes })
 }
 
-export function deleteHHGroup(id: string) {
-  return authApi.delete<{ data: { deleted: boolean } }>(`/hh-sportswear/${id}`)
+export function deleteHHGroup(brand: HHBrandId, id: string) {
+  return authApi.delete<{ data: { deleted: boolean } }>(hhPath(brand, `/${id}`))
 }
 
-export function deleteHHOrder(groupId: string, orderId: string) {
-  return authApi.delete<{ data: { deleted: boolean } }>(`/hh-sportswear/${groupId}/orders/${orderId}`)
+export function deleteHHOrder(brand: HHBrandId, groupId: string, orderId: string) {
+  return authApi.delete<{ data: { deleted: boolean } }>(hhPath(brand, `/${groupId}/orders/${orderId}`))
 }
 
-export function downloadHHImportTemplate() {
+export function downloadHHImportTemplate(brand: HHBrandId) {
   const csv = 'PO Number,Order ID\n100001,111-0000000-0000000\n'
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'hh-sportswear-import-template.csv'
+  a.download = `${hhPath(brand).replace(/^\//, '')}-import-template.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -575,6 +651,7 @@ export function hhGroupMatchesQuery(group: HHOrderGroup, rawQuery: string): bool
   if (!query) return true
 
   if (
+    includesQuery(group.id, query) ||
     includesQuery(group.createdByName, query) ||
     includesQuery(group.createdByEmail, query) ||
     includesQuery(group.notes, query) ||

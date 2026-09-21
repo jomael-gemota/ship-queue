@@ -3,13 +3,13 @@ import { Link, useLocation, useOutlet, useParams } from 'react-router-dom'
 import { HHFilterBar } from '../components/hh/HHFilterBar'
 import { HHBackButton, HHBreadcrumb } from '../components/hh/hhUi'
 import { HHImportButton } from '../components/hh/HHImportButton'
-import { HHListProvider } from '../context/HHListContext'
-import { HH_SPORTSWEAR_PATH } from '../lib/dropship'
+import { HHListProvider, useHHList } from '../context/HHListContext'
 import { hhBreadcrumbPage, hhDirection, hhParentPath, prefersReducedMotion } from '../lib/hhNav'
 
 function HHSportswearShell() {
   const location = useLocation()
   const { groupId } = useParams<{ groupId: string }>()
+  const { brandName, brandPath } = useHHList()
   const outlet = useOutlet()
   const pathnameRef = useRef(location.pathname)
   const snapshotRef = useRef(outlet)
@@ -44,13 +44,13 @@ function HHSportswearShell() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <HHBreadcrumb current={page} groupId={groupId} />
+        <HHBreadcrumb current={page} groupId={groupId} brandName={brandName} brandPath={brandPath} />
         {backTo ? (
           <HHBackButton to={backTo} />
         ) : (
           <div className="flex items-center gap-2">
             <Link
-              to={`${HH_SPORTSWEAR_PATH}/configurations`}
+              to={`${brandPath}/configurations`}
               className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-[var(--primary-100)] dark:border-[var(--bg-300)] dark:text-[var(--text-100)] dark:hover:bg-[var(--primary-100)]"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

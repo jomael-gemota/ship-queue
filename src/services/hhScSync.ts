@@ -99,8 +99,9 @@ export function getHhScSyncRuntime(): HhScSyncRuntime {
   };
 }
 
-export async function countUnsyncedHhOrders(): Promise<number> {
+export async function countUnsyncedHhOrders(brand?: string): Promise<number> {
   const rows = await HHOrderGroup.aggregate<{ count: number }>([
+    ...(brand ? [{ $match: { brand } }] : []),
     { $unwind: '$children' },
     { $match: { 'children.detailsStatus': 'pending' } },
     { $count: 'count' },

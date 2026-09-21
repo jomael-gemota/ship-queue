@@ -37,12 +37,14 @@ function App() {
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
-                <Route path="/ordering/hh-sportswear" element={<HHSportswearLayout />}>
-                  <Route index element={<HHSportswear />} />
-                  <Route path="configurations" element={<HHSportswearConfig />} />
-                  <Route path=":groupId" element={<HHSportswearOrders />} />
-                  <Route path=":groupId/orders/:orderId" element={<HHSportswearItems />} />
-                </Route>
+                {['/ordering/hh-sportswear', '/ordering/hh-workwear'].map((path) => (
+                  <Route key={path} path={path} element={<HHSportswearLayout />}>
+                    <Route index element={<HHSportswear />} />
+                    <Route path="configurations" element={<HHSportswearConfig />} />
+                    <Route path=":groupId" element={<HHSportswearOrders />} />
+                    <Route path=":groupId/orders/:orderId" element={<HHSportswearItems />} />
+                  </Route>
+                ))}
                 <Route path="/settings" element={<Settings />} />
                 {/* Reachable by all authenticated users; the page itself shows a
                     blocking note and skips data loading for non-admins. */}

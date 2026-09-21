@@ -1,8 +1,14 @@
-import { HH_SPORTSWEAR_PATH } from './dropship'
+import { hhBrandFromPath, hhBrandPath } from './hhBrand'
+
+function hhSlugIndex(parts: string[]): number {
+  const sports = parts.indexOf('hh-sportswear')
+  if (sports !== -1) return sports
+  return parts.indexOf('hh-workwear')
+}
 
 export function hhDepth(pathname: string): number {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean)
-  const hhIndex = parts.indexOf('hh-sportswear')
+  const hhIndex = hhSlugIndex(parts)
   if (hhIndex === -1) return 0
   const rest = parts.slice(hhIndex + 1)
   if (rest[0] === 'configurations') return 1
@@ -15,7 +21,7 @@ export type HHPage = 'list' | 'orders' | 'items' | 'config'
 
 export function hhBreadcrumbPage(pathname: string): HHPage {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean)
-  const hhIndex = parts.indexOf('hh-sportswear')
+  const hhIndex = hhSlugIndex(parts)
   const rest = hhIndex === -1 ? [] : parts.slice(hhIndex + 1)
   if (rest[0] === 'configurations') return 'config'
   const depth = hhDepth(pathname)
@@ -25,9 +31,10 @@ export function hhBreadcrumbPage(pathname: string): HHPage {
 }
 
 export function hhParentPath(pathname: string, groupId?: string): string | null {
+  const brand = hhBrandFromPath(pathname)
   const page = hhBreadcrumbPage(pathname)
-  if (page === 'items' && groupId) return `${HH_SPORTSWEAR_PATH}/${groupId}`
-  if (page === 'orders' || page === 'config') return HH_SPORTSWEAR_PATH
+  if (page === 'items' && groupId) return hhBrandPath(brand, groupId)
+  if (page === 'orders' || page === 'config') return hhBrandPath(brand)
   return null
 }
 

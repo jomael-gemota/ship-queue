@@ -5,6 +5,7 @@ import HHOrderGroup, {
   rollupHhDetailsStatus,
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { hhBrandId } from '../lib/hhBrand';
 import { fetchHhB2bDocument, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import {
   compareSnapshots,
@@ -117,8 +118,8 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
   let config;
   let cookie;
   try {
-    config = await loadHhB2bConfig();
-    cookie = await loadHhB2bCookie();
+    config = await loadHhB2bConfig(hhBrandId(group.brand));
+    cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   } catch (err) {
     if (err instanceof HhB2bAuthError) {
       console.warn(`${LOG} ${err.message}`);
@@ -256,8 +257,8 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
     return Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
   });
   if (needsLive) {
-    config = await loadHhB2bConfig();
-    cookie = await loadHhB2bCookie();
+    config = await loadHhB2bConfig(hhBrandId(group.brand));
+    cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   }
 
   const results: HhLiveCompareOrder[] = [];

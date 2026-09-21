@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HHActionRow, HHCartSummary, HHConfirmModal, HHCopyIdButton, HHDetailsSummary, HHPlaceButton, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHCartSummary, HHConfirmModal, HHCopyIdButton, HHDetailsSummary, HHPlaceButton, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
-import { deleteHHGroup, formatCreatedAt, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
+import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   ClockIcon,
   DeleteBatchButton,
@@ -59,6 +59,8 @@ export default function HHSportswear() {
     placeOrders,
     placeBusyId,
     placeOrderEnabled,
+    brand,
+    brandPath,
   } = useHHList()
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -171,6 +173,9 @@ export default function HHSportswear() {
                 <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Cart" />
               </Th>
               <Th>
+                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Order Placed" />
+              </Th>
+              <Th>
                 <HeaderLabel icon={<EyeIcon className="h-3.5 w-3.5" />} text="Orders" />
               </Th>
               <HHRowActionsHeader />
@@ -179,13 +184,13 @@ export default function HHSportswear() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {loadState === 'loading' ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={8} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   Loading groups…
                 </Td>
               </tr>
             ) : loadState === 'error' ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+                <Td colSpan={8} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
                   <p>{loadError || 'Failed to load groups.'}</p>
                   <button
                     type="button"
@@ -198,7 +203,7 @@ export default function HHSportswear() {
               </tr>
             ) : paginated.length === 0 ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={8} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {selectedDetailsStatus || selectedCartStatus
                     ? searchInput.trim()
                       ? `No groups match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
@@ -213,6 +218,7 @@ export default function HHSportswear() {
                 const orderCount = group.children.length
                 const deleteLocked = hhGroupHasPlaced(group)
                 const mutateLocked = hhGroupAllPlaced(group)
+                const canDraft = hhDraftableOrders(group.children).length > 0
                 return (
                   <HHActionRow
                     key={group.id}
@@ -250,8 +256,11 @@ export default function HHSportswear() {
                       <HHCartSummary orders={group.children} />
                     </Td>
                     <Td compact>
+                      <HHPlacedSummary orders={group.children} />
+                    </Td>
+                    <Td compact>
                       <Link
-                        to={`/ordering/hh-sportswear/${group.id}`}
+                        to={`${brandPath}/${group.id}`}
                         className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[var(--accent-100)] hover:underline dark:text-[var(--accent-200)]"
                       >
                         <EyeIcon className="h-3.5 w-3.5" />
@@ -264,23 +273,15 @@ export default function HHSportswear() {
                     >
                       <HHResyncButton
                         size="sm"
-                        title={
-                          mutateLocked
-                            ? 'Placed orders cannot be re-synced'
-                            : 'Re-sync details for this batch'
-                        }
+                        title={hhGroupDetailsTitle(group.children)}
                         disabled={mutateLocked}
                         busy={resyncBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'resync', target: 'group', group })}
                       />
                       <HHRedraftButton
                         size="sm"
-                        title={
-                          mutateLocked
-                            ? 'Placed orders cannot have their cart regenerated'
-                            : 'Regenerate B2B draft for this batch'
-                        }
-                        disabled={mutateLocked}
+                        title={hhGroupDraftTitle(group.children)}
+                        disabled={mutateLocked || !canDraft}
                         busy={cartDraftBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
@@ -332,7 +333,7 @@ export default function HHSportswear() {
             setActionError(null)
 
             if (pending.type === 'delete') {
-              deleteHHGroup(groupId)
+              deleteHHGroup(brand, groupId)
                 .then(() => {
                   setPendingAction(null)
                   setActionError(null)
@@ -362,10 +363,10 @@ export default function HHSportswear() {
                   error instanceof Error
                     ? error.message
                     : pending.type === 'resync'
-                      ? 'Failed to re-sync details'
-                      : pending.type === 'place'
-                        ? 'Failed to place orders'
-                        : 'Failed to regenerate draft',
+                      ? 'Failed to sync details'
+                    : pending.type === 'place'
+                      ? 'Failed to place orders'
+                      : 'Failed to draft cart',
                 )
               })
               .finally(() => setActionBusy(false))

@@ -1,3 +1,5 @@
-export const HH_B2B_DEFAULT_BASE_URL = 'https://b2bsport.hellyhansen.com';
-export const HH_B2B_DEFAULT_CATALOG = 'ASAPSPORT';
-export const HH_B2B_DEFAULT_ACCOUNT_ID = '9014876';
+import { HH_BRANDS } from './hhBrand';
+
+export const HH_B2B_DEFAULT_BASE_URL = HH_BRANDS.sportswear.baseUrl;
+export const HH_B2B_DEFAULT_CATALOG = HH_BRANDS.sportswear.catalog;
+export const HH_B2B_DEFAULT_ACCOUNT_ID = HH_BRANDS.sportswear.accountId;

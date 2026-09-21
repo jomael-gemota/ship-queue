@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
+import { hhBrand, hhBrandFromPath, type HHBrandId } from '../lib/hhBrand'
 import { flashHHGroupRow } from '../components/hh/hhUi'
 import {
   hhGroupMatchesQuery,
@@ -52,6 +53,9 @@ const EMPTY_FILTERS: HHLevelFilters = { detailsStatus: '', cartStatus: '', searc
 export type HHLoadState = 'loading' | 'ready' | 'error'
 
 interface HHListContextValue {
+  brand: HHBrandId
+  brandName: string
+  brandPath: string
   level: HHPage
   loadState: HHLoadState
   loadError: string | null
@@ -102,6 +106,8 @@ const HHListContext = createContext<HHListContextValue | null>(null)
 export function HHListProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const { groupId = '', orderId = '' } = useParams<{ groupId: string; orderId: string }>()
+  const brand = hhBrandFromPath(location.pathname)
+  const brandDef = hhBrand(brand)
   const level = hhBreadcrumbPage(location.pathname)
   const pathnameRef = useRef(location.pathname)
 
@@ -131,7 +137,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       setLoadError(null)
     }
 
-    listHHGroups()
+    listHHGroups(brand)
       .then((res) => {
         if (gen !== fetchGenRef.current) return
         const incoming = res.data
@@ -152,12 +158,14 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       .catch((error: unknown) => {
         if (gen !== fetchGenRef.current) return
         if (mode === 'silent' && knownIdsRef.current) return
-        setLoadError(error instanceof Error ? error.message : 'Failed to load HH Sportswear groups')
+        setLoadError(error instanceof Error ? error.message : `Failed to load ${brandDef.name} groups`)
         setLoadState('error')
       })
-  }, [])
+  }, [brand, brandDef.name])
 
   useEffect(() => {
+    knownIdsRef.current = null
+    setGroups([])
     refreshGroups('initial')
     return () => {
       fetchGenRef.current += 1
@@ -222,7 +230,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
-    getHHB2bConfig()
+    getHHB2bConfig(brand)
       .then((res) => {
         if (!cancelled) setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
       })
@@ -232,7 +240,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [location.pathname, reloadToken])
+  }, [location.pathname, reloadToken, brand])
 
   const currentFilters = filtersByLevel[level]
   const selectedDetailsStatus = currentFilters.detailsStatus
@@ -290,6 +298,9 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   const value: HHListContextValue = {
+    brand,
+    brandName: brandDef.name,
+    brandPath: brandDef.path,
     level,
     loadState,
     loadError,
@@ -302,8 +313,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       setResyncBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderScSync(groupId, orderId, options)
-          : await rerunHHGroupScSync(groupId, options)
+          ? await rerunHHOrderScSync(brand, groupId, orderId, options)
+          : await rerunHHGroupScSync(brand, groupId, options)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
         console.error(error)
@@ -318,8 +329,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       setCartDraftBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderCartDraft(groupId, orderId)
-          : await rerunHHGroupCartDraft(groupId)
+          ? await rerunHHOrderCartDraft(brand, groupId, orderId)
+          : await rerunHHGroupCartDraft(brand, groupId)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
         console.error(error)
@@ -334,8 +345,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       setCartVerifyBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderCartVerify(groupId, orderId)
-          : await rerunHHGroupCartVerify(groupId)
+          ? await rerunHHOrderCartVerify(brand, groupId, orderId)
+          : await rerunHHGroupCartVerify(brand, groupId)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
         console.error(error)
@@ -349,7 +360,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       const busyId = orderId ?? groupId
       setPlaceBusyId(busyId)
       try {
-        const res = orderId ? await placeHHOrder(groupId, orderId) : await placeHHGroup(groupId)
+        const res = orderId ? await placeHHOrder(brand, groupId, orderId) : await placeHHGroup(brand, groupId)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
         console.error(error)
@@ -362,11 +373,11 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     placeOrderEnabled,
     setPlaceOrderEnabled,
     updateNotes: async (groupId, notes) => {
-      const res = await updateHHGroupNotes(groupId, notes)
+      const res = await updateHHGroupNotes(brand, groupId, notes)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
     },
     updateOrderNotes: async (groupId, orderId, notes) => {
-      const res = await updateHHOrderNotes(groupId, orderId, notes)
+      const res = await updateHHOrderNotes(brand, groupId, orderId, notes)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
     },
     selectedDetailsStatus,

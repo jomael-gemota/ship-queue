@@ -1,11 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
-import {
-  HH_B2B_DEFAULT_ACCOUNT_ID,
-  HH_B2B_DEFAULT_BASE_URL,
-  HH_B2B_DEFAULT_CATALOG,
-} from '../lib/hhB2bDefaults';
+import { hhBrand, HH_BRAND_IDS, type HHBrandId } from '../lib/hhBrand';
 
-export const HH_B2B_CONFIG_KEY = 'helly-hansen-sports';
+export const HH_B2B_CONFIG_KEY = hhBrand('sportswear').configKey;
 
 export interface IHHB2bConfig extends Document {
   key: string;
@@ -25,9 +21,9 @@ export interface IHHB2bConfig extends Document {
 const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
   {
     key: { type: String, required: true, unique: true, default: HH_B2B_CONFIG_KEY },
-    baseUrl: { type: String, required: true, default: HH_B2B_DEFAULT_BASE_URL },
-    catalog: { type: String, required: true, default: HH_B2B_DEFAULT_CATALOG },
-    accountId: { type: String, required: true, default: HH_B2B_DEFAULT_ACCOUNT_ID },
+    baseUrl: { type: String, required: true },
+    catalog: { type: String, required: true },
+    accountId: { type: String, required: true },
     cookie: { type: String, select: false, default: '' },
     cookieUpdatedAt: { type: Date, default: null },
     placeOrderEnabled: { type: Boolean, default: false },
@@ -39,18 +35,19 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
 
 const HHB2bConfig = model<IHHB2bConfig>('HHB2bConfig', HHB2bConfigSchema);
 
-export async function getOrCreateHhB2bConfig(withCookie = false): Promise<IHHB2bConfig> {
-  const query = HHB2bConfig.findOne({ key: HH_B2B_CONFIG_KEY });
+export async function getOrCreateHhB2bConfig(brand: HHBrandId, withCookie = false): Promise<IHHB2bConfig> {
+  const def = hhBrand(brand);
+  const query = HHB2bConfig.findOne({ key: def.configKey });
   if (withCookie) query.select('+cookie');
   const existing = await query;
   if (existing) return existing;
 
   try {
     const created = await HHB2bConfig.create({
-      key: HH_B2B_CONFIG_KEY,
-      baseUrl: HH_B2B_DEFAULT_BASE_URL,
-      catalog: HH_B2B_DEFAULT_CATALOG,
-      accountId: HH_B2B_DEFAULT_ACCOUNT_ID,
+      key: def.configKey,
+      baseUrl: def.baseUrl,
+      catalog: def.catalog,
+      accountId: def.accountId,
       cookie: '',
     });
     if (!withCookie) created.cookie = undefined;
@@ -59,15 +56,17 @@ export async function getOrCreateHhB2bConfig(withCookie = false): Promise<IHHB2b
     const code = err && typeof err === 'object' && 'code' in err ? (err as { code?: number }).code : undefined;
     if (code !== 11000) throw err;
     const raced = withCookie
-      ? await HHB2bConfig.findOne({ key: HH_B2B_CONFIG_KEY }).select('+cookie')
-      : await HHB2bConfig.findOne({ key: HH_B2B_CONFIG_KEY });
+      ? await HHB2bConfig.findOne({ key: def.configKey }).select('+cookie')
+      : await HHB2bConfig.findOne({ key: def.configKey });
     if (!raced) throw err;
     return raced;
   }
 }
 
 export async function seedHhB2bConfig(): Promise<void> {
-  await getOrCreateHhB2bConfig(false);
+  for (const brand of HH_BRAND_IDS) {
+    await getOrCreateHhB2bConfig(brand, false);
+  }
 }
 
 export default HHB2bConfig;

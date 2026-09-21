@@ -5,6 +5,7 @@ import HHOrderGroup, {
   rollupHhDetailsStatus,
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, HhB2bDraftError, isHhPlaceOrderEnabled, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { hhBrandId } from '../lib/hhBrand';
 import { looksLikeMongoObjectId, submitHellyHansenSportsOrder } from '../lib/hhB2bHellyHansen';
 import { childCanPlace, liveCompareHhCarts } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
@@ -90,10 +91,24 @@ async function persistPlaced(groupId: string, childId: string): Promise<IHHChild
     if (!child) return null;
     if (child.cartStatus !== 'ready') return child;
     child.cartStatus = 'placed';
+    child.placeError = '';
     applyGroupRollup(group);
     group.markModified('children');
     await group.save();
     return child;
+  });
+}
+
+async function persistPlaceError(groupId: string, childId: string, message: string): Promise<void> {
+  await withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return;
+    const child = group.children.id(childId);
+    if (!child) return;
+    if (child.cartStatus === 'placed') return;
+    child.placeError = truncateError(message);
+    group.markModified('children');
+    await group.save();
   });
 }
 
@@ -120,7 +135,8 @@ async function placeChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
     return;
   }
 
-  const enabled = await isHhPlaceOrderEnabled();
+  const brand = hhBrandId(group.brand);
+  const enabled = await isHhPlaceOrderEnabled(brand);
   if (!enabled) {
     run.preview += 1;
     lastSuccessAt = new Date();
@@ -136,8 +152,8 @@ async function placeChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
     return;
   }
 
-  const config = await loadHhB2bConfig();
-  const cookie = await loadHhB2bCookie();
+  const config = await loadHhB2bConfig(brand);
+  const cookie = await loadHhB2bCookie(brand);
   await submitHellyHansenSportsOrder(config, cookie, documentId);
   const saved = await persistPlaced(String(group._id), childId);
   if (!saved || saved.cartStatus !== 'placed') {
@@ -179,6 +195,7 @@ async function placeGroup(job: HhCartPlaceJob): Promise<void> {
     } catch (err) {
       run.failed += 1;
       lastError = truncateError(err instanceof Error ? err.message : String(err));
+      await persistPlaceError(String(group._id), String(child._id), lastError);
       if (err instanceof HhB2bAuthError || err instanceof HhB2bDraftError) {
         console.warn(`${LOG} ${child.orderId} ${lastError}`);
       } else {

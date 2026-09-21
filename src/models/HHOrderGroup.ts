@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { HH_BRAND_IDS, HH_DEFAULT_BRAND, type HHBrandId } from '../lib/hhBrand';
 
 export const HH_DETAILS_STATUSES = ['pending', 'synced', 'failed'] as const;
 export type HHDetailsStatus = (typeof HH_DETAILS_STATUSES)[number];
@@ -68,6 +69,7 @@ export interface IHHChildOrder {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
+  placeError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; matched: boolean }>;
   verifiedAt: Date | null;
@@ -75,6 +77,7 @@ export interface IHHChildOrder {
 }
 
 export interface IHHOrderGroup extends Document {
+  brand: HHBrandId;
   notes: string;
   sourceFileName: string;
   detailsStatus: HHDetailsStatus;
@@ -128,6 +131,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
       default: HH_DEFAULT_CART_STATUS,
     },
     b2bDraftId: { type: String, default: '', trim: true },
+    placeError: { type: String, default: '', trim: true },
     verifyIssues: {
       type: [
         {
@@ -161,6 +165,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
 
 const HHOrderGroupSchema = new Schema<IHHOrderGroup>(
   {
+    brand: { type: String, enum: HH_BRAND_IDS, required: true, default: HH_DEFAULT_BRAND, index: true },
     notes: { type: String, default: '', trim: true },
     sourceFileName: { type: String, default: '', trim: true },
     detailsStatus: {
@@ -188,6 +193,7 @@ const HHOrderGroupSchema = new Schema<IHHOrderGroup>(
 HHOrderGroupSchema.index({ detailsStatus: 1, createdAt: -1 });
 HHOrderGroupSchema.index({ cartStatus: 1, createdAt: -1 });
 HHOrderGroupSchema.index({ createdAt: -1 });
+HHOrderGroupSchema.index({ brand: 1, createdAt: -1 });
 HHOrderGroupSchema.index({ 'children.detailsStatus': 1, createdAt: 1 });
 
 const CART_RANK: Record<HHCartStatus, number> = {
@@ -262,7 +268,18 @@ export async function migrateHhSplitStatuses(): Promise<void> {
   }
 
   if (updated > 0) {
-    console.log(`[hh-sportswear] Migrated ${updated} group${updated === 1 ? '' : 's'} to details/cart status`);
+    console.log(`[hh] Migrated ${updated} group${updated === 1 ? '' : 's'} to details/cart status`);
+  }
+}
+
+export async function migrateHhOrderGroupBrands(): Promise<void> {
+  const result = await HHOrderGroup.updateMany(
+    { $or: [{ brand: { $exists: false } }, { brand: null }, { brand: '' }] },
+    { $set: { brand: HH_DEFAULT_BRAND } }
+  );
+  const count = result.modifiedCount ?? 0;
+  if (count > 0) {
+    console.log(`[hh] Set brand=${HH_DEFAULT_BRAND} on ${count} existing batch${count === 1 ? '' : 'es'}`);
   }
 }
 
@@ -289,7 +306,7 @@ export async function migrateLocalHhCartDrafts(): Promise<void> {
   }
 
   if (updated > 0) {
-    console.log(`[hh-sportswear] Cleared ${updated} group${updated === 1 ? '' : 's'} of local cart placeholders`);
+    console.log(`[hh] Cleared ${updated} group${updated === 1 ? '' : 's'} of local cart placeholders`);
   }
 }
 

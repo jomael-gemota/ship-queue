@@ -5,6 +5,7 @@
  * Place Order (`do_submit: true`) is a separate path in hhCartPlace, gated by brand config.
  */
 
+import { hhBrandId, type HHBrandId } from './hhBrand';
 import {
   HhB2bDraftError,
   hhB2bArriveAndCancel,
@@ -60,10 +61,14 @@ export function assertHhB2bDraftRequest(request: HhB2bDraftRequest): void {
 }
 
 /** Create a B2B cart draft and stop there (no Place Order). */
-export async function createHhB2bDraft(request: HhB2bDraftRequest): Promise<HhB2bDraftResult> {
+export async function createHhB2bDraft(
+  request: HhB2bDraftRequest,
+  brand: HHBrandId | unknown = 'sportswear'
+): Promise<HhB2bDraftResult> {
   assertHhB2bDraftRequest(request);
-  const config = await loadHhB2bConfig();
-  const cookie = await loadHhB2bCookie();
+  const brandId = hhBrandId(brand);
+  const config = await loadHhB2bConfig(brandId);
+  const cookie = await loadHhB2bCookie(brandId);
   const { arriveOn, cancelOn } = hhB2bArriveAndCancel();
   const created = await createHellyHansenSportsDraft(config, cookie, request, arriveOn, cancelOn);
   console.log(
