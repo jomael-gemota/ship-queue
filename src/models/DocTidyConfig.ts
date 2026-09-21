@@ -36,6 +36,18 @@ export interface IDocTidyConfig extends Document {
    */
   wsEmailColumnOrder?: string[];
 
+  /**
+   * User-resized column widths (pixels) for the Invoice Audit table.
+   * Keys are InvoiceAuditColumnId strings. Absent key → use the default.
+   */
+  auditColumnWidths?: Record<string, number>;
+
+  /**
+   * User-resized column widths (pixels) for the Workspace Emails table.
+   * Keys are WorkspaceEmailColumnId strings. Absent key → use the default.
+   */
+  wsEmailColumnWidths?: Record<string, number>;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +66,8 @@ const DocTidyConfigSchema = new Schema<IDocTidyConfig>(
     driveId: { type: String },
     auditColumnOrder: { type: [String], default: undefined },
     wsEmailColumnOrder: { type: [String], default: undefined },
+    auditColumnWidths: { type: Schema.Types.Mixed, default: undefined },
+    wsEmailColumnWidths: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true }
 );
