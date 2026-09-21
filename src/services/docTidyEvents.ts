@@ -10,7 +10,7 @@ import type { Response } from 'express';
  */
 
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status';
+  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status' | 'ui_prefs';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
   /**
@@ -23,6 +23,12 @@ export interface DocTidyEvent {
   parseStatus?: string;
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean;
+  /**
+   * For `ui_prefs`: updated shared column orders so all connected clients
+   * immediately reflect the new layout without a page reload.
+   */
+  auditColumnOrder?: string[];
+  wsEmailColumnOrder?: string[];
   at?: string;
 }
 
