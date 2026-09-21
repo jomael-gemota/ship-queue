@@ -482,7 +482,7 @@ function isLineItemCol(id: InvoiceAuditColumnId): boolean {
 /* ──────────────────────────────────────────────── Page ── */
 
 /** Smaller page sizes for the audit table, which flattens one row per line item. */
-const AUDIT_PAGE_SIZES = [50, 100, 200, 500]
+const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
 
 export default function DocTidyInvoiceAudit() {
   /* ── View state ── */
