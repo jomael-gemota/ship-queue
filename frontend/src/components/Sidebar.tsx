@@ -40,6 +40,9 @@ const MENU_ITEMS = [
       </svg>
     ),
   },
+]
+
+const INVOICE_AUDIT_ITEMS = [
   {
     label: 'Doc Tidy',
     to: '/doc-tidy',
@@ -49,7 +52,7 @@ const MENU_ITEMS = [
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={2}
-          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+          d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
         />
       </svg>
     ),
@@ -86,26 +89,28 @@ const ADMIN_ITEMS = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
   const { user, logout } = useAuth()
 
   return (
-    <aside className="w-20 sm:w-64 shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur">
-      <div className="h-16 px-3 sm:px-4 flex items-center gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
-        <span className="h-9 w-9 rounded-xl bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border border-[var(--bg-300)] dark:border-[var(--bg-300)] p-1 flex items-center justify-center">
+    <aside className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
+      <div className="h-16 px-3 flex items-center gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border border-[var(--bg-300)] dark:border-[var(--bg-300)] p-1 flex items-center justify-center">
           <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
         </span>
-        <div className="hidden sm:block min-w-0">
-          <p className="text-sm font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] leading-5">Ship Queue</p>
-          <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)]">Operations Console</p>
+        <div className={`${isOpen ? 'opacity-100' : 'opacity-0'} transition-opacity duration-150 min-w-0 overflow-hidden`}>
+          <p className="text-sm font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] leading-5 whitespace-nowrap">Ship Queue</p>
+          <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">SM Department</p>
         </div>
       </div>
 
       <div className="h-[calc(100vh-4rem)] flex flex-col">
         <nav className="p-3 space-y-1.5">
-          <div className="hidden sm:block pt-1 pb-0.5 px-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Operations</p>
-          </div>
+          {isOpen && (
+            <div className="pt-1 pb-0.5 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">ShipStation</p>
+            </div>
+          )}
           {MENU_ITEMS.map((item) => (
             <NavLink
               key={item.label}
@@ -113,7 +118,7 @@ export default function Sidebar() {
               end={item.end}
               title={item.label}
               className={({ isActive }) =>
-                `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
+                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
                   isActive
                     ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
                     : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
@@ -121,21 +126,49 @@ export default function Sidebar() {
               }
             >
               {item.icon}
-              <span className="hidden sm:inline">{item.label}</span>
+              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
             </NavLink>
           ))}
 
-          <div className="hidden sm:block pt-2 pb-0.5 px-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)]">Admin</p>
-          </div>
-          <div className="sm:hidden border-t border-slate-200 dark:border-[var(--bg-300)] my-1" />
+          {isOpen ? (
+            <div className="pt-2 pb-0.5 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Invoice Auditing</p>
+            </div>
+          ) : (
+            <div className="border-t border-[var(--bg-300)] my-1" />
+          )}
+          {INVOICE_AUDIT_ITEMS.map((item) => (
+            <NavLink
+              key={item.label}
+              to={item.to}
+              title={item.label}
+              className={({ isActive }) =>
+                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
+                  isActive
+                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
+                }`
+              }
+            >
+              {item.icon}
+              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
+            </NavLink>
+          ))}
+
+          {isOpen ? (
+            <div className="pt-2 pb-0.5 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Admin</p>
+            </div>
+          ) : (
+            <div className="border-t border-[var(--bg-300)] my-1" />
+          )}
           {ADMIN_ITEMS.map((item) => (
             <NavLink
               key={item.label}
               to={item.to}
               title={item.label}
               className={({ isActive }) =>
-                `flex items-center justify-center sm:justify-start gap-2.5 rounded-lg px-2.5 sm:px-3 py-2 text-sm transition-all ${
+                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
                   isActive
                     ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
                     : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
@@ -143,36 +176,37 @@ export default function Sidebar() {
               }
             >
               {item.icon}
-              <span className="hidden sm:inline">{item.label}</span>
+              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
             </NavLink>
           ))}
         </nav>
 
         <div className="mt-auto p-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)]">
-          {user && (
-            <div className="hidden sm:flex items-center gap-2.5 mb-2.5">
+          {user && isOpen && (
+            <div className="flex items-center gap-2.5 mb-2.5">
               {user.avatar ? (
                 <img
                   src={user.avatar}
                   alt={user.name}
-                  className="w-8 h-8 rounded-full object-cover"
+                  className="w-8 h-8 shrink-0 rounded-full object-cover"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <span className="w-8 h-8 rounded-full bg-slate-700 text-white text-xs font-semibold flex items-center justify-center select-none">
+                <span className="w-8 h-8 shrink-0 rounded-full bg-slate-700 text-white text-xs font-semibold flex items-center justify-center select-none">
                   {user.name.charAt(0).toUpperCase()}
                 </span>
               )}
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--text-100)] dark:text-[var(--text-200)] truncate">{user.name}</p>
-                <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)] truncate">{user.email}</p>
+                <p className="text-sm font-medium text-[var(--text-100)] dark:text-[var(--text-200)] truncate whitespace-nowrap">{user.name}</p>
+                <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)] truncate whitespace-nowrap">{user.email}</p>
               </div>
             </div>
           )}
 
           <button
             onClick={logout}
-            className="w-full inline-flex items-center justify-center sm:justify-start gap-2 rounded-lg px-2.5 sm:px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors cursor-pointer"
+            title="Sign out"
+            className={`w-full inline-flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2 rounded-lg px-2.5 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors cursor-pointer`}
           >
             <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -182,7 +216,7 @@ export default function Sidebar() {
                 d="M17 16l4-4m0 0l-4-4m4 4H9m4 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
               />
             </svg>
-            <span className="hidden sm:inline">Sign out</span>
+            {isOpen && <span className="whitespace-nowrap">Sign out</span>}
           </button>
         </div>
       </div>

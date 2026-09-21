@@ -394,16 +394,16 @@ function WorkspaceCard({
 
   return (
     <div onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] cursor-pointer transition-all hover:border-[var(--accent-200)] hover:shadow-md">
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
+        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] dark:bg-[var(--bg-300)] text-[var(--accent-200)] dark:text-[var(--primary-300)]">
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
               d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
           </svg>
         </div>
-        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] transition-colors line-clamp-2">
+        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
           {workspace.name}
         </h3>
         <p className="mt-2 text-[11px] text-[var(--text-200)]">
@@ -421,13 +421,13 @@ function WorkspaceCard({
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-rose-500">Delete?</span>
               <button onClick={onDelete} className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">Yes</button>
-              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)]">No</button>
+              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]">No</button>
             </div>
           ) : (
             <>
-              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">Edit</button>
-              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-rose-500">Delete</button>
-              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--primary-100)] px-3 py-1 text-[11px] font-medium text-[var(--accent-200)] hover:opacity-80 transition-opacity">Open →</button>
+              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Edit</button>
+              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400">Delete</button>
+              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity">Open →</button>
             </>
           )}
         </div>
@@ -1086,7 +1086,7 @@ export default function DocTidyInvoiceAudit() {
               </p>
             </div>
             <button type="button" onClick={() => openEditor('new')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
@@ -1122,7 +1122,7 @@ export default function DocTidyInvoiceAudit() {
                 Workspaces let you scope the invoice audit to a named set of filter rules.
               </p>
               <button type="button" onClick={() => openEditor('new')}
-                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
@@ -1295,7 +1295,7 @@ export default function DocTidyInvoiceAudit() {
                 )}
 
                 {/* Table */}
-                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-26rem)]">
+                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
                   <table className="w-full text-[11px] border-separate border-spacing-0">
                     <thead>
                       <tr>
@@ -1557,12 +1557,6 @@ export default function DocTidyInvoiceAudit() {
                   </table>
                 </div>
 
-                {/* Bottom pagination */}
-                {!emailLoading && emailPagination.total > 0 && (
-                  <div className="flex items-center justify-end px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                    <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1666,14 +1660,14 @@ export default function DocTidyInvoiceAudit() {
                     </span>
                   )}
                 </div>
-                {pagination.pages > 1 && (
+                {pagination.pages > 0 && (
                   <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
                 )}
               </div>
             )}
 
-            {/* Table — horizontally scrollable, vertically unbounded */}
-            <div className="overflow-x-auto">
+            {/* Table — horizontally and vertically scrollable */}
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
               {error ? (
                 <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
@@ -1827,12 +1821,6 @@ export default function DocTidyInvoiceAudit() {
               )}
             </div>
 
-            {/* Bottom pagination — arrows only (rows-per-page moved to top bar) */}
-            {pagination.pages > 1 && (
-              <div className="flex items-center justify-end border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
-                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
-              </div>
-            )}
           </div>
             </div>
           )}
