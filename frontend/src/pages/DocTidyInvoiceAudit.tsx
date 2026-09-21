@@ -16,6 +16,9 @@ import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
 import {
   INVOICE_AUDIT_COLUMNS,
+  WORKSPACE_EMAIL_COLUMNS,
+  DEFAULT_AUDIT_COL_ORDER,
+  DEFAULT_EMAIL_COL_ORDER,
   PAGE_SIZE_OPTIONS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
@@ -25,7 +28,10 @@ import {
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
+  type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
+  type WorkspaceEmailColumn,
+  type WorkspaceEmailColumnId,
   type ParseJobListItem,
   type ParseJobsResponse,
 } from '../types/docTidy'
@@ -40,6 +46,85 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/* ──────────────────────────────── Drag-reorder helpers ── */
+
+/** Moves `src` to the position of `dst` in-place order. */
+function reorderCols<T>(arr: T[], src: T, dst: T): T[] {
+  if (src === dst) return arr
+  const next = arr.filter((x) => x !== src)
+  const dstIdx = next.indexOf(dst)
+  if (dstIdx === -1) return arr
+  next.splice(dstIdx, 0, src)
+  return next
+}
+
+/**
+ * A table header cell that supports drag-to-reorder.
+ * The fixed checkbox and actions columns are not wrapped with this.
+ */
+function DraggableTh({
+  label,
+  iconPath,
+  align = 'left',
+  isDragging,
+  isDragTarget,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}: {
+  label: string
+  iconPath?: string
+  align?: 'left' | 'center' | 'right'
+  isDragging?: boolean
+  isDragTarget?: boolean
+  onDragStart: () => void
+  onDragOver: () => void
+  onDrop: () => void
+  onDragEnd: () => void
+}) {
+  const textAlign =
+    align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+  const flexAlign =
+    align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''
+
+  return (
+    <th
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver() }}
+      onDrop={(e) => { e.preventDefault(); onDrop() }}
+      onDragEnd={onDragEnd}
+      className={`sticky top-0 z-20 bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap select-none transition-opacity ${textAlign} ${
+        isDragging ? 'opacity-30 cursor-grabbing' : 'cursor-grab'
+      } ${isDragTarget ? 'border-l-2 border-l-[var(--accent-200)]' : ''}`}
+    >
+      <span className={`flex items-center gap-1.5 ${flexAlign}`}>
+        {/* Six-dot drag handle — visible on hover */}
+        <svg
+          className="h-3 w-3 shrink-0 text-slate-300 dark:text-[var(--bg-300)] group-hover:text-slate-400"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden
+        >
+          <circle cx="6" cy="4" r="1.5" />
+          <circle cx="14" cy="4" r="1.5" />
+          <circle cx="6" cy="10" r="1.5" />
+          <circle cx="14" cy="10" r="1.5" />
+          <circle cx="6" cy="16" r="1.5" />
+          <circle cx="14" cy="16" r="1.5" />
+        </svg>
+        {iconPath && (
+          <svg className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+          </svg>
+        )}
+        {label}
+      </span>
+    </th>
+  )
 }
 
 /* ──────────────────────────────── Column Settings Drawer ── */
@@ -419,6 +504,15 @@ export default function DocTidyInvoiceAudit() {
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
 
+  /* ── Shared column ordering (server-persisted, real-time via SSE) ── */
+  const [auditColOrder, setAuditColOrder] = useState<InvoiceAuditColumnId[]>(DEFAULT_AUDIT_COL_ORDER)
+  const [emailColOrder, setEmailColOrder] = useState<WorkspaceEmailColumnId[]>(DEFAULT_EMAIL_COL_ORDER)
+  /** State tracks both source and hover target so `isDragging` is readable in render. */
+  const [auditDragSrc, setAuditDragSrc] = useState<InvoiceAuditColumnId | null>(null)
+  const [auditDragTarget, setAuditDragTarget] = useState<InvoiceAuditColumnId | null>(null)
+  const [emailDragSrc, setEmailDragSrc] = useState<WorkspaceEmailColumnId | null>(null)
+  const [emailDragTarget, setEmailDragTarget] = useState<WorkspaceEmailColumnId | null>(null)
+
   /* ── Workspace Emails tab ── */
   const [emailMessages, setEmailMessages] = useState<DocTidyMessage[]>([])
   const [emailPagination, setEmailPagination] = useState({ total: 0, pages: 1 })
@@ -454,6 +548,52 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
+  /* ── Load shared column order from server on mount ── */
+  useEffect(() => {
+    authApi
+      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[] } }>('/doc-tidy/ui-prefs')
+      .then((res) => {
+        const { auditColumnOrder, wsEmailColumnOrder } = res.data
+
+        if (auditColumnOrder && auditColumnOrder.length > 0) {
+          // Preserve any stored order; append new column ids that don't exist yet
+          const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
+            INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
+          )
+          const merged = [...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))]
+          setAuditColOrder(merged)
+        }
+
+        if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
+          const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+            WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+          )
+          const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
+          setEmailColOrder(merged)
+        }
+      })
+      .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+  }, [])
+
+  /** Persist column orders to the server (non-blocking, fire-and-forget). */
+  const saveColOrders = useCallback(
+    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[]) => {
+      void authApi.put('/doc-tidy/ui-prefs', {
+        auditColumnOrder: auditOrder,
+        wsEmailColumnOrder: emailOrder,
+      }).catch(() => { /* Non-critical. */ })
+    },
+    []
+  )
+
+  /* Keep a stable ref so drag handlers always call the latest save without stale closures. */
+  const saveColOrdersRef = useRef(saveColOrders)
+  useEffect(() => { saveColOrdersRef.current = saveColOrders }, [saveColOrders])
+  /* Same for the email/audit order values, so onDrop closures always read the current state. */
+  const auditColOrderRef = useRef(auditColOrder)
+  useEffect(() => { auditColOrderRef.current = auditColOrder }, [auditColOrder])
+  const emailColOrderRef = useRef(emailColOrder)
+  useEffect(() => { emailColOrderRef.current = emailColOrder }, [emailColOrder])
 
   /* ── Email search debounce ── */
   useEffect(() => {
@@ -513,6 +653,20 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
         }
+        if (event.type === 'ui_prefs') {
+          if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
+              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
+            )
+            setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+            )
+            setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+        }
       },
       () => {}
     )
@@ -529,6 +683,20 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
+        }
+        if (event.type === 'ui_prefs') {
+          if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
+              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
+            )
+            setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+            )
+            setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
         }
       },
       () => {}
@@ -701,8 +869,20 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const visibleCols = useMemo(
-    () => INVOICE_AUDIT_COLUMNS.filter((c) => colVisibility[c.id]),
-    [colVisibility]
+    () =>
+      auditColOrder
+        .map((id) => INVOICE_AUDIT_COLUMNS.find((c) => c.id === id))
+        .filter((c): c is InvoiceAuditColumn => c !== undefined && colVisibility[c.id]),
+    [auditColOrder, colVisibility]
+  )
+
+  /** Email columns in user-defined order. */
+  const orderedEmailCols = useMemo(
+    () =>
+      emailColOrder
+        .map((id) => WORKSPACE_EMAIL_COLUMNS.find((c) => c.id === id))
+        .filter((c): c is WorkspaceEmailColumn => c !== undefined),
+    [emailColOrder]
   )
 
   /* ── Selection helpers (audit table) ── */
@@ -1107,13 +1287,25 @@ export default function DocTidyInvoiceAudit() {
                             className={`${emailCheckboxClass} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </Th>
-                        <Th label="Received" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
-                        <Th label="From" iconPath="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                        <Th label="To" iconPath="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <Th label="Subject" iconPath="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        <Th label="Document type" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        <Th label="Rule" iconPath="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                        <Th label="Attachments" iconPath="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        {orderedEmailCols.map((col) => (
+                          <DraggableTh
+                            key={col.id}
+                            label={col.label}
+                            iconPath={col.iconPath}
+                            isDragging={emailDragSrc === col.id}
+                            isDragTarget={emailDragTarget === col.id}
+                            onDragStart={() => setEmailDragSrc(col.id)}
+                            onDragOver={() => setEmailDragTarget(col.id)}
+                            onDrop={() => {
+                              if (emailDragSrc && emailDragSrc !== col.id) {
+                                const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
+                                setEmailColOrder(newOrder)
+                                saveColOrdersRef.current(auditColOrderRef.current, newOrder)
+                              }
+                            }}
+                            onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
+                          />
+                        ))}
                         <Th label="Actions" align="center" />
                       </tr>
                     </thead>
@@ -1122,27 +1314,29 @@ export default function DocTidyInvoiceAudit() {
                         Array.from({ length: 8 }).map((_, i) => (
                           <tr key={i} className="border-b border-[var(--bg-300)]">
                             <td className="px-3 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1"><div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1">
-                              <div className="flex items-center gap-2">
-                                <div className="h-6 w-6 animate-pulse rounded-full bg-[var(--bg-300)]" />
-                                <div className="space-y-1.5">
-                                  <div className="h-3 w-24 animate-pulse rounded bg-[var(--bg-300)]" />
-                                  <div className="h-2.5 w-32 animate-pulse rounded bg-[var(--bg-300)]" />
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-3 py-1"><div className="h-3 w-28 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1"><div className="h-3 w-48 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1"><div className="h-5 w-28 animate-pulse rounded-full bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1"><div className="h-5 w-20 animate-pulse rounded-full bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1"><div className="h-3 w-32 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            {orderedEmailCols.map((col) => (
+                              <td key={col.id} className="px-3 py-1">
+                                {col.id === 'from' ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-6 w-6 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                    <div className="space-y-1.5">
+                                      <div className="h-3 w-24 animate-pulse rounded bg-[var(--bg-300)]" />
+                                      <div className="h-2.5 w-32 animate-pulse rounded bg-[var(--bg-300)]" />
+                                    </div>
+                                  </div>
+                                ) : col.id === 'documentType' || col.id === 'rule' ? (
+                                  <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                ) : (
+                                  <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                )}
+                              </td>
+                            ))}
                             <td className="px-3 py-1"><div className="flex justify-center gap-1.5"><div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" /></div></td>
                           </tr>
                         ))
                       ) : emailMessages.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="py-16 text-center">
+                          <td colSpan={orderedEmailCols.length + 2} className="py-16 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                                 <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1181,128 +1375,143 @@ export default function DocTidyInvoiceAudit() {
                                   : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
-                              {/* Checkbox */}
+                              {/* Checkbox — always first, not draggable */}
                               <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
                                 <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
                                   aria-label={`Select ${msg.subject || 'message'}`}
                                   className={emailCheckboxClass} />
                               </td>
-                              {/* Date */}
-                              <td className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(msg.sentAt)}>
-                                {formatDate(msg.sentAt)}
-                              </td>
-                              {/* From */}
-                              <td className="px-3 py-1 min-w-0">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${avatarColour(senderSeed)}`}>
-                                    {senderSeed.charAt(0).toUpperCase()}
-                                  </span>
-                                  <div className="min-w-0 truncate text-[var(--text-100)]"
-                                    title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
-                                    {msg.fromName || msg.from}
-                                  </div>
-                                </div>
-                              </td>
-                              {/* To */}
-                              <td className="px-3 py-1 min-w-0 max-w-[180px]">
-                                {msg.to && msg.to.length > 0 ? (
-                                  <div
-                                    className="truncate text-[var(--text-200)]"
-                                    title={msg.to.join(', ')}
-                                  >
-                                    {msg.to[0]}
-                                    {msg.to.length > 1 && (
-                                      <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
-                                        +{msg.to.length - 1}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="italic text-[var(--text-200)]">—</span>
-                                )}
-                              </td>
-                              {/* Subject */}
-                              <td className="px-3 py-1 min-w-0">
-                                <div className="truncate text-[var(--text-100)]" title={msg.subject}>
-                                  {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
-                                </div>
-                              </td>
-                              {/* Document type */}
-                              <td className="px-3 py-1 whitespace-nowrap">
-                                <DocumentTypeBadge value={msg.documentType} />
-                              </td>
-                              {/* Rule chip */}
-                              <td className="px-3 py-1">
-                                {msg.ruleName ? (
-                                  <span title={msg.ruleName}
-                                    className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
-                                    <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                                    </svg>
-                                    <span className="truncate">{msg.ruleName}</span>
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] italic text-[var(--text-200)]">—</span>
-                                )}
-                              </td>
-                              {/* Attachments — filename + size, linked to GDrive */}
-                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
-                                {msg.attachments && msg.attachments.length > 0 ? (
-                                  <div className="space-y-0.5">
-                                    {msg.attachments.map((att, ai) => {
-                                      const href = att.webViewLink
-                                        || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
-                                      const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
-                                      return (
-                                        <div key={ai} className="flex items-center gap-1.5">
-                                          {href ? (
-                                            <a
-                                              href={href}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              onClick={(e) => e.stopPropagation()}
-                                              title={att.filename}
-                                              className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline"
-                                            >
-                                              {isPdf ? (
-                                                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                </svg>
-                                              ) : (
-                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                </svg>
-                                              )}
-                                              <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
-                                            </a>
-                                          ) : (
-                                            <>
-                                              {isPdf ? (
-                                                <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                </svg>
-                                              ) : (
-                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                </svg>
-                                              )}
-                                              <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
-                                            </>
-                                          )}
-                                          {att.size > 0 && (
-                                            <span className="shrink-0 text-[10px] text-[var(--text-200)]">
-                                              {formatBytes(att.size)}
-                                            </span>
-                                          )}
+
+                              {/* Dynamic ordered columns */}
+                              {orderedEmailCols.map((col) => {
+                                switch (col.id) {
+                                  case 'received':
+                                    return (
+                                      <td key="received" className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(msg.sentAt)}>
+                                        {formatDate(msg.sentAt)}
+                                      </td>
+                                    )
+                                  case 'from':
+                                    return (
+                                      <td key="from" className="px-3 py-1 min-w-0">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${avatarColour(senderSeed)}`}>
+                                            {senderSeed.charAt(0).toUpperCase()}
+                                          </span>
+                                          <div className="min-w-0 truncate text-[var(--text-100)]"
+                                            title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
+                                            {msg.fromName || msg.from}
+                                          </div>
                                         </div>
-                                      )
-                                    })}
-                                  </div>
-                                ) : (
-                                  <span className="italic text-[var(--text-200)]">—</span>
-                                )}
-                              </td>
-                              {/* Actions — parse icons; stop propagation so they don't open the drawer */}
+                                      </td>
+                                    )
+                                  case 'to':
+                                    return (
+                                      <td key="to" className="px-3 py-1 min-w-0 max-w-[180px]">
+                                        {msg.to && msg.to.length > 0 ? (
+                                          <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
+                                            {msg.to[0]}
+                                            {msg.to.length > 1 && (
+                                              <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                                +{msg.to.length - 1}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="italic text-[var(--text-200)]">—</span>
+                                        )}
+                                      </td>
+                                    )
+                                  case 'subject':
+                                    return (
+                                      <td key="subject" className="px-3 py-1 min-w-0">
+                                        <div className="truncate text-[var(--text-100)]" title={msg.subject}>
+                                          {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'documentType':
+                                    return (
+                                      <td key="documentType" className="px-3 py-1 whitespace-nowrap">
+                                        <DocumentTypeBadge value={msg.documentType} />
+                                      </td>
+                                    )
+                                  case 'rule':
+                                    return (
+                                      <td key="rule" className="px-3 py-1">
+                                        {msg.ruleName ? (
+                                          <span title={msg.ruleName}
+                                            className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
+                                            <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
+                                            </svg>
+                                            <span className="truncate">{msg.ruleName}</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-[11px] italic text-[var(--text-200)]">—</span>
+                                        )}
+                                      </td>
+                                    )
+                                  case 'attachments':
+                                    return (
+                                      <td key="attachments" className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                                        {msg.attachments && msg.attachments.length > 0 ? (
+                                          <div className="space-y-0.5">
+                                            {msg.attachments.map((att, ai) => {
+                                              const href = att.webViewLink
+                                                || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
+                                              const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
+                                              return (
+                                                <div key={ai} className="flex items-center gap-1.5">
+                                                  {href ? (
+                                                    <a href={href} target="_blank" rel="noopener noreferrer"
+                                                      onClick={(e) => e.stopPropagation()} title={att.filename}
+                                                      className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline">
+                                                      {isPdf ? (
+                                                        <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                        </svg>
+                                                      ) : (
+                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                        </svg>
+                                                      )}
+                                                      <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
+                                                    </a>
+                                                  ) : (
+                                                    <>
+                                                      {isPdf ? (
+                                                        <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                        </svg>
+                                                      ) : (
+                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                        </svg>
+                                                      )}
+                                                      <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
+                                                    </>
+                                                  )}
+                                                  {att.size > 0 && (
+                                                    <span className="shrink-0 text-[10px] text-[var(--text-200)]">
+                                                      {formatBytes(att.size)}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span className="italic text-[var(--text-200)]">—</span>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return null
+                                }
+                              })}
+
+                              {/* Actions — always last, not draggable */}
                               <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
                                 <AttachmentIcons
                                   message={msg}
@@ -1403,6 +1612,36 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
 
+            {/* Top pagination — rows-per-page + count + arrows (mirrors the Emails tab) */}
+            {!loading && pagination.total > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                  <span>Rows per page:</span>
+                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {pagination.total > 0 && (
+                    <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
+                  )}
+                  {selectedJobIds.size > 0 && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
+                        {selectedJobIds.size} selected
+                      </span>
+                      <button onClick={() => setSelectedJobIds(new Set())}
+                        className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                        Clear
+                      </button>
+                    </span>
+                  )}
+                </div>
+                {pagination.pages > 1 && (
+                  <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
+                )}
+              </div>
+            )}
+
             {/* Table — horizontally scrollable, vertically unbounded */}
             <div className="overflow-x-auto">
               {error ? (
@@ -1431,10 +1670,22 @@ export default function DocTidyInvoiceAudit() {
                         />
                       </Th>
                       {visibleCols.map((col) => (
-                        <Th
+                        <DraggableTh
                           key={col.id}
                           label={col.label}
                           align={col.numeric ? 'right' : 'left'}
+                          isDragging={auditDragSrc === col.id}
+                          isDragTarget={auditDragTarget === col.id}
+                          onDragStart={() => setAuditDragSrc(col.id)}
+                          onDragOver={() => setAuditDragTarget(col.id)}
+                          onDrop={() => {
+                            if (auditDragSrc && auditDragSrc !== col.id) {
+                              const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
+                              setAuditColOrder(newOrder)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current)
+                            }
+                          }}
+                          onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
                         />
                       ))}
                     </tr>
