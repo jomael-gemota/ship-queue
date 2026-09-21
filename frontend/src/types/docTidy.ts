@@ -177,13 +177,11 @@ export interface DocTidyEvent {
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean
   /**
-   * For `ui_prefs`: updated column orders and widths broadcast to all open
-   * clients so every tab reflects the change immediately.
+   * For `ui_prefs`: updated column orders broadcast to all open clients so
+   * every tab reflects the change immediately.
    */
   auditColumnOrder?: string[]
   wsEmailColumnOrder?: string[]
-  auditColumnWidths?: Record<string, number>
-  wsEmailColumnWidths?: Record<string, number>
   at?: string
 }
 
@@ -480,50 +478,6 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 
 /** Default order mirrors the declaration order in WORKSPACE_EMAIL_COLUMNS. */
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
-
-/**
- * Fallback pixel widths for Invoice Audit columns before the user has resized
- * them. These are applied via <col> elements under table-layout: fixed.
- */
-export const AUDIT_COL_DEFAULT_WIDTHS: Record<InvoiceAuditColumnId, number> = {
-  vendorName:        150,
-  documentType:      130,
-  invoiceNumber:     110,
-  poNumber:          100,
-  orderDate:          90,
-  invoiceDate:        90,
-  totalValue:         90,
-  terms:             100,
-  trackingNumber:    130,
-  filename:          170,
-  parsedAt:           90,
-  requestedBy:       120,
-  liSku:              90,
-  liModel:           110,
-  liDescription:     220,
-  liQuantity:         60,
-  liUnitPrice:        95,
-  liDiscountedPrice:  95,
-  liDiscountPercent:  85,
-  liLineTotal:        95,
-  liUom:              65,
-  liTaxAmount:        80,
-  liNotes:           170,
-}
-
-/**
- * Fallback pixel widths for Workspace Email columns before the user has
- * resized them.
- */
-export const EMAIL_COL_DEFAULT_WIDTHS: Record<WorkspaceEmailColumnId, number> = {
-  received:      95,
-  from:         180,
-  to:           150,
-  subject:      250,
-  documentType: 140,
-  rule:         140,
-  attachments:  210,
-}
 
 const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns'
 

@@ -24,13 +24,11 @@ export interface DocTidyEvent {
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean;
   /**
-   * For `ui_prefs`: updated column orders and widths broadcast to all open
-   * clients so every tab reflects the change immediately.
+   * For `ui_prefs`: updated shared column orders so all connected clients
+   * immediately reflect the new layout without a page reload.
    */
   auditColumnOrder?: string[];
   wsEmailColumnOrder?: string[];
-  auditColumnWidths?: Record<string, number>;
-  wsEmailColumnWidths?: Record<string, number>;
   at?: string;
 }
 

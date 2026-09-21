@@ -556,8 +556,6 @@ export const getUiPrefs = async (_req: Request, res: Response): Promise<void> =>
       data: {
         auditColumnOrder: config.auditColumnOrder ?? [],
         wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
-        auditColumnWidths: config.auditColumnWidths ?? {},
-        wsEmailColumnWidths: config.wsEmailColumnWidths ?? {},
       },
     });
   } catch (error) {
@@ -573,41 +571,28 @@ export const getUiPrefs = async (_req: Request, res: Response): Promise<void> =>
  */
 export const putUiPrefs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { auditColumnOrder, wsEmailColumnOrder, auditColumnWidths, wsEmailColumnWidths } = req.body as {
+    const { auditColumnOrder, wsEmailColumnOrder } = req.body as {
       auditColumnOrder?: string[];
       wsEmailColumnOrder?: string[];
-      auditColumnWidths?: Record<string, number>;
-      wsEmailColumnWidths?: Record<string, number>;
     };
 
     const config = await getDocTidyConfigDoc();
 
     if (Array.isArray(auditColumnOrder)) config.auditColumnOrder = auditColumnOrder;
     if (Array.isArray(wsEmailColumnOrder)) config.wsEmailColumnOrder = wsEmailColumnOrder;
-    if (auditColumnWidths && typeof auditColumnWidths === 'object') {
-      config.auditColumnWidths = auditColumnWidths;
-      config.markModified('auditColumnWidths');
-    }
-    if (wsEmailColumnWidths && typeof wsEmailColumnWidths === 'object') {
-      config.wsEmailColumnWidths = wsEmailColumnWidths;
-      config.markModified('wsEmailColumnWidths');
-    }
     await config.save();
 
+    // Broadcast to all connected clients so they reflect the change live.
     broadcast({
       type: 'ui_prefs',
       auditColumnOrder: config.auditColumnOrder,
       wsEmailColumnOrder: config.wsEmailColumnOrder,
-      auditColumnWidths: config.auditColumnWidths,
-      wsEmailColumnWidths: config.wsEmailColumnWidths,
     });
 
     res.json({
       data: {
         auditColumnOrder: config.auditColumnOrder ?? [],
         wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
-        auditColumnWidths: config.auditColumnWidths ?? {},
-        wsEmailColumnWidths: config.wsEmailColumnWidths ?? {},
       },
     });
   } catch (error) {
