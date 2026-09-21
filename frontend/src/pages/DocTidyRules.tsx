@@ -203,7 +203,7 @@ export default function WorkspaceRulesView({ workspaceId }: { workspaceId: strin
               : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
           </span>
           <button onClick={openNew}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 cursor-pointer">
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 cursor-pointer">
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>

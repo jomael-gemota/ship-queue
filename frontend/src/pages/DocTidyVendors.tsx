@@ -709,7 +709,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
               </span>
             )}
             <button onClick={openNew}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 cursor-pointer">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 cursor-pointer">
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
@@ -744,7 +744,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
             </p>
             <button
               onClick={openNew}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white cursor-pointer"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3.5 py-2 text-sm font-medium text-white cursor-pointer"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
