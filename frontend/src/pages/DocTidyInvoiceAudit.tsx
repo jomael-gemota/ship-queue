@@ -1787,22 +1787,12 @@ export default function DocTidyInvoiceAudit() {
               )}
             </div>
 
-            {/* Bottom pagination — rows-per-page + count + arrows */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
-              <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                <span>Rows per page:</span>
-                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                  {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-                {pagination.total > 0 && (
-                  <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
-                )}
-              </div>
-              {pagination.pages > 1 && (
+            {/* Bottom pagination — arrows only (rows-per-page moved to top bar) */}
+            {pagination.pages > 1 && (
+              <div className="flex items-center justify-end border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
                 <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
-              )}
-            </div>
+              </div>
+            )}
           </div>
             </div>
           )}
