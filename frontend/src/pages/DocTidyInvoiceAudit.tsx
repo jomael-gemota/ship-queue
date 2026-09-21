@@ -97,14 +97,25 @@ function DraggableTh({
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver() }}
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       onDragEnd={onDragEnd}
-      className={`sticky top-0 z-20 bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap select-none transition-opacity ${textAlign} ${
-        isDragging ? 'opacity-30 cursor-grabbing' : 'cursor-grab'
-      } ${isDragTarget ? 'border-l-2 border-l-[var(--accent-200)]' : ''}`}
+      className={[
+        'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
+        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+        'transition-all duration-100',
+        textAlign,
+        // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved
+        isDragging
+          ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 ring-2 ring-inset ring-sky-400 text-sky-700 dark:text-sky-300'
+          : 'cursor-grab bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
+        // ── Drop target: thick sky-blue left bar as an insertion indicator
+        isDragTarget
+          ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10'
+          : '',
+      ].join(' ')}
     >
       <span className={`flex items-center gap-1.5 ${flexAlign}`}>
-        {/* Six-dot drag handle — visible on hover */}
+        {/* Six-dot drag handle */}
         <svg
-          className="h-3 w-3 shrink-0 text-slate-300 dark:text-[var(--bg-300)] group-hover:text-slate-400"
+          className={`h-3 w-3 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-300 dark:text-[var(--bg-300)]'}`}
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden
@@ -117,7 +128,10 @@ function DraggableTh({
           <circle cx="14" cy="16" r="1.5" />
         </svg>
         {iconPath && (
-          <svg className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
           </svg>
         )}
