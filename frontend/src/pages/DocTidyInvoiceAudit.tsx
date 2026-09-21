@@ -1398,16 +1398,24 @@ export default function DocTidyInvoiceAudit() {
 
                               {/* Dynamic ordered columns */}
                               {orderedEmailCols.map((col) => {
+                                // Column-level drag highlight applied to every <td> in this column
+                                const emailColDragCls =
+                                  emailDragSrc === col.id
+                                    ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                                    : emailDragTarget === col.id
+                                      ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                      : ''
+
                                 switch (col.id) {
                                   case 'received':
                                     return (
-                                      <td key="received" className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(msg.sentAt)}>
+                                      <td key="received" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={formatDateTime(msg.sentAt)}>
                                         {formatDate(msg.sentAt)}
                                       </td>
                                     )
                                   case 'from':
                                     return (
-                                      <td key="from" className="px-3 py-1 min-w-0">
+                                      <td key="from" className={`px-3 py-1 min-w-0 ${emailColDragCls}`}>
                                         <div className="flex min-w-0 items-center gap-2">
                                           <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${avatarColour(senderSeed)}`}>
                                             {senderSeed.charAt(0).toUpperCase()}
@@ -1421,7 +1429,7 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'to':
                                     return (
-                                      <td key="to" className="px-3 py-1 min-w-0 max-w-[180px]">
+                                      <td key="to" className={`px-3 py-1 min-w-0 max-w-[180px] ${emailColDragCls}`}>
                                         {msg.to && msg.to.length > 0 ? (
                                           <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
                                             {msg.to[0]}
@@ -1438,7 +1446,7 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'subject':
                                     return (
-                                      <td key="subject" className="px-3 py-1 min-w-0">
+                                      <td key="subject" className={`px-3 py-1 min-w-0 ${emailColDragCls}`}>
                                         <div className="truncate text-[var(--text-100)]" title={msg.subject}>
                                           {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
                                         </div>
@@ -1446,13 +1454,13 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'documentType':
                                     return (
-                                      <td key="documentType" className="px-3 py-1 whitespace-nowrap">
+                                      <td key="documentType" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
                                         <DocumentTypeBadge value={msg.documentType} />
                                       </td>
                                     )
                                   case 'rule':
                                     return (
-                                      <td key="rule" className="px-3 py-1">
+                                      <td key="rule" className={`px-3 py-1 ${emailColDragCls}`}>
                                         {msg.ruleName ? (
                                           <span title={msg.ruleName}
                                             className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
@@ -1468,7 +1476,7 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'attachments':
                                     return (
-                                      <td key="attachments" className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                                      <td key="attachments" className={`px-3 py-1 ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
                                         {msg.attachments && msg.attachments.length > 0 ? (
                                           <div className="space-y-0.5">
                                             {msg.attachments.map((att, ai) => {
@@ -1783,7 +1791,17 @@ export default function DocTidyInvoiceAudit() {
                                 {visibleCols.map((col) => (
                                   <td
                                     key={col.id}
-                                    className={`px-2.5 py-1 text-[11px] whitespace-nowrap ${col.numeric ? 'text-right tabular-nums' : ''} ${col.mono ? 'font-mono' : ''}`}
+                                    className={[
+                                      'px-2.5 py-1 text-[11px] whitespace-nowrap',
+                                      col.numeric ? 'text-right tabular-nums' : '',
+                                      col.mono ? 'font-mono' : '',
+                                      // Column-level drag highlight
+                                      auditDragSrc === col.id
+                                        ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                                        : auditDragTarget === col.id
+                                          ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                          : '',
+                                    ].join(' ')}
                                   >
                                     {isLineItemCol(col.id)
                                       ? liCellFor(col.id, item)
