@@ -19,6 +19,8 @@ import {
   WORKSPACE_EMAIL_COLUMNS,
   DEFAULT_AUDIT_COL_ORDER,
   DEFAULT_EMAIL_COL_ORDER,
+  AUDIT_COL_DEFAULT_WIDTHS,
+  EMAIL_COL_DEFAULT_WIDTHS,
   PAGE_SIZE_OPTIONS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
@@ -61,7 +63,7 @@ function reorderCols<T>(arr: T[], src: T, dst: T): T[] {
 }
 
 /**
- * A table header cell that supports drag-to-reorder.
+ * A table header cell that supports drag-to-reorder AND drag-to-resize.
  * The fixed checkbox and actions columns are not wrapped with this.
  */
 function DraggableTh({
@@ -70,21 +72,27 @@ function DraggableTh({
   align = 'left',
   isDragging,
   isDragTarget,
+  isResizing,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
+  onResizeStart,
 }: {
   label: string
   iconPath?: string
   align?: 'left' | 'center' | 'right'
   isDragging?: boolean
   isDragTarget?: boolean
+  /** True while ANY column is being resized — disables drag to avoid conflicts. */
+  isResizing?: boolean
   onDragStart: () => void
   onDragOver: () => void
   onDrop: () => void
   onDragEnd: () => void
+  onResizeStart: (startX: number, startWidth: number) => void
 }) {
+  const thRef = useRef<HTMLTableCellElement>(null)
   const textAlign =
     align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
   const flexAlign =
@@ -92,27 +100,26 @@ function DraggableTh({
 
   return (
     <th
-      draggable
+      ref={thRef}
+      draggable={!isResizing}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver() }}
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       onDragEnd={onDragEnd}
       className={[
-        'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
-        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+        'relative sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
+        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none overflow-hidden',
         'transition-all duration-100',
         textAlign,
-        // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved
         isDragging
           ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 ring-2 ring-inset ring-sky-400 text-sky-700 dark:text-sky-300'
           : 'cursor-grab bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
-        // ── Drop target: thick sky-blue left bar as an insertion indicator
         isDragTarget
           ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10'
           : '',
       ].join(' ')}
     >
-      <span className={`flex items-center gap-1.5 ${flexAlign}`}>
+      <span className={`flex items-center gap-1.5 pr-1.5 ${flexAlign}`}>
         {/* Six-dot drag handle */}
         <svg
           className={`h-3 w-3 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-300 dark:text-[var(--bg-300)]'}`}
@@ -137,6 +144,21 @@ function DraggableTh({
         )}
         {label}
       </span>
+
+      {/* ── Resize handle — 6 px hit-area at the right edge ── */}
+      <div
+        aria-hidden
+        className="absolute inset-y-0 right-0 z-30 w-1.5 cursor-col-resize group/rh"
+        onMouseDown={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const currentWidth = thRef.current?.getBoundingClientRect().width ?? 120
+          onResizeStart(e.clientX, currentWidth)
+        }}
+      >
+        {/* Thin visual rule that brightens on hover / during resize */}
+        <div className="absolute inset-y-1 right-px w-px bg-[var(--bg-300)] transition-colors group-hover/rh:bg-sky-400" />
+      </div>
     </th>
   )
 }
@@ -527,6 +549,12 @@ export default function DocTidyInvoiceAudit() {
   const [emailDragSrc, setEmailDragSrc] = useState<WorkspaceEmailColumnId | null>(null)
   const [emailDragTarget, setEmailDragTarget] = useState<WorkspaceEmailColumnId | null>(null)
 
+  /* ── Column widths (user-resized, server-persisted) ── */
+  const [auditColWidths, setAuditColWidths] = useState<Partial<Record<InvoiceAuditColumnId, number>>>({})
+  const [emailColWidths, setEmailColWidths] = useState<Partial<Record<WorkspaceEmailColumnId, number>>>({})
+  /** True while the user is actively dragging a resize handle — disables column drag. */
+  const [isResizing, setIsResizing] = useState(false)
+
   /* ── Workspace Emails tab ── */
   const [emailMessages, setEmailMessages] = useState<DocTidyMessage[]>([])
   const [emailPagination, setEmailPagination] = useState({ total: 0, pages: 1 })
@@ -562,15 +590,21 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
-  /* ── Load shared column order from server on mount ── */
+  /* ── Load shared column order + widths from server on mount ── */
   useEffect(() => {
     authApi
-      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[] } }>('/doc-tidy/ui-prefs')
+      .get<{
+        data: {
+          auditColumnOrder?: string[]
+          wsEmailColumnOrder?: string[]
+          auditColumnWidths?: Record<string, number>
+          wsEmailColumnWidths?: Record<string, number>
+        }
+      }>('/doc-tidy/ui-prefs')
       .then((res) => {
-        const { auditColumnOrder, wsEmailColumnOrder } = res.data
+        const { auditColumnOrder, wsEmailColumnOrder, auditColumnWidths, wsEmailColumnWidths } = res.data
 
         if (auditColumnOrder && auditColumnOrder.length > 0) {
-          // Preserve any stored order; append new column ids that don't exist yet
           const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
             INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
           )
@@ -585,29 +619,82 @@ export default function DocTidyInvoiceAudit() {
           const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
           setEmailColOrder(merged)
         }
+
+        if (auditColumnWidths) setAuditColWidths(auditColumnWidths as Partial<Record<InvoiceAuditColumnId, number>>)
+        if (wsEmailColumnWidths) setEmailColWidths(wsEmailColumnWidths as Partial<Record<WorkspaceEmailColumnId, number>>)
       })
       .catch(() => { /* Non-critical — silently fall back to defaults. */ })
   }, [])
 
-  /** Persist column orders to the server (non-blocking, fire-and-forget). */
-  const saveColOrders = useCallback(
-    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[]) => {
+  /** Persist column orders AND widths to the server (non-blocking, fire-and-forget). */
+  const saveUiPrefs = useCallback(
+    (
+      auditOrder: InvoiceAuditColumnId[],
+      emailOrder: WorkspaceEmailColumnId[],
+      auditWidths: Partial<Record<InvoiceAuditColumnId, number>>,
+      emailWidths: Partial<Record<WorkspaceEmailColumnId, number>>,
+    ) => {
       void authApi.put('/doc-tidy/ui-prefs', {
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
+        auditColumnWidths: auditWidths,
+        wsEmailColumnWidths: emailWidths,
       }).catch(() => { /* Non-critical. */ })
     },
     []
   )
 
-  /* Keep a stable ref so drag handlers always call the latest save without stale closures. */
-  const saveColOrdersRef = useRef(saveColOrders)
-  useEffect(() => { saveColOrdersRef.current = saveColOrders }, [saveColOrders])
-  /* Same for the email/audit order values, so onDrop closures always read the current state. */
+  /* Stable refs so closures (drag handlers, resize mouseup) always see latest values. */
+  const saveUiPrefsRef = useRef(saveUiPrefs)
+  useEffect(() => { saveUiPrefsRef.current = saveUiPrefs }, [saveUiPrefs])
   const auditColOrderRef = useRef(auditColOrder)
   useEffect(() => { auditColOrderRef.current = auditColOrder }, [auditColOrder])
   const emailColOrderRef = useRef(emailColOrder)
   useEffect(() => { emailColOrderRef.current = emailColOrder }, [emailColOrder])
+  const auditColWidthsRef = useRef(auditColWidths)
+  useEffect(() => { auditColWidthsRef.current = auditColWidths }, [auditColWidths])
+  const emailColWidthsRef = useRef(emailColWidths)
+  useEffect(() => { emailColWidthsRef.current = emailColWidths }, [emailColWidths])
+
+  /** Start a column resize. Attaches global mouse listeners for the drag. */
+  const startResize = useCallback((
+    colId: InvoiceAuditColumnId | WorkspaceEmailColumnId,
+    tableType: 'audit' | 'email',
+    startX: number,
+    startWidth: number,
+  ) => {
+    setIsResizing(true)
+    let latestWidth = startWidth
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + e.clientX - startX)
+      latestWidth = newWidth
+      if (tableType === 'audit') {
+        setAuditColWidths((prev) => ({ ...prev, [colId]: newWidth }))
+      } else {
+        setEmailColWidths((prev) => ({ ...prev, [colId]: newWidth }))
+      }
+    }
+
+    const onMouseUp = () => {
+      setIsResizing(false)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      // Persist — use refs for latest state values
+      if (tableType === 'audit') {
+        const newWidths = { ...auditColWidthsRef.current, [colId]: latestWidth }
+        setAuditColWidths(newWidths)
+        saveUiPrefsRef.current(auditColOrderRef.current, emailColOrderRef.current, newWidths, emailColWidthsRef.current)
+      } else {
+        const newWidths = { ...emailColWidthsRef.current, [colId]: latestWidth }
+        setEmailColWidths(newWidths)
+        saveUiPrefsRef.current(auditColOrderRef.current, emailColOrderRef.current, auditColWidthsRef.current, newWidths)
+      }
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [])
 
   /* ── Email search debounce ── */
   useEffect(() => {
@@ -680,6 +767,8 @@ export default function DocTidyInvoiceAudit() {
             )
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
           }
+          if (event.auditColumnWidths) setAuditColWidths(event.auditColumnWidths as Partial<Record<InvoiceAuditColumnId, number>>)
+          if (event.wsEmailColumnWidths) setEmailColWidths(event.wsEmailColumnWidths as Partial<Record<WorkspaceEmailColumnId, number>>)
         }
       },
       () => {}
@@ -711,6 +800,8 @@ export default function DocTidyInvoiceAudit() {
             )
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
           }
+          if (event.auditColumnWidths) setAuditColWidths(event.auditColumnWidths as Partial<Record<InvoiceAuditColumnId, number>>)
+          if (event.wsEmailColumnWidths) setEmailColWidths(event.wsEmailColumnWidths as Partial<Record<WorkspaceEmailColumnId, number>>)
         }
       },
       () => {}
@@ -1288,7 +1379,21 @@ export default function DocTidyInvoiceAudit() {
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-26rem)]">
-                  <table className="w-full text-[11px] border-separate border-spacing-0">
+                  <table
+                    className="text-[11px] border-separate border-spacing-0"
+                    style={{ tableLayout: 'fixed', minWidth: '100%' }}
+                  >
+                    {/* Column widths — drives table-layout:fixed sizing */}
+                    <colgroup>
+                      <col style={{ width: '32px' }} />
+                      {orderedEmailCols.map((col) => (
+                        <col
+                          key={col.id}
+                          style={{ width: `${emailColWidths[col.id] ?? EMAIL_COL_DEFAULT_WIDTHS[col.id]}px` }}
+                        />
+                      ))}
+                      <col style={{ width: '72px' }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <Th className="w-8">
@@ -1308,16 +1413,18 @@ export default function DocTidyInvoiceAudit() {
                             iconPath={col.iconPath}
                             isDragging={emailDragSrc === col.id}
                             isDragTarget={emailDragTarget === col.id}
+                            isResizing={isResizing}
                             onDragStart={() => setEmailDragSrc(col.id)}
                             onDragOver={() => setEmailDragTarget(col.id)}
                             onDrop={() => {
                               if (emailDragSrc && emailDragSrc !== col.id) {
                                 const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
                                 setEmailColOrder(newOrder)
-                                saveColOrdersRef.current(auditColOrderRef.current, newOrder)
+                                saveUiPrefsRef.current(auditColOrderRef.current, newOrder, auditColWidthsRef.current, emailColWidthsRef.current)
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
+                            onResizeStart={(startX, startWidth) => startResize(col.id, 'email', startX, startWidth)}
                           />
                         ))}
                         <Th label="Actions" align="center" />
@@ -1677,7 +1784,20 @@ export default function DocTidyInvoiceAudit() {
                   <button onClick={() => void fetchJobs()} className="text-sm text-[var(--accent-200)] hover:underline cursor-pointer">Try again</button>
                 </div>
               ) : (
-                <table className="w-full text-[11px] border-separate border-spacing-0">
+                <table
+                  className="text-[11px] border-separate border-spacing-0"
+                  style={{ tableLayout: 'fixed', minWidth: '100%' }}
+                >
+                  {/* Column widths — drives table-layout:fixed sizing */}
+                  <colgroup>
+                    <col style={{ width: '32px' }} />
+                    {visibleCols.map((col) => (
+                      <col
+                        key={col.id}
+                        style={{ width: `${auditColWidths[col.id] ?? AUDIT_COL_DEFAULT_WIDTHS[col.id]}px` }}
+                      />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr>
                       <Th className="w-8">
@@ -1698,16 +1818,18 @@ export default function DocTidyInvoiceAudit() {
                           align={col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
+                          isResizing={isResizing}
                           onDragStart={() => setAuditDragSrc(col.id)}
                           onDragOver={() => setAuditDragTarget(col.id)}
                           onDrop={() => {
                             if (auditDragSrc && auditDragSrc !== col.id) {
                               const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
                               setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current)
+                              saveUiPrefsRef.current(newOrder, emailColOrderRef.current, auditColWidthsRef.current, emailColWidthsRef.current)
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
+                          onResizeStart={(startX, startWidth) => startResize(col.id, 'audit', startX, startWidth)}
                         />
                       ))}
                     </tr>
