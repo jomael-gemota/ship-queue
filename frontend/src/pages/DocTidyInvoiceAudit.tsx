@@ -1295,7 +1295,7 @@ export default function DocTidyInvoiceAudit() {
                 )}
 
                 {/* Table */}
-                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-26rem)]">
+                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
                   <table className="w-full text-[11px] border-separate border-spacing-0">
                     <thead>
                       <tr>
@@ -1557,12 +1557,6 @@ export default function DocTidyInvoiceAudit() {
                   </table>
                 </div>
 
-                {/* Bottom pagination */}
-                {!emailLoading && emailPagination.total > 0 && (
-                  <div className="flex items-center justify-end px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                    <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1666,14 +1660,14 @@ export default function DocTidyInvoiceAudit() {
                     </span>
                   )}
                 </div>
-                {pagination.pages > 1 && (
+                {pagination.pages > 0 && (
                   <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
                 )}
               </div>
             )}
 
-            {/* Table — horizontally scrollable, vertically unbounded */}
-            <div className="overflow-x-auto">
+            {/* Table — horizontally and vertically scrollable */}
+            <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
               {error ? (
                 <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
@@ -1827,12 +1821,6 @@ export default function DocTidyInvoiceAudit() {
               )}
             </div>
 
-            {/* Bottom pagination — arrows only (rows-per-page moved to top bar) */}
-            {pagination.pages > 1 && (
-              <div className="flex items-center justify-end border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2.5">
-                <PaginationArrows page={page} pages={pagination.pages} onChange={setPage} />
-              </div>
-            )}
           </div>
             </div>
           )}
