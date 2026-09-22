@@ -44,5 +44,6 @@ stays off per brand until Configurations is toggled.
 - Paste the Work B2B cookie on **HH Workwear → Configurations** (or the
   Helly Hansen Work B2B jar in Settings). Sphere does not refresh either HH
   jar.
-- Batch export of Order ID / PO / B2B order # for DS OM is still not built
-  (see `design-log/2026-09-12-hh-sportswear-automated-ordering.md`).
+- Batch export of Order ID / PO / B2B order # is on the batch
+  (`GET /api/hh-*/:groupId/export`). See
+  `design-log/2026-09-12-hh-sportswear-automated-ordering.md`.

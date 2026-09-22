@@ -30,9 +30,9 @@ Seller Central, drafts the B2B order (does not Place Order), cross-checks the
 live B2B document against Seller Central details, waits for the user, then
 Place Order on go-ahead.
 
-**Reference Number** holds the B2B order number from the cart draft. Writing
-that number back into the DS OM spreadsheet is **not** the path. Operators
-should get Order ID / PO / B2B order # from a **batch export** (not built yet).
+**Reference Number** holds the B2B order number from the cart draft. Writing that number back into the DS OM spreadsheet is **not** the path.
+Operators download Order ID / PO / B2B order # from a **batch export**
+(`.xlsx` from the orders-page ⋯ menu).
 
 Stamping the PO into Amazon **Seller Notes** is still an open question — confirm
 whether that manual step is still needed before automating it.
@@ -146,7 +146,10 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
   Ready orders and live-rechecks first.
 - **Wired, not live-tested:** Place Order (`do_submit: true`) when
   Configurations has Place Order on. Held until a real order can be used.
-- **Not built:** batch export of Order ID / PO / B2B order # for DS OM.
+- **Built:** batch export (`GET /api/hh-sportswear/:groupId/export` or
+  `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
+  **Reference Number** for every order in that batch. Empty references stay
+  blank. Available from the orders-page ⋯ menu.
 - **Open:** whether PO still needs to be stamped into Amazon Seller Notes.
 - Cookie Jar is the SC session source for fetches/cross-checks that need SC.
 - Small leftovers: notes-field blur race; cancelled Amazon orders still fill.

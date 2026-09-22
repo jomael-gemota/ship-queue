@@ -247,6 +247,7 @@ routes require a JWT.
 | POST   | `/:groupId/orders/:orderId/place` | Place one Ready order            |
 | PATCH  | `/:groupId`                  | Update batch notes                    |
 | PATCH  | `/:groupId/orders/:orderId`  | Update order notes                    |
+| GET    | `/:groupId/export`           | Download .xlsx (Order ID, PO Number, Reference Number) |
 | GET    | `/:groupId`                  | Get one group                         |
 | DELETE | `/:groupId`                  | Delete a group                        |
 | DELETE | `/:groupId/orders/:orderId`  | Delete one order from a group         |
@@ -267,8 +268,8 @@ submits Ready orders, and only when Configurations has Place Order on
 or Cookie Jar (`helly-hansen-sports-b2b` / `helly-hansen-work-b2b`). Env
 `HH_B2B_*` overrides Sportswear only. The Notes column starts as the uploaded
 filename and can be edited later (for example `Skip: Cancelled`). Each order
-also has its own Notes field. Batch export of Order ID / PO / B2B order # for
-DS OM is not built yet.
+also has its own Notes field. Batch export downloads an `.xlsx` of Order ID,
+PO Number, and Reference Number for DS OM.
 
 ### Cookie Jar worker
 
