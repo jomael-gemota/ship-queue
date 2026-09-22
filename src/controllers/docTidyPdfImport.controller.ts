@@ -25,21 +25,56 @@ function fail(res: Response, error: unknown, fallback: string): void {
   res.status(500).json({ message: fallback, error: (error as Error).message });
 }
 
-/* ── List imports for a workspace ── */
+/* ── List imports for a workspace (with search, date range, pagination) ── */
 export const listPdfImports = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { workspaceId } = req.query as Record<string, string | undefined>;
+    const {
+      workspaceId,
+      search,
+      dateFrom,
+      dateTo,
+      page = '1',
+      pageSize = '100',
+    } = req.query as Record<string, string | undefined>;
+
     if (!workspaceId || !isValidObjectId(workspaceId)) {
       res.status(400).json({ message: 'A valid workspaceId is required' });
       return;
     }
 
-    const imports = await DocTidyPdfImport.find({ workspaceId })
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .lean();
+    const filter: Record<string, unknown> = { workspaceId };
 
-    res.json({ data: imports });
+    if (search?.trim()) {
+      filter.filename = { $regex: search.trim(), $options: 'i' };
+    }
+
+    if (dateFrom || dateTo) {
+      const range: Record<string, Date> = {};
+      if (dateFrom) range.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+      }
+      filter.createdAt = range;
+    }
+
+    const pg = Math.max(1, parseInt(page, 10));
+    const size = Math.min(500, Math.max(1, parseInt(pageSize, 10)));
+
+    const [imports, total] = await Promise.all([
+      DocTidyPdfImport.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((pg - 1) * size)
+        .limit(size)
+        .lean(),
+      DocTidyPdfImport.countDocuments(filter),
+    ]);
+
+    res.json({
+      data: imports,
+      pagination: { page: pg, pageSize: size, total, pages: Math.max(1, Math.ceil(total / size)) },
+    });
   } catch (error) {
     fail(res, error, 'Failed to list PDF imports');
   }

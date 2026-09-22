@@ -549,27 +549,55 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
+  const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1 })
   const [pdfImportsLoading, setPdfImportsLoading] = useState(false)
   const [pdfImportsError, setPdfImportsError] = useState<string | null>(null)
+  const [pdfPage, setPdfPage] = useState(1)
+  const [pdfPageSize, setPdfPageSize] = useState(PAGE_SIZE_OPTIONS[0])
+  const [pdfSearch, setPdfSearch] = useState('')
+  const [pdfDebouncedSearch, setPdfDebouncedSearch] = useState('')
+  const [pdfDateFrom, setPdfDateFrom] = useState('')
+  const [pdfDateTo, setPdfDateTo] = useState('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
   const [pdfDragOver, setPdfDragOver] = useState(false)
+  const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
   const pdfFileInputRef = useRef<HTMLInputElement>(null)
+
+  /* Debounce search */
+  useEffect(() => {
+    const t = setTimeout(() => setPdfDebouncedSearch(pdfSearch.trim()), 350)
+    return () => clearTimeout(t)
+  }, [pdfSearch])
+
+  /* Reset page when filters change */
+  useEffect(() => { setPdfPage(1) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
 
   const fetchPdfImports = useCallback(async () => {
     if (!activeWorkspace) return
     setPdfImportsLoading(true)
     setPdfImportsError(null)
     try {
-      const res = await authApi.get<{ data: PdfImport[] }>(`/doc-tidy/pdf-imports?workspaceId=${activeWorkspace._id}`)
+      const params = new URLSearchParams({
+        workspaceId: activeWorkspace._id,
+        page: String(pdfPage),
+        pageSize: String(pdfPageSize),
+      })
+      if (pdfDebouncedSearch) params.set('search', pdfDebouncedSearch)
+      if (pdfDateFrom) params.set('dateFrom', pdfDateFrom)
+      if (pdfDateTo) params.set('dateTo', pdfDateTo)
+      const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number } }>(
+        `/doc-tidy/pdf-imports?${params.toString()}`
+      )
       setPdfImports(res.data)
+      setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to load PDF imports')
     } finally {
       setPdfImportsLoading(false)
     }
-  }, [activeWorkspace])
+  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo])
 
   useEffect(() => {
     if (workspaceTab === 'pdf-imports') void fetchPdfImports()
@@ -588,8 +616,10 @@ export default function DocTidyInvoiceAudit() {
       const formData = new FormData()
       formData.append('workspaceId', activeWorkspace._id)
       for (const file of fileArray) formData.append('files', file)
-      const res = await authApi.upload<{ data: PdfImport[] }>('/doc-tidy/pdf-imports', formData)
-      setPdfImports((prev) => [...res.data, ...prev])
+      await authApi.upload<{ data: PdfImport[] }>('/doc-tidy/pdf-imports', formData)
+      setShowPdfUploadModal(false)
+      setPdfPage(1)
+      void fetchPdfImports()
     } catch (err) {
       setPdfUploadError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -617,11 +647,15 @@ export default function DocTidyInvoiceAudit() {
   const handleDeletePdfImport = async (imp: PdfImport) => {
     try {
       await authApi.delete(`/doc-tidy/pdf-imports/${imp._id}`)
-      setPdfImports((prev) => prev.filter((i) => i._id !== imp._id))
+      void fetchPdfImports()
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete import')
     }
   }
+
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
+  const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
+  const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -1678,84 +1712,99 @@ export default function DocTidyInvoiceAudit() {
 
           {/* ══════════════ PDF IMPORTS TAB ══════════════ */}
           {workspaceTab === 'pdf-imports' && (
-            <div className="space-y-4">
+            <div className="space-y-2">
               {pdfImportsError && (
                 <Banner kind="error" onDismiss={() => setPdfImportsError(null)}>{pdfImportsError}</Banner>
               )}
-              {pdfUploadError && (
-                <Banner kind="error" onDismiss={() => setPdfUploadError(null)}>{pdfUploadError}</Banner>
-              )}
 
-              {/* Upload zone */}
-              <div
-                onDragOver={(e) => { e.preventDefault(); setPdfDragOver(true) }}
-                onDragLeave={() => setPdfDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setPdfDragOver(false)
-                  void handlePdfFilesSelected(e.dataTransfer.files)
-                }}
-                className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
-                  pdfDragOver
-                    ? 'border-[var(--accent-200)] bg-[var(--primary-100)]'
-                    : 'border-[var(--bg-300)] bg-[var(--bg-100)] hover:border-[var(--accent-200)] hover:bg-[var(--primary-100)]/40'
-                }`}
-              >
-                {pdfUploading ? (
-                  <>
-                    <Spinner className="h-6 w-6 text-[var(--accent-200)]" />
-                    <p className="text-sm text-[var(--text-200)]">Uploading…</p>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
-                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-100)]">
-                        Drop PDF files here, or{' '}
-                        <button
-                          type="button"
-                          onClick={() => pdfFileInputRef.current?.click()}
-                          className="text-[var(--accent-200)] underline underline-offset-2 cursor-pointer hover:opacity-80"
-                        >
-                          browse
-                        </button>
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--text-200)]">Multiple files accepted · PDF only · Max 50 MB per file</p>
-                    </div>
-                    <input
-                      ref={pdfFileInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files) void handlePdfFilesSelected(e.target.files)
-                        e.target.value = ''
-                      }}
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Imports table */}
               <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
-                <div className="flex items-center justify-between gap-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-2.5">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                    Imported PDFs
+
+                {/* ── Filter bar ── */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+                  {/* Search */}
+                  <div className="relative min-w-[200px] flex-1 max-w-sm">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      value={pdfSearch}
+                      onChange={(e) => setPdfSearch(e.target.value)}
+                      placeholder="Search filename…"
+                      className={`${inputClass} w-full pl-8 pr-8`}
+                    />
+                    {pdfSearch && (
+                      <button onClick={() => setPdfSearch('')} aria-label="Clear search"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Date range */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--text-200)]">From</span>
+                    <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
+                    <span className="text-[11px] text-[var(--text-200)]">to</span>
+                    <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
+                  </div>
+
+                  {pdfHasActiveFilters && (
+                    <button
+                      onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                      className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+
+                  {/* Right side: count + spinner + Import button */}
+                  <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                    {pdfImportsLoading && <Spinner className="h-3 w-3" />}
+                    {pdfImportsPagination.total > 0 && (
+                      <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                    )}
                   </span>
-                  <span className="text-[11px] text-[var(--text-200)]">
-                    {pdfImports.length > 0 && `${pdfImports.length} file${pdfImports.length === 1 ? '' : 's'}`}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    Import PDFs
+                  </button>
                 </div>
 
-                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-30rem)]">
+                {/* ── Top pagination ── */}
+                {!pdfImportsLoading && pdfImportsPagination.total > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                      <span>Rows per page:</span>
+                      <select
+                        value={pdfPageSize}
+                        onChange={(e) => setPdfPageSize(Number(e.target.value))}
+                        className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                      >
+                        {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <span>
+                        {pdfStartItem}–{pdfEndItem} of {pdfImportsPagination.total.toLocaleString()}
+                      </span>
+                    </div>
+                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                  </div>
+                )}
+
+                {/* ── Table ── */}
+                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
                   {pdfImportsLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-12 text-[var(--text-200)]">
+                    <div className="flex items-center justify-center gap-2 py-16 text-[var(--text-200)]">
                       <Spinner className="h-4 w-4" />
                       <span className="text-sm">Loading…</span>
                     </div>
@@ -1768,9 +1817,23 @@ export default function DocTidyInvoiceAudit() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-[11px] font-medium text-[var(--text-100)]">No PDFs imported yet</p>
-                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Drop or browse files above to get started.</p>
+                        <p className="text-[11px] font-medium text-[var(--text-100)]">
+                          {pdfHasActiveFilters ? 'No files match' : 'No PDFs imported yet'}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                          {pdfHasActiveFilters
+                            ? 'Try adjusting or clearing the filters.'
+                            : 'Click "Import PDFs" above to upload files.'}
+                        </p>
                       </div>
+                      {pdfHasActiveFilters && (
+                        <button
+                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                          className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer"
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <table className="w-full text-[11px] border-separate border-spacing-0">
@@ -1778,8 +1841,8 @@ export default function DocTidyInvoiceAudit() {
                         <tr>
                           <Th label="Filename" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           <Th label="Size" iconPath="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" align="right" />
-                          <Th label="Uploaded" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
-                          <Th label="Uploaded by" iconPath="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          <Th label="Imported" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
+                          <Th label="Imported by" iconPath="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           <Th label="Status" iconPath="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" align="center" />
                           <Th label="Actions" align="center" />
                         </tr>
@@ -1806,12 +1869,12 @@ export default function DocTidyInvoiceAudit() {
                                 {formatBytes(imp.size)}
                               </td>
 
-                              {/* Uploaded at */}
+                              {/* Imported at */}
                               <td className="px-3 py-2 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(imp.createdAt)}>
                                 {formatDate(imp.createdAt)}
                               </td>
 
-                              {/* Uploaded by */}
+                              {/* Imported by */}
                               <td className="px-3 py-2 whitespace-nowrap text-[var(--text-200)]">
                                 {imp.uploadedByName ?? <span className="italic">—</span>}
                               </td>
@@ -1858,7 +1921,7 @@ export default function DocTidyInvoiceAudit() {
                                     </button>
                                   )}
                                   {alreadySent && (
-                                    <span className="text-[11px] text-[var(--text-200)] italic">Queued</span>
+                                    <span className="text-[11px] italic text-[var(--text-200)]">Queued</span>
                                   )}
                                   <button
                                     type="button"
@@ -1880,10 +1943,111 @@ export default function DocTidyInvoiceAudit() {
                     </table>
                   )}
                 </div>
+
+                {/* ── Bottom pagination ── */}
+                {!pdfImportsLoading && pdfImportsPagination.total > 0 && (
+                  <div className="flex items-center justify-end px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
+                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                  </div>
+                )}
               </div>
             </div>
           )}
           {/* ── end workspaceTab === 'pdf-imports' ── */}
+
+          {/* ══ PDF Import Upload Modal ══ */}
+          {showPdfUploadModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => { if (!pdfUploading) setShowPdfUploadModal(false) }} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Import PDFs"
+                className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Modal header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import PDFs</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF only · Max 50 MB each</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPdfUploadModal(false)}
+                    disabled={pdfUploading}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Modal body — upload zone */}
+                <div className="px-5 py-5 space-y-4">
+                  {pdfUploadError && (
+                    <Banner kind="error" onDismiss={() => setPdfUploadError(null)}>{pdfUploadError}</Banner>
+                  )}
+
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setPdfDragOver(true) }}
+                    onDragLeave={() => setPdfDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setPdfDragOver(false)
+                      void handlePdfFilesSelected(e.dataTransfer.files)
+                    }}
+                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                      pdfDragOver
+                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)]'
+                        : 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 hover:border-[var(--accent-200)] hover:bg-[var(--primary-100)]/40'
+                    }`}
+                  >
+                    {pdfUploading ? (
+                      <>
+                        <Spinner className="h-7 w-7 text-[var(--accent-200)]" />
+                        <p className="text-sm text-[var(--text-200)]">Uploading files…</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
+                          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[var(--text-100)]">
+                            Drop PDF files here, or{' '}
+                            <button
+                              type="button"
+                              onClick={() => pdfFileInputRef.current?.click()}
+                              className="text-[var(--accent-200)] underline underline-offset-2 cursor-pointer hover:opacity-80"
+                            >
+                              browse
+                            </button>
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--text-200)]">All selected files upload together</p>
+                        </div>
+                        <input
+                          ref={pdfFileInputRef}
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) void handlePdfFilesSelected(e.target.files)
+                            e.target.value = ''
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
           {workspaceTab === 'audit' && (
