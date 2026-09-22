@@ -25,7 +25,7 @@ function getBucket(): GridFSBucket {
   return new GridFSBucket(db, { bucketName: PDF_BUCKET });
 }
 
-async function storePdf(filename: string, buffer: Buffer): Promise<Types.ObjectId> {
+export async function storePdf(filename: string, buffer: Buffer): Promise<Types.ObjectId> {
   const bucket = getBucket();
 
   return new Promise<Types.ObjectId>((resolve, reject) => {
@@ -141,6 +141,78 @@ export async function requestParse(
       $set: {
         filename: attachment.filename,
         driveFileId: attachment.driveFileId,
+        pdfFileId,
+        status: 'pending',
+        thinking: '',
+        jsonOutput: null,
+        tableOutput: null,
+        error: null,
+        completedAt: null,
+        requestedByUserId: requestedBy?.id,
+        requestedByName: requestedBy?.name,
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+
+  dispatch(job);
+  announceParseStatus(String(job._id), 'pending');
+  return job;
+}
+
+/**
+ * Creates a parse job for a PDF that already lives in GridFS (a direct upload),
+ * bypassing the Drive download step entirely.
+ *
+ * A synthetic `DocTidyMessage` is created (or reused) so the existing parse-job
+ * schema — which requires a `messageId` — remains unchanged and the worker
+ * protocol is unaffected.
+ */
+export async function requestParseFromGridFS(
+  pdfFileId: Types.ObjectId,
+  filename: string,
+  importId: string,
+  requestedBy?: { id?: string; name?: string }
+): Promise<IDocTidyParseJob> {
+  if (!hasWorker()) {
+    throw new ParseRequestError(
+      'The parsing worker is not connected. Please try again shortly.',
+      503
+    );
+  }
+
+  // Upsert a lightweight synthetic message so the parse job has a valid messageId.
+  const syntheticGmailId = `pdf-import-${importId}`;
+  const message = await DocTidyMessage.findOneAndUpdate(
+    { gmailMessageId: syntheticGmailId },
+    {
+      $setOnInsert: {
+        gmailMessageId: syntheticGmailId,
+        from: 'direct-upload',
+        to: [],
+        subject: filename,
+        sentAt: new Date(),
+        attachments: [{ filename, mimeType: 'application/pdf', size: 0 }],
+        hasAttachments: true,
+        extractedAt: new Date(),
+      },
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+
+  const messageId = message._id as Types.ObjectId;
+  const attachmentIndex = 0;
+
+  const existing = await DocTidyParseJob.findOne({ messageId, attachmentIndex });
+  if (existing && existing.status === 'processing') {
+    throw new ParseRequestError('This document is already being parsed', 409);
+  }
+
+  const job = await DocTidyParseJob.findOneAndUpdate(
+    { messageId, attachmentIndex },
+    {
+      $set: {
+        filename,
         pdfFileId,
         status: 'pending',
         thinking: '',

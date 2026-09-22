@@ -41,6 +41,13 @@ import {
   updateWorkspace,
   deleteWorkspace,
 } from '../controllers/docTidyWorkspace.controller';
+import {
+  pdfUpload,
+  listPdfImports,
+  uploadPdfImports,
+  sendPdfImportToAgent,
+  deletePdfImport,
+} from '../controllers/docTidyPdfImport.controller';
 
 const router = Router();
 
@@ -88,6 +95,12 @@ router.get('/workspaces', listWorkspaces);
 router.post('/workspaces', createWorkspace);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
+
+// Direct PDF uploads — any authenticated user may upload/manage their imports.
+router.get('/pdf-imports', listPdfImports);
+router.post('/pdf-imports', pdfUpload.array('files'), uploadPdfImports);
+router.post('/pdf-imports/:id/parse', sendPdfImportToAgent);
+router.delete('/pdf-imports/:id', deletePdfImport);
 
 // The mailbox connection and attachment destination are admin-managed.
 router.get('/config', getConfig);
