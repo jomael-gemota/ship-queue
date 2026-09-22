@@ -513,7 +513,7 @@ export default function DocTidyInvoiceAudit() {
   const [pageSize, setPageSize] = useState(100)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
-  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
@@ -906,10 +906,24 @@ export default function DocTidyInvoiceAudit() {
     [emailColOrder]
   )
 
-  /* ── Selection helpers (audit table) ── */
-  const pageJobIds = useMemo(() => [...new Set(jobs.map((j) => j._id))], [jobs])
-  const allPageSelected = pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id))
-  const somePageSelected = pageJobIds.some((id) => selectedJobIds.has(id))
+  /* ── Selection helpers (audit table — row-level, one key per line item) ── */
+  /**
+   * One entry per visible line-item row on the current page. Key format:
+   * `${job._id}-${itemIdx}`.  Documents with no line items contribute a single
+   * `${job._id}-0` key so they remain selectable.
+   */
+  const pageRowKeys = useMemo(() => {
+    const keys: string[] = []
+    for (const job of jobs) {
+      const json = job.jsonOutput ?? null
+      const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+      const count = lineItems.length > 0 ? lineItems.length : 1
+      for (let i = 0; i < count; i++) keys.push(`${job._id}-${i}`)
+    }
+    return keys
+  }, [jobs])
+  const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
+  const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (auditSelectAllRef.current) {
@@ -917,20 +931,20 @@ export default function DocTidyInvoiceAudit() {
     }
   }, [somePageSelected, allPageSelected])
 
-  const toggleAuditJob = (jobId: string) => {
-    setSelectedJobIds((prev) => {
+  const toggleAuditRow = (rowKey: string) => {
+    setSelectedRowKeys((prev) => {
       const next = new Set(prev)
-      if (next.has(jobId)) next.delete(jobId)
-      else next.add(jobId)
+      if (next.has(rowKey)) next.delete(rowKey)
+      else next.add(rowKey)
       return next
     })
   }
   const toggleAllAuditPage = () => {
-    setSelectedJobIds((prev) => {
+    setSelectedRowKeys((prev) => {
       const next = new Set(prev)
-      for (const id of pageJobIds) {
-        if (allPageSelected) next.delete(id)
-        else next.add(id)
+      for (const key of pageRowKeys) {
+        if (allPageSelected) next.delete(key)
+        else next.add(key)
       }
       return next
     })
@@ -946,7 +960,16 @@ export default function DocTidyInvoiceAudit() {
 
       let exportJobs: ParseJobListItem[]
       if (mode === 'selection') {
-        exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+        // Only jobs that have at least one selected row — row-level filter applied below
+        exportJobs = jobs.filter((j) => {
+          const json = j.jsonOutput ?? null
+          const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+          const count = lineItems.length > 0 ? lineItems.length : 1
+          for (let i = 0; i < count; i++) {
+            if (selectedRowKeys.has(`${j._id}-${i}`)) return true
+          }
+          return false
+        })
       } else {
         // Fetch all matching records regardless of current pagination
         const params = new URLSearchParams({
@@ -967,7 +990,10 @@ export default function DocTidyInvoiceAudit() {
         const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
         const rowItems: (Record<string, unknown> | null)[] = lineItems.length > 0 ? lineItems : [null]
 
-        for (const item of rowItems) {
+        for (let itemIdx = 0; itemIdx < rowItems.length; itemIdx++) {
+          // For selection exports, skip line items that weren't individually selected
+          if (mode === 'selection' && !selectedRowKeys.has(`${job._id}-${itemIdx}`)) continue
+          const item = rowItems[itemIdx]
           const row: Record<string, string> = {}
           for (const col of visibleCols) {
             if (isLineItemCol(col.id)) {
@@ -1615,14 +1641,14 @@ export default function DocTidyInvoiceAudit() {
               </button>
 
               {/* Export button */}
-              {selectedJobIds.size > 0 ? (
+              {selectedRowKeys.size > 0 ? (
                 <button type="button" onClick={() => void exportToExcel('selection')} disabled={exporting}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
                   {exporting
                     ? <Spinner className="h-3.5 w-3.5" />
                     : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                   }
-                  Export {selectedJobIds.size} selected
+                  Export {selectedRowKeys.size} selected
                 </button>
               ) : (
                 <button type="button" onClick={() => void exportToExcel('all')} disabled={exporting}
@@ -1648,12 +1674,12 @@ export default function DocTidyInvoiceAudit() {
                   {pagination.total > 0 && (
                     <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
                   )}
-                  {selectedJobIds.size > 0 && (
+                  {selectedRowKeys.size > 0 && (
                     <span className="flex items-center gap-1.5">
                       <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
-                        {selectedJobIds.size} selected
+                        {selectedRowKeys.size} selected
                       </span>
-                      <button onClick={() => setSelectedJobIds(new Set())}
+                      <button onClick={() => setSelectedRowKeys(new Set())}
                         className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
                         Clear
                       </button>
@@ -1767,28 +1793,27 @@ export default function DocTidyInvoiceAudit() {
 
                           return rowItems.map((item, itemIdx) => {
                             const isEven = rowIdx % 2 === 0
-                            const isSelected = selectedJobIds.has(job._id)
+                            const rowKey = `${job._id}-${itemIdx}`
+                            const isSelected = selectedRowKeys.has(rowKey)
                             rowIdx++
                             return (
                               <tr
-                                key={`${job._id}-${itemIdx}`}
+                                key={rowKey}
                                 className={`transition-colors align-middle ${
                                   isSelected
                                     ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
                                     : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
                                 }`}
                               >
-                                {/* Checkbox — only shown on first line-item row of each job */}
+                                {/* Checkbox — one per line-item row */}
                                 <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
-                                  {itemIdx === 0 ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => toggleAuditJob(job._id)}
-                                      aria-label={`Select ${job.filename}`}
-                                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
-                                    />
-                                  ) : null}
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleAuditRow(rowKey)}
+                                    aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
+                                    className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                  />
                                 </td>
                                 {visibleCols.map((col) => (
                                   <td
