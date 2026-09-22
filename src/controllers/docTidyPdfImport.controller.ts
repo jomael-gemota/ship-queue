@@ -6,7 +6,7 @@ import DocTidyPdfImport from '../models/DocTidyPdfImport';
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import { ParseRequestError, storePdf, requestParseFromGridFS } from '../services/docTidyParse.service';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
-import { uploadBufferToDrive } from '../services/googleDrive.service';
+import { deleteDriveFile, uploadBufferToDrive } from '../services/googleDrive.service';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
@@ -198,7 +198,7 @@ export const sendPdfImportToAgent = async (req: Request, res: Response): Promise
   }
 };
 
-/* ── Delete an import (and its GridFS file) ── */
+/* ── Delete an import, its GridFS bytes, and its Drive file (best-effort) ── */
 export const deletePdfImport = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -211,6 +211,17 @@ export const deletePdfImport = async (req: Request, res: Response): Promise<void
     if (!imp) {
       res.status(404).json({ message: 'PDF import not found' });
       return;
+    }
+
+    // Best-effort: delete the mirrored Drive file.
+    if (imp.driveFileId) {
+      const config = await getDocTidyConfigDoc(true).catch(() => null);
+      if (config?.gmailRefreshToken) {
+        await deleteDriveFile(
+          { refreshToken: config.gmailRefreshToken },
+          imp.driveFileId
+        ).catch(() => { /* non-fatal */ });
+      }
     }
 
     res.json({ data: { deleted: true } });

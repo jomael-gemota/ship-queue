@@ -200,3 +200,16 @@ export async function getDriveFolder(
 
   return { id: res.data.id || folderId, name: res.data.name || 'Folder' };
 }
+
+/**
+ * Permanently deletes a file from Drive. Best-effort: callers should not
+ * surface errors to the user when the file is already gone or inaccessible.
+ */
+export async function deleteDriveFile(
+  creds: DriveCredentials,
+  fileId: string
+): Promise<void> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+  await drive.files.delete({ fileId, supportsAllDrives: true });
+}

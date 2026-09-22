@@ -11,7 +11,7 @@ import DocTidyParseJob from '../models/DocTidyParseJob';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
-import { getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
+import { deleteDriveFile, getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
 import { getPollerStatus } from '../services/docTidyPoller';
 
 /** Escapes user input before it is used inside a RegExp. */
@@ -543,6 +543,52 @@ export const listConfigFolders = async (req: Request, res: Response): Promise<vo
   }
 };
 
+/* -------------------------------------------------------- message delete */
+
+/**
+ * Deletes a captured message, its associated parse jobs, and best-effort
+ * removes the Drive attachment files. Useful for removing test captures or
+ * items imported by mistake.
+ */
+export const deleteMessage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid message id' });
+      return;
+    }
+
+    const message = await DocTidyMessage.findByIdAndDelete(id);
+    if (!message) {
+      res.status(404).json({ message: 'Message not found' });
+      return;
+    }
+
+    // Delete associated parse jobs.
+    await DocTidyParseJob.deleteMany({ messageId: message._id });
+
+    // Best-effort: delete the Drive attachment files.
+    const driveFileIds = (message.attachments ?? [])
+      .map((a) => a.driveFileId)
+      .filter((fid): fid is string => Boolean(fid));
+
+    if (driveFileIds.length > 0) {
+      const config = await getDocTidyConfigDoc(true).catch(() => null);
+      if (config?.gmailRefreshToken) {
+        await Promise.allSettled(
+          driveFileIds.map((fileId) =>
+            deleteDriveFile({ refreshToken: config.gmailRefreshToken }, fileId)
+          )
+        );
+      }
+    }
+
+    res.json({ data: { deleted: true } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete message', error: (error as Error).message });
+  }
+};
+
 /* -------------------------------------------------------- shared UI prefs */
 
 /**
@@ -556,6 +602,7 @@ export const getUiPrefs = async (_req: Request, res: Response): Promise<void> =>
       data: {
         auditColumnOrder: config.auditColumnOrder ?? [],
         wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
+        pdfImportColOrder: config.pdfImportColOrder ?? [],
       },
     });
   } catch (error) {
@@ -571,15 +618,17 @@ export const getUiPrefs = async (_req: Request, res: Response): Promise<void> =>
  */
 export const putUiPrefs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { auditColumnOrder, wsEmailColumnOrder } = req.body as {
+    const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = req.body as {
       auditColumnOrder?: string[];
       wsEmailColumnOrder?: string[];
+      pdfImportColOrder?: string[];
     };
 
     const config = await getDocTidyConfigDoc();
 
     if (Array.isArray(auditColumnOrder)) config.auditColumnOrder = auditColumnOrder;
     if (Array.isArray(wsEmailColumnOrder)) config.wsEmailColumnOrder = wsEmailColumnOrder;
+    if (Array.isArray(pdfImportColOrder)) config.pdfImportColOrder = pdfImportColOrder;
     await config.save();
 
     // Broadcast to all connected clients so they reflect the change live.
@@ -587,12 +636,14 @@ export const putUiPrefs = async (req: Request, res: Response): Promise<void> => 
       type: 'ui_prefs',
       auditColumnOrder: config.auditColumnOrder,
       wsEmailColumnOrder: config.wsEmailColumnOrder,
+      pdfImportColOrder: config.pdfImportColOrder,
     });
 
     res.json({
       data: {
         auditColumnOrder: config.auditColumnOrder ?? [],
         wsEmailColumnOrder: config.wsEmailColumnOrder ?? [],
+        pdfImportColOrder: config.pdfImportColOrder ?? [],
       },
     });
   } catch (error) {

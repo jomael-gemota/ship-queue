@@ -9,6 +9,7 @@ import {
   runAllRules,
   getMessages,
   getMessageById,
+  deleteMessage,
   streamEvents,
   getConfig,
   updateConfig,
@@ -64,6 +65,7 @@ router.post('/run', runAllRules);
 
 router.get('/messages', getMessages);
 router.get('/messages/:id', getMessageById);
+router.delete('/messages/:id', deleteMessage);
 
 // Long-lived SSE stream: tells open results tables when to refetch.
 router.get('/stream', streamEvents);

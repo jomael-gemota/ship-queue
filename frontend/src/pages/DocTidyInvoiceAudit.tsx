@@ -37,6 +37,10 @@ import {
   type ParseJobListItem,
   type ParseJobsResponse,
   type PdfImport,
+  type PdfImportColumn,
+  type PdfImportColumnId,
+  PDF_IMPORT_COLUMNS,
+  DEFAULT_PDF_IMPORT_COL_ORDER,
   isParseRunning,
 } from '../types/docTidy'
 
@@ -483,6 +487,78 @@ function isLineItemCol(id: InvoiceAuditColumnId): boolean {
   return id.startsWith('li')
 }
 
+/* ─────────────────────────── Confirm Delete Dialog ── */
+
+function ConfirmDeleteDialog({
+  title,
+  description,
+  deleting,
+  onConfirm,
+  onCancel,
+}: {
+  title: string
+  description: React.ReactNode
+  deleting: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !deleting) onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, deleting])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => { if (!deleting) onCancel() }} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-2xl space-y-4"
+      >
+        {/* Icon + title */}
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
+            <svg className="h-5 w-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text-100)]">{title}</h3>
+            <p className="mt-1 text-xs text-[var(--text-200)] leading-relaxed">{description}</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-4 py-2 text-sm text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={deleting}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition-opacity hover:bg-rose-700 disabled:opacity-60"
+          >
+            {deleting && (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ──────────────────────────────────────────────── Page ── */
 
 /** Smaller page sizes for the audit table, which flattens one row per line item. */
@@ -571,6 +647,19 @@ export default function DocTidyInvoiceAudit() {
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
   const pdfFileInputRef = useRef<HTMLInputElement>(null)
 
+  /* ── PDF import column drag-reorder ── */
+  const [pdfColOrder, setPdfColOrder] = useState<PdfImportColumnId[]>(DEFAULT_PDF_IMPORT_COL_ORDER)
+  const [pdfDragSrc, setPdfDragSrc] = useState<PdfImportColumnId | null>(null)
+  const [pdfDragTarget, setPdfDragTarget] = useState<PdfImportColumnId | null>(null)
+  const pdfColOrderRef = useRef(pdfColOrder)
+  useEffect(() => { pdfColOrderRef.current = pdfColOrder }, [pdfColOrder])
+
+  /* ── Confirm-delete dialogs ── */
+  const [confirmDeleteEmail, setConfirmDeleteEmail] = useState<import('../types/docTidy').DocTidyMessage | null>(null)
+  const [emailDeleting, setEmailDeleting] = useState(false)
+  const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
+  const [pdfDeleting, setPdfDeleting] = useState(false)
+
   /* Debounce search */
   useEffect(() => {
     const t = setTimeout(() => setPdfDebouncedSearch(pdfSearch.trim()), 350)
@@ -658,13 +747,33 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  const handleDeletePdfImport = async (imp: PdfImport) => {
+  const confirmAndDeletePdfImport = async (imp: PdfImport) => {
+    setPdfDeleting(true)
     try {
       await authApi.delete(`/doc-tidy/pdf-imports/${imp._id}`)
       setPdfSelectedIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
+      setConfirmDeletePdf(null)
       void fetchPdfImports()
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete import')
+      setConfirmDeletePdf(null)
+    } finally {
+      setPdfDeleting(false)
+    }
+  }
+
+  const handleDeleteEmail = async (msg: import('../types/docTidy').DocTidyMessage) => {
+    setEmailDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/messages/${msg._id}`)
+      setSelectedEmailIds((prev) => { const next = new Set(prev); next.delete(msg._id); return next })
+      setConfirmDeleteEmail(null)
+      void fetchEmails(true)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to delete message')
+      setConfirmDeleteEmail(null)
+    } finally {
+      setEmailDeleting(false)
     }
   }
 
@@ -698,6 +807,9 @@ export default function DocTidyInvoiceAudit() {
   const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
   const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
   const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
+  const orderedPdfCols = pdfColOrder
+    .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
+    .filter((c): c is PdfImportColumn => Boolean(c))
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -718,12 +830,11 @@ export default function DocTidyInvoiceAudit() {
   /* ── Load shared column order from server on mount ── */
   useEffect(() => {
     authApi
-      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[] } }>('/doc-tidy/ui-prefs')
+      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>('/doc-tidy/ui-prefs')
       .then((res) => {
-        const { auditColumnOrder, wsEmailColumnOrder } = res.data
+        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
 
         if (auditColumnOrder && auditColumnOrder.length > 0) {
-          // Preserve any stored order; append new column ids that don't exist yet
           const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
             INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
           )
@@ -738,16 +849,25 @@ export default function DocTidyInvoiceAudit() {
           const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
           setEmailColOrder(merged)
         }
+
+        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
+          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+          )
+          const merged = [...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))]
+          setPdfColOrder(merged)
+        }
       })
       .catch(() => { /* Non-critical — silently fall back to defaults. */ })
   }, [])
 
   /** Persist column orders to the server (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[]) => {
+    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
       void authApi.put('/doc-tidy/ui-prefs', {
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
+        pdfImportColOrder: pdfOrder,
       }).catch(() => { /* Non-critical. */ })
     },
     []
@@ -822,16 +942,16 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
-            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
+            const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
+            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
         }
       },
@@ -853,16 +973,16 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
-            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
+            const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
+            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
         }
       },
@@ -878,7 +998,6 @@ export default function DocTidyInvoiceAudit() {
 
   /* SSE — refresh PDF imports when a parse job status changes */
   const fetchPdfImportsRef = useRef(fetchPdfImports)
-  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => { fetchPdfImportsRef.current = fetchPdfImports }, [fetchPdfImports])
   useEffect(() => {
     if (workspaceTab !== 'pdf-imports' || !activeWorkspace) return
@@ -1519,7 +1638,7 @@ export default function DocTidyInvoiceAudit() {
                               if (emailDragSrc && emailDragSrc !== col.id) {
                                 const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
                                 setEmailColOrder(newOrder)
-                                saveColOrdersRef.current(auditColOrderRef.current, newOrder)
+                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current)
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
@@ -1740,11 +1859,24 @@ export default function DocTidyInvoiceAudit() {
 
                               {/* Actions — always last, not draggable */}
                               <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-                                <AttachmentIcons
-                                  message={msg}
-                                  onOpenJob={setOpenJobId}
-                                  onChanged={() => void fetchEmails(true)}
-                                />
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <AttachmentIcons
+                                    message={msg}
+                                    onOpenJob={setOpenJobId}
+                                    onChanged={() => void fetchEmails(true)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteEmail(msg)}
+                                    title="Delete this message"
+                                    aria-label="Delete message"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           )
@@ -1916,10 +2048,26 @@ export default function DocTidyInvoiceAudit() {
                               className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                             />
                           </Th>
-                          <Th label="Imported" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
-                          <Th label="Imported by" iconPath="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          <Th label="Size" iconPath="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" align="right" />
-                          <Th label="Filename" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          {orderedPdfCols.map((col) => (
+                            <DraggableTh
+                              key={col.id}
+                              label={col.label}
+                              iconPath={col.iconPath}
+                              align={col.align}
+                              isDragging={pdfDragSrc === col.id}
+                              isDragTarget={pdfDragTarget === col.id}
+                              onDragStart={() => setPdfDragSrc(col.id)}
+                              onDragOver={() => setPdfDragTarget(col.id)}
+                              onDrop={() => {
+                                if (pdfDragSrc && pdfDragSrc !== col.id) {
+                                  const newOrder = reorderCols(pdfColOrderRef.current, pdfDragSrc, col.id)
+                                  setPdfColOrder(newOrder)
+                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder)
+                                }
+                              }}
+                              onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
+                            />
+                          ))}
                           <Th label="Actions" align="center" />
                         </tr>
                       </thead>
@@ -1930,6 +2078,8 @@ export default function DocTidyInvoiceAudit() {
                           const job = imp.parseJob
                           const isRunning = job && isParseRunning(job.status)
                           const isAborting = job && pdfAbortingJobId === job._id
+                          const dragCls = (id: PdfImportColumnId) =>
+                            pdfDragSrc === id ? 'opacity-60' : pdfDragTarget === id ? 'border-l-[3px] border-l-sky-400' : ''
 
                           return (
                             <tr
@@ -1951,46 +2101,58 @@ export default function DocTidyInvoiceAudit() {
                                 />
                               </td>
 
-                              {/* Imported at */}
-                              <td className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(imp.createdAt)}>
-                                {formatDate(imp.createdAt)}
-                              </td>
-
-                              {/* Imported by */}
-                              <td className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]">
-                                {imp.uploadedByName ?? <span className="italic">—</span>}
-                              </td>
-
-                              {/* Size */}
-                              <td className="px-3 py-1 whitespace-nowrap text-right tabular-nums text-[var(--text-200)]">
-                                {formatBytes(imp.size)}
-                              </td>
-
-                              {/* Filename — clickable, opens Drive link */}
-                              <td className="px-3 py-1 min-w-0 max-w-[300px]">
-                                {imp.driveWebViewLink ? (
-                                  <a
-                                    href={imp.driveWebViewLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title={`Open ${imp.filename} in Google Drive`}
-                                    className="inline-flex items-center gap-1.5 min-w-0 group"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                      <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                    </svg>
-                                    <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
-                                  </a>
-                                ) : (
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                      <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                    </svg>
-                                    <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
-                                  </div>
-                                )}
-                              </td>
+                              {orderedPdfCols.map((col) => {
+                                const cls = `${dragCls(col.id)}`
+                                switch (col.id) {
+                                  case 'imported':
+                                    return (
+                                      <td key="imported" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
+                                        {formatDate(imp.createdAt)}
+                                      </td>
+                                    )
+                                  case 'importedBy':
+                                    return (
+                                      <td key="importedBy" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`}>
+                                        {imp.uploadedByName ?? <span className="italic">—</span>}
+                                      </td>
+                                    )
+                                  case 'size':
+                                    return (
+                                      <td key="size" className={`px-3 py-1 whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
+                                        {formatBytes(imp.size)}
+                                      </td>
+                                    )
+                                  case 'filename':
+                                    return (
+                                      <td key="filename" className={`px-3 py-1 min-w-0 max-w-[300px] ${cls}`}>
+                                        {imp.driveWebViewLink ? (
+                                          <a
+                                            href={imp.driveWebViewLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`Open ${imp.filename} in Google Drive`}
+                                            className="inline-flex items-center gap-1.5 min-w-0 group"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
+                                          </a>
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return null
+                                }
+                              })}
 
                               {/* Actions — mirrors the Emails tab AttachmentIcons states */}
                               <td className="px-3 py-1 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -2069,8 +2231,8 @@ export default function DocTidyInvoiceAudit() {
                                   {/* Delete */}
                                   <button
                                     type="button"
-                                    onClick={() => void handleDeletePdfImport(imp)}
-                                    title="Remove this import"
+                                    onClick={() => setConfirmDeletePdf(imp)}
+                                    title="Delete this import"
                                     aria-label="Delete import"
                                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
                                   >
@@ -2319,7 +2481,7 @@ export default function DocTidyInvoiceAudit() {
                             if (auditDragSrc && auditDragSrc !== col.id) {
                               const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
                               setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
@@ -2474,6 +2636,46 @@ export default function DocTidyInvoiceAudit() {
           message={viewMessage}
           onClose={() => setViewMessage(null)}
           onOpenJob={setOpenJobId}
+        />
+      )}
+
+      {/* ── Confirm delete: email message ── */}
+      {confirmDeleteEmail && (
+        <ConfirmDeleteDialog
+          title="Delete this message?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">{confirmDeleteEmail.subject || '(no subject)'}</span>
+              {' '}from <span className="font-medium text-[var(--text-100)]">{confirmDeleteEmail.fromName || confirmDeleteEmail.from}</span>
+              <br />
+              <span className="text-[var(--text-200)]">The message record and any Drive attachments will be permanently removed. This cannot be undone.</span>
+            </>
+          }
+          deleting={emailDeleting}
+          onConfirm={() => void handleDeleteEmail(confirmDeleteEmail)}
+          onCancel={() => setConfirmDeleteEmail(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: PDF import ── */}
+      {confirmDeletePdf && (
+        <ConfirmDeleteDialog
+          title="Delete this PDF import?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">{confirmDeletePdf.filename}</span>
+              <br />
+              <span className="text-[var(--text-200)]">
+                {confirmDeletePdf.driveFileId
+                  ? 'The import record and its Google Drive copy will be permanently removed.'
+                  : 'The import record will be permanently removed.'}
+                {' '}This cannot be undone.
+              </span>
+            </>
+          }
+          deleting={pdfDeleting}
+          onConfirm={() => void confirmAndDeletePdfImport(confirmDeletePdf)}
+          onCancel={() => setConfirmDeletePdf(null)}
         />
       )}
     </div>

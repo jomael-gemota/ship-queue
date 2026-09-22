@@ -36,6 +36,12 @@ export interface IDocTidyConfig extends Document {
    */
   wsEmailColumnOrder?: string[];
 
+  /**
+   * Shared column order for the PDF Imports table.
+   * Absent or empty = use the default order from PDF_IMPORT_COLUMNS.
+   */
+  pdfImportColOrder?: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +60,7 @@ const DocTidyConfigSchema = new Schema<IDocTidyConfig>(
     driveId: { type: String },
     auditColumnOrder: { type: [String], default: undefined },
     wsEmailColumnOrder: { type: [String], default: undefined },
+    pdfImportColOrder: { type: [String], default: undefined },
   },
   { timestamps: true }
 );

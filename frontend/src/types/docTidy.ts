@@ -182,6 +182,7 @@ export interface DocTidyEvent {
    */
   auditColumnOrder?: string[]
   wsEmailColumnOrder?: string[]
+  pdfImportColOrder?: string[]
   at?: string
 }
 
@@ -563,6 +564,45 @@ export type LineItemColumnId = never
  * A PDF file uploaded directly by a user for Tidy Agent parsing,
  * outside the email-capture flow.
  */
+/* ────────────────────────────────── PDF Import columns ── */
+
+export type PdfImportColumnId = 'imported' | 'importedBy' | 'size' | 'filename'
+
+export interface PdfImportColumn {
+  id: PdfImportColumnId
+  label: string
+  iconPath: string
+  align?: 'left' | 'right'
+}
+
+export const PDF_IMPORT_COLUMNS: PdfImportColumn[] = [
+  {
+    id: 'imported',
+    label: 'Imported',
+    iconPath: 'M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z',
+  },
+  {
+    id: 'importedBy',
+    label: 'Imported By',
+    iconPath: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  },
+  {
+    id: 'size',
+    label: 'Size',
+    iconPath: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
+    align: 'right',
+  },
+  {
+    id: 'filename',
+    label: 'Filename',
+    iconPath: 'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  },
+]
+
+export const DEFAULT_PDF_IMPORT_COL_ORDER: PdfImportColumnId[] = PDF_IMPORT_COLUMNS.map((c) => c.id)
+
+/* ──────────────────────────────────────── Direct PDF Imports ── */
+
 /** Slim parse job summary returned inline on PDF import list rows. */
 export interface PdfImportParseJob {
   _id: string
