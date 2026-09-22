@@ -781,7 +781,7 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /** Send all parseable, un-parsed (or failed) attachments across selected email rows. */
-  const handleBulkSendEmailsToAgent = async () => {
+  const handleBulkSendEmailsToAgent = async (isRerun = false) => {
     const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
     const tasks: Array<{ msgId: string; index: number }> = []
     for (const msg of selectedMsgs) {
@@ -789,8 +789,10 @@ export default function DocTidyInvoiceAudit() {
         const att = msg.attachments[i]
         if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
         const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        // Skip running / completed jobs; send if no job yet or previously failed
-        if (job && (job.status === 'completed' || job.status === 'pending' || job.status === 'processing')) continue
+        // Always skip actively running/pending jobs
+        if (job && (job.status === 'pending' || job.status === 'processing')) continue
+        // Skip completed jobs unless this is a rerun
+        if (!isRerun && job?.status === 'completed') continue
         tasks.push({ msgId: msg._id, index: i })
       }
     }
@@ -809,9 +811,13 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /** Send all un-parsed selected PDF imports to the Tidy Agent. */
-  const handleBulkSendPdfsToAgent = async () => {
+  const handleBulkSendPdfsToAgent = async (isRerun = false) => {
     const selected = pdfImports.filter(
-      (imp) => pdfSelectedIds.has(imp._id) && (!imp.parseJob || imp.parseJob.status === 'failed')
+      (imp) =>
+        pdfSelectedIds.has(imp._id) &&
+        (!imp.parseJob ||
+          imp.parseJob.status === 'failed' ||
+          (isRerun && imp.parseJob.status === 'completed'))
     )
     if (selected.length === 0) return
     setPdfBulkSending(true)
@@ -828,6 +834,37 @@ export default function DocTidyInvoiceAudit() {
   /* Selection helpers */
   const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
+
+  /**
+   * True when every selected PDF import already has a completed parse job —
+   * used to switch the bulk button label to "Send X to Tidy Agent for Rerun".
+   */
+  const allSelectedPdfsCompleted =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .every((imp) => imp.parseJob?.status === 'completed')
+
+  /**
+   * True when every parseable attachment across all selected email messages
+   * already has a completed parse job — used to switch the bulk button label
+   * to "Send X to Tidy Agent for Rerun".
+   */
+  const allSelectedEmailsCompleted =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .every((m) => {
+        let hasParseable = false
+        for (let i = 0; i < m.attachments.length; i++) {
+          const att = m.attachments[i]
+          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+          hasParseable = true
+          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
+          if (!job || job.status !== 'completed') return false
+        }
+        return hasParseable
+      })
   useEffect(() => {
     if (pdfSelectAllRef.current) {
       pdfSelectAllRef.current.indeterminate = somePdfOnPageSelected && !allPdfOnPageSelected
@@ -1657,8 +1694,14 @@ export default function DocTidyInvoiceAudit() {
                     {selectedEmailIds.size > 0 && (
                       <button
                         type="button"
-                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`}
-                        onClick={() => void handleBulkSendEmailsToAgent()}
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedEmailsCompleted
+                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
+                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendEmailsToAgent(allSelectedEmailsCompleted)}
                         disabled={emailBulkSending || workerOnline === false}
                         className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -1669,7 +1712,9 @@ export default function DocTidyInvoiceAudit() {
                             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
                           </svg>
                         )}
-                        Send {selectedEmailIds.size} to Tidy Agent
+                        {allSelectedEmailsCompleted
+                          ? `Send ${selectedEmailIds.size} to Tidy Agent for Rerun`
+                          : `Send ${selectedEmailIds.size} to Tidy Agent`}
                       </button>
                     )}
                   </span>
@@ -2049,8 +2094,14 @@ export default function DocTidyInvoiceAudit() {
                     {pdfSelectedIds.size > 0 && (
                       <button
                         type="button"
-                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`}
-                        onClick={() => void handleBulkSendPdfsToAgent()}
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedPdfsCompleted
+                              ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
+                              : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendPdfsToAgent(allSelectedPdfsCompleted)}
                         disabled={pdfBulkSending || workerOnline === false}
                         className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -2061,7 +2112,9 @@ export default function DocTidyInvoiceAudit() {
                             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
                           </svg>
                         )}
-                        Send {pdfSelectedIds.size} to Tidy Agent
+                        {allSelectedPdfsCompleted
+                          ? `Send ${pdfSelectedIds.size} to Tidy Agent for Rerun`
+                          : `Send ${pdfSelectedIds.size} to Tidy Agent`}
                       </button>
                     )}
                   </span>
@@ -2310,12 +2363,30 @@ export default function DocTidyInvoiceAudit() {
                                       )
                                     }
 
-                                    // Completed — emerald check
+                                    // Completed — emerald check + rerun button
                                     if (job.status === 'completed') {
                                       return (
-                                        <TableActionButton label="Open Tidy Agent's reasoning and output" onClick={() => setOpenJobId(job._id)}>
-                                          <SuccessIcon className="h-5 w-5 text-emerald-500" />
-                                        </TableActionButton>
+                                        <span className="flex items-center gap-0.5">
+                                          <TableActionButton label="Open Tidy Agent's reasoning and output" onClick={() => setOpenJobId(job._id)}>
+                                            <SuccessIcon className="h-5 w-5 text-emerald-500" />
+                                          </TableActionButton>
+                                          <button
+                                            type="button"
+                                            title={!workerOnline ? 'Tidy Agent is offline' : 'Send to Tidy Agent for Rerun'}
+                                            onClick={() => void handleSendToAgent(imp)}
+                                            disabled={isSending || !workerOnline}
+                                            className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            {isSending ? (
+                                              <Spinner className="h-3 w-3" />
+                                            ) : (
+                                              <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                                              </svg>
+                                            )}
+                                            Rerun
+                                          </button>
+                                        </span>
                                       )
                                     }
 
