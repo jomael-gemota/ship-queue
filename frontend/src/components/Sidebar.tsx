@@ -59,6 +59,23 @@ const INVOICE_AUDIT_ITEMS = [
   },
 ]
 
+const ORDERING_ITEMS = [
+  {
+    label: 'Dropship (B2B)',
+    to: '/ordering',
+    icon: (
+      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+        />
+      </svg>
+    ),
+  },
+]
+
 /** Items under the "Admin" header. Visible to everyone in the sidebar; each
  * destination enforces its own access (Settings is open to all, User
  * Management is admin-only and shows a blocking note to non-admins). */
@@ -138,6 +155,31 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
             <div className="border-t border-[var(--bg-300)] my-1" />
           )}
           {INVOICE_AUDIT_ITEMS.map((item) => (
+            <NavLink
+              key={item.label}
+              to={item.to}
+              title={item.label}
+              className={({ isActive }) =>
+                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
+                  isActive
+                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
+                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
+                }`
+              }
+            >
+              {item.icon}
+              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
+            </NavLink>
+          ))}
+
+          {isOpen ? (
+            <div className="pt-2 pb-0.5 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Ordering</p>
+            </div>
+          ) : (
+            <div className="border-t border-[var(--bg-300)] my-1" />
+          )}
+          {ORDERING_ITEMS.map((item) => (
             <NavLink
               key={item.label}
               to={item.to}

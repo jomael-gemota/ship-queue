@@ -12,6 +12,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
 - **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table. Each rule declares the kind of document it collects — Order Confirmation, Invoice or Other — which is stamped on every message it captures.
+- **Dropship B2B (Helly Hansen)** — Import Amazon Order ID + PO batches for HH Sportswear and HH Workwear, fill details from Seller Central, draft/verify Helly Hansen carts, and (when enabled) Place Order.
 
 ## User Guide
 
@@ -141,6 +142,7 @@ ship-queue/
 │   ├── middleware/           # Auth & error-handling middleware
 │   ├── models/               # Mongoose models (Order, Shipment, Label, …)
 │   ├── routes/               # API route definitions
+│   ├── cookie-jar/           # Dedicated cookie-refresh worker (separate process)
 │   └── services/             # ShipStation, Google Drive, sync scheduler, …
 ├── frontend/                 # React app
 │   └── src/
@@ -197,6 +199,9 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `OPENAI_API_KEY` / `EMBEDDING_MODEL`      | Embeddings that make Doc Tidy corrections retrievable  |
 | `SHIPSTATION_API_KEY` / `SHIPSTATION_API_SECRET` | ShipStation API credentials                     |
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
+| `COOKIE_JAR_PORT`                         | Cookie Jar health port (local; default 5001)       |
+| `COOKIE_JAR_OE_US_TOKEN`                  | Sphere API token for Seller Central OE US cookies  |
+| `HH_B2B_COOKIE` / `HH_B2B_BASE_URL` / `HH_B2B_CATALOG` / `HH_B2B_ACCOUNT_ID` | Optional Sportswear-only Helly Hansen overrides (cookie optional if Configurations / Cookie Jar has it). Workwear is not overridden by these. |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
 
 ### 3. Run in development
@@ -205,6 +210,9 @@ Key variables (see `.env.example` for the full list and inline notes):
 # Starts both the backend (http://localhost:5000) and frontend
 # (http://localhost:5173) together in one terminal
 npm run dev
+
+# Cookie Jar worker (optional, separate terminal; http://localhost:5001/health)
+npm run cookie-jar:dev
 ```
 
 Prefer to run them separately (e.g. to isolate log output)? Use
@@ -234,6 +242,8 @@ npm start       # serves API + built frontend from http://localhost:5000
 | `npm run build` | Compile backend (tsc) and build the frontend       |
 | `npm start`     | Run the compiled server (serves API + frontend)    |
 | `npm run lint`  | Lint backend TypeScript (ESLint is not installed at root, so this is not part of `check`) |
+| `npm run cookie-jar:dev` | Cookie Jar worker with hot reload |
+| `npm run cookie-jar` | Run the compiled Cookie Jar worker |
 
 **Frontend** (`frontend/`):
 
@@ -291,6 +301,9 @@ All routes are mounted under `/api`. Most require a valid JWT (`requireAuth`); l
 | GET    | `/drive/folders` | List Google Drive folders                     |
 | DELETE | `/drive`         | Disconnect Google Drive                       |
 | GET/PUT| `/sync`          | Get / update auto-sync config (PUT = admin)   |
+| GET    | `/cookie-jars`   | List cookie-jar schedules (no cookie values)  |
+| PATCH  | `/cookie-jars/:key` | Update name / enabled / cron (admin)       |
+| POST   | `/cookie-jars/:key/run` | Run a jar immediately (admin)           |
 
 ### Admin — `/api/admin` (admin only)
 
@@ -327,6 +340,71 @@ attachment destination are admin-only.
 | POST   | `/`    | Create a shipment    |
 | PUT    | `/:id` | Update a shipment    |
 | DELETE | `/:id` | Delete a shipment    |
+
+### HH B2B — `/api/hh-sportswear` and `/api/hh-workwear`
+
+Same route module, scoped by brand. Sportswear uses portal
+`https://b2bsport.hellyhansen.com` (catalog `ASAPSPORT`, account `9014876`).
+Workwear uses `https://b2bwork.hellyhansen.com` (`ASAPWW`, `9062220`). All
+routes require a JWT.
+
+| Method | Path                         | Description                           |
+| ------ | ---------------------------- | ------------------------------------- |
+| GET    | `/`                          | List groups for this brand (full tree, newest first) |
+| POST   | `/`                          | Create a group (JSON)                 |
+| POST   | `/import`                    | Upload .xlsx/.csv or paste Order ID + PO |
+| GET    | `/config`                    | Brand B2B config (no cookie value)    |
+| PATCH  | `/config`                    | Update baseUrl / catalog / account / cookie / Place Order gate |
+| GET    | `/sc-sync`                   | Details fill / cart draft / place runtime (chip) |
+| POST   | `/:groupId/sc-sync`          | Re-sync details for a whole batch     |
+| POST   | `/:groupId/orders/:orderId/sc-sync` | Re-sync details for one order  |
+| POST   | `/:groupId/cart-draft`       | Draft or regenerate B2B carts         |
+| POST   | `/:groupId/orders/:orderId/cart-draft` | Draft or regenerate one cart |
+| POST   | `/:groupId/cart-verify`      | Re-check live B2B carts vs details    |
+| POST   | `/:groupId/orders/:orderId/cart-verify` | Re-check one cart           |
+| POST   | `/:groupId/cart-compare`     | Return live compare rows              |
+| POST   | `/:groupId/orders/:orderId/cart-compare` | Compare one cart            |
+| POST   | `/:groupId/place`            | Place Ready orders (gated by config)  |
+| POST   | `/:groupId/orders/:orderId/place` | Place one Ready order            |
+| PATCH  | `/:groupId`                  | Update batch notes                    |
+| PATCH  | `/:groupId/orders/:orderId`  | Update order notes                    |
+| GET    | `/:groupId/export`           | Download .xlsx (Order ID, PO Number, Reference Number) |
+| GET    | `/:groupId`                  | Get one group                         |
+| DELETE | `/:groupId`                  | Delete a group                        |
+| DELETE | `/:groupId/orders/:orderId`  | Delete one order from a group         |
+
+Import creates one group (batch) and one order per **unique** Order ID + PO
+Number pair. Duplicate rows are skipped. Files can list those columns in either
+order when headers are present (`Order ID` / `PO Number`). You can also paste
+rows in the import modal; headers are optional if one column is an Amazon Order
+ID. New orders start with Details
+`pending` and Cart `none`. Buyer info and line items stay empty until
+the Seller Central fill that runs right after upload. As soon as an Order ID
+is **Synced**, a cart-draft job runs for that order against that brand’s Helly
+Hansen B2B (`POST /api/documents/` with `do_submit: false`). Cart becomes
+**Draft** and **Reference Number** holds the B2B order number. A live
+cross-check then sets Cart to **Ready** or **Review**. Place Order only
+submits Ready orders, and only when Configurations has Place Order on
+(default off). The session cookie lives in that brand’s Configurations page
+or Cookie Jar (`helly-hansen-sports-b2b` / `helly-hansen-work-b2b`). Env
+`HH_B2B_*` overrides Sportswear only. The Notes column starts as the uploaded
+filename and can be edited later (for example `Skip: Cancelled`). Each order
+also has its own Notes field. Batch export downloads an `.xlsx` of Order ID,
+PO Number, and Reference Number for DS OM.
+
+### Cookie Jar worker
+
+Dedicated process (not the API) that refreshes stored session cookies on a cron
+from Mongo. Fetcher implementations live in `src/cookie-jar/jars/`; name,
+enabled, cron, last cookie, and last run live in the `CookieJar` collection.
+
+```bash
+npm run cookie-jar:dev   # local
+npm run cookie-jar       # compiled (Railway start command for the worker service)
+```
+
+Keep the worker at **one replica**. Cron expressions are UTC. A future Settings
+UI can edit the Mongo row; the worker re-reads config every 30 seconds.
 
 ### Health
 

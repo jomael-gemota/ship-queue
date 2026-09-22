@@ -315,6 +315,30 @@ export interface SettingsResponse {
 
 export type { SyncConfig, SyncConfigResponse } from './order'
 
+export interface CookieJar {
+  key: string
+  name: string
+  enabled: boolean
+  cron: string
+  hasCookie: boolean
+  hasFetcher?: boolean
+  manual?: boolean
+  lastRunAt: string | null
+  lastSuccessAt: string | null
+  lastError: string | null
+  updatedAt: string
+}
+
+export interface CookieJarListResponse {
+  data: CookieJar[]
+}
+
+export interface CookieJarResponse {
+  data: CookieJar
+  skipped?: boolean
+  message?: string
+}
+
 export interface DriveFolder {
   id: string
   name: string

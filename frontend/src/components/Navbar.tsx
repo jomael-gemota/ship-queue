@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { hhBrand, hhBrandFromPath } from '../lib/hhBrand'
+import { hhBreadcrumbPage } from '../lib/hhNav'
 
 export default function Navbar({
   onToggleSidebar,
@@ -14,15 +16,26 @@ export default function Navbar({
   const isDarkTheme = theme === 'dark'
   const themeToggleLabel = isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'
 
+  const isOrdering = pathname.startsWith('/ordering')
   const pageTitle = useMemo(() => {
     if (pathname.startsWith('/create-label/batches')) return 'Batch Items'
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/dropbox-fetcher') return 'Dropbox Fetcher'
     if (pathname.startsWith('/doc-tidy')) return 'Doc Tidy'
+    if (pathname.includes('/ordering/hh-sportswear') || pathname.includes('/ordering/hh-workwear')) {
+      const name = hhBrand(hhBrandFromPath(pathname)).name
+      const page = hhBreadcrumbPage(pathname)
+      if (page === 'items') return `${name} Items`
+      if (page === 'orders') return `${name} Orders`
+      return name
+    }
+    if (pathname === '/ordering' || pathname === '/ordering/') return 'Dropship (B2B)'
     if (pathname === '/settings') return 'Settings'
     if (pathname === '/admin/users') return 'User Management'
     return 'ShipStation Orders'
   }, [pathname])
+
+  const platformLabel = isOrdering ? 'Enterprise Ordering Platform' : 'Enterprise Shipping Platform'
 
   const today = useMemo(
     () =>
@@ -54,7 +67,7 @@ export default function Navbar({
 
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--text-200)]">
-              Enterprise Shipping Platform
+              {platformLabel}
             </p>
             <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] truncate">
               {pageTitle}

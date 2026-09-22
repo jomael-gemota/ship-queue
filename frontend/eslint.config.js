@@ -38,7 +38,7 @@ export default defineConfig([
     // shared UI module pairs its components with the helpers they are built
     // from. Splitting either for Fast Refresh's benefit would scatter one
     // concern across two files.
-    files: ['src/context/*.tsx', 'src/components/**/labelUi.tsx'],
+    files: ['src/context/*.tsx', 'src/components/**/labelUi.tsx', 'src/components/**/hhUi.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

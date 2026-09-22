@@ -11,6 +11,11 @@ import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
 import { startDocTidyPoller } from './services/docTidyPoller';
 import { startDocTidyWorkerServer, WORKER_WS_PATH } from './services/docTidyWorkerRegistry';
+import { startHhB2bHealthScheduler } from './services/hhB2bHealth';
+import { migrateHhSplitStatuses, migrateLocalHhCartDrafts, migrateHhOrderGroupBrands } from './models/HHOrderGroup';
+import { seedCookieJars } from './models/CookieJar';
+import { seedHhB2bConfig } from './models/HHB2bConfig';
+import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -84,6 +89,12 @@ startDocTidyWorkerServer(httpServer);
 
 const start = async () => {
   await connectDB();
+  await seedCookieJars();
+  await seedHhB2bConfig();
+  await migrateHhOrderGroupBrands();
+  await migrateHhSplitStatuses();
+  await migrateLocalHhCartDrafts();
+  await repairHhB2bReferenceNumbers();
   httpServer.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);
     console.log(`Doc Tidy worker endpoint: ws://${HOST}:${PORT}${WORKER_WS_PATH}`);
@@ -92,6 +103,7 @@ const start = async () => {
   await startSyncScheduler();
   // Same for Doc Tidy: capture matching mail as it arrives, not on demand.
   startDocTidyPoller();
+  startHhB2bHealthScheduler();
 };
 
 start();

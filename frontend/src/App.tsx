@@ -11,6 +11,12 @@ import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
 import DropboxFetcher from './pages/DropboxFetcher'
 import DocTidyInvoiceAudit from './pages/DocTidyInvoiceAudit'
+import HHSportswear from './pages/HHSportswear'
+import HHSportswearLayout from './pages/HHSportswearLayout'
+import HHSportswearOrders from './pages/HHSportswearOrders'
+import HHSportswearItems from './pages/HHSportswearItems'
+import HHSportswearConfig from './pages/HHSportswearConfig'
+import DropshipBrands from './pages/DropshipBrands'
 import AdminUsers from './pages/AdminUsers'
 
 function App() {
@@ -33,6 +39,15 @@ function App() {
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/doc-tidy" element={<Navigate to="/doc-tidy/invoice-audit" replace />} />
                 <Route path="/doc-tidy/invoice-audit" element={<DocTidyInvoiceAudit />} />
+                <Route path="/ordering" element={<DropshipBrands />} />
+                {['/ordering/hh-sportswear', '/ordering/hh-workwear'].map((path) => (
+                  <Route key={path} path={path} element={<HHSportswearLayout />}>
+                    <Route index element={<HHSportswear />} />
+                    <Route path="configurations" element={<HHSportswearConfig />} />
+                    <Route path=":groupId" element={<HHSportswearOrders />} />
+                    <Route path=":groupId/orders/:orderId" element={<HHSportswearItems />} />
+                  </Route>
+                ))}
                 <Route path="/settings" element={<Settings />} />
                 {/* Reachable by all authenticated users; the page itself shows a
                     blocking note and skips data loading for non-admins. */}

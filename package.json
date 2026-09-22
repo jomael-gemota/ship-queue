@@ -8,6 +8,8 @@
     "dev:server": "nodemon",
     "dev:client": "npm --prefix frontend run dev",
     "install:all": "npm install && npm --prefix frontend install",
+    "cookie-jar:dev": "nodemon --config nodemon.cookie-jar.json",
+    "cookie-jar": "node dist/cookie-jar/index.js",
     "build": "tsc && npm --prefix frontend ci --include=dev && npm run docs:build && npm --prefix frontend run build",
     "start": "node dist/index.js",
     "check": "npm run typecheck && npm run lint:frontend && npm run build:frontend",
@@ -25,7 +27,9 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
+    "croner": "^10.0.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-session": "^1.19.0",
     "express-validator": "^7.2.0",

@@ -4,6 +4,7 @@ import { authApi, ApiError } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder, SyncConfigResponse } from '../types/label'
 import { useAuth } from '../context/AuthContext'
 import DocTidySettingsCard from '../components/docTidy/DocTidySettingsCard'
+import CookieJarSection from '../components/CookieJarSection'
 
 interface FoldersResponse {
   data: DriveFolder[]
@@ -786,6 +787,7 @@ export default function Settings() {
         </section>
 
         <DocTidySettingsCard isAdmin={isAdmin} />
+        <CookieJarSection isAdmin={isAdmin} onError={setError} onSuccess={setSuccess} />
       </div>
       </div>
     </div>
