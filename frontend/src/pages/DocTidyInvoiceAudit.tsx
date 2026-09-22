@@ -1980,7 +1980,7 @@ export default function DocTidyInvoiceAudit() {
                                     <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                                       <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
                                     </svg>
-                                    <span className="truncate text-[var(--accent-200)] underline underline-offset-2 group-hover:opacity-80" title={imp.filename}>{imp.filename}</span>
+                                    <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
                                   </a>
                                 ) : (
                                   <div className="flex items-center gap-1.5 min-w-0">
