@@ -356,6 +356,19 @@ async def process_job(
                 "I couldn't build the table view this time, but the JSON is ready.",
             )
 
+        # Check whether the job was aborted while we were working before
+        # persisting results. The server sets status → 'failed' on abort, so if
+        # that happened we silently discard our output rather than overwriting
+        # the user's intent.
+        current = await db[PARSE_JOBS].find_one(
+            {"_id": ObjectId(job_id)}, {"status": 1}
+        )
+        if current and current.get("status") == "failed":
+            logger.info(
+                "Job %s was aborted during processing — discarding results", job_id
+            )
+            return
+
         await db[PARSE_JOBS].update_one(
             {"_id": ObjectId(job_id)},
             {
@@ -382,6 +395,13 @@ async def process_job(
             "table": result_table,
         })
         logger.info("Job %s: completed", job_id)
+
+    except asyncio.CancelledError:
+        # The server sent a 'cancel' message (user clicked abort). The server
+        # has already updated the DB to status='failed', so we just stop cleanly
+        # without touching MongoDB or sending any message back.
+        logger.info("Job %s cancelled by user", job_id)
+        raise  # let asyncio mark the task as cancelled
 
     except Exception as exc:
         logger.exception("Job %s failed: %s", job_id, exc)
@@ -420,7 +440,8 @@ async def run_worker() -> None:
                 logger.info("Connected to server")
                 await ws.send(json.dumps({"type": "ready"}))
 
-                active_tasks: set[asyncio.Task] = set()
+                # Maps job_id → asyncio.Task so we can cancel individual jobs.
+                active_tasks: dict[str, asyncio.Task] = {}
 
                 async for raw_message in ws:
                     try:
@@ -434,8 +455,22 @@ async def run_worker() -> None:
                     if msg_type == "job":
                         job_id: str = msg["jobId"]
                         task = asyncio.create_task(process_job(job_id, ws, db))
-                        active_tasks.add(task)
-                        task.add_done_callback(active_tasks.discard)
+                        active_tasks[job_id] = task
+                        task.add_done_callback(
+                            lambda _t, jid=job_id: active_tasks.pop(jid, None)
+                        )
+
+                    elif msg_type == "cancel":
+                        job_id = msg.get("jobId", "")
+                        task = active_tasks.get(job_id)
+                        if task and not task.done():
+                            task.cancel()
+                            logger.info("Cancelling job %s on server request", job_id)
+                        else:
+                            logger.debug(
+                                "Cancel received for job %s but no active task found",
+                                job_id,
+                            )
 
                     else:
                         logger.debug("Unhandled message type: %s", msg_type)

@@ -13,7 +13,7 @@ import {
   requestParse,
   rerunParse,
 } from '../services/docTidyParse.service';
-import { addJobClient, hasWorker } from '../services/docTidyWorkerRegistry';
+import { addJobClient, hasWorker, sendToWorker } from '../services/docTidyWorkerRegistry';
 import { embedText } from '../lib/embeddings';
 
 /** Maps a thrown ParseRequestError onto its status; anything else is a 500. */
@@ -82,6 +82,12 @@ export const abortParseJob = async (req: Request, res: Response): Promise<void> 
       res.status(404).json({ message: 'Parse job not found' });
       return;
     }
+
+    // Tell the worker to stop processing this job. Best-effort: if the worker
+    // is offline the DB update above is still the source of truth, and the
+    // guard in handleWorkerMessage will discard any late 'complete' that
+    // arrives after reconnection.
+    sendToWorker({ type: 'cancel', jobId: id });
 
     res.json({ data: job });
   } catch (error) {
