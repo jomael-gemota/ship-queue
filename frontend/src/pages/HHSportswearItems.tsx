@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge } from '../components/hh/hhUi'
+import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { hhItemSubtotal, hhItemTax, hhItemTotal, hhOrderCanPlace, hhPlaceActionTitle } from '../lib/hhSportswear'
+import {
+  hhCartErrorMentionsSku,
+  hhExcludedItems,
+  hhItemIsExcluded,
+  hhItemSubtotal,
+  hhItemTax,
+  hhItemTotal,
+  hhOrderCanDraft,
+  hhOrderCanPlace,
+  hhOrderDraftTitle,
+  hhOrderIsLocked,
+  hhPlaceActionTitle,
+} from '../lib/hhSportswear'
 import type { HHLineItem } from '../lib/hhSportswear'
 import {
   AmazonIcon,
@@ -18,6 +30,8 @@ import {
   Td,
   Th,
 } from '../components/labels/labelUi'
+
+const MAX_EXCLUDE_NOTE = 500
 
 function TitleIcon({ className = '' }: { className?: string }) {
   return (
@@ -98,13 +112,137 @@ function ProceedsCell({
   )
 }
 
+function HHItemExcludeControls({
+  item,
+  locked,
+  unmatched,
+  busy,
+  error,
+  editing,
+  note,
+  onNoteChange,
+  onStartExclude,
+  onCancel,
+  onExclude,
+  onInclude,
+}: {
+  item: HHLineItem
+  locked: boolean
+  unmatched: boolean
+  busy: boolean
+  error: string | null
+  editing: boolean
+  note: string
+  onNoteChange: (value: string) => void
+  onStartExclude: () => void
+  onCancel: () => void
+  onExclude: () => void
+  onInclude: () => void
+}) {
+  if (item.excluded) {
+    return (
+      <div className="mt-1.5 space-y-1">
+        <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-700/70 dark:text-slate-200">
+          Excluded from cart
+        </span>
+        {item.excludeNote ? (
+          <p className="max-w-xs text-xs font-normal leading-snug text-slate-600 dark:text-[var(--text-200)]">
+            {item.excludeNote}
+          </p>
+        ) : null}
+        {locked ? null : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onInclude}
+            className="block cursor-pointer text-xs font-medium text-[var(--accent-100)] hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-[var(--accent-200)]"
+          >
+            {busy ? 'Saving…' : 'Include in cart'}
+          </button>
+        )}
+        {error ? <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p> : null}
+      </div>
+    )
+  }
+
+  if (locked) return null
+
+  if (editing) {
+    return (
+      <div className="mt-1.5 max-w-xs space-y-1.5" onClick={(event) => event.stopPropagation()}>
+        <textarea
+          value={note}
+          disabled={busy}
+          maxLength={MAX_EXCLUDE_NOTE}
+          rows={2}
+          placeholder="Why? Workwear, OOS…"
+          aria-label="Exclude note"
+          onChange={(event) => onNoteChange(event.target.value)}
+          className="w-full resize-y rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 text-[13px] leading-5 text-slate-800 outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+        />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onExclude}
+            className="cursor-pointer text-xs font-medium text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-300"
+          >
+            {busy ? 'Saving…' : 'Exclude from cart'}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="cursor-pointer text-xs font-medium text-slate-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-[var(--text-200)]"
+          >
+            Cancel
+          </button>
+        </div>
+        {error ? <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p> : null}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onStartExclude}
+      className={`mt-1.5 block cursor-pointer text-xs font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-60 ${
+        unmatched
+          ? 'text-red-700 dark:text-red-300'
+          : 'text-[var(--accent-100)] dark:text-[var(--accent-200)]'
+      }`}
+    >
+      Exclude from cart
+    </button>
+  )
+}
+
 export default function HHSportswearItems() {
   const { groupId = '', orderId = '' } = useParams<{ groupId: string; orderId: string }>()
-  const { getOrder, filteredItems, searchInput, loadState, loadError, reload, placeOrders, placeBusyId, placeOrderEnabled } = useHHList()
+  const {
+    getOrder,
+    filteredItems,
+    searchInput,
+    loadState,
+    loadError,
+    reload,
+    placeOrders,
+    placeBusyId,
+    placeOrderEnabled,
+    rerunCartDraft,
+    cartDraftBusyId,
+    updateOrderItemExclude,
+  } = useHHList()
   const match = getOrder(groupId, orderId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [excludeItemId, setExcludeItemId] = useState<string | null>(null)
+  const [excludeNote, setExcludeNote] = useState('')
+  const [excludeBusyId, setExcludeBusyId] = useState<string | null>(null)
+  const [excludeError, setExcludeError] = useState<string | null>(null)
 
   const totals = useMemo(() => {
     return filteredItems.reduce(
@@ -142,6 +280,29 @@ export default function HHSportswearItems() {
   }
 
   const { order } = match
+  const locked = hhOrderIsLocked(order)
+  const excludedCount = hhExcludedItems(order.items).length
+  const canDraft = hhOrderCanDraft(order)
+
+  const saveExclude = (item: HHLineItem, excluded: boolean, note?: string) => {
+    setExcludeBusyId(item.id)
+    setExcludeError(null)
+    updateOrderItemExclude(groupId, order.id, item.id, {
+      excluded,
+      excludeNote: excluded ? (note ?? '').trim() : '',
+    })
+      .then(() => {
+        setExcludeItemId(null)
+        setExcludeNote('')
+        setExcludeError(null)
+      })
+      .catch((error: unknown) => {
+        setExcludeError(error instanceof Error ? error.message : 'Failed to update item')
+      })
+      .finally(() => {
+        setExcludeBusyId((current) => (current === item.id ? null : current))
+      })
+  }
 
   return (
     <>
@@ -153,9 +314,16 @@ export default function HHSportswearItems() {
               {order.orderId}
             </span>
             <HHDetailsBadge status={order.detailsStatus} />
-            <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} />
+            <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
             <HHVerifiedCell groupId={groupId} order={order} />
             <HHPlacedBadge status={order.cartStatus} error={order.placeError} />
+            <HHRedraftButton
+              size="sm"
+              title={hhOrderDraftTitle(order)}
+              disabled={locked || !canDraft}
+              busy={cartDraftBusyId === order.id}
+              onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
+            />
             {hhOrderCanPlace(order) ? (
               <HHPlaceButton
                 size="sm"
@@ -170,6 +338,7 @@ export default function HHSportswearItems() {
             {order.referenceNumber ? ` · Ref ${order.referenceNumber}` : ''}
             {' · '}
             {order.items.length} item{order.items.length === 1 ? '' : 's'}
+            {excludedCount > 0 ? ` · ${excludedCount} excluded from cart` : ''}
           </p>
           <div className="mt-3 max-w-xl text-sm">
             <HHBuyerInfo order={order} />
@@ -183,7 +352,7 @@ export default function HHSportswearItems() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="hh-table-scroll">
         <table className="w-full text-sm">
           <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]">
             <tr className="text-left">
@@ -223,18 +392,59 @@ export default function HHSportswearItems() {
               </tr>
             ) : (
               filteredItems.map((item, idx) => {
+                const excluded = hhItemIsExcluded(item)
+                const unmatched = !excluded && hhCartErrorMentionsSku(order.cartError, item.sku)
                 return (
-                  <tr key={item.id} className={`hh-table-row${idx % 2 === 1 ? ' hh-row-alt' : ''}`}>
+                  <tr
+                    key={item.id}
+                    className={`hh-table-row${idx % 2 === 1 ? ' hh-row-alt' : ''}${
+                      excluded
+                        ? ' bg-slate-50 opacity-80 dark:bg-slate-900/40'
+                        : unmatched
+                          ? ' bg-red-50 dark:bg-red-950/30'
+                          : ''
+                    }`}
+                  >
                     <Td compact className="w-16 align-middle">
                       <ItemImage item={item} />
                     </Td>
                     <Td compact className="max-w-sm text-slate-800 dark:text-[var(--text-100)]">
-                      <span className="break-words" title={item.title}>
+                      <span className={`break-words ${excluded ? 'text-slate-500 dark:text-[var(--text-200)]' : ''}`} title={item.title}>
                         {item.title}
                       </span>
+                      <HHItemExcludeControls
+                        item={item}
+                        locked={locked}
+                        unmatched={unmatched}
+                        busy={excludeBusyId === item.id}
+                        error={excludeItemId === item.id || (excluded && excludeBusyId === item.id) ? excludeError : null}
+                        editing={excludeItemId === item.id}
+                        note={excludeItemId === item.id ? excludeNote : item.excludeNote}
+                        onNoteChange={setExcludeNote}
+                        onStartExclude={() => {
+                          setExcludeItemId(item.id)
+                          setExcludeNote(item.excludeNote ?? '')
+                          setExcludeError(null)
+                        }}
+                        onCancel={() => {
+                          if (excludeBusyId) return
+                          setExcludeItemId(null)
+                          setExcludeNote('')
+                          setExcludeError(null)
+                        }}
+                        onExclude={() => saveExclude(item, true, excludeNote)}
+                        onInclude={() => saveExclude(item, false)}
+                      />
                     </Td>
                     <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
-                      {item.sku}
+                      <span className={unmatched ? 'font-medium text-red-700 dark:text-red-300' : undefined}>
+                        {item.sku}
+                      </span>
+                      {unmatched ? (
+                        <span className="mt-0.5 block text-xs font-medium normal-case text-red-700 dark:text-red-300">
+                          Did not match
+                        </span>
+                      ) : null}
                     </Td>
                     <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
                       {item.asin}
@@ -263,6 +473,11 @@ export default function HHSportswearItems() {
               <tr className="border-t-2 border-[var(--bg-300)] bg-[var(--bg-200)] text-[13px] font-semibold dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]">
                 <Td compact colSpan={4} className="text-slate-800 dark:text-[var(--text-100)]">
                   Total
+                  {excludedCount > 0 ? (
+                    <span className="ml-2 text-xs font-medium text-slate-500 dark:text-[var(--text-200)]">
+                      Includes {excludedCount} excluded from cart
+                    </span>
+                  ) : null}
                 </Td>
                 <Td compact className="whitespace-nowrap text-right tabular-nums text-slate-800 dark:text-[var(--text-100)]">
                   {totals.quantity}
@@ -289,16 +504,27 @@ export default function HHSportswearItems() {
             setActionError(null)
           }}
           onConfirm={() => {
-            if (actionBusy || pendingAction.type !== 'place' || pendingAction.target !== 'order') return
+            if (actionBusy || pendingAction.target !== 'order') return
+            if (pendingAction.type !== 'place' && pendingAction.type !== 'redraft') return
             setActionBusy(true)
             setActionError(null)
-            placeOrders(groupId, pendingAction.order.id)
+            const request =
+              pendingAction.type === 'place'
+                ? placeOrders(groupId, pendingAction.order.id)
+                : rerunCartDraft(groupId, pendingAction.order.id)
+            request
               .then(() => {
                 setPendingAction(null)
                 setActionError(null)
               })
               .catch((error: unknown) => {
-                setActionError(error instanceof Error ? error.message : 'Failed to place order')
+                setActionError(
+                  error instanceof Error
+                    ? error.message
+                    : pendingAction.type === 'place'
+                      ? 'Failed to place order'
+                      : 'Failed to draft cart',
+                )
               })
               .finally(() => setActionBusy(false))
           }}

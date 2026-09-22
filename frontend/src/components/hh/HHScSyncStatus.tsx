@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getHHScSyncStatus, hhWaitingForCartCount } from '../../lib/hhSportswear'
-import type { HHScSyncStatus as HHScSyncSnapshot } from '../../lib/hhSportswear'
+import type { HHOrderGroup, HHScSyncStatus as HHScSyncSnapshot } from '../../lib/hhSportswear'
 import { useHHList } from '../../context/HHListContext'
+import { Tooltip } from '../Tooltip'
 
 const POLL_IDLE_MS = 5000
 const POLL_RUNNING_MS = 1500
@@ -17,6 +18,15 @@ function formatAgo(iso: string | null): string {
   return `${Math.max(1, Math.round(ms / 3_600_000))}h ago`
 }
 
+function firstPersistedCartError(group?: HHOrderGroup): string | null {
+  if (!group) return null
+  for (const order of group.children) {
+    const message = (order.cartError ?? '').trim()
+    if (message) return `${order.orderId}: ${message}`
+  }
+  return null
+}
+
 function isWorkerBusy(data: HHScSyncSnapshot): boolean {
   const cart = data.cart
   return Boolean(
@@ -27,10 +37,6 @@ function isWorkerBusy(data: HHScSyncSnapshot): boolean {
       cart?.placing ||
       (cart?.queued ?? 0) > 0,
   )
-}
-
-function isWorkerError(data: HHScSyncSnapshot): boolean {
-  return Boolean((data.lastError || data.cart?.lastError) && !data.running && !data.cart?.running)
 }
 
 function statusLabel(data: HHScSyncSnapshot, waitingForCart: number): string {
@@ -56,8 +62,6 @@ function statusLabel(data: HHScSyncSnapshot, waitingForCart: number): string {
   if (parts.length > 0) return parts.join(' · ')
   if (data.queuedGroups > 0) return `${data.queuedGroups} batch${data.queuedGroups === 1 ? '' : 'es'} queued`
   if (cart && cart.queued > 0) return `${cart.queued} cart${cart.queued === 1 ? '' : 's'} queued`
-  if (data.lastError) return 'Details fill paused'
-  if (cart?.lastError) return 'Cart draft paused'
   if (waitingForCart > 0) return `${waitingForCart} waiting for cart`
   return 'Idle'
 }
@@ -116,33 +120,32 @@ export function HHScSyncStatus() {
   if (!data) return null
 
   const waitingForCart = level === 'orders' && group ? hhWaitingForCartCount(group.children) : 0
+  const persistedCartError = level === 'orders' ? firstPersistedCartError(group) : null
   const busy = isWorkerBusy(data)
-  const error = isWorkerError(data)
-  const showWaiting = level === 'orders' && waitingForCart > 0
+  const error = !busy && Boolean(persistedCartError)
+  const showWaiting = !busy && !error && waitingForCart > 0
   if (!busy && !error && !showWaiting) return null
 
   const cart = data.cart
   const tone = error ? 'error' : busy ? 'run' : 'wait'
   const ago = formatAgo(data.lastSuccessAt || cart?.lastSuccessAt || null)
   const title = [
-    data.lastError ? `Details error: ${data.lastError}` : null,
-    cart?.lastError ? `Cart error: ${cart.lastError}` : null,
     ago ? `Last success ${ago}` : null,
     'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
   ]
     .filter(Boolean)
     .join(' · ')
 
-  return (
+  const chip = (
     <span
-      className={`inline-flex max-w-[min(100%,22rem)] items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] leading-none sm:text-xs ${
-        tone === 'error'
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] leading-snug sm:text-xs ${
+        error
           ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
           : tone === 'run'
-            ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:text-[var(--accent-200)]'
-            : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+            ? 'max-w-[min(100%,22rem)] bg-[var(--primary-100)] text-[var(--accent-200)] dark:text-[var(--accent-200)]'
+            : 'max-w-[min(100%,22rem)] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
       }`}
-      title={title}
+      title={error ? undefined : title}
     >
       <span
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -154,7 +157,24 @@ export function HHScSyncStatus() {
         }`}
         aria-hidden="true"
       />
-      <span className="truncate">{statusLabel(data, waitingForCart)}</span>
+      {error ? (
+        <span className="inline-flex items-center gap-1">
+          Failed
+          <span
+            className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-current text-[9px] font-semibold leading-none"
+            aria-hidden="true"
+          >
+            ?
+          </span>
+        </span>
+      ) : (
+        <span className="truncate">{statusLabel(data, waitingForCart)}</span>
+      )}
     </span>
   )
+
+  if (error && persistedCartError) {
+    return <Tooltip content={persistedCartError}>{chip}</Tooltip>
+  }
+  return chip
 }

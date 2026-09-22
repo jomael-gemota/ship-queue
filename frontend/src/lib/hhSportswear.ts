@@ -70,22 +70,35 @@ export function hhOrderCanPlace(order: Pick<HHChildOrder, 'cartStatus'>): boolea
   return order.cartStatus === 'ready'
 }
 
+export function hhItemIsExcluded(item: Pick<HHLineItem, 'excluded'>): boolean {
+  return Boolean(item.excluded)
+}
+
+export function hhCartItems<T extends Pick<HHLineItem, 'excluded'>>(items: T[] | undefined): T[] {
+  return (items ?? []).filter((item) => !hhItemIsExcluded(item))
+}
+
+export function hhExcludedItems<T extends Pick<HHLineItem, 'excluded'>>(items: T[] | undefined): T[] {
+  return (items ?? []).filter((item) => hhItemIsExcluded(item))
+}
+
 export function hhOrderCanDraft(
   order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
 ): boolean {
   if (order.cartStatus === 'placed') return false
   if (order.detailsStatus !== 'synced') return false
-  return order.items.length > 0
+  return hhCartItems(order.items).length > 0
 }
 
 export function hhOrderWaitingForCart(
-  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
+  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items' | 'cartError'>,
 ): boolean {
+  if ((order.cartError ?? '').trim()) return false
   return order.cartStatus === 'none' && hhOrderCanDraft(order)
 }
 
 export function hhWaitingForCartCount(
-  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+  orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items' | 'cartError'>>,
 ): number {
   return orders.filter(hhOrderWaitingForCart).length
 }
@@ -98,6 +111,9 @@ export function hhDraftableOrders(
 
 export function hhOrderDraftTitle(order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>): string {
   if (order.cartStatus === 'placed') return 'Placed orders cannot have their cart regenerated'
+  if (order.items.length > 0 && hhCartItems(order.items).length === 0) {
+    return 'Every line is excluded from the cart'
+  }
   if (!hhOrderCanDraft(order)) return 'Cart draft needs synced order details'
   return order.cartStatus === 'none' ? 'Draft B2B cart for this order' : 'Regenerate B2B draft for this order'
 }
@@ -193,6 +209,8 @@ export interface HHLineItem {
   quantity: number
   unitPrice: number
   tax: number
+  excluded: boolean
+  excludeNote: string
 }
 
 export interface HHVerifyIssue {
@@ -228,6 +246,7 @@ export interface HHChildOrder {
   detailsStatus: HHDetailsStatus
   cartStatus: HHCartStatus
   placeError: string
+  cartError: string
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null
@@ -255,10 +274,195 @@ export function hhDetailsCounts(orders: Array<Pick<HHChildOrder, 'detailsStatus'
   return counts
 }
 
+export function hhCartErrorMentionsSku(cartError: string | undefined, sku: string): boolean {
+  const message = (cartError ?? '').trim()
+  const code = sku.trim()
+  if (!message || !code) return false
+  return message.includes(`SKU ${code}`) || message.includes(`"${code}"`)
+}
+
 export function hhCartCounts(orders: Array<Pick<HHChildOrder, 'cartStatus'>>): Record<HHCartStatus, number> {
   const counts: Record<HHCartStatus, number> = { none: 0, draft: 0, ready: 0, review: 0, placed: 0 }
   for (const order of orders) counts[order.cartStatus] += 1
   return counts
+}
+
+export function hhVerifiedCounts(
+  orders: Array<Pick<HHChildOrder, 'cartStatus' | 'verifyIssues'>>,
+): { match: number; review: number; none: number } {
+  const counts = { match: 0, review: 0, none: 0 }
+  for (const order of orders) {
+    const result = hhOrderVerifiedResult(order)
+    if (result === 'match') counts.match += 1
+    else if (result === 'review') counts.review += 1
+    else counts.none += 1
+  }
+  return counts
+}
+
+export type HHAttentionTone = 'ok' | 'warn' | 'error'
+
+export interface HHBatchAttention {
+  tone: HHAttentionTone
+  label: string
+  detail: string
+}
+
+type HHAttentionOrder = Pick<
+  HHChildOrder,
+  'detailsStatus' | 'cartStatus' | 'cartError' | 'placeError' | 'verifyIssues' | 'items'
+>
+
+function countWhere(orders: HHAttentionOrder[], test: (order: HHAttentionOrder) => boolean): number {
+  return orders.filter(test).length
+}
+
+function attentionLabel(count: number, total: number, singular: string, plural: string): string {
+  if (count === total) return singular
+  return `${count} ${plural}`
+}
+
+/** Highest-priority blocker or next action for a batch. */
+export function hhBatchAttention(orders: HHAttentionOrder[]): HHBatchAttention | null {
+  if (orders.length === 0) return null
+  const total = orders.length
+  const detailsFailed = countWhere(orders, (order) => order.detailsStatus === 'failed')
+  const detailsPending = countWhere(orders, (order) => order.detailsStatus === 'pending')
+  const cartFailed = countWhere(
+    orders,
+    (order) => order.cartStatus !== 'placed' && Boolean((order.cartError ?? '').trim()),
+  )
+  const placeFailed = countWhere(
+    orders,
+    (order) => order.cartStatus !== 'placed' && Boolean((order.placeError ?? '').trim()),
+  )
+  const review = countWhere(orders, (order) => hhOrderVerifiedResult(order) === 'review')
+  const waiting = hhWaitingForCartCount(orders)
+  const draft = countWhere(orders, (order) => order.cartStatus === 'draft')
+  const ready = countWhere(orders, (order) => order.cartStatus === 'ready')
+  const placed = countWhere(orders, (order) => order.cartStatus === 'placed')
+  const match = countWhere(orders, (order) => hhOrderVerifiedResult(order) === 'match')
+
+  const detail = [
+    detailsPending > 0 ? `${detailsPending} details pending` : '',
+    detailsFailed > 0 ? `${detailsFailed} details failed` : '',
+    cartFailed > 0 ? `${cartFailed} cart failed` : '',
+    waiting > 0 ? `${waiting} waiting for cart` : '',
+    draft > 0 ? `${draft} draft` : '',
+    match > 0 ? `${match} match` : '',
+    review > 0 ? `${review} review` : '',
+    ready > 0 ? `${ready} ready to place` : '',
+    placeFailed > 0 ? `${placeFailed} place failed` : '',
+    placed > 0 ? `${placed}/${total} placed` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const pick = (tone: HHAttentionTone, label: string): HHBatchAttention => ({ tone, label, detail })
+
+  if (detailsFailed > 0) {
+    return pick('error', attentionLabel(detailsFailed, total, 'Details failed', 'details failed'))
+  }
+  if (cartFailed > 0) {
+    return pick('error', attentionLabel(cartFailed, total, 'Cart failed', 'cart failed'))
+  }
+  if (review > 0) {
+    return pick('error', review === 1 ? 'Needs review' : `${review} need review`)
+  }
+  if (placeFailed > 0) {
+    return pick('error', attentionLabel(placeFailed, total, 'Place failed', 'place failed'))
+  }
+  if (detailsPending > 0) {
+    return pick('warn', attentionLabel(detailsPending, total, 'Details pending', 'details pending'))
+  }
+  if (waiting > 0) {
+    return pick('warn', waiting === 1 ? 'Waiting for cart' : `${waiting} waiting for cart`)
+  }
+  if (draft > 0) {
+    return pick('warn', attentionLabel(draft, total, 'Draft', 'draft'))
+  }
+  if (ready > 0) {
+    return pick('warn', ready === 1 ? 'Ready to place' : `${ready} ready to place`)
+  }
+  if (placed === total) return pick('ok', 'Done')
+  return pick('warn', 'In progress')
+}
+
+export type HHProgressTone = 'ok' | 'warn' | 'error' | 'muted'
+
+export interface HHBatchProgressStage {
+  key: 'details' | 'cart' | 'verified' | 'placed'
+  label: string
+  done: number
+  total: number
+  failed: number
+  tone: HHProgressTone
+}
+
+function progressTone(done: number, total: number, failed: number): HHProgressTone {
+  if (failed > 0) return 'error'
+  if (total === 0 || done === 0) return 'muted'
+  if (done === total) return 'ok'
+  return 'warn'
+}
+
+/** Four-stage batch pipeline: how many orders have passed each step. */
+export function hhBatchProgress(orders: HHAttentionOrder[]): HHBatchProgressStage[] {
+  const total = orders.length
+  const detailsDone = countWhere(orders, (order) => order.detailsStatus === 'synced')
+  const detailsFailed = countWhere(orders, (order) => order.detailsStatus === 'failed')
+  const cartDone = countWhere(orders, (order) => order.cartStatus !== 'none')
+  const cartFailed = countWhere(
+    orders,
+    (order) => order.cartStatus !== 'placed' && Boolean((order.cartError ?? '').trim()),
+  )
+  const verifiedDone = countWhere(orders, (order) => hhOrderVerifiedResult(order) === 'match')
+  const verifiedFailed = countWhere(orders, (order) => hhOrderVerifiedResult(order) === 'review')
+  const placedDone = countWhere(orders, (order) => order.cartStatus === 'placed')
+  const placedFailed = countWhere(
+    orders,
+    (order) => order.cartStatus !== 'placed' && Boolean((order.placeError ?? '').trim()),
+  )
+
+  return [
+    {
+      key: 'details',
+      label: 'Details',
+      done: detailsDone,
+      total,
+      failed: detailsFailed,
+      tone: progressTone(detailsDone, total, detailsFailed),
+    },
+    {
+      key: 'cart',
+      label: 'Cart',
+      done: cartDone,
+      total,
+      failed: cartFailed,
+      tone: progressTone(cartDone, total, cartFailed),
+    },
+    {
+      key: 'verified',
+      label: 'Verified',
+      done: verifiedDone,
+      total,
+      failed: verifiedFailed,
+      tone: progressTone(verifiedDone, total, verifiedFailed),
+    },
+    {
+      key: 'placed',
+      label: 'Placed',
+      done: placedDone,
+      total,
+      failed: placedFailed,
+      tone: progressTone(placedDone, total, placedFailed),
+    },
+  ]
+}
+
+/** Place Order only runs from Ready, so the Cart column still shows Ready after place. */
+export function hhCartColumnStatus(status: HHCartStatus): Exclude<HHCartStatus, 'placed'> {
+  return status === 'placed' ? 'ready' : status
 }
 
 export interface HHVerifySnapshot {
@@ -473,6 +677,19 @@ export function updateHHOrderNotes(brand: HHBrandId, groupId: string, orderId: s
   return authApi.patch<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}`), { notes })
 }
 
+export function updateHHOrderItemExclude(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  itemId: string,
+  patch: { excluded: boolean; excludeNote?: string },
+) {
+  return authApi.patch<{ data: HHOrderGroup }>(
+    hhPath(brand, `/${groupId}/orders/${orderId}/items/${itemId}`),
+    patch,
+  )
+}
+
 export function deleteHHGroup(brand: HHBrandId, id: string) {
   return authApi.delete<{ data: { deleted: boolean } }>(hhPath(brand, `/${id}`))
 }
@@ -653,7 +870,9 @@ export function hhItemMatchesQuery(item: HHLineItem, rawQuery: string): boolean 
     includesQuery(item.asin, query) ||
     includesQuery(item.quantity, query) ||
     includesQuery(item.unitPrice, query) ||
-    includesQuery(item.tax, query)
+    includesQuery(item.tax, query) ||
+    includesQuery(item.excludeNote, query) ||
+    (item.excluded && includesQuery('excluded', query))
   )
 }
 

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifyCompare, HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
+import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhExcludedItems, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   AmazonIcon,
   DeleteBatchButton,
@@ -166,6 +166,7 @@ export default function HHSportswearOrders() {
             <span>{formatCreatedAt(group.createdAt)}</span>
             <HHDetailsSummary orders={group.children} />
             <HHCartSummary orders={group.children} />
+            <HHVerifiedSummary orders={group.children} />
             <HHPlacedSummary orders={group.children} />
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
@@ -280,6 +281,7 @@ export default function HHSportswearOrders() {
               filteredOrders.map((order, idx) => {
                 const locked = hhOrderIsLocked(order)
                 const canDraft = hhOrderCanDraft(order)
+                const excludedCount = hhExcludedItems(order.items).length
                 return (
                   <HHActionRow
                     key={order.id}
@@ -314,7 +316,7 @@ export default function HHSportswearOrders() {
                       <HHDetailsBadge status={order.detailsStatus} />
                     </Td>
                     <Td compact>
-                      <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} />
+                      <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
                     </Td>
                     <Td compact>
                       <HHVerifiedCell groupId={group.id} order={order} />
@@ -328,7 +330,9 @@ export default function HHSportswearOrders() {
                         className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[var(--accent-100)] hover:underline dark:text-[var(--accent-200)]"
                       >
                         <EyeIcon className="h-3.5 w-3.5" />
-                        View items ({order.items.length})
+                        View items ({order.items.length}
+                        {excludedCount > 0 ? ` · ${excludedCount} excluded` : ''}
+                        )
                       </Link>
                     </Td>
                     <HHRowActions

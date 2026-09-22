@@ -19,6 +19,7 @@ import {
   rerunHHOrderScSync,
   updateHHGroupNotes,
   updateHHOrderNotes,
+  updateHHOrderItemExclude,
 } from '../lib/hhSportswear'
 import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection } from '../lib/hhNav'
@@ -75,6 +76,12 @@ interface HHListContextValue {
   setPlaceOrderEnabled: (enabled: boolean) => void
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
+  updateOrderItemExclude: (
+    groupId: string,
+    orderId: string,
+    itemId: string,
+    patch: { excluded: boolean; excludeNote?: string },
+  ) => Promise<void>
   selectedDetailsStatus: HHDetailsStatus | ''
   selectedCartStatus: HHCartStatus | ''
   searchInput: string
@@ -378,6 +385,10 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     },
     updateOrderNotes: async (groupId, orderId, notes) => {
       const res = await updateHHOrderNotes(brand, groupId, orderId, notes)
+      setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+    },
+    updateOrderItemExclude: async (groupId, orderId, itemId, patch) => {
+      const res = await updateHHOrderItemExclude(brand, groupId, orderId, itemId, patch)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
     },
     selectedDetailsStatus,

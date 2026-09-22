@@ -42,7 +42,7 @@ export function HHFilterBar() {
   const [singular, plural] = COUNT_NOUNS[level]
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] px-4 py-2.5 dark:border-[var(--bg-300)]">
+    <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-100)] px-4 py-2.5 dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
       {showStatus && (
         <>
           <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-details-filter">

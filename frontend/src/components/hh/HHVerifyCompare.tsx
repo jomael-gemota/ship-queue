@@ -4,6 +4,7 @@ import { useHHList } from '../../context/HHListContext'
 import {
   compareHHCart,
   formatCreatedAt,
+  hhCartCanVerify,
   hhCartStatusLabel,
   hhOrderVerifiedResult,
   hhStoredCartCompare,
@@ -11,8 +12,9 @@ import {
   type HHChildOrder,
   type HHCompareRow,
 } from '../../lib/hhSportswear'
-import { Spinner } from '../labels/labelUi'
+import { BackIcon, EyeIcon, Spinner } from '../labels/labelUi'
 import { Tooltip } from '../Tooltip'
+import { HHVerifiedSummary } from './hhUi'
 
 function VerifiedLabel({ result }: { result: 'match' | 'review' }) {
   return result === 'match' ? (
@@ -23,6 +25,31 @@ function VerifiedLabel({ result }: { result: 'match' | 'review' }) {
     <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-300">
       Review
     </span>
+  )
+}
+
+function VerifiedOpenButton({
+  result,
+  onClick,
+}: {
+  result: 'match' | 'review'
+  onClick: () => void
+}) {
+  return (
+    <Tooltip content="View order details vs B2B cart">
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onClick()
+        }}
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full py-0.5 pr-1 text-[var(--accent-100)] hover:bg-[var(--primary-100)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)] dark:text-[var(--accent-200)]"
+      >
+        <EyeIcon className="h-3.5 w-3.5 shrink-0" />
+        <VerifiedLabel result={result} />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -150,7 +177,13 @@ function CompareTable({ rows }: { rows: HHCompareRow[] }) {
   )
 }
 
-function SummaryList({ results }: { results: HHCartCompareOrder[] }) {
+function SummaryList({
+  results,
+  onOpenOrder,
+}: {
+  results: HHCartCompareOrder[]
+  onOpenOrder: (row: HHCartCompareOrder) => void
+}) {
   return (
     <ul className="divide-y divide-[var(--bg-300)]">
       {results.map((row) => {
@@ -169,10 +202,8 @@ function SummaryList({ results }: { results: HHCartCompareOrder[] }) {
                 {row.orderId}
               </span>
             </div>
-            {result === 'match' ? (
-              <VerifiedLabel result="match" />
-            ) : result === 'review' ? (
-              <VerifiedLabel result="review" />
+            {result === 'match' || result === 'review' ? (
+              <VerifiedOpenButton result={result} onClick={() => onOpenOrder(row)} />
             ) : (
               <span className="max-w-[12rem] truncate text-right text-xs text-slate-400 dark:text-[var(--text-200)]">
                 {row.error || row.skipped || '—'}
@@ -256,6 +287,7 @@ function CompareModal({
   wide,
   onClose,
   onRefresh,
+  onBack,
   children,
 }: {
   title: string
@@ -265,6 +297,7 @@ function CompareModal({
   wide?: boolean
   onClose: () => void
   onRefresh: () => void
+  onBack?: () => void
   children: ReactNode
 }) {
   return createPortal(
@@ -279,11 +312,23 @@ function CompareModal({
         }`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--bg-300)] px-6 py-4 dark:border-[var(--bg-300)]">
-          <div className="min-w-0">
-            <h3 id="hh-compare-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-              {title}
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">{subtitle}</p>
+          <div className="flex min-w-0 items-start gap-2">
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mt-0.5 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[var(--bg-200)] hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
+                aria-label="Back to batch"
+              >
+                <BackIcon className="h-4 w-4" />
+              </button>
+            ) : null}
+            <div className="min-w-0">
+              <h3 id="hh-compare-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+                {title}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">{subtitle}</p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <button
@@ -345,13 +390,18 @@ function useCompareModal(groupId: string, orderId?: string) {
     setLive(false)
   }
 
-  const runCompare = () => {
+  const runCompare = (childId?: string) => {
+    const targetId = childId ?? orderId
     setBusy(true)
     setError(null)
-    compareHHCart(brand, groupId, orderId)
+    compareHHCart(brand, groupId, targetId)
       .then((res) => {
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
-        setResults(res.compare)
+        setResults((current) => {
+          if (!targetId || !current || current.length === 0) return res.compare
+          const incoming = new Map(res.compare.map((row) => [row.id, row]))
+          return current.map((row) => incoming.get(row.id) ?? row)
+        })
         setLive(true)
       })
       .catch((err: unknown) => {
@@ -369,58 +419,107 @@ function useCompareModal(groupId: string, orderId?: string) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
 
-  return { open, setOpen, close, busy, error, results, live, runCompare }
+  return { open, setOpen, close, busy, error, results, setResults, live, runCompare }
 }
 
 export function HHVerifyCompare({
   groupId,
   orders,
   size = 'md',
+  trigger,
 }: {
   groupId: string
   orders: HHChildOrder[]
   size?: 'sm' | 'md'
+  trigger?: ReactNode
 }) {
-  const { open, setOpen, close, busy, error, results, live, runCompare } = useCompareModal(groupId)
+  const { open, setOpen, close, busy, error, results, setResults, live, runCompare } = useCompareModal(groupId)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   if (orders.length === 0) return null
 
   const title = 'Order details vs B2B cart'
   const sizing = size === 'sm' ? 'px-1.5 py-1' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   const shown = results ?? orders.map(hhStoredCartCompare)
+  const selected = selectedId ? shown.find((row) => row.id === selectedId) : undefined
+  const selectedOrder = selectedId ? orders.find((order) => order.id === selectedId) : undefined
+
+  const handleClose = () => {
+    setSelectedId(null)
+    close()
+  }
+
+  const openModal = () => {
+    setSelectedId(null)
+    setResults(orders.map(hhStoredCartCompare))
+    setOpen(true)
+  }
+
+  const button = (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        openModal()
+      }}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-label={title}
+      className={
+        trigger
+          ? 'inline-flex max-w-full cursor-pointer items-center rounded-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]'
+          : `inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-slate-500 hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)] dark:hover:bg-[var(--primary-100)] dark:hover:text-[var(--accent-200)] transition-colors ${sizing}`
+      }
+    >
+      {trigger ?? <CompareIcon className={iconSize} />}
+    </button>
+  )
 
   return (
     <>
-      <Tooltip content={title}>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            setOpen(true)
-          }}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          aria-label={title}
-          className={`inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] text-slate-500 hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)] dark:hover:bg-[var(--primary-100)] dark:hover:text-[var(--accent-200)] transition-colors ${sizing}`}
-        >
-          <CompareIcon className={iconSize} />
-        </button>
-      </Tooltip>
+      {trigger ? button : <Tooltip content={title}>{button}</Tooltip>}
 
       {open ? (
         <CompareModal
           title={title}
-          subtitle={lastCheckedSubtitle(orders, live)}
+          subtitle={
+            selectedOrder
+              ? `${selectedOrder.orderId} · ${lastCheckedSubtitle([selectedOrder], live)}`
+              : lastCheckedSubtitle(orders, live)
+          }
           busy={busy}
           error={error}
-          onClose={close}
-          onRefresh={runCompare}
+          wide={Boolean(selected)}
+          onClose={handleClose}
+          onBack={selected ? () => setSelectedId(null) : undefined}
+          onRefresh={() => runCompare(selectedId ?? undefined)}
         >
-          <SummaryList results={shown} />
+          {selected ? (
+            <DetailBody result={selected} live={live} />
+          ) : (
+            <SummaryList results={shown} onOpenOrder={(row) => setSelectedId(row.id)} />
+          )}
         </CompareModal>
       ) : null}
     </>
+  )
+}
+
+export function HHBatchVerifiedCell({
+  groupId,
+  orders,
+}: {
+  groupId: string
+  orders: HHChildOrder[]
+}) {
+  const summary = <HHVerifiedSummary orders={orders} />
+  const canOpen = orders.some(
+    (order) => hhOrderVerifiedResult(order) != null || hhCartCanVerify(order.cartStatus),
+  )
+  if (!canOpen) return summary
+  return (
+    <HHVerifyCompare groupId={groupId} orders={orders} trigger={summary} />
   )
 }
 
@@ -442,21 +541,7 @@ export function HHVerifiedCell({
 
   return (
     <>
-      <Tooltip content="View order details vs B2B cart">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            setOpen(true)
-          }}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          className="cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]"
-        >
-          <VerifiedLabel result={verified} />
-        </button>
-      </Tooltip>
+      <VerifiedOpenButton result={verified} onClick={() => setOpen(true)} />
 
       {open ? (
         <CompareModal

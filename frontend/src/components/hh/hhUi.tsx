@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup, HHVerifyIssue } from '../../lib/hhSportswear'
@@ -7,11 +7,16 @@ import {
   HH_CART_STATUS_LABELS,
   HH_DETAILS_COUNT_ORDER,
   HH_DETAILS_STATUS_LABELS,
+  hhCartColumnStatus,
   hhCartCounts,
   hhDetailsCounts,
   hhHasCartDraft,
   hhHasSyncedDetails,
   hhPlacePlan,
+  hhVerifiedCounts,
+  hhBatchProgress,
+  type HHBatchProgressStage,
+  type HHProgressTone,
 } from '../../lib/hhSportswear'
 import { BackIcon, Spinner } from '../labels/labelUi'
 import { Tooltip } from '../Tooltip'
@@ -793,8 +798,19 @@ const HH_BADGE_TONE_CLASS: Record<HHBadgeTone, string> = {
 
 function HHToneBadge({ tone, children }: { tone: HHBadgeTone; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${HH_BADGE_TONE_CLASS[tone]}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${HH_BADGE_TONE_CLASS[tone]}`}>
       {children}
+    </span>
+  )
+}
+
+function HHHelpMark() {
+  return (
+    <span
+      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-current text-[9px] font-semibold leading-none"
+      aria-hidden="true"
+    >
+      ?
     </span>
   )
 }
@@ -822,17 +838,33 @@ export function HHDetailsBadge({ status }: { status: HHDetailsStatus }) {
 export function HHCartBadge({
   status,
   issues,
+  error,
 }: {
   status: HHCartStatus
   issues?: HHVerifyIssue[]
+  error?: string
 }) {
-  if (status === 'none' || status === 'placed') return <HHSummaryDash />
-  const badge = <HHToneBadge tone={cartTone(status)}>{HH_CART_STATUS_LABELS[status]}</HHToneBadge>
+  const message = (error ?? '').trim()
+  if (status === 'none' && message) {
+    return (
+      <Tooltip content={message}>
+        <HHToneBadge tone="error">
+          Failed
+          <HHHelpMark />
+        </HHToneBadge>
+      </Tooltip>
+    )
+  }
+  if (status === 'none') return <HHSummaryDash />
+  const column = hhCartColumnStatus(status)
+  const badge = <HHToneBadge tone={cartTone(column)}>{HH_CART_STATUS_LABELS[column]}</HHToneBadge>
   const content =
-    status === 'review' && issues && issues.length > 0
+    column === 'review' && issues && issues.length > 0
       ? issues.map((issue) => `${issue.label}: ${issue.expected} → ${issue.actual}`).join('\n')
-      : status === 'ready'
-        ? 'Matched the live B2B draft'
+      : column === 'ready'
+        ? status === 'placed'
+          ? 'Cart matched; order is placed'
+          : 'Matched the live B2B draft'
         : undefined
   if (!content) return badge
   return <Tooltip content={content}>{badge}</Tooltip>
@@ -850,7 +882,10 @@ export function HHPlacedBadge({
   if (!message) return <HHSummaryDash />
   return (
     <Tooltip content={message}>
-      <HHToneBadge tone="error">Failed</HHToneBadge>
+      <HHToneBadge tone="error">
+        Failed
+        <HHHelpMark />
+      </HHToneBadge>
     </Tooltip>
   )
 }
@@ -912,12 +947,16 @@ export function HHDetailsSummary({
 export function HHCartSummary({
   orders,
 }: {
-  orders: Array<Pick<HHChildOrder, 'cartStatus'>>
+  orders: Array<Pick<HHChildOrder, 'orderId' | 'cartStatus' | 'cartError'>>
 }) {
-  const open = orders.filter((order) => order.cartStatus !== 'placed')
-  if (open.length === 0) return <HHSummaryDash />
-  const counts = hhCartCounts(open)
-  const total = open.length
+  const pipeline = orders.map((order) => ({
+    ...order,
+    cartStatus: hhCartColumnStatus(order.cartStatus),
+  }))
+  if (pipeline.length === 0) return <HHSummaryDash />
+  const counts = hhCartCounts(pipeline)
+  const total = pipeline.length
+  const draftFailed = pipeline.filter((order) => (order.cartError ?? '').trim()).length
   const chips: Array<{ key: string; tone: HHBadgeTone; label: string }> = []
   if (counts.ready === total) {
     chips.push({ key: 'ready', tone: 'ok', label: 'Ready' })
@@ -935,12 +974,67 @@ export function HHCartSummary({
       label: counts.review === total ? 'Review' : `${counts.review} Review`,
     })
   }
+  if (draftFailed > 0) {
+    chips.push({
+      key: 'draft-failed',
+      tone: 'error',
+      label: draftFailed === total ? 'Failed' : `${draftFailed} Failed`,
+    })
+  }
   if (chips.length === 0) return <HHSummaryDash />
+  const failedMessages = pipeline
+    .map((order) => {
+      const message = (order.cartError ?? '').trim()
+      return message ? `${order.orderId}: ${message}` : ''
+    })
+    .filter(Boolean)
   const tooltip = [
     counts.ready > 0 ? `${counts.ready} Ready` : '',
     counts.review > 0 ? `${counts.review} Review` : '',
     counts.draft > 0 ? `${counts.draft} Draft` : '',
-    counts.none > 0 ? `${counts.none} none` : '',
+    draftFailed > 0 ? failedMessages.join('\n') : '',
+    counts.none > 0 && draftFailed < counts.none ? `${counts.none - draftFailed} none` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <HHSummaryChips tooltip={tooltip}>
+      {chips.map((chip) => (
+        <HHToneBadge key={chip.key} tone={chip.tone}>
+          {chip.label}
+          {chip.key === 'draft-failed' ? <HHHelpMark /> : null}
+        </HHToneBadge>
+      ))}
+    </HHSummaryChips>
+  )
+}
+
+export function HHVerifiedSummary({
+  orders,
+}: {
+  orders: Array<Pick<HHChildOrder, 'cartStatus' | 'verifyIssues'>>
+}) {
+  const total = orders.length
+  if (total === 0) return <HHSummaryDash />
+  const counts = hhVerifiedCounts(orders)
+  const chips: Array<{ key: string; tone: HHBadgeTone; label: string }> = []
+  if (counts.match === total) {
+    chips.push({ key: 'match', tone: 'ok', label: 'Match' })
+  } else if (counts.match > 0) {
+    chips.push({ key: 'match', tone: 'warn', label: `${counts.match}/${total} Match` })
+  }
+  if (counts.review > 0) {
+    chips.push({
+      key: 'review',
+      tone: 'error',
+      label: counts.review === total ? 'Review' : `${counts.review} Review`,
+    })
+  }
+  if (chips.length === 0) return <HHSummaryDash />
+  const tooltip = [
+    counts.match > 0 ? `${counts.match} Match` : '',
+    counts.review > 0 ? `${counts.review} Review` : '',
+    counts.none > 0 ? `${counts.none} not checked` : '',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -952,6 +1046,119 @@ export function HHCartSummary({
         </HHToneBadge>
       ))}
     </HHSummaryChips>
+  )
+}
+
+const HH_PROGRESS_SLOTS = ['Details', 'Cart', 'Verified', 'Placed'] as const
+const HH_PROGRESS_SLOT = 'w-[3.75rem] text-center'
+const HH_PROGRESS_GAP = 'w-2 shrink-0'
+
+const HH_PROGRESS_FILL: Record<HHProgressTone, string> = {
+  ok: 'bg-emerald-500 dark:bg-emerald-400',
+  warn: 'bg-amber-500 dark:bg-amber-400',
+  error: 'bg-red-500 dark:bg-red-400',
+  muted: 'bg-slate-300 dark:bg-[var(--bg-300)]',
+}
+
+const HH_PROGRESS_TRACK: Record<HHProgressTone, string> = {
+  ok: 'bg-emerald-100 dark:bg-emerald-950/50',
+  warn: 'bg-amber-100 dark:bg-amber-950/40',
+  error: 'bg-red-100 dark:bg-red-950/40',
+  muted: 'bg-slate-200/80 dark:bg-[var(--bg-300)]',
+}
+
+const HH_PROGRESS_TEXT: Record<HHProgressTone, string> = {
+  ok: 'text-emerald-700 dark:text-emerald-300',
+  warn: 'text-amber-800 dark:text-amber-200',
+  error: 'text-red-700 dark:text-red-300',
+  muted: 'text-slate-400 dark:text-[var(--text-200)]',
+}
+
+const HH_PROGRESS_RAIL: Record<HHProgressTone, string> = {
+  ok: 'bg-emerald-400/80 dark:bg-emerald-500/70',
+  warn: 'bg-amber-400/80 dark:bg-amber-500/60',
+  error: 'bg-red-400/80 dark:bg-red-500/60',
+  muted: 'bg-slate-200 dark:bg-[var(--bg-300)]',
+}
+
+function HHProgressRail({ children }: { children: (index: number) => ReactNode }) {
+  return (
+    <span className="inline-flex items-start justify-center">
+      {HH_PROGRESS_SLOTS.map((label, index) => (
+        <Fragment key={label}>
+          {index > 0 ? <span className={HH_PROGRESS_GAP} aria-hidden="true" /> : null}
+          {children(index)}
+        </Fragment>
+      ))}
+    </span>
+  )
+}
+
+export function HHBatchProgressLabels() {
+  return (
+    <HHProgressRail>
+      {(index) => (
+        <span
+          className={`${HH_PROGRESS_SLOT} text-[10px] font-medium uppercase leading-none tracking-wider text-slate-400 dark:text-[var(--text-200)]`}
+        >
+          {HH_PROGRESS_SLOTS[index]}
+        </span>
+      )}
+    </HHProgressRail>
+  )
+}
+
+function HHProgressStation({ stage, railTone }: { stage: HHBatchProgressStage; railTone?: HHProgressTone }) {
+  const pct = stage.total <= 0 ? 0 : Math.min(100, Math.round((stage.done / stage.total) * 100))
+  return (
+    <span className={`relative inline-flex ${HH_PROGRESS_SLOT} flex-col items-center gap-1`}>
+      {railTone ? (
+        <span
+          className={`absolute -left-2 top-[3px] h-0.5 w-2 ${HH_PROGRESS_RAIL[railTone]}`}
+          aria-hidden="true"
+        />
+      ) : null}
+      <span
+        className={`relative block h-1.5 w-9 overflow-hidden rounded-full ${HH_PROGRESS_TRACK[stage.tone]}`}
+        aria-hidden="true"
+      >
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full ${HH_PROGRESS_FILL[stage.tone]}`}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className={`font-mono text-[13px] font-medium tabular-nums leading-none ${HH_PROGRESS_TEXT[stage.tone]}`}>
+        {stage.done}/{stage.total}
+      </span>
+    </span>
+  )
+}
+
+export function HHBatchProgress({
+  orders,
+}: {
+  orders: Array<
+    Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'cartError' | 'placeError' | 'verifyIssues' | 'items'>
+  >
+}) {
+  if (orders.length === 0) return <HHSummaryDash />
+  const stages = hhBatchProgress(orders)
+  const tooltip = stages
+    .map((stage) => {
+      const fail = stage.failed > 0 ? ` · ${stage.failed} failed` : ''
+      return `${stage.label} ${stage.done}/${stage.total}${fail}`
+    })
+    .join('\n')
+  return (
+    <Tooltip content={tooltip}>
+      <HHProgressRail>
+        {(index) => {
+          const stage = stages[index]
+          const prev = index > 0 ? stages[index - 1] : undefined
+          return <HHProgressStation stage={stage} railTone={prev?.tone} />
+        }}
+      </HHProgressRail>
+    </Tooltip>
   )
 }
 

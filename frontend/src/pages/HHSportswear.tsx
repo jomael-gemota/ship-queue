@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HHActionRow, HHCartSummary, HHConfirmModal, HHCopyIdButton, HHDetailsSummary, HHPlaceButton, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHBatchProgress, HHBatchProgressLabels, HHConfirmModal, HHCopyIdButton, HHPlaceButton, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
@@ -166,14 +166,11 @@ export default function HHSportswear() {
               <Th>
                 <HeaderLabel icon={<NotesIcon className="h-3.5 w-3.5" />} text="Notes" />
               </Th>
-              <Th>
-                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Details" />
-              </Th>
-              <Th>
-                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Cart" />
-              </Th>
-              <Th>
-                <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Order Placed" />
+              <Th className="text-center">
+                <span className="inline-flex flex-col items-center gap-1">
+                  <HeaderLabel className="justify-center" icon={<StatusIcon className="h-3.5 w-3.5" />} text="Progress" />
+                  <HHBatchProgressLabels />
+                </span>
               </Th>
               <Th>
                 <HeaderLabel icon={<EyeIcon className="h-3.5 w-3.5" />} text="Orders" />
@@ -184,13 +181,13 @@ export default function HHSportswear() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {loadState === 'loading' ? (
               <tr>
-                <Td colSpan={8} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={6} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   Loading groups…
                 </Td>
               </tr>
             ) : loadState === 'error' ? (
               <tr>
-                <Td colSpan={8} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+                <Td colSpan={6} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
                   <p>{loadError || 'Failed to load groups.'}</p>
                   <button
                     type="button"
@@ -203,7 +200,7 @@ export default function HHSportswear() {
               </tr>
             ) : paginated.length === 0 ? (
               <tr>
-                <Td colSpan={8} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={6} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {selectedDetailsStatus || selectedCartStatus
                     ? searchInput.trim()
                       ? `No groups match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
@@ -242,21 +239,15 @@ export default function HHSportswear() {
                         {group.createdByEmail}
                       </p>
                     </Td>
-                    <Td compact className="max-w-md">
+                    <Td compact className="max-w-[22rem]">
                       <HHNotesField
                         groupId={group.id}
                         notes={group.notes}
                         sourceFileName={group.sourceFileName}
                       />
                     </Td>
-                    <Td compact>
-                      <HHDetailsSummary orders={group.children} />
-                    </Td>
-                    <Td compact>
-                      <HHCartSummary orders={group.children} />
-                    </Td>
-                    <Td compact>
-                      <HHPlacedSummary orders={group.children} />
+                    <Td compact className="text-center">
+                      <HHBatchProgress orders={group.children} />
                     </Td>
                     <Td compact>
                       <Link
