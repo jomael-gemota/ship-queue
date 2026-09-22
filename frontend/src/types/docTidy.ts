@@ -571,6 +571,10 @@ export interface PdfImport {
   size: number
   /** GridFS file id (opaque to the frontend). */
   pdfFileId: string
+  /** Drive file id if the PDF was successfully mirrored to the Drive folder. */
+  driveFileId?: string | null
+  /** Drive web-view link for the mirrored file. */
+  driveWebViewLink?: string | null
   /** Populated once the import has been sent to the Tidy Agent. */
   parseJobId?: string | null
   uploadedByUserId?: string

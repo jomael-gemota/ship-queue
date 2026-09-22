@@ -172,7 +172,8 @@ export async function requestParseFromGridFS(
   pdfFileId: Types.ObjectId,
   filename: string,
   importId: string,
-  requestedBy?: { id?: string; name?: string }
+  requestedBy?: { id?: string; name?: string },
+  driveFileId?: string
 ): Promise<IDocTidyParseJob> {
   if (!hasWorker()) {
     throw new ParseRequestError(
@@ -214,6 +215,7 @@ export async function requestParseFromGridFS(
       $set: {
         filename,
         pdfFileId,
+        ...(driveFileId ? { driveFileId } : {}),
         status: 'pending',
         thinking: '',
         jsonOutput: null,

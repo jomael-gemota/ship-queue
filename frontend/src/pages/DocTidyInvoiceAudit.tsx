@@ -1990,7 +1990,21 @@ export default function DocTidyInvoiceAudit() {
                     <Banner kind="error" onDismiss={() => setPdfUploadError(null)}>{pdfUploadError}</Banner>
                   )}
 
+                  {/* Hidden file input — triggered by clicking anywhere on the zone */}
+                  <input
+                    ref={pdfFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) void handlePdfFilesSelected(e.target.files)
+                      e.target.value = ''
+                    }}
+                  />
+
                   <div
+                    onClick={() => { if (!pdfUploading) pdfFileInputRef.current?.click() }}
                     onDragOver={(e) => { e.preventDefault(); setPdfDragOver(true) }}
                     onDragLeave={() => setPdfDragOver(false)}
                     onDrop={(e) => {
@@ -1998,10 +2012,12 @@ export default function DocTidyInvoiceAudit() {
                       setPdfDragOver(false)
                       void handlePdfFilesSelected(e.dataTransfer.files)
                     }}
-                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
-                      pdfDragOver
-                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)]'
-                        : 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 hover:border-[var(--accent-200)] hover:bg-[var(--primary-100)]/40'
+                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors select-none ${
+                      pdfUploading
+                        ? 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 cursor-wait'
+                        : pdfDragOver
+                          ? 'border-[var(--accent-200)] bg-[var(--primary-100)] cursor-copy'
+                          : 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 hover:border-[var(--accent-200)] hover:bg-[var(--primary-100)]/40 cursor-pointer'
                     }`}
                   >
                     {pdfUploading ? (
@@ -2019,28 +2035,10 @@ export default function DocTidyInvoiceAudit() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-[var(--text-100)]">
-                            Drop PDF files here, or{' '}
-                            <button
-                              type="button"
-                              onClick={() => pdfFileInputRef.current?.click()}
-                              className="text-[var(--accent-200)] underline underline-offset-2 cursor-pointer hover:opacity-80"
-                            >
-                              browse
-                            </button>
+                            Click or drop PDF files here
                           </p>
-                          <p className="mt-1 text-xs text-[var(--text-200)]">All selected files upload together</p>
+                          <p className="mt-1 text-xs text-[var(--text-200)]">Multiple files accepted · uploads to Drive + parsed on demand</p>
                         </div>
-                        <input
-                          ref={pdfFileInputRef}
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files) void handlePdfFilesSelected(e.target.files)
-                            e.target.value = ''
-                          }}
-                        />
                       </>
                     )}
                   </div>

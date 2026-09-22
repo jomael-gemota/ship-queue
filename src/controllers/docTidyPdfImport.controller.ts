@@ -3,6 +3,8 @@ import { isValidObjectId } from 'mongoose';
 import multer from 'multer';
 import DocTidyPdfImport from '../models/DocTidyPdfImport';
 import { ParseRequestError, storePdf, requestParseFromGridFS } from '../services/docTidyParse.service';
+import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
+import { uploadBufferToDrive } from '../services/googleDrive.service';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
@@ -95,14 +97,42 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    // Load Drive config once for all files (best-effort mirror — do not block
+    // the upload if Drive is not connected or the upload fails).
+    const config = await getDocTidyConfigDoc(true).catch(() => null);
+    const driveReady = Boolean(config?.gmailRefreshToken && config?.driveFolderId);
+
     const created = await Promise.all(
       files.map(async (file) => {
+        // 1. Store in GridFS (the worker reads from here).
         const pdfFileId = await storePdf(file.originalname, file.buffer);
+
+        // 2. Mirror to Drive in the same folder as email PDFs (best-effort).
+        let driveFileId: string | undefined;
+        let driveWebViewLink: string | undefined;
+        if (driveReady && config) {
+          try {
+            const uploaded = await uploadBufferToDrive(
+              { refreshToken: config.gmailRefreshToken },
+              file.originalname,
+              'application/pdf',
+              file.buffer,
+              config.driveFolderId
+            );
+            driveFileId = uploaded.id || undefined;
+            driveWebViewLink = uploaded.webViewLink || undefined;
+          } catch {
+            // Non-fatal: GridFS copy is the authoritative source for parsing.
+          }
+        }
+
         return DocTidyPdfImport.create({
           workspaceId,
           filename: file.originalname,
           size: file.size,
           pdfFileId,
+          driveFileId,
+          driveWebViewLink,
           uploadedByUserId: req.user?.id,
           uploadedByName: req.user?.name,
         });
@@ -134,7 +164,8 @@ export const sendPdfImportToAgent = async (req: Request, res: Response): Promise
       imp.pdfFileId,
       imp.filename,
       String(imp._id),
-      { id: req.user?.id, name: req.user?.name }
+      { id: req.user?.id, name: req.user?.name },
+      imp.driveFileId
     );
 
     // Link the parse job back to the import record.
