@@ -2079,7 +2079,11 @@ export default function DocTidyInvoiceAudit() {
                           const isRunning = job && isParseRunning(job.status)
                           const isAborting = job && pdfAbortingJobId === job._id
                           const dragCls = (id: PdfImportColumnId) =>
-                            pdfDragSrc === id ? 'opacity-60' : pdfDragTarget === id ? 'border-l-[3px] border-l-sky-400' : ''
+                            pdfDragSrc === id
+                              ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                              : pdfDragTarget === id
+                                ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                : ''
 
                           return (
                             <tr
