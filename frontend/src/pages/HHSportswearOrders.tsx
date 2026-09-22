@@ -6,7 +6,7 @@ import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifyCompare, HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { deleteHHGroup, deleteHHOrder, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
+import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   AmazonIcon,
   DeleteBatchButton,
@@ -62,6 +62,8 @@ export default function HHSportswearOrders() {
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const { openId, toggle, close } = useHHOpenRow()
   const { exitingId, beginExit, finishExit } = useHHRowExit((id) => {
     setGroups((current) =>
@@ -177,6 +179,7 @@ export default function HHSportswearOrders() {
             sourceFileName={group.sourceFileName}
             variant="header"
           />
+          {exportError ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{exportError}</p> : null}
         </div>
         <div className="flex items-center gap-2.5">
           {group.children.some((order) => hhCartCanVerify(order.cartStatus)) ? (
@@ -203,6 +206,17 @@ export default function HHSportswearOrders() {
             hasCartDraft={hhHasCartDraft(group.children)}
             resyncBusy={resyncBusyId === group.id}
             redraftBusy={cartDraftBusyId === group.id}
+            exportBusy={exportBusy}
+            onExport={() => {
+              if (exportBusy) return
+              setExportBusy(true)
+              setExportError(null)
+              downloadHHGroupExport(brand, group.id)
+                .catch((error: unknown) => {
+                  setExportError(error instanceof Error ? error.message : 'Failed to export batch')
+                })
+                .finally(() => setExportBusy(false))
+            }}
             onResync={() => setPendingAction({ type: 'resync', target: 'group', group })}
             onRedraft={() => setPendingAction({ type: 'redraft', target: 'group', group })}
             onDelete={() => setPendingAction({ type: 'delete', target: 'group', group })}

@@ -31,7 +31,8 @@ import {
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
+import { hhBrand, hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
+import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
 
 export interface HHLineItemDto {
   id: string;
@@ -913,6 +914,39 @@ export const getGroup = async (req: Request, res: Response): Promise<void> => {
     res.json({ data: serializeGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch HH Sportswear group', error: (error as Error).message });
+  }
+};
+
+export const exportGroup = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+
+    const group = await HHOrderGroup.findById(groupId).lean();
+    if (!isBrandGroup(group, req)) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+
+    const rows = (group.children ?? []).map((child) => ({
+      orderId: child.orderId ?? '',
+      po: child.po ?? '',
+      referenceNumber: child.referenceNumber ?? '',
+    }));
+    const buffer = await buildHhBatchExportXlsx(rows);
+    const filename = hhExportFileName(hhBrand(requestBrand(req)).slug, group.sourceFileName ?? '', String(group._id));
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to export HH batch', error: (error as Error).message });
   }
 };
 

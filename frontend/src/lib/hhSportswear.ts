@@ -492,6 +492,45 @@ export function downloadHHImportTemplate(brand: HHBrandId) {
   URL.revokeObjectURL(url)
 }
 
+const TOKEN_KEY = 'sq_token'
+const HH_EXPORT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1])
+    } catch {
+      /* keep looking */
+    }
+  }
+  const quoted = /filename="([^"]+)"/i.exec(header)
+  if (quoted?.[1]) return quoted[1]
+  const plain = /filename=([^;]+)/i.exec(header)
+  return plain?.[1]?.trim() || fallback
+}
+
+export async function downloadHHGroupExport(brand: HHBrandId, groupId: string): Promise<void> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const res = await fetch(`/api${hhPath(brand, `/${groupId}/export`)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: 'Failed to export batch' }))
+    throw new Error(typeof error.message === 'string' ? error.message : 'Failed to export batch')
+  }
+  const blob = await res.blob()
+  const fallback = `${hhPath(brand).replace(/^\//, '')}-${groupId}.xlsx`
+  const filename = filenameFromDisposition(res.headers.get('Content-Disposition'), fallback)
+  const url = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: HH_EXPORT_TYPE }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function formatCreatedAt(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
     month: 'numeric',

@@ -407,6 +407,19 @@ function MenuTrashIcon({ className = '' }: { className?: string }) {
   )
 }
 
+function ExportIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V4"
+      />
+    </svg>
+  )
+}
+
 export function HHBatchHeaderMenu({
   groupId,
   allPlaced,
@@ -416,6 +429,8 @@ export function HHBatchHeaderMenu({
   hasCartDraft = false,
   resyncBusy = false,
   redraftBusy = false,
+  exportBusy = false,
+  onExport,
   onResync,
   onRedraft,
   onDelete,
@@ -428,6 +443,8 @@ export function HHBatchHeaderMenu({
   hasCartDraft?: boolean
   resyncBusy?: boolean
   redraftBusy?: boolean
+  exportBusy?: boolean
+  onExport: () => void
   onResync: () => void
   onRedraft: () => void
   onDelete: () => void
@@ -528,6 +545,19 @@ export function HHBatchHeaderMenu({
                 >
                   {copied ? <CopiedIcon className="h-4 w-4" /> : <CopyIdIcon className="h-4 w-4" />}
                   {copied ? 'Copied' : 'Copy batch ID'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={exportBusy}
+                  className={itemClass(false, exportBusy)}
+                  onClick={() => {
+                    if (exportBusy) return
+                    run(onExport)
+                  }}
+                >
+                  {exportBusy ? <Spinner className="h-4 w-4" /> : <ExportIcon className="h-4 w-4" />}
+                  Export spreadsheet
                 </button>
                 <button
                   type="button"

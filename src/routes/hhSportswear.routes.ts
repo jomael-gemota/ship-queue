@@ -5,6 +5,7 @@ import {
   createGroup,
   deleteGroup,
   deleteOrder,
+  exportGroup,
   getGroup,
   getScSyncStatus,
   importGroup,
@@ -74,6 +75,7 @@ router.post('/:groupId/cart-compare', compareGroupCart);
 router.post('/:groupId/orders/:orderId/cart-compare', compareOrderCart);
 router.post('/:groupId/place', placeGroupCart);
 router.post('/:groupId/orders/:orderId/place', placeOrderCart);
+router.get('/:groupId/export', exportGroup);
 router.get('/:groupId', getGroup);
 router.patch('/:groupId', updateGroupNotes);
 router.patch('/:groupId/orders/:orderId', updateOrderNotes);
