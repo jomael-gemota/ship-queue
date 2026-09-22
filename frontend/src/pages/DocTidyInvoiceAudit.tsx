@@ -1371,9 +1371,9 @@ export default function DocTidyInvoiceAudit() {
               <svg
                 className="h-3 w-3 shrink-0 text-rose-400 opacity-70"
                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                title="Parsed from PDF Import"
                 aria-label="PDF Import"
               >
+                <title>Parsed from PDF Import</title>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
@@ -1382,9 +1382,9 @@ export default function DocTidyInvoiceAudit() {
               <svg
                 className="h-3 w-3 shrink-0 text-sky-400 opacity-70"
                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                title="Parsed from Email"
                 aria-label="Email"
               >
+                <title>Parsed from Email</title>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
