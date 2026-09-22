@@ -182,6 +182,7 @@ export interface DocTidyEvent {
    */
   auditColumnOrder?: string[]
   wsEmailColumnOrder?: string[]
+  pdfImportColOrder?: string[]
   at?: string
 }
 
@@ -391,6 +392,8 @@ export interface ParseJobListItem {
   completedAt?: string | null
   createdAt: string
   updatedAt: string
+  /** Where this job originated. Present on jobs created after 2026-09-22. */
+  source?: 'email' | 'pdf-import'
 }
 
 export interface ParseJobsResponse {
@@ -556,4 +559,81 @@ export function extractJsonArray(
 // Kept as a placeholder so future imports fail loudly rather than silently.
 /** @deprecated Use the InvoiceAuditColumnId li* variants instead. */
 export type LineItemColumnId = never
+
+/* ──────────────────────────────────────── Direct PDF Imports ── */
+
+/**
+ * A PDF file uploaded directly by a user for Tidy Agent parsing,
+ * outside the email-capture flow.
+ */
+/* ────────────────────────────────── PDF Import columns ── */
+
+export type PdfImportColumnId = 'imported' | 'importedBy' | 'size' | 'filename'
+
+export interface PdfImportColumn {
+  id: PdfImportColumnId
+  label: string
+  iconPath: string
+  align?: 'left' | 'right'
+}
+
+export const PDF_IMPORT_COLUMNS: PdfImportColumn[] = [
+  {
+    id: 'imported',
+    label: 'Imported',
+    iconPath: 'M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z',
+  },
+  {
+    id: 'importedBy',
+    label: 'Imported By',
+    iconPath: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+  },
+  {
+    id: 'size',
+    label: 'Size',
+    iconPath: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
+    align: 'right',
+  },
+  {
+    id: 'filename',
+    label: 'Filename',
+    iconPath: 'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  },
+]
+
+export const DEFAULT_PDF_IMPORT_COL_ORDER: PdfImportColumnId[] = PDF_IMPORT_COLUMNS.map((c) => c.id)
+
+/* ──────────────────────────────────────── Direct PDF Imports ── */
+
+/** Slim parse job summary returned inline on PDF import list rows. */
+export interface PdfImportParseJob {
+  _id: string
+  status: ParseJobStatus
+  error?: string | null
+}
+
+export interface PdfImport {
+  _id: string
+  workspaceId: string
+  filename: string
+  /** File size in bytes. */
+  size: number
+  /** GridFS file id (opaque to the frontend). */
+  pdfFileId: string
+  /** Drive file id if the PDF was successfully mirrored to the Drive folder. */
+  driveFileId?: string | null
+  /** Drive web-view link for the mirrored file. */
+  driveWebViewLink?: string | null
+  /** Populated once the import has been sent to the Tidy Agent. */
+  parseJobId?: string | null
+  /**
+   * Inline parse job summary populated by the list endpoint.
+   * Present when `parseJobId` is set.
+   */
+  parseJob?: PdfImportParseJob | null
+  uploadedByUserId?: string
+  uploadedByName?: string
+  createdAt: string
+  updatedAt: string
+}
 

@@ -184,6 +184,25 @@ function authEventStream<T>(
   }
 }
 
+/**
+ * Uploads files as multipart/form-data. The `Content-Type` header is omitted
+ * so the browser sets it automatically with the correct boundary string.
+ */
+async function authUpload<T>(endpoint: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: 'An error occurred' }))
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
+  }
+
+  return res.json()
+}
+
 export const authApi = {
   get: <T>(endpoint: string) => authRequest<T>(endpoint),
   postStream: authPostStream,
@@ -198,4 +217,5 @@ export const authApi = {
   patch: <T>(endpoint: string, body: unknown) =>
     authRequest<T>(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(endpoint: string) => authRequest<T>(endpoint, { method: 'DELETE' }),
+  upload: <T>(endpoint: string, formData: FormData) => authUpload<T>(endpoint, formData),
 }

@@ -9,6 +9,7 @@ import {
   runAllRules,
   getMessages,
   getMessageById,
+  deleteMessage,
   streamEvents,
   getConfig,
   updateConfig,
@@ -41,6 +42,13 @@ import {
   updateWorkspace,
   deleteWorkspace,
 } from '../controllers/docTidyWorkspace.controller';
+import {
+  pdfUpload,
+  listPdfImports,
+  uploadPdfImports,
+  sendPdfImportToAgent,
+  deletePdfImport,
+} from '../controllers/docTidyPdfImport.controller';
 
 const router = Router();
 
@@ -57,6 +65,7 @@ router.post('/run', runAllRules);
 
 router.get('/messages', getMessages);
 router.get('/messages/:id', getMessageById);
+router.delete('/messages/:id', deleteMessage);
 
 // Long-lived SSE stream: tells open results tables when to refetch.
 router.get('/stream', streamEvents);
@@ -88,6 +97,12 @@ router.get('/workspaces', listWorkspaces);
 router.post('/workspaces', createWorkspace);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
+
+// Direct PDF uploads — any authenticated user may upload/manage their imports.
+router.get('/pdf-imports', listPdfImports);
+router.post('/pdf-imports', pdfUpload.array('files'), uploadPdfImports);
+router.post('/pdf-imports/:id/parse', sendPdfImportToAgent);
+router.delete('/pdf-imports/:id', deletePdfImport);
 
 // The mailbox connection and attachment destination are admin-managed.
 router.get('/config', getConfig);

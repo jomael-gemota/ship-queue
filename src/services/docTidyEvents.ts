@@ -29,6 +29,7 @@ export interface DocTidyEvent {
    */
   auditColumnOrder?: string[];
   wsEmailColumnOrder?: string[];
+  pdfImportColOrder?: string[];
   at?: string;
 }
 

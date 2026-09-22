@@ -5,10 +5,13 @@ import {
   DocumentTypeBadge,
   PaginationArrows,
   Spinner,
+  TableActionButton,
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
+import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
+import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
@@ -34,6 +37,12 @@ import {
   type WorkspaceEmailColumnId,
   type ParseJobListItem,
   type ParseJobsResponse,
+  type PdfImport,
+  type PdfImportColumn,
+  type PdfImportColumnId,
+  PDF_IMPORT_COLUMNS,
+  DEFAULT_PDF_IMPORT_COL_ORDER,
+  isParseRunning,
 } from '../types/docTidy'
 
 /** Strip common currency prefixes/symbols for cleaner display. */
@@ -479,6 +488,78 @@ function isLineItemCol(id: InvoiceAuditColumnId): boolean {
   return id.startsWith('li')
 }
 
+/* ─────────────────────────── Confirm Delete Dialog ── */
+
+function ConfirmDeleteDialog({
+  title,
+  description,
+  deleting,
+  onConfirm,
+  onCancel,
+}: {
+  title: string
+  description: React.ReactNode
+  deleting: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !deleting) onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, deleting])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => { if (!deleting) onCancel() }} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-2xl space-y-4"
+      >
+        {/* Icon + title */}
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/20">
+            <svg className="h-5 w-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text-100)]">{title}</h3>
+            <p className="mt-1 text-xs text-[var(--text-200)] leading-relaxed">{description}</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-4 py-2 text-sm text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={deleting}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition-opacity hover:bg-rose-700 disabled:opacity-60"
+          >
+            {deleting && (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ──────────────────────────────────────────────── Page ── */
 
 /** Smaller page sizes for the audit table, which flattens one row per line item. */
@@ -490,7 +571,7 @@ export default function DocTidyInvoiceAudit() {
   const [view, setView] = useState<View>('workspaces')
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
   /** Which sub-tab is active inside a workspace detail page. */
-  type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors'
+  type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
 
   /* ── Workspaces ── */
@@ -513,7 +594,7 @@ export default function DocTidyInvoiceAudit() {
   const [pageSize, setPageSize] = useState(100)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
-  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
@@ -541,10 +622,242 @@ export default function DocTidyInvoiceAudit() {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+  const [emailBulkSending, setEmailBulkSending] = useState(false)
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
     'h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]'
+
+  /* ── PDF Imports tab ── */
+  const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
+  const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1 })
+  const [pdfImportsLoading, setPdfImportsLoading] = useState(false)
+  const [pdfImportsError, setPdfImportsError] = useState<string | null>(null)
+  const [pdfPage, setPdfPage] = useState(1)
+  const [pdfPageSize, setPdfPageSize] = useState(PAGE_SIZE_OPTIONS[0])
+  const [pdfSearch, setPdfSearch] = useState('')
+  const [pdfDebouncedSearch, setPdfDebouncedSearch] = useState('')
+  const [pdfDateFrom, setPdfDateFrom] = useState('')
+  const [pdfDateTo, setPdfDateTo] = useState('')
+  const [pdfUploading, setPdfUploading] = useState(false)
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
+  const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
+  const [pdfAbortingJobId, setPdfAbortingJobId] = useState<string | null>(null)
+  const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
+  const [pdfBulkSending, setPdfBulkSending] = useState(false)
+  const pdfSelectAllRef = useRef<HTMLInputElement>(null)
+  const [pdfDragOver, setPdfDragOver] = useState(false)
+  const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
+  const pdfFileInputRef = useRef<HTMLInputElement>(null)
+
+  /* ── PDF import column drag-reorder ── */
+  const [pdfColOrder, setPdfColOrder] = useState<PdfImportColumnId[]>(DEFAULT_PDF_IMPORT_COL_ORDER)
+  const [pdfDragSrc, setPdfDragSrc] = useState<PdfImportColumnId | null>(null)
+  const [pdfDragTarget, setPdfDragTarget] = useState<PdfImportColumnId | null>(null)
+  const pdfColOrderRef = useRef(pdfColOrder)
+  useEffect(() => { pdfColOrderRef.current = pdfColOrder }, [pdfColOrder])
+
+  /* ── Confirm-delete dialogs ── */
+  const [confirmDeleteEmail, setConfirmDeleteEmail] = useState<import('../types/docTidy').DocTidyMessage | null>(null)
+  const [emailDeleting, setEmailDeleting] = useState(false)
+  const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
+  const [pdfDeleting, setPdfDeleting] = useState(false)
+
+  /* Debounce search */
+  useEffect(() => {
+    const t = setTimeout(() => setPdfDebouncedSearch(pdfSearch.trim()), 350)
+    return () => clearTimeout(t)
+  }, [pdfSearch])
+
+  /* Reset page + selection when filters change */
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
+
+  const fetchPdfImports = useCallback(async () => {
+    if (!activeWorkspace) return
+    setPdfImportsLoading(true)
+    setPdfImportsError(null)
+    try {
+      const params = new URLSearchParams({
+        workspaceId: activeWorkspace._id,
+        page: String(pdfPage),
+        pageSize: String(pdfPageSize),
+      })
+      if (pdfDebouncedSearch) params.set('search', pdfDebouncedSearch)
+      if (pdfDateFrom) params.set('dateFrom', pdfDateFrom)
+      if (pdfDateTo) params.set('dateTo', pdfDateTo)
+      const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number } }>(
+        `/doc-tidy/pdf-imports?${params.toString()}`
+      )
+      setPdfImports(res.data)
+      setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+    } catch (err) {
+      setPdfImportsError(err instanceof Error ? err.message : 'Failed to load PDF imports')
+    } finally {
+      setPdfImportsLoading(false)
+    }
+  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo])
+
+  useEffect(() => {
+    if (workspaceTab === 'pdf-imports') void fetchPdfImports()
+  }, [workspaceTab, fetchPdfImports])
+
+  const handlePdfFilesSelected = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
+    if (fileArray.length === 0) {
+      setPdfUploadError('Please select PDF files only.')
+      return
+    }
+    if (!activeWorkspace) return
+    setPdfUploading(true)
+    setPdfUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('workspaceId', activeWorkspace._id)
+      for (const file of fileArray) formData.append('files', file)
+      await authApi.upload<{ data: PdfImport[] }>('/doc-tidy/pdf-imports', formData)
+      setShowPdfUploadModal(false)
+      setPdfPage(1)
+      void fetchPdfImports()
+    } catch (err) {
+      setPdfUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setPdfUploading(false)
+    }
+  }
+
+  const handleSendToAgent = async (imp: PdfImport) => {
+    setPdfSendingIds((prev) => new Set(prev).add(imp._id))
+    setPdfImportsError(null)
+    try {
+      await authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`)
+      void fetchPdfImports()
+    } catch (err) {
+      setPdfImportsError(err instanceof Error ? err.message : 'Failed to send to Tidy Agent')
+    } finally {
+      setPdfSendingIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
+    }
+  }
+
+  const handleAbortPdfJob = async (jobId: string) => {
+    setPdfAbortingJobId(jobId)
+    try {
+      await authApi.post(`/doc-tidy/parse-jobs/${jobId}/abort`)
+      void fetchPdfImports()
+    } catch {
+      // silently ignore — user can try again
+    } finally {
+      setPdfAbortingJobId(null)
+    }
+  }
+
+  const confirmAndDeletePdfImport = async (imp: PdfImport) => {
+    setPdfDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/pdf-imports/${imp._id}`)
+      setPdfSelectedIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
+      setConfirmDeletePdf(null)
+      void fetchPdfImports()
+    } catch (err) {
+      setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete import')
+      setConfirmDeletePdf(null)
+    } finally {
+      setPdfDeleting(false)
+    }
+  }
+
+  const handleDeleteEmail = async (msg: import('../types/docTidy').DocTidyMessage) => {
+    setEmailDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/messages/${msg._id}`)
+      setSelectedEmailIds((prev) => { const next = new Set(prev); next.delete(msg._id); return next })
+      setConfirmDeleteEmail(null)
+      void fetchEmails(true)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to delete message')
+      setConfirmDeleteEmail(null)
+    } finally {
+      setEmailDeleting(false)
+    }
+  }
+
+  /** Send all parseable, un-parsed (or failed) attachments across selected email rows. */
+  const handleBulkSendEmailsToAgent = async () => {
+    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    const tasks: Array<{ msgId: string; index: number }> = []
+    for (const msg of selectedMsgs) {
+      for (let i = 0; i < msg.attachments.length; i++) {
+        const att = msg.attachments[i]
+        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
+        // Skip running / completed jobs; send if no job yet or previously failed
+        if (job && (job.status === 'completed' || job.status === 'pending' || job.status === 'processing')) continue
+        tasks.push({ msgId: msg._id, index: i })
+      }
+    }
+    if (tasks.length === 0) return
+    setEmailBulkSending(true)
+    try {
+      await Promise.allSettled(
+        tasks.map(({ msgId, index }) =>
+          authApi.post(`/doc-tidy/messages/${msgId}/attachments/${index}/parse`)
+        )
+      )
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkSending(false)
+    }
+  }
+
+  /** Send all un-parsed selected PDF imports to the Tidy Agent. */
+  const handleBulkSendPdfsToAgent = async () => {
+    const selected = pdfImports.filter(
+      (imp) => pdfSelectedIds.has(imp._id) && (!imp.parseJob || imp.parseJob.status === 'failed')
+    )
+    if (selected.length === 0) return
+    setPdfBulkSending(true)
+    try {
+      await Promise.allSettled(
+        selected.map((imp) => authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`))
+      )
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkSending(false)
+    }
+  }
+
+  /* Selection helpers */
+  const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
+  const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
+  useEffect(() => {
+    if (pdfSelectAllRef.current) {
+      pdfSelectAllRef.current.indeterminate = somePdfOnPageSelected && !allPdfOnPageSelected
+    }
+  }, [somePdfOnPageSelected, allPdfOnPageSelected])
+
+  const togglePdfRow = (id: string) => {
+    setPdfSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllPdfOnPage = () => {
+    setPdfSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const imp of pdfImports) {
+        if (allPdfOnPageSelected) next.delete(imp._id); else next.add(imp._id)
+      }
+      return next
+    })
+  }
+
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
+  const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
+  const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
+  const orderedPdfCols = pdfColOrder
+    .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
+    .filter((c): c is PdfImportColumn => Boolean(c))
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -565,12 +878,11 @@ export default function DocTidyInvoiceAudit() {
   /* ── Load shared column order from server on mount ── */
   useEffect(() => {
     authApi
-      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[] } }>('/doc-tidy/ui-prefs')
+      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>('/doc-tidy/ui-prefs')
       .then((res) => {
-        const { auditColumnOrder, wsEmailColumnOrder } = res.data
+        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
 
         if (auditColumnOrder && auditColumnOrder.length > 0) {
-          // Preserve any stored order; append new column ids that don't exist yet
           const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
             INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
           )
@@ -585,16 +897,25 @@ export default function DocTidyInvoiceAudit() {
           const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
           setEmailColOrder(merged)
         }
+
+        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
+          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+          )
+          const merged = [...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))]
+          setPdfColOrder(merged)
+        }
       })
       .catch(() => { /* Non-critical — silently fall back to defaults. */ })
   }, [])
 
   /** Persist column orders to the server (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[]) => {
+    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
       void authApi.put('/doc-tidy/ui-prefs', {
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
+        pdfImportColOrder: pdfOrder,
       }).catch(() => { /* Non-critical. */ })
     },
     []
@@ -669,16 +990,16 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
-            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
+            const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
+            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
         }
       },
@@ -700,16 +1021,16 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-              INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
-            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-            )
+            const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
             setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+          }
+          if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
+            const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
+            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
         }
       },
@@ -721,6 +1042,21 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
     // worker_status events are handled within the existing emails SSE — merged below
+  }, [workspaceTab, activeWorkspace])
+
+  /* SSE — refresh PDF imports when a parse job status changes */
+  const fetchPdfImportsRef = useRef(fetchPdfImports)
+  useEffect(() => { fetchPdfImportsRef.current = fetchPdfImports }, [fetchPdfImports])
+  useEffect(() => {
+    if (workspaceTab !== 'pdf-imports' || !activeWorkspace) return
+    return authApi.eventStream<DocTidyEvent>(
+      '/doc-tidy/stream',
+      (event) => {
+        if (event.type === 'parse_status') void fetchPdfImportsRef.current()
+        if (event.type === 'worker_status') setWorkerOnline(event.workerOnline ?? false)
+      },
+      () => {}
+    )
   }, [workspaceTab, activeWorkspace])
 
   /* Fetch initial worker status whenever a workspace is active */
@@ -766,7 +1102,7 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [auditSearch])
 
-  useEffect(() => { setPage(1); setSelectedJobIds(new Set()) }, [debouncedAuditSearch, pageSize])
+  useEffect(() => { setPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, pageSize])
 
   /* ── Fetch parse jobs ── */
   const fetchJobs = useCallback(async () => {
@@ -814,6 +1150,7 @@ export default function DocTidyInvoiceAudit() {
   /* Keep a stable ref so the audit-tab SSE handler always calls the latest
      fetchJobs without reconnecting when filters change. */
   const fetchJobsRef = useRef(fetchJobs)
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => { fetchJobsRef.current = fetchJobs }, [fetchJobs])
 
   /* Re-fetch whenever the user switches to the audit tab so results that
@@ -831,7 +1168,7 @@ export default function DocTidyInvoiceAudit() {
     setPage(1)
     setAuditSearch('')
     setDebouncedAuditSearch('')
-    setSelectedJobIds(new Set())
+    setSelectedRowKeys(new Set())
     setError(null)
     // Reset email sub-view state
     setEmailPage(1)
@@ -852,7 +1189,7 @@ export default function DocTidyInvoiceAudit() {
     setWorkspaceTab('audit')
     setAuditSearch('')
     setDebouncedAuditSearch('')
-    setSelectedJobIds(new Set())
+    setSelectedRowKeys(new Set())
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
@@ -906,10 +1243,24 @@ export default function DocTidyInvoiceAudit() {
     [emailColOrder]
   )
 
-  /* ── Selection helpers (audit table) ── */
-  const pageJobIds = useMemo(() => [...new Set(jobs.map((j) => j._id))], [jobs])
-  const allPageSelected = pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id))
-  const somePageSelected = pageJobIds.some((id) => selectedJobIds.has(id))
+  /* ── Selection helpers (audit table — row-level, one key per line item) ── */
+  /**
+   * One entry per visible line-item row on the current page. Key format:
+   * `${job._id}-${itemIdx}`.  Documents with no line items contribute a single
+   * `${job._id}-0` key so they remain selectable.
+   */
+  const pageRowKeys = useMemo(() => {
+    const keys: string[] = []
+    for (const job of jobs) {
+      const json = job.jsonOutput ?? null
+      const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+      const count = lineItems.length > 0 ? lineItems.length : 1
+      for (let i = 0; i < count; i++) keys.push(`${job._id}-${i}`)
+    }
+    return keys
+  }, [jobs])
+  const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
+  const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (auditSelectAllRef.current) {
@@ -917,20 +1268,20 @@ export default function DocTidyInvoiceAudit() {
     }
   }, [somePageSelected, allPageSelected])
 
-  const toggleAuditJob = (jobId: string) => {
-    setSelectedJobIds((prev) => {
+  const toggleAuditRow = (rowKey: string) => {
+    setSelectedRowKeys((prev) => {
       const next = new Set(prev)
-      if (next.has(jobId)) next.delete(jobId)
-      else next.add(jobId)
+      if (next.has(rowKey)) next.delete(rowKey)
+      else next.add(rowKey)
       return next
     })
   }
   const toggleAllAuditPage = () => {
-    setSelectedJobIds((prev) => {
+    setSelectedRowKeys((prev) => {
       const next = new Set(prev)
-      for (const id of pageJobIds) {
-        if (allPageSelected) next.delete(id)
-        else next.add(id)
+      for (const key of pageRowKeys) {
+        if (allPageSelected) next.delete(key)
+        else next.add(key)
       }
       return next
     })
@@ -946,7 +1297,16 @@ export default function DocTidyInvoiceAudit() {
 
       let exportJobs: ParseJobListItem[]
       if (mode === 'selection') {
-        exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+        // Only jobs that have at least one selected row — row-level filter applied below
+        exportJobs = jobs.filter((j) => {
+          const json = j.jsonOutput ?? null
+          const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+          const count = lineItems.length > 0 ? lineItems.length : 1
+          for (let i = 0; i < count; i++) {
+            if (selectedRowKeys.has(`${j._id}-${i}`)) return true
+          }
+          return false
+        })
       } else {
         // Fetch all matching records regardless of current pagination
         const params = new URLSearchParams({
@@ -967,7 +1327,10 @@ export default function DocTidyInvoiceAudit() {
         const lineItems = extractJsonArray(json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
         const rowItems: (Record<string, unknown> | null)[] = lineItems.length > 0 ? lineItems : [null]
 
-        for (const item of rowItems) {
+        for (let itemIdx = 0; itemIdx < rowItems.length; itemIdx++) {
+          // For selection exports, skip line items that weren't individually selected
+          if (mode === 'selection' && !selectedRowKeys.has(`${job._id}-${itemIdx}`)) continue
+          const item = rowItems[itemIdx]
           const row: Record<string, string> = {}
           for (const col of visibleCols) {
             if (isLineItemCol(col.id)) {
@@ -1003,7 +1366,29 @@ export default function DocTidyInvoiceAudit() {
     switch (colId) {
       case 'vendorName':
         return (
-          <span className="font-medium text-[var(--text-100)]">
+          <span className="inline-flex items-center gap-1.5 font-medium text-[var(--text-100)]">
+            {job.source === 'pdf-import' && (
+              <svg
+                className="h-3 w-3 shrink-0 text-rose-400 opacity-70"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                title="Parsed from PDF Import"
+                aria-label="PDF Import"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            )}
+            {job.source === 'email' && (
+              <svg
+                className="h-3 w-3 shrink-0 text-sky-400 opacity-70"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                title="Parsed from Email"
+                aria-label="Email"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            )}
             {job.vendorName ||
               extractJsonField(json, 'vendor_name', 'vendor', 'supplier', 'company', 'from') ||
               <span className="italic text-[var(--text-200)]">—</span>}
@@ -1177,10 +1562,11 @@ export default function DocTidyInvoiceAudit() {
           {/* ── Workspace sub-tab bar ─────────────────────────────── */}
           <div className="flex items-center border-b border-[var(--bg-300)] gap-0">
             {([
-              ['audit',   'Invoice Audit', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
-              ['emails',  'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
-              ['rules',   'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
-              ['vendors', 'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
+              ['audit',       'Invoice Audit', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['emails',      'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
+              ['pdf-imports', 'PDF Imports',   'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['rules',       'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
+              ['vendors',     'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
             ] as const).map(([tab, label, icon]) => (
               <button
                 key={tab}
@@ -1268,6 +1654,24 @@ export default function DocTidyInvoiceAudit() {
                     {emailPagination.total > 0 && (
                       <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
                     )}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`}
+                        onClick={() => void handleBulkSendEmailsToAgent()}
+                        disabled={emailBulkSending || workerOnline === false}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {emailBulkSending ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        Send {selectedEmailIds.size} to Tidy Agent
+                      </button>
+                    )}
                   </span>
                 </div>
 
@@ -1322,7 +1726,7 @@ export default function DocTidyInvoiceAudit() {
                               if (emailDragSrc && emailDragSrc !== col.id) {
                                 const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
                                 setEmailColOrder(newOrder)
-                                saveColOrdersRef.current(auditColOrderRef.current, newOrder)
+                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current)
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
@@ -1543,11 +1947,24 @@ export default function DocTidyInvoiceAudit() {
 
                               {/* Actions — always last, not draggable */}
                               <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-                                <AttachmentIcons
-                                  message={msg}
-                                  onOpenJob={setOpenJobId}
-                                  onChanged={() => void fetchEmails(true)}
-                                />
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <AttachmentIcons
+                                    message={msg}
+                                    onOpenJob={setOpenJobId}
+                                    onChanged={() => void fetchEmails(true)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteEmail(msg)}
+                                    title="Delete this message"
+                                    aria-label="Delete message"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           )
@@ -1569,6 +1986,474 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ VENDORS TAB ══════════════ */}
           {workspaceTab === 'vendors' && (
             <WorkspaceVendorsView workspaceId={activeWorkspace._id} />
+          )}
+
+          {/* ══════════════ PDF IMPORTS TAB ══════════════ */}
+          {workspaceTab === 'pdf-imports' && (
+            <div className="space-y-2">
+              {pdfImportsError && (
+                <Banner kind="error" onDismiss={() => setPdfImportsError(null)}>{pdfImportsError}</Banner>
+              )}
+
+              <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+
+                {/* ── Filter bar ── */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+                  {/* Search */}
+                  <div className="relative min-w-[200px] flex-1 max-w-sm">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      value={pdfSearch}
+                      onChange={(e) => setPdfSearch(e.target.value)}
+                      placeholder="Search filename…"
+                      className={`${inputClass} w-full pl-8 pr-8`}
+                    />
+                    {pdfSearch && (
+                      <button onClick={() => setPdfSearch('')} aria-label="Clear search"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Date range */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--text-200)]">From</span>
+                    <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
+                    <span className="text-[11px] text-[var(--text-200)]">to</span>
+                    <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
+                  </div>
+
+                  {pdfHasActiveFilters && (
+                    <button
+                      onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                      className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+
+                  {/* Right side: count + spinner + bulk action + Import button */}
+                  <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                    {pdfImportsLoading && <Spinner className="h-3 w-3" />}
+                    {pdfImportsPagination.total > 0 && (
+                      <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                    )}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`}
+                        onClick={() => void handleBulkSendPdfsToAgent()}
+                        disabled={pdfBulkSending || workerOnline === false}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {pdfBulkSending ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        Send {pdfSelectedIds.size} to Tidy Agent
+                      </button>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    Import PDFs
+                  </button>
+                </div>
+
+                {/* ── Top pagination ── */}
+                {!pdfImportsLoading && pdfImportsPagination.total > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
+                      <span>Rows per page:</span>
+                      <select
+                        value={pdfPageSize}
+                        onChange={(e) => setPdfPageSize(Number(e.target.value))}
+                        className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                      >
+                        {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <span>
+                        {pdfStartItem}–{pdfEndItem} of {pdfImportsPagination.total.toLocaleString()}
+                      </span>
+                      {pdfSelectedIds.size > 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">{pdfSelectedIds.size} selected</span>
+                          <button onClick={() => setPdfSelectedIds(new Set())} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
+                        </span>
+                      )}
+                    </div>
+                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                  </div>
+                )}
+
+                {/* ── Table ── */}
+                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
+                  {pdfImportsLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-16 text-[var(--text-200)]">
+                      <Spinner className="h-4 w-4" />
+                      <span className="text-sm">Loading…</span>
+                    </div>
+                  ) : pdfImports.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-16 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
+                        <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-medium text-[var(--text-100)]">
+                          {pdfHasActiveFilters ? 'No files match' : 'No PDFs imported yet'}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                          {pdfHasActiveFilters
+                            ? 'Try adjusting or clearing the filters.'
+                            : 'Click "Import PDFs" above to upload files.'}
+                        </p>
+                      </div>
+                      {pdfHasActiveFilters && (
+                        <button
+                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                          className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer"
+                        >
+                          Clear filters
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <table className="w-full text-[11px] border-separate border-spacing-0">
+                      <thead>
+                        <tr>
+                          {/* Checkbox — select all */}
+                          <Th className="w-8">
+                            <input
+                              ref={pdfSelectAllRef}
+                              type="checkbox"
+                              checked={allPdfOnPageSelected}
+                              onChange={toggleAllPdfOnPage}
+                              disabled={pdfImports.length === 0}
+                              title={allPdfOnPageSelected ? 'Clear this page' : 'Select this page'}
+                              aria-label={allPdfOnPageSelected ? 'Clear this page' : 'Select this page'}
+                              className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                          </Th>
+                          {orderedPdfCols.map((col) => (
+                            <DraggableTh
+                              key={col.id}
+                              label={col.label}
+                              iconPath={col.iconPath}
+                              align={col.align}
+                              isDragging={pdfDragSrc === col.id}
+                              isDragTarget={pdfDragTarget === col.id}
+                              onDragStart={() => setPdfDragSrc(col.id)}
+                              onDragOver={() => setPdfDragTarget(col.id)}
+                              onDrop={() => {
+                                if (pdfDragSrc && pdfDragSrc !== col.id) {
+                                  const newOrder = reorderCols(pdfColOrderRef.current, pdfDragSrc, col.id)
+                                  setPdfColOrder(newOrder)
+                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder)
+                                }
+                              }}
+                              onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
+                            />
+                          ))}
+                          <Th label="Actions" align="center" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pdfImports.map((imp) => {
+                          const isSending = pdfSendingIds.has(imp._id)
+                          const isSelected = pdfSelectedIds.has(imp._id)
+                          const job = imp.parseJob
+                          const isRunning = job && isParseRunning(job.status)
+                          const isAborting = job && pdfAbortingJobId === job._id
+                          const dragCls = (id: PdfImportColumnId) =>
+                            pdfDragSrc === id
+                              ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                              : pdfDragTarget === id
+                                ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                : ''
+
+                          return (
+                            <tr
+                              key={imp._id}
+                              className={`align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
+                                isSelected
+                                  ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                  : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                              }`}
+                            >
+                              {/* Checkbox */}
+                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => togglePdfRow(imp._id)}
+                                  aria-label={`Select ${imp.filename}`}
+                                  className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
+                                />
+                              </td>
+
+                              {orderedPdfCols.map((col) => {
+                                const cls = `${dragCls(col.id)}`
+                                switch (col.id) {
+                                  case 'imported':
+                                    return (
+                                      <td key="imported" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
+                                        {formatDate(imp.createdAt)}
+                                      </td>
+                                    )
+                                  case 'importedBy':
+                                    return (
+                                      <td key="importedBy" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`}>
+                                        {imp.uploadedByName ?? <span className="italic">—</span>}
+                                      </td>
+                                    )
+                                  case 'size':
+                                    return (
+                                      <td key="size" className={`px-3 py-1 whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
+                                        {formatBytes(imp.size)}
+                                      </td>
+                                    )
+                                  case 'filename':
+                                    return (
+                                      <td key="filename" className={`px-3 py-1 min-w-0 max-w-[300px] ${cls}`}>
+                                        {imp.driveWebViewLink ? (
+                                          <a
+                                            href={imp.driveWebViewLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`Open ${imp.filename} in Google Drive`}
+                                            className="inline-flex items-center gap-1.5 min-w-0 group"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
+                                          </a>
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return null
+                                }
+                              })}
+
+                              {/* Actions — mirrors the Emails tab AttachmentIcons states */}
+                              <td className="px-3 py-1 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-0.5">
+                                  {(() => {
+                                    // No job yet — sparkle button
+                                    if (!job) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          title={!workerOnline ? 'Tidy Agent is offline' : 'Send this document to Tidy Agent for parsing'}
+                                          onClick={() => void handleSendToAgent(imp)}
+                                          disabled={isSending || !workerOnline}
+                                          className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          {isSending ? (
+                                            <Spinner className="h-3 w-3" />
+                                          ) : (
+                                            <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                                            </svg>
+                                          )}
+                                          Send to Tidy Agent
+                                        </button>
+                                      )
+                                    }
+
+                                    // Running — spinner to open panel + abort ×
+                                    if (isRunning) {
+                                      return (
+                                        <span className="flex items-center gap-0.5">
+                                          <TableActionButton label="Open to watch Tidy Agent work" onClick={() => setOpenJobId(job._id)}>
+                                            <Spinner className="h-5 w-5 text-sky-500" />
+                                          </TableActionButton>
+                                          <TableActionButton label="Stop / abort this parse" onClick={() => void handleAbortPdfJob(job._id)} disabled={Boolean(isAborting)}>
+                                            {isAborting ? (
+                                              <Spinner className="h-5 w-5 text-slate-400" />
+                                            ) : (
+                                              <svg className="h-4 w-4 text-rose-400 hover:text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            )}
+                                          </TableActionButton>
+                                        </span>
+                                      )
+                                    }
+
+                                    // Completed — emerald check
+                                    if (job.status === 'completed') {
+                                      return (
+                                        <TableActionButton label="Open Tidy Agent's reasoning and output" onClick={() => setOpenJobId(job._id)}>
+                                          <SuccessIcon className="h-5 w-5 text-emerald-500" />
+                                        </TableActionButton>
+                                      )
+                                    }
+
+                                    // Failed — alert icon + Retry
+                                    return (
+                                      <button
+                                        type="button"
+                                        title={job.error ?? 'Parse failed — click to retry'}
+                                        onClick={() => void handleSendToAgent(imp)}
+                                        disabled={isSending || !workerOnline}
+                                        className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        {isSending ? (
+                                          <Spinner className="h-3 w-3" />
+                                        ) : (
+                                          <ErrorIcon className="h-3.5 w-3.5 text-rose-500" />
+                                        )}
+                                        Retry
+                                      </button>
+                                    )
+                                  })()}
+
+                                  {/* Delete */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeletePdf(imp)}
+                                    title="Delete this import"
+                                    aria-label="Delete import"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          {/* ── end workspaceTab === 'pdf-imports' ── */}
+
+          {/* ══ PDF Import Upload Modal ══ */}
+          {showPdfUploadModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => { if (!pdfUploading) setShowPdfUploadModal(false) }} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Import PDFs"
+                className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Modal header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import PDFs</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF only · Max 50 MB each</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPdfUploadModal(false)}
+                    disabled={pdfUploading}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Modal body — upload zone */}
+                <div className="px-5 py-5 space-y-4">
+                  {pdfUploadError && (
+                    <Banner kind="error" onDismiss={() => setPdfUploadError(null)}>{pdfUploadError}</Banner>
+                  )}
+
+                  {/* Hidden file input — triggered by clicking anywhere on the zone */}
+                  <input
+                    ref={pdfFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) void handlePdfFilesSelected(e.target.files)
+                      e.target.value = ''
+                    }}
+                  />
+
+                  <div
+                    onClick={() => { if (!pdfUploading) pdfFileInputRef.current?.click() }}
+                    onDragOver={(e) => { e.preventDefault(); setPdfDragOver(true) }}
+                    onDragLeave={() => setPdfDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setPdfDragOver(false)
+                      void handlePdfFilesSelected(e.dataTransfer.files)
+                    }}
+                    className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors select-none ${
+                      pdfUploading
+                        ? 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 cursor-wait'
+                        : pdfDragOver
+                          ? 'border-[var(--accent-200)] bg-[var(--primary-100)] cursor-copy'
+                          : 'border-[var(--bg-300)] bg-[var(--bg-200)]/40 hover:border-[var(--accent-200)] hover:bg-[var(--primary-100)]/40 cursor-pointer'
+                    }`}
+                  >
+                    {pdfUploading ? (
+                      <>
+                        <Spinner className="h-7 w-7 text-[var(--accent-200)]" />
+                        <p className="text-sm text-[var(--text-200)]">Uploading files…</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary-100)] text-[var(--accent-200)]">
+                          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[var(--text-100)]">
+                            Click or drop PDF files here
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--text-200)]">Multiple files accepted · uploads to Drive + parsed on demand</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
@@ -1615,14 +2500,14 @@ export default function DocTidyInvoiceAudit() {
               </button>
 
               {/* Export button */}
-              {selectedJobIds.size > 0 ? (
+              {selectedRowKeys.size > 0 ? (
                 <button type="button" onClick={() => void exportToExcel('selection')} disabled={exporting}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
                   {exporting
                     ? <Spinner className="h-3.5 w-3.5" />
                     : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                   }
-                  Export {selectedJobIds.size} selected
+                  Export {selectedRowKeys.size} selected
                 </button>
               ) : (
                 <button type="button" onClick={() => void exportToExcel('all')} disabled={exporting}
@@ -1648,12 +2533,12 @@ export default function DocTidyInvoiceAudit() {
                   {pagination.total > 0 && (
                     <span>{startItem}–{endItem} of {pagination.total.toLocaleString()}</span>
                   )}
-                  {selectedJobIds.size > 0 && (
+                  {selectedRowKeys.size > 0 && (
                     <span className="flex items-center gap-1.5">
                       <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
-                        {selectedJobIds.size} selected
+                        {selectedRowKeys.size} selected
                       </span>
-                      <button onClick={() => setSelectedJobIds(new Set())}
+                      <button onClick={() => setSelectedRowKeys(new Set())}
                         className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
                         Clear
                       </button>
@@ -1706,7 +2591,7 @@ export default function DocTidyInvoiceAudit() {
                             if (auditDragSrc && auditDragSrc !== col.id) {
                               const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
                               setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
@@ -1767,28 +2652,27 @@ export default function DocTidyInvoiceAudit() {
 
                           return rowItems.map((item, itemIdx) => {
                             const isEven = rowIdx % 2 === 0
-                            const isSelected = selectedJobIds.has(job._id)
+                            const rowKey = `${job._id}-${itemIdx}`
+                            const isSelected = selectedRowKeys.has(rowKey)
                             rowIdx++
                             return (
                               <tr
-                                key={`${job._id}-${itemIdx}`}
+                                key={rowKey}
                                 className={`transition-colors align-middle ${
                                   isSelected
                                     ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
                                     : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
                                 }`}
                               >
-                                {/* Checkbox — only shown on first line-item row of each job */}
+                                {/* Checkbox — one per line-item row */}
                                 <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
-                                  {itemIdx === 0 ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => toggleAuditJob(job._id)}
-                                      aria-label={`Select ${job.filename}`}
-                                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
-                                    />
-                                  ) : null}
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleAuditRow(rowKey)}
+                                    aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
+                                    className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                  />
                                 </td>
                                 {visibleCols.map((col) => (
                                   <td
@@ -1862,6 +2746,46 @@ export default function DocTidyInvoiceAudit() {
           message={viewMessage}
           onClose={() => setViewMessage(null)}
           onOpenJob={setOpenJobId}
+        />
+      )}
+
+      {/* ── Confirm delete: email message ── */}
+      {confirmDeleteEmail && (
+        <ConfirmDeleteDialog
+          title="Delete this message?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">{confirmDeleteEmail.subject || '(no subject)'}</span>
+              {' '}from <span className="font-medium text-[var(--text-100)]">{confirmDeleteEmail.fromName || confirmDeleteEmail.from}</span>
+              <br />
+              <span className="text-[var(--text-200)]">The message record and any Drive attachments will be permanently removed. This cannot be undone.</span>
+            </>
+          }
+          deleting={emailDeleting}
+          onConfirm={() => void handleDeleteEmail(confirmDeleteEmail)}
+          onCancel={() => setConfirmDeleteEmail(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: PDF import ── */}
+      {confirmDeletePdf && (
+        <ConfirmDeleteDialog
+          title="Delete this PDF import?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">{confirmDeletePdf.filename}</span>
+              <br />
+              <span className="text-[var(--text-200)]">
+                {confirmDeletePdf.driveFileId
+                  ? 'The import record and its Google Drive copy will be permanently removed.'
+                  : 'The import record will be permanently removed.'}
+                {' '}This cannot be undone.
+              </span>
+            </>
+          }
+          deleting={pdfDeleting}
+          onConfirm={() => void confirmAndDeletePdfImport(confirmDeletePdf)}
+          onCancel={() => setConfirmDeletePdf(null)}
         />
       )}
     </div>

@@ -24,6 +24,13 @@ export default defineConfig([
       // as a warning so new instances stay visible, rather than off entirely or
       // suppressed line by line across a dozen files.
       'react-hooks/set-state-in-effect': 'warn',
+      // Allow underscore-prefixed params/args to signal intentional non-use
+      // (e.g. `sidebarOpen: _sidebarOpen` in destructured props).
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
     },
   },
   {

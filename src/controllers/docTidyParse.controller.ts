@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { isValidObjectId } from 'mongoose';
+import { isValidObjectId, Types } from 'mongoose';
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import DocTidyCorrection, {
   CORRECTION_TEXT_SAMPLE_CHARS,
@@ -116,27 +116,41 @@ export const listParseJobs = async (req: Request, res: Response): Promise<void> 
       ];
     }
 
-    // Workspace filter: resolve rule IDs → message IDs → parse job filter.
+    // Workspace filter: email jobs via the rule→message chain OR pdf-import jobs
+    // directly scoped by workspaceId (synthetic messages have no ruleId).
     if (workspaceId) {
       if (!isValidObjectId(workspaceId)) {
         res.status(400).json({ message: 'Invalid workspaceId' });
         return;
       }
 
-      // Workspace-scoped: find rules owned by this workspace, then the messages
-      // those rules captured, then filter parse jobs to those messages.
       const workspaceRules = await DocTidyRule.find({ workspaceId }).select('_id').lean();
-      if (workspaceRules.length === 0) {
-        res.json({ data: [], pagination: { page: 1, pageSize: Number(pageSize), total: 0, pages: 1 } });
-        return;
+
+      const messages = workspaceRules.length > 0
+        ? await DocTidyMessage
+            .find({ ruleId: { $in: workspaceRules.map((r) => r._id) } })
+            .select('_id')
+            .lean()
+        : [];
+
+      // Combine: (email job whose message belongs to this workspace)
+      //       OR (pdf-import job directly tagged with this workspaceId)
+      const workspaceOid = new Types.ObjectId(workspaceId);
+      const conditions: Record<string, unknown>[] = [
+        { source: 'pdf-import', workspaceId: workspaceOid },
+      ];
+      if (messages.length > 0) {
+        conditions.push({ messageId: { $in: messages.map((m) => m._id) } });
       }
 
-      const messages = await DocTidyMessage
-        .find({ ruleId: { $in: workspaceRules.map((r) => r._id) } })
-        .select('_id')
-        .lean();
-
-      filter.messageId = { $in: messages.map((m) => m._id) };
+      // Merge into any existing $or, or create one
+      if (filter.$or) {
+        // Already has $or from the search term — wrap everything in $and
+        filter.$and = [{ $or: filter.$or }, { $or: conditions }];
+        delete filter.$or;
+      } else {
+        filter.$or = conditions;
+      }
     }
 
     const pg = Math.max(1, parseInt(page, 10));
