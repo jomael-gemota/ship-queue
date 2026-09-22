@@ -392,6 +392,8 @@ export interface ParseJobListItem {
   completedAt?: string | null
   createdAt: string
   updatedAt: string
+  /** Where this job originated. Present on jobs created after 2026-09-22. */
+  source?: 'email' | 'pdf-import'
 }
 
 export interface ParseJobsResponse {

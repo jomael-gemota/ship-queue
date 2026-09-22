@@ -26,6 +26,8 @@ export const PARSE_JOB_COLLECTION = 'doctidy_parse_jobs';
  * raw update: nothing here is populated by a Mongoose hook or a default that the
  * worker would not set.
  */
+export type ParseJobSource = 'email' | 'pdf-import';
+
 export interface IDocTidyParseJob extends Document {
   messageId: Types.ObjectId;
   attachmentIndex: number;
@@ -36,6 +38,14 @@ export interface IDocTidyParseJob extends Document {
   driveFileId?: string;
   /** GridFS id of the mirrored PDF in the `doctidy_pdfs` bucket. */
   pdfFileId?: Types.ObjectId;
+
+  /** Where this parse job originated. Set on new jobs; absent on legacy rows. */
+  source?: ParseJobSource;
+  /**
+   * Set for PDF-import jobs so the workspace Invoice Audit can scope them
+   * directly (they have no ruleId → no path through the rule chain).
+   */
+  workspaceId?: Types.ObjectId;
 
   status: ParseJobStatus;
   /** The agent's transcript, appended token by token as the job runs. */
@@ -68,6 +78,9 @@ const DocTidyParseJobSchema = new Schema<IDocTidyParseJob>(
     filename: { type: String, default: 'document.pdf' },
     driveFileId: { type: String },
     pdfFileId: { type: Schema.Types.ObjectId },
+
+    source: { type: String, enum: ['email', 'pdf-import'] },
+    workspaceId: { type: Schema.Types.ObjectId, ref: 'DocTidyWorkspace' },
 
     status: { type: String, enum: PARSE_JOB_STATUSES, default: 'pending' },
     thinking: { type: String, default: '' },

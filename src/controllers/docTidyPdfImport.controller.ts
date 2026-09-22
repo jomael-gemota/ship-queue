@@ -185,7 +185,8 @@ export const sendPdfImportToAgent = async (req: Request, res: Response): Promise
       imp.filename,
       String(imp._id),
       { id: req.user?.id, name: req.user?.name },
-      imp.driveFileId
+      imp.driveFileId,
+      imp.workspaceId
     );
 
     // Link the parse job back to the import record.

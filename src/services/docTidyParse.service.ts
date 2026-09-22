@@ -142,6 +142,7 @@ export async function requestParse(
         filename: attachment.filename,
         driveFileId: attachment.driveFileId,
         pdfFileId,
+        source: 'email',
         status: 'pending',
         thinking: '',
         jsonOutput: null,
@@ -173,7 +174,8 @@ export async function requestParseFromGridFS(
   filename: string,
   importId: string,
   requestedBy?: { id?: string; name?: string },
-  driveFileId?: string
+  driveFileId?: string,
+  workspaceId?: Types.ObjectId
 ): Promise<IDocTidyParseJob> {
   if (!hasWorker()) {
     throw new ParseRequestError(
@@ -216,6 +218,8 @@ export async function requestParseFromGridFS(
         filename,
         pdfFileId,
         ...(driveFileId ? { driveFileId } : {}),
+        source: 'pdf-import',
+        ...(workspaceId ? { workspaceId } : {}),
         status: 'pending',
         thinking: '',
         jsonOutput: null,
