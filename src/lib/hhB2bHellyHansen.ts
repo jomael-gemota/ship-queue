@@ -3,6 +3,7 @@ import { HhB2bAuthError, HhB2bDraftError } from './hhB2bConfig';
 import type { HhB2bConfig } from './hhB2bConfig';
 
 const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_RETRY_MS = 750;
 /** Portal Ship Via option labeled Default. */
 const HH_B2B_DEFAULT_SHIP_VIA = '-';
 const USER_AGENT =
@@ -67,6 +68,20 @@ function b2bHeaders(config: HhB2bConfig, cookie: string): Headers {
   return headers;
 }
 
+function fetchFailureDetail(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const parts = [err.message];
+  const cause = 'cause' in err ? err.cause : undefined;
+  if (cause instanceof Error) {
+    const code = 'code' in cause && cause.code != null ? String(cause.code) : '';
+    if (code && !cause.message.includes(code) && !err.message.includes(code)) parts.push(code);
+    if (cause.message && cause.message !== err.message) parts.push(cause.message);
+  } else if (cause != null && typeof cause === 'object' && 'code' in cause) {
+    parts.push(String((cause as { code?: unknown }).code));
+  }
+  return parts.filter(Boolean).join(' — ');
+}
+
 async function b2bRequest(
   config: HhB2bConfig,
   cookie: string,
@@ -80,18 +95,30 @@ async function b2bRequest(
     extra.forEach((value, key) => headers.set(key, value));
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(url, { ...init, headers, signal: controller.signal });
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new HhB2bDraftError(`B2B request timed out: ${path}`);
+  let res: Response | undefined;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      res = await fetch(url, { ...init, headers, signal: controller.signal });
+      lastErr = undefined;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new HhB2bDraftError(`B2B request timed out: ${path}`);
+      }
+      if (attempt === 0) {
+        console.warn(`[hh-b2b] ${path} ${fetchFailureDetail(err)} — retrying`);
+        await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_MS));
+      }
+    } finally {
+      clearTimeout(timer);
     }
-    throw err;
-  } finally {
-    clearTimeout(timer);
+  }
+  if (!res) {
+    throw new HhB2bDraftError(`B2B request failed on ${path}: ${fetchFailureDetail(lastErr)}`);
   }
 
   const text = await res.text();
@@ -316,6 +343,18 @@ export async function submitHellyHansenSportsOrder(
   }
 }
 
+function skuLabel(item: HhB2bDraftItem): string {
+  const sku = item.sku.trim();
+  const title = item.title.trim();
+  return title ? `SKU ${sku} (${title})` : `SKU ${sku}`;
+}
+
+function skuNotInCatalogMessage(items: HhB2bDraftItem[], catalog: string): string {
+  const labels = items.map(skuLabel);
+  if (labels.length === 1) return `${labels[0]} was not found in ${catalog}`;
+  return `${labels.join('; ')} were not found in ${catalog}`;
+}
+
 export async function createHellyHansenSportsDraft(
   config: HhB2bConfig,
   cookie: string,
@@ -346,13 +385,16 @@ export async function createHellyHansenSportsDraft(
 
     const first = group.items[0];
     const pageItems = formatPageItems(raw, first.sku, first.quantity);
-    if (pageItems.length === 0) {
-      throw new HhB2bDraftError(`SKU ${first.sku} was not found in ${config.catalog}`);
+    const missing = group.items.filter(
+      (item) => !pageItems.some((row) => row.stock_item_sku === item.sku)
+    );
+    if (pageItems.length === 0 || missing.length > 0) {
+      throw new HhB2bDraftError(skuNotInCatalogMessage(missing.length > 0 ? missing : group.items, config.catalog));
     }
     for (const item of group.items) {
       const match = pageItems.find((row) => row.stock_item_sku === item.sku);
       if (!match) {
-        throw new HhB2bDraftError(`SKU ${item.sku} was not found in ${config.catalog}`);
+        throw new HhB2bDraftError(skuNotInCatalogMessage([item], config.catalog));
       }
       match.quantity = item.quantity;
       match.quantity_source = [{ source: 'NA', quantity: item.quantity }];

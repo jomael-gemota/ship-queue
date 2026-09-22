@@ -1,4 +1,5 @@
 import type { IHHChildOrder } from '../models/HHOrderGroup';
+import { hhCartItems } from './hhLineItems';
 
 export interface HhVerifyIssue {
   field: string;
@@ -127,7 +128,7 @@ export function liveB2bQuantities(document: Record<string, unknown>): Map<string
 
 function detailQuantities(child: IHHChildOrder): Map<string, number> {
   const qtyBySku = new Map<string, number>();
-  for (const item of child.items ?? []) {
+  for (const item of hhCartItems(child.items)) {
     const sku = (item.sku ?? '').trim();
     if (!sku || item.quantity <= 0) continue;
     qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);

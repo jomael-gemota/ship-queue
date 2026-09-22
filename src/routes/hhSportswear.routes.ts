@@ -22,6 +22,7 @@ import {
   placeOrderCart,
   updateGroupNotes,
   updateOrderNotes,
+  updateOrderItemExclude,
 } from '../controllers/hhSportswear.controller';
 import { getHhB2bConfig, updateHhB2bConfig } from '../controllers/hhB2bConfig.controller';
 
@@ -79,6 +80,7 @@ router.get('/:groupId/export', exportGroup);
 router.get('/:groupId', getGroup);
 router.patch('/:groupId', updateGroupNotes);
 router.patch('/:groupId/orders/:orderId', updateOrderNotes);
+router.patch('/:groupId/orders/:orderId/items/:itemId', updateOrderItemExclude);
 router.delete('/:groupId', deleteGroup);
 router.delete('/:groupId/orders/:orderId', deleteOrder);
 

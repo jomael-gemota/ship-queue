@@ -10,6 +10,7 @@ import { hhBrandId } from '../lib/hhBrand';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
+import { hhCartItems } from '../lib/hhLineItems';
 
 const LOG = '[hh-cart-draft]';
 const MAX_ERROR_LEN = 1000;
@@ -84,7 +85,21 @@ export async function countUndraftedHhOrders(brand?: string): Promise<number> {
     {
       $match: {
         'children.detailsStatus': 'synced',
-        $or: [{ 'children.cartStatus': 'none' }, { 'children.b2bDraftId': /^local:/ }],
+        $and: [
+          {
+            $or: [
+              { 'children.cartError': { $exists: false } },
+              { 'children.cartError': '' },
+              { 'children.cartError': null },
+            ],
+          },
+          {
+            $or: [{ 'children.cartStatus': 'none' }, { 'children.b2bDraftId': /^local:/ }],
+          },
+          {
+            'children.items': { $elemMatch: { excluded: { $ne: true } } },
+          },
+        ],
       },
     },
     { $count: 'count' },
@@ -103,8 +118,9 @@ function isLocalB2bDraft(child: IHHChildOrder): boolean {
 
 function childNeedsDraft(child: IHHChildOrder): boolean {
   if (child.cartStatus === 'placed') return false;
+  if ((child.cartError ?? '').trim()) return false;
   if (child.detailsStatus !== 'synced') return false;
-  if ((child.items ?? []).length === 0) return false;
+  if (hhCartItems(child.items).length === 0) return false;
   if (child.cartStatus === 'none') return true;
   return child.cartStatus === 'draft' && isLocalB2bDraft(child);
 }
@@ -123,7 +139,7 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
       country: child.country || 'US',
       phone: child.customerPhone ?? '',
     },
-    items: (child.items ?? []).map((item) => ({
+    items: hhCartItems(child.items).map((item) => ({
       sku: item.sku,
       asin: item.asin ?? '',
       title: item.title,
@@ -153,11 +169,25 @@ async function persistDraft(
     child.b2bDraftId = draftId;
     child.referenceNumber = orderNumber;
     child.placeError = '';
+    child.cartError = '';
     clearHhCartVerification(child);
     applyGroupRollup(group);
     group.markModified('children');
     await group.save();
     return child;
+  });
+}
+
+async function persistDraftError(groupId: string, childId: string, message: string): Promise<void> {
+  await withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return;
+    const child = group.children.id(childId);
+    if (!child) return;
+    if (child.cartStatus === 'placed') return;
+    child.cartError = truncateError(message);
+    group.markModified('children');
+    await group.save();
   });
 }
 
@@ -186,7 +216,6 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   }
   run.drafted += 1;
   lastSuccessAt = new Date();
-  lastError = null;
   console.log(
     `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}`
   );
@@ -220,16 +249,27 @@ async function draftGroup(job: HhCartDraftJob): Promise<void> {
       await draftChild(group, child, run);
     } catch (err) {
       run.failed += 1;
-      lastError = truncateError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      lastError = truncateError(`${child.orderId}: ${message}`);
+      try {
+        await persistDraftError(String(group._id), String(child._id), message);
+      } catch (persistErr) {
+        console.error(
+          `${LOG} Could not save cart error for ${child.orderId}: ${
+            persistErr instanceof Error ? persistErr.message : String(persistErr)
+          }`
+        );
+      }
       if (err instanceof HhB2bDraftError) {
-        console.warn(`${LOG} ${child.orderId} ${lastError}`);
+        console.warn(`${LOG} ${lastError}`);
       } else {
-        console.error(`${LOG} ${child.orderId} failed: ${lastError}`);
+        console.error(`${LOG} ${lastError}`);
       }
     }
   }
 
   lastRun = run;
+  if (run.failed === 0) lastError = null;
   console.log(
     `${LOG} Group ${job.groupId} done — drafted ${run.drafted}, skipped ${run.skipped}, failed ${run.failed}`
   );

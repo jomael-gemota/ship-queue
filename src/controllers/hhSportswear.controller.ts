@@ -33,6 +33,8 @@ import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { hhBrand, hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
 import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
+import { hhCartItems } from '../lib/hhLineItems';
+import { withHhGroupLock } from '../lib/hhGroupLock';
 
 export interface HHLineItemDto {
   id: string;
@@ -43,6 +45,8 @@ export interface HHLineItemDto {
   quantity: number;
   unitPrice: number;
   tax: number;
+  excluded: boolean;
+  excludeNote: string;
 }
 
 export interface HHChildOrderDto {
@@ -63,6 +67,7 @@ export interface HHChildOrderDto {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   placeError: string;
+  cartError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -134,6 +139,8 @@ function serializeItem(item: IHHLineItem): HHLineItemDto {
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     tax: item.tax ?? 0,
+    excluded: Boolean(item.excluded),
+    excludeNote: item.excludeNote ?? '',
   };
 }
 
@@ -160,6 +167,7 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
       ? order.cartStatus
       : mapLegacyHhStatus((order as { status?: string }).status).cartStatus,
     placeError: order.placeError ?? '',
+    cartError: order.cartError ?? '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -219,6 +227,7 @@ function emptyImportedOrder(orderId: string, po: string) {
     detailsStatus: HH_DEFAULT_DETAILS_STATUS,
     cartStatus: HH_DEFAULT_CART_STATUS,
     b2bDraftId: '',
+    cartError: '',
     placeError: '',
     verifyIssues: [],
     verifyRows: [],
@@ -389,13 +398,21 @@ function resetCartForResync(child: IHHChildOrder): void {
   child.b2bDraftId = '';
   child.referenceNumber = '';
   child.placeError = '';
+  child.cartError = '';
   clearHhCartVerification(child);
 }
 
 function canRedraftCart(child: IHHChildOrder): boolean {
   if (child.cartStatus === 'placed') return false;
   if (child.detailsStatus !== 'synced') return false;
-  return (child.items ?? []).length > 0;
+  return hhCartItems(child.items).length > 0;
+}
+
+function redraftBlockedMessage(child: IHHChildOrder): string {
+  if ((child.items ?? []).length > 0 && hhCartItems(child.items).length === 0) {
+    return 'Every line is excluded. Include at least one item before drafting.';
+  }
+  return 'This order is not ready to draft. Details must be Synced with line items, and Cart cannot be Placed.';
 }
 
 function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
@@ -409,6 +426,7 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
     child.b2bDraftId = '';
     child.referenceNumber = '';
     child.placeError = '';
+    child.cartError = '';
     clearHhCartVerification(child);
     prepared += 1;
   }
@@ -571,7 +589,7 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
     }
     if (!canRedraftCart(order)) {
       res.status(400).json({
-        message: 'This order is not ready to draft. Details must be Synced with line items, and Cart cannot be Placed.',
+        message: redraftBlockedMessage(order),
       });
       return;
     }
@@ -1054,6 +1072,80 @@ export const updateOrderNotes = async (req: Request, res: Response): Promise<voi
     res.json({ data: serializeGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update HH Sportswear order notes', error: (error as Error).message });
+  }
+};
+
+export const updateOrderItemExclude = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { groupId, orderId, itemId } = req.params;
+    if (!isValidObjectId(groupId)) {
+      res.status(400).json({ message: 'Invalid group id' });
+      return;
+    }
+    if (!isValidObjectId(orderId)) {
+      res.status(400).json({ message: 'Invalid order id' });
+      return;
+    }
+    if (!isValidObjectId(itemId)) {
+      res.status(400).json({ message: 'Invalid item id' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const excluded = body.excluded;
+    if (typeof excluded !== 'boolean') {
+      res.status(400).json({ message: 'excluded must be true or false' });
+      return;
+    }
+    if (body.excludeNote != null && typeof body.excludeNote !== 'string') {
+      res.status(400).json({ message: 'excludeNote must be a string' });
+      return;
+    }
+
+    const group = await withHhGroupLock(groupId, async () => {
+      const found = await HHOrderGroup.findById(groupId);
+      if (!isBrandGroup(found, req)) return null;
+      const order = found.children.id(orderId);
+      if (!order) return 'order';
+      if (isHhPlaced(order)) return 'placed';
+      const item = order.items.find((row) => String(row._id) === itemId);
+      if (!item) return 'item';
+
+      item.excluded = excluded;
+      item.excludeNote = excluded ? asString(body.excludeNote, 500) : '';
+      order.cartError = '';
+      if (order.cartStatus !== 'none') {
+        resetCartForResync(order);
+      } else {
+        invalidateHhCartVerification(order);
+      }
+      found.detailsStatus = rollupHhDetailsStatus(found.children.map((child) => child.detailsStatus));
+      found.cartStatus = rollupHhCartStatus(found.children.map((child) => child.cartStatus));
+      found.markModified('children');
+      await found.save();
+      return found;
+    });
+
+    if (group === null) {
+      res.status(404).json({ message: 'Group not found' });
+      return;
+    }
+    if (group === 'order') {
+      res.status(404).json({ message: 'Order not found' });
+      return;
+    }
+    if (group === 'placed') {
+      res.status(409).json({ message: 'Placed orders cannot exclude line items.' });
+      return;
+    }
+    if (group === 'item') {
+      res.status(404).json({ message: 'Item not found' });
+      return;
+    }
+
+    res.json({ data: serializeGroup(group) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update HH line item', error: (error as Error).message });
   }
 };
 

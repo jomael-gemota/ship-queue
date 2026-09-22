@@ -14,6 +14,7 @@ import {
   loadSellerCentralCookie,
 } from '../lib/hhSellerCentral';
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
+import { mergeHhItemExclusions } from '../lib/hhLineItems';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { enqueueHhCartDraft } from './hhCartDraft';
 import { childCanVerify, enqueueHhCartVerify, invalidateHhCartVerification } from './hhCartVerify';
@@ -120,8 +121,9 @@ function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetail
   child.state = fill.state;
   child.postalCode = fill.postalCode;
   child.country = fill.country || 'US';
-  const items = child.items as unknown as { splice: (start: number, del: number, ...rest: HhScFill['items']) => void };
-  items.splice(0, (child.items as unknown[]).length, ...fill.items);
+  const nextItems = mergeHhItemExclusions(child.items, fill.items);
+  const items = child.items as unknown as { splice: (start: number, del: number, ...rest: typeof nextItems) => void };
+  items.splice(0, (child.items as unknown[]).length, ...nextItems);
   child.detailsStatus = detailsStatus;
   if (detailsStatus === 'synced') invalidateHhCartVerification(child);
 }

@@ -49,6 +49,8 @@ export interface IHHLineItem {
   quantity: number;
   unitPrice: number;
   tax: number;
+  excluded: boolean;
+  excludeNote: string;
 }
 
 export interface IHHChildOrder {
@@ -69,6 +71,7 @@ export interface IHHChildOrder {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
+  cartError: string;
   placeError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; matched: boolean }>;
@@ -99,6 +102,8 @@ const LineItemSchema = new Schema<IHHLineItem>(
     quantity: { type: Number, required: true, min: 0 },
     unitPrice: { type: Number, required: true, min: 0 },
     tax: { type: Number, required: true, min: 0, default: 0 },
+    excluded: { type: Boolean, default: false },
+    excludeNote: { type: String, default: '', trim: true },
   },
   { _id: true }
 );
@@ -131,6 +136,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
       default: HH_DEFAULT_CART_STATUS,
     },
     b2bDraftId: { type: String, default: '', trim: true },
+    cartError: { type: String, default: '', trim: true },
     placeError: { type: String, default: '', trim: true },
     verifyIssues: {
       type: [
