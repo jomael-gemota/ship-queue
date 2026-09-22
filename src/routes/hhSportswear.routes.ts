@@ -24,7 +24,7 @@ import {
   updateOrderNotes,
   updateOrderItemExclude,
 } from '../controllers/hhSportswear.controller';
-import { getHhB2bConfig, updateHhB2bConfig } from '../controllers/hhB2bConfig.controller';
+import { checkHhB2bSession, getHhB2bConfig, testHhB2bWebhook, updateHhB2bConfig } from '../controllers/hhB2bConfig.controller';
 
 const router = Router();
 
@@ -65,6 +65,8 @@ router.post('/', createGroup);
 router.post('/import', handleImportUpload, importGroup);
 router.get('/config', getHhB2bConfig);
 router.patch('/config', updateHhB2bConfig);
+router.post('/config/session-check', checkHhB2bSession);
+router.post('/config/webhook-test', testHhB2bWebhook);
 router.get('/sc-sync', getScSyncStatus);
 router.post('/:groupId/sc-sync', rerunGroupScSync);
 router.post('/:groupId/orders/:orderId/sc-sync', rerunOrderScSync);

@@ -12,6 +12,21 @@ export interface IHHB2bConfig extends Document {
   cookieUpdatedAt?: Date | null;
   /** When false, Place Order is visible but does not submit to Helly Hansen. */
   placeOrderEnabled: boolean;
+  /** POST target when a session check starts failing or recovers. Empty skips the call. */
+  alertWebhookUrl: string;
+  /** Daily check times as HH:MM in Asia/Manila. */
+  sessionCheckTimes?: string[];
+  /** False until Configurations saves a time list. Until then the default times apply. */
+  sessionCheckTimesSet: boolean;
+  /** `ok`, `auth`, `down`, or empty when a check has never run. */
+  sessionCheckStatus: string;
+  sessionCheckedAt?: Date | null;
+  sessionCheckLatencyMs?: number | null;
+  sessionCheckMessage: string;
+  lastAlertAt?: Date | null;
+  /** `failed`, `recovered`, or `test`. */
+  lastAlertEvent: string;
+  lastAlertError?: string | null;
   updatedByName: string;
   updatedByEmail: string;
   createdAt: Date;
@@ -27,6 +42,16 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
     cookie: { type: String, select: false, default: '' },
     cookieUpdatedAt: { type: Date, default: null },
     placeOrderEnabled: { type: Boolean, default: false },
+    alertWebhookUrl: { type: String, default: '' },
+    sessionCheckTimes: { type: [String] },
+    sessionCheckTimesSet: { type: Boolean, default: false },
+    sessionCheckStatus: { type: String, default: '' },
+    sessionCheckedAt: { type: Date, default: null },
+    sessionCheckLatencyMs: { type: Number, default: null },
+    sessionCheckMessage: { type: String, default: '' },
+    lastAlertAt: { type: Date, default: null },
+    lastAlertEvent: { type: String, default: '' },
+    lastAlertError: { type: String, default: null },
     updatedByName: { type: String, default: '' },
     updatedByEmail: { type: String, default: '' },
   },

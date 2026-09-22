@@ -21,7 +21,7 @@ import {
   updateHHOrderNotes,
   updateHHOrderItemExclude,
 } from '../lib/hhSportswear'
-import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup } from '../lib/hhSportswear'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup, HHSessionCheck } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection } from '../lib/hhNav'
 import type { HHPage } from '../lib/hhNav'
 
@@ -74,6 +74,7 @@ interface HHListContextValue {
   placeBusyId: string | null
   placeOrderEnabled: boolean
   setPlaceOrderEnabled: (enabled: boolean) => void
+  sessionCheck: HHSessionCheck | null
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
   updateOrderItemExclude: (
@@ -117,6 +118,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const brandDef = hhBrand(brand)
   const level = hhBreadcrumbPage(location.pathname)
   const pathnameRef = useRef(location.pathname)
+  const sessionBrandRef = useRef(brand)
 
   const [groups, setGroups] = useState<HHOrderGroup[]>([])
   const [loadState, setLoadState] = useState<HHLoadState>('loading')
@@ -127,6 +129,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const [cartVerifyBusyId, setCartVerifyBusyId] = useState<string | null>(null)
   const [placeBusyId, setPlaceBusyId] = useState<string | null>(null)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
+  const [sessionCheck, setSessionCheck] = useState<HHSessionCheck | null>(null)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
     orders: { ...EMPTY_FILTERS },
@@ -237,15 +240,26 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
-    getHHB2bConfig(brand)
-      .then((res) => {
-        if (!cancelled) setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
-      })
-      .catch(() => {
-        if (!cancelled) setPlaceOrderEnabled(false)
-      })
+    if (sessionBrandRef.current !== brand) {
+      sessionBrandRef.current = brand
+      setSessionCheck(null)
+    }
+    const load = () => {
+      getHHB2bConfig(brand)
+        .then((res) => {
+          if (cancelled) return
+          setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
+          setSessionCheck(res.data.sessionCheck)
+        })
+        .catch(() => {
+          if (!cancelled) setPlaceOrderEnabled(false)
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
   }, [location.pathname, reloadToken, brand])
 
@@ -379,6 +393,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     placeBusyId,
     placeOrderEnabled,
     setPlaceOrderEnabled,
+    sessionCheck,
     updateNotes: async (groupId, notes) => {
       const res = await updateHHGroupNotes(brand, groupId, notes)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))

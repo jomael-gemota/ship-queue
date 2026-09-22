@@ -581,6 +581,19 @@ export function getHHScSyncStatus(brand: HHBrandId) {
   return authApi.get<{ data: HHScSyncStatus }>(hhPath(brand, '/sc-sync'))
 }
 
+export interface HHSessionCheck {
+  status: 'ok' | 'auth' | 'down' | null
+  checkedAt: string | null
+  latencyMs: number | null
+  message: string
+}
+
+export interface HHLastAlert {
+  at: string | null
+  event: 'failed' | 'recovered' | 'test' | null
+  error: string | null
+}
+
 export interface HHB2bConfig {
   baseUrl: string
   catalog: string
@@ -588,6 +601,10 @@ export interface HHB2bConfig {
   hasCookie: boolean
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
+  alertWebhookUrl: string
+  sessionCheckTimes: string[]
+  sessionCheck: HHSessionCheck
+  lastAlert: HHLastAlert
   updatedAt: string
   updatedByName: string
 }
@@ -598,6 +615,8 @@ export type HHB2bConfigPatch = Partial<{
   accountId: string
   cookie: string
   placeOrderEnabled: boolean
+  alertWebhookUrl: string
+  sessionCheckTimes: string[]
 }>
 
 export function getHHB2bConfig(brand: HHBrandId) {
@@ -606,6 +625,14 @@ export function getHHB2bConfig(brand: HHBrandId) {
 
 export function updateHHB2bConfig(brand: HHBrandId, patch: HHB2bConfigPatch) {
   return authApi.patch<{ data: HHB2bConfig }>(hhPath(brand, '/config'), patch)
+}
+
+export function checkHHB2bSession(brand: HHBrandId) {
+  return authApi.post<{ data: HHB2bConfig }>(hhPath(brand, '/config/session-check'))
+}
+
+export function testHHB2bWebhook(brand: HHBrandId) {
+  return authApi.post<{ data: HHB2bConfig }>(hhPath(brand, '/config/webhook-test'))
 }
 
 export function importHHSpreadsheet(

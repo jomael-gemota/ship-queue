@@ -4,12 +4,13 @@ import { HHFilterBar } from '../components/hh/HHFilterBar'
 import { HHBackButton, HHBreadcrumb } from '../components/hh/hhUi'
 import { HHImportButton } from '../components/hh/HHImportButton'
 import { HHListProvider, useHHList } from '../context/HHListContext'
+import { formatCreatedAt } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection, hhParentPath, prefersReducedMotion } from '../lib/hhNav'
 
 function HHSportswearShell() {
   const location = useLocation()
   const { groupId } = useParams<{ groupId: string }>()
-  const { brandName, brandPath } = useHHList()
+  const { brandName, brandPath, sessionCheck } = useHHList()
   const outlet = useOutlet()
   const pathnameRef = useRef(location.pathname)
   const snapshotRef = useRef(outlet)
@@ -40,6 +41,7 @@ function HHSportswearShell() {
   const page = hhBreadcrumbPage(location.pathname)
   const backTo = hhParentPath(location.pathname, groupId)
   const isConfig = page === 'config'
+  const sessionDown = sessionCheck?.status === 'auth' || sessionCheck?.status === 'down'
 
   return (
     <div className="space-y-6">
@@ -68,6 +70,23 @@ function HHSportswearShell() {
           </div>
         )}
       </div>
+      {!isConfig && sessionDown ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+        >
+          <p>
+            <span className="font-medium">{brandName} B2B is not ready.</span> {sessionCheck?.message}
+            {sessionCheck?.checkedAt ? ` Checked ${formatCreatedAt(sessionCheck.checkedAt)}.` : ''}
+          </p>
+          <Link
+            to={`${brandPath}/configurations`}
+            className="shrink-0 font-medium underline decoration-red-400 underline-offset-2 hover:decoration-red-700 dark:decoration-red-300"
+          >
+            Configurations
+          </Link>
+        </div>
+      ) : null}
       <section className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
         {isConfig ? null : <HHFilterBar />}
         <div className={leaving ? 'hh-drilldown-viewport is-animating' : 'hh-drilldown-viewport'}>

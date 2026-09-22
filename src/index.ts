@@ -8,6 +8,7 @@ import passport from './config/passport';
 import { connectDB } from './config/db';
 import routes from './routes';
 import { startSyncScheduler } from './services/syncScheduler';
+import { startHhB2bHealthScheduler } from './services/hhB2bHealth';
 import { migrateHhSplitStatuses, migrateLocalHhCartDrafts, migrateHhOrderGroupBrands } from './models/HHOrderGroup';
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
@@ -91,6 +92,7 @@ const start = async () => {
   });
   // Keep orders in sync even when nobody has the web app open.
   await startSyncScheduler();
+  startHhB2bHealthScheduler();
 };
 
 start();

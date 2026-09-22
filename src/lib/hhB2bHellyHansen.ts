@@ -124,7 +124,7 @@ async function b2bRequest(
   const text = await res.text();
   const looksHtml = /^\s*</.test(text) || /<html/i.test(text);
   if (res.status === 401 || res.status === 403 || looksHtml) {
-    throw new HhB2bAuthError('Helly Hansen Sports B2B session is stale — refresh the cookie');
+    throw new HhB2bAuthError('B2B session is stale — refresh the cookie');
   }
   if (!res.ok) {
     throw new HhB2bDraftError(`B2B ${res.status} on ${path}: ${text.slice(0, 240)}`);
@@ -241,6 +241,11 @@ function addToCartPayload(
     whiteboard: null,
     client_fields: {},
   };
+}
+
+/** Read-only catalog search. Empty results still prove the session and API are up. */
+export async function probeHhB2bSession(config: HhB2bConfig, cookie: string): Promise<void> {
+  await searchStyle(config, cookie, 'hh-session-probe');
 }
 
 async function searchStyle(config: HhB2bConfig, cookie: string, styleCode: string): Promise<unknown> {
