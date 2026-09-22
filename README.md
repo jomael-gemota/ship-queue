@@ -116,8 +116,9 @@ becomes a rule the agent must follow, and the corrected output becomes a worked
 example. This is why vendors are registered: corrections are scoped per vendor,
 so a format learned from one supplier is never applied to another.
 
-See `worker/README.md` for the Ubuntu setup, and
-`design-log/2026-09-11-doc-tidy-agent-parsing.md` for why it is built this way.
+See `worker/README.md` for the Ubuntu setup, restart commands, and service
+management reference, and `design-log/2026-09-11-doc-tidy-agent-parsing.md` for
+why it is built this way.
 
 ## Tech Stack
 

@@ -133,8 +133,10 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
   }
 
   if (type === 'complete') {
-    await DocTidyParseJob.updateOne(
-      { _id: jobId },
+    // Guard: if the job was aborted while the worker was running, do not let
+    // this late completion overwrite the user-requested failed status.
+    const result = await DocTidyParseJob.updateOne(
+      { _id: jobId, status: { $ne: 'failed' } },
       {
         $set: {
           status: 'completed',
@@ -145,6 +147,10 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
         },
       }
     );
+    if (result.modifiedCount === 0) {
+      // Job was already aborted — discard this stale completion silently.
+      return;
+    }
     pushToJob(jobId, { type: 'done', json: msg.json ?? null, table: msg.table ?? null });
     announceParseStatus(jobId, 'completed');
     return;
@@ -152,7 +158,11 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
 
   if (type === 'error') {
     const message = msg.message ?? 'The agent failed to parse this document';
-    await DocTidyParseJob.updateOne({ _id: jobId }, { $set: { status: 'failed', error: message } });
+    // Same guard: don't overwrite a user-initiated abort with a generic error.
+    await DocTidyParseJob.updateOne(
+      { _id: jobId, status: { $ne: 'failed' } },
+      { $set: { status: 'failed', error: message } }
+    );
     pushToJob(jobId, { type: 'error', message });
     announceParseStatus(jobId, 'failed');
   }
