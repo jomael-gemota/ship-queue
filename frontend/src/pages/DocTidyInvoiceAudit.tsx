@@ -766,7 +766,7 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [auditSearch])
 
-  useEffect(() => { setPage(1); setSelectedJobIds(new Set()) }, [debouncedAuditSearch, pageSize])
+  useEffect(() => { setPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, pageSize])
 
   /* ── Fetch parse jobs ── */
   const fetchJobs = useCallback(async () => {
@@ -831,7 +831,7 @@ export default function DocTidyInvoiceAudit() {
     setPage(1)
     setAuditSearch('')
     setDebouncedAuditSearch('')
-    setSelectedJobIds(new Set())
+    setSelectedRowKeys(new Set())
     setError(null)
     // Reset email sub-view state
     setEmailPage(1)
@@ -852,7 +852,7 @@ export default function DocTidyInvoiceAudit() {
     setWorkspaceTab('audit')
     setAuditSearch('')
     setDebouncedAuditSearch('')
-    setSelectedJobIds(new Set())
+    setSelectedRowKeys(new Set())
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
