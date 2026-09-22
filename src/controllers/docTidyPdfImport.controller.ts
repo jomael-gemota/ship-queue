@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { isValidObjectId } from 'mongoose';
 import multer from 'multer';
+import { Types } from 'mongoose';
 import DocTidyPdfImport from '../models/DocTidyPdfImport';
+import DocTidyParseJob from '../models/DocTidyParseJob';
 import { ParseRequestError, storePdf, requestParseFromGridFS } from '../services/docTidyParse.service';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { uploadBufferToDrive } from '../services/googleDrive.service';
@@ -73,8 +75,26 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
       DocTidyPdfImport.countDocuments(filter),
     ]);
 
+    // Inline parse job status so the frontend can render multi-state action buttons.
+    const parseJobIds = imports
+      .map((i) => i.parseJobId)
+      .filter((id): id is Types.ObjectId => Boolean(id));
+
+    const parseJobs = parseJobIds.length > 0
+      ? await DocTidyParseJob.find({ _id: { $in: parseJobIds } })
+          .select('_id status error')
+          .lean()
+      : [];
+
+    const parseJobMap = new Map(parseJobs.map((j) => [String(j._id), j]));
+
+    const data = imports.map((imp) => ({
+      ...imp,
+      parseJob: imp.parseJobId ? (parseJobMap.get(String(imp.parseJobId)) ?? null) : null,
+    }));
+
     res.json({
-      data: imports,
+      data,
       pagination: { page: pg, pageSize: size, total, pages: Math.max(1, Math.ceil(total / size)) },
     });
   } catch (error) {

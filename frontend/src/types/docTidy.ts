@@ -563,6 +563,13 @@ export type LineItemColumnId = never
  * A PDF file uploaded directly by a user for Tidy Agent parsing,
  * outside the email-capture flow.
  */
+/** Slim parse job summary returned inline on PDF import list rows. */
+export interface PdfImportParseJob {
+  _id: string
+  status: ParseJobStatus
+  error?: string | null
+}
+
 export interface PdfImport {
   _id: string
   workspaceId: string
@@ -577,6 +584,11 @@ export interface PdfImport {
   driveWebViewLink?: string | null
   /** Populated once the import has been sent to the Tidy Agent. */
   parseJobId?: string | null
+  /**
+   * Inline parse job summary populated by the list endpoint.
+   * Present when `parseJobId` is set.
+   */
+  parseJob?: PdfImportParseJob | null
   uploadedByUserId?: string
   uploadedByName?: string
   createdAt: string

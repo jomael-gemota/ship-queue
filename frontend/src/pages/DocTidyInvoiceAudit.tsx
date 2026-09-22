@@ -5,9 +5,11 @@ import {
   DocumentTypeBadge,
   PaginationArrows,
   Spinner,
+  TableActionButton,
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
+import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
@@ -35,6 +37,7 @@ import {
   type ParseJobListItem,
   type ParseJobsResponse,
   type PdfImport,
+  isParseRunning,
 } from '../types/docTidy'
 
 /** Strip common currency prefixes/symbols for cleaner display. */
@@ -561,6 +564,9 @@ export default function DocTidyInvoiceAudit() {
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
+  const [pdfAbortingJobId, setPdfAbortingJobId] = useState<string | null>(null)
+  const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
+  const pdfSelectAllRef = useRef<HTMLInputElement>(null)
   const [pdfDragOver, setPdfDragOver] = useState(false)
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
   const pdfFileInputRef = useRef<HTMLInputElement>(null)
@@ -571,8 +577,8 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [pdfSearch])
 
-  /* Reset page when filters change */
-  useEffect(() => { setPdfPage(1) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
+  /* Reset page + selection when filters change */
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
 
   const fetchPdfImports = useCallback(async () => {
     if (!activeWorkspace) return
@@ -631,26 +637,62 @@ export default function DocTidyInvoiceAudit() {
     setPdfSendingIds((prev) => new Set(prev).add(imp._id))
     setPdfImportsError(null)
     try {
-      const res = await authApi.post<{ data: { import: PdfImport } }>(`/doc-tidy/pdf-imports/${imp._id}/parse`)
-      setPdfImports((prev) => prev.map((i) => i._id === imp._id ? res.data.import : i))
+      await authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`)
+      void fetchPdfImports()
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to send to Tidy Agent')
     } finally {
-      setPdfSendingIds((prev) => {
-        const next = new Set(prev)
-        next.delete(imp._id)
-        return next
-      })
+      setPdfSendingIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
+    }
+  }
+
+  const handleAbortPdfJob = async (jobId: string) => {
+    setPdfAbortingJobId(jobId)
+    try {
+      await authApi.post(`/doc-tidy/parse-jobs/${jobId}/abort`)
+      void fetchPdfImports()
+    } catch {
+      // silently ignore — user can try again
+    } finally {
+      setPdfAbortingJobId(null)
     }
   }
 
   const handleDeletePdfImport = async (imp: PdfImport) => {
     try {
       await authApi.delete(`/doc-tidy/pdf-imports/${imp._id}`)
+      setPdfSelectedIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
       void fetchPdfImports()
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete import')
     }
+  }
+
+  /* Selection helpers */
+  const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
+  const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
+  useEffect(() => {
+    if (pdfSelectAllRef.current) {
+      pdfSelectAllRef.current.indeterminate = somePdfOnPageSelected && !allPdfOnPageSelected
+    }
+  }, [somePdfOnPageSelected, allPdfOnPageSelected])
+
+  const togglePdfRow = (id: string) => {
+    setPdfSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllPdfOnPage = () => {
+    setPdfSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const imp of pdfImports) {
+        if (allPdfOnPageSelected) next.delete(imp._id); else next.add(imp._id)
+      }
+      return next
+    })
   }
 
   const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
@@ -832,6 +874,22 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
     // worker_status events are handled within the existing emails SSE — merged below
+  }, [workspaceTab, activeWorkspace])
+
+  /* SSE — refresh PDF imports when a parse job status changes */
+  const fetchPdfImportsRef = useRef(fetchPdfImports)
+  // eslint-disable-next-line react-hooks/immutability
+  useEffect(() => { fetchPdfImportsRef.current = fetchPdfImports }, [fetchPdfImports])
+  useEffect(() => {
+    if (workspaceTab !== 'pdf-imports' || !activeWorkspace) return
+    return authApi.eventStream<DocTidyEvent>(
+      '/doc-tidy/stream',
+      (event) => {
+        if (event.type === 'parse_status') void fetchPdfImportsRef.current()
+        if (event.type === 'worker_status') setWorkerOnline(event.workerOnline ?? false)
+      },
+      () => {}
+    )
   }, [workspaceTab, activeWorkspace])
 
   /* Fetch initial worker status whenever a workspace is active */
@@ -1796,6 +1854,12 @@ export default function DocTidyInvoiceAudit() {
                       <span>
                         {pdfStartItem}–{pdfEndItem} of {pdfImportsPagination.total.toLocaleString()}
                       </span>
+                      {pdfSelectedIds.size > 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">{pdfSelectedIds.size} selected</span>
+                          <button onClick={() => setPdfSelectedIds(new Set())} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
+                        </span>
+                      )}
                     </div>
                     <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
                   </div>
@@ -1839,96 +1903,176 @@ export default function DocTidyInvoiceAudit() {
                     <table className="w-full text-[11px] border-separate border-spacing-0">
                       <thead>
                         <tr>
-                          <Th label="Filename" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          <Th label="Size" iconPath="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" align="right" />
+                          {/* Checkbox — select all */}
+                          <Th className="w-8">
+                            <input
+                              ref={pdfSelectAllRef}
+                              type="checkbox"
+                              checked={allPdfOnPageSelected}
+                              onChange={toggleAllPdfOnPage}
+                              disabled={pdfImports.length === 0}
+                              title={allPdfOnPageSelected ? 'Clear this page' : 'Select this page'}
+                              aria-label={allPdfOnPageSelected ? 'Clear this page' : 'Select this page'}
+                              className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                          </Th>
                           <Th label="Imported" iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z" />
                           <Th label="Imported by" iconPath="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          <Th label="Status" iconPath="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" align="center" />
+                          <Th label="Size" iconPath="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" align="right" />
+                          <Th label="Filename" iconPath="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           <Th label="Actions" align="center" />
                         </tr>
                       </thead>
                       <tbody>
                         {pdfImports.map((imp) => {
                           const isSending = pdfSendingIds.has(imp._id)
-                          const alreadySent = Boolean(imp.parseJobId)
-                          return (
-                            <tr key={imp._id} className="odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/40 transition-colors">
-                              {/* Filename */}
-                              <td className="px-3 py-2 min-w-0 max-w-[280px]">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <svg className="h-4 w-4 shrink-0 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                                      d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
-                                </div>
-                              </td>
+                          const isSelected = pdfSelectedIds.has(imp._id)
+                          const job = imp.parseJob
+                          const isRunning = job && isParseRunning(job.status)
+                          const isAborting = job && pdfAbortingJobId === job._id
 
-                              {/* Size */}
-                              <td className="px-3 py-2 whitespace-nowrap text-right tabular-nums text-[var(--text-200)]">
-                                {formatBytes(imp.size)}
+                          return (
+                            <tr
+                              key={imp._id}
+                              className={`align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
+                                isSelected
+                                  ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                  : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                              }`}
+                            >
+                              {/* Checkbox */}
+                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => togglePdfRow(imp._id)}
+                                  aria-label={`Select ${imp.filename}`}
+                                  className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
+                                />
                               </td>
 
                               {/* Imported at */}
-                              <td className="px-3 py-2 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(imp.createdAt)}>
+                              <td className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]" title={formatDateTime(imp.createdAt)}>
                                 {formatDate(imp.createdAt)}
                               </td>
 
                               {/* Imported by */}
-                              <td className="px-3 py-2 whitespace-nowrap text-[var(--text-200)]">
+                              <td className="px-3 py-1 whitespace-nowrap text-[var(--text-200)]">
                                 {imp.uploadedByName ?? <span className="italic">—</span>}
                               </td>
 
-                              {/* Status */}
-                              <td className="px-3 py-2 text-center whitespace-nowrap">
-                                {alreadySent ? (
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200/70 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                    Sent to Agent
-                                  </span>
+                              {/* Size */}
+                              <td className="px-3 py-1 whitespace-nowrap text-right tabular-nums text-[var(--text-200)]">
+                                {formatBytes(imp.size)}
+                              </td>
+
+                              {/* Filename — clickable, opens Drive link */}
+                              <td className="px-3 py-1 min-w-0 max-w-[300px]">
+                                {imp.driveWebViewLink ? (
+                                  <a
+                                    href={imp.driveWebViewLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={`Open ${imp.filename} in Google Drive`}
+                                    className="inline-flex items-center gap-1.5 min-w-0 group"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                      <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                    </svg>
+                                    <span className="truncate text-[var(--accent-200)] underline underline-offset-2 group-hover:opacity-80" title={imp.filename}>{imp.filename}</span>
+                                  </a>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
-                                    Pending
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                      <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                    </svg>
+                                    <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
+                                  </div>
                                 )}
                               </td>
 
-                              {/* Actions */}
-                              <td className="px-3 py-2 text-center whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  {!alreadySent && (
-                                    <button
-                                      type="button"
-                                      disabled={isSending || !workerOnline}
-                                      onClick={() => void handleSendToAgent(imp)}
-                                      title={
-                                        !workerOnline
-                                          ? 'Tidy Agent is offline'
-                                          : isSending
-                                            ? 'Sending…'
-                                            : 'Send this PDF to the Tidy Agent for parsing'
-                                      }
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                                    >
-                                      {isSending ? (
-                                        <Spinner className="h-3 w-3" />
-                                      ) : (
-                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                        </svg>
-                                      )}
-                                      Send to Tidy Agent
-                                    </button>
-                                  )}
-                                  {alreadySent && (
-                                    <span className="text-[11px] italic text-[var(--text-200)]">Queued</span>
-                                  )}
+                              {/* Actions — mirrors the Emails tab AttachmentIcons states */}
+                              <td className="px-3 py-1 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-0.5">
+                                  {(() => {
+                                    // No job yet — sparkle button
+                                    if (!job) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          title={!workerOnline ? 'Tidy Agent is offline' : 'Send this document to Tidy Agent for parsing'}
+                                          onClick={() => void handleSendToAgent(imp)}
+                                          disabled={isSending || !workerOnline}
+                                          className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          {isSending ? (
+                                            <Spinner className="h-3 w-3" />
+                                          ) : (
+                                            <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                                            </svg>
+                                          )}
+                                          Send to Tidy Agent
+                                        </button>
+                                      )
+                                    }
+
+                                    // Running — spinner to open panel + abort ×
+                                    if (isRunning) {
+                                      return (
+                                        <span className="flex items-center gap-0.5">
+                                          <TableActionButton label="Open to watch Tidy Agent work" onClick={() => setOpenJobId(job._id)}>
+                                            <Spinner className="h-5 w-5 text-sky-500" />
+                                          </TableActionButton>
+                                          <TableActionButton label="Stop / abort this parse" onClick={() => void handleAbortPdfJob(job._id)} disabled={Boolean(isAborting)}>
+                                            {isAborting ? (
+                                              <Spinner className="h-5 w-5 text-slate-400" />
+                                            ) : (
+                                              <svg className="h-4 w-4 text-rose-400 hover:text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            )}
+                                          </TableActionButton>
+                                        </span>
+                                      )
+                                    }
+
+                                    // Completed — emerald check
+                                    if (job.status === 'completed') {
+                                      return (
+                                        <TableActionButton label="Open Tidy Agent's reasoning and output" onClick={() => setOpenJobId(job._id)}>
+                                          <SuccessIcon className="h-5 w-5 text-emerald-500" />
+                                        </TableActionButton>
+                                      )
+                                    }
+
+                                    // Failed — alert icon + Retry
+                                    return (
+                                      <button
+                                        type="button"
+                                        title={job.error ?? 'Parse failed — click to retry'}
+                                        onClick={() => void handleSendToAgent(imp)}
+                                        disabled={isSending || !workerOnline}
+                                        className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        {isSending ? (
+                                          <Spinner className="h-3 w-3" />
+                                        ) : (
+                                          <ErrorIcon className="h-3.5 w-3.5 text-rose-500" />
+                                        )}
+                                        Retry
+                                      </button>
+                                    )
+                                  })()}
+
+                                  {/* Delete */}
                                   <button
                                     type="button"
                                     onClick={() => void handleDeletePdfImport(imp)}
                                     title="Remove this import"
                                     aria-label="Delete import"
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1943,13 +2087,6 @@ export default function DocTidyInvoiceAudit() {
                     </table>
                   )}
                 </div>
-
-                {/* ── Bottom pagination ── */}
-                {!pdfImportsLoading && pdfImportsPagination.total > 0 && (
-                  <div className="flex items-center justify-end px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
-                  </div>
-                )}
               </div>
             </div>
           )}
