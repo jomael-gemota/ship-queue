@@ -557,3 +557,25 @@ export function extractJsonArray(
 /** @deprecated Use the InvoiceAuditColumnId li* variants instead. */
 export type LineItemColumnId = never
 
+/* ──────────────────────────────────────── Direct PDF Imports ── */
+
+/**
+ * A PDF file uploaded directly by a user for Tidy Agent parsing,
+ * outside the email-capture flow.
+ */
+export interface PdfImport {
+  _id: string
+  workspaceId: string
+  filename: string
+  /** File size in bytes. */
+  size: number
+  /** GridFS file id (opaque to the frontend). */
+  pdfFileId: string
+  /** Populated once the import has been sent to the Tidy Agent. */
+  parseJobId?: string | null
+  uploadedByUserId?: string
+  uploadedByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
