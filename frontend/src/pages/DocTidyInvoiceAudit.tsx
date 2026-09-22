@@ -11,6 +11,7 @@ import {
 } from '../components/docTidy/docTidyUi'
 import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
+import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
@@ -621,6 +622,7 @@ export default function DocTidyInvoiceAudit() {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+  const [emailBulkSending, setEmailBulkSending] = useState(false)
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
@@ -642,6 +644,7 @@ export default function DocTidyInvoiceAudit() {
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
   const [pdfAbortingJobId, setPdfAbortingJobId] = useState<string | null>(null)
   const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
+  const [pdfBulkSending, setPdfBulkSending] = useState(false)
   const pdfSelectAllRef = useRef<HTMLInputElement>(null)
   const [pdfDragOver, setPdfDragOver] = useState(false)
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
@@ -774,6 +777,51 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeleteEmail(null)
     } finally {
       setEmailDeleting(false)
+    }
+  }
+
+  /** Send all parseable, un-parsed (or failed) attachments across selected email rows. */
+  const handleBulkSendEmailsToAgent = async () => {
+    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    const tasks: Array<{ msgId: string; index: number }> = []
+    for (const msg of selectedMsgs) {
+      for (let i = 0; i < msg.attachments.length; i++) {
+        const att = msg.attachments[i]
+        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
+        // Skip running / completed jobs; send if no job yet or previously failed
+        if (job && (job.status === 'completed' || job.status === 'pending' || job.status === 'processing')) continue
+        tasks.push({ msgId: msg._id, index: i })
+      }
+    }
+    if (tasks.length === 0) return
+    setEmailBulkSending(true)
+    try {
+      await Promise.allSettled(
+        tasks.map(({ msgId, index }) =>
+          authApi.post(`/doc-tidy/messages/${msgId}/attachments/${index}/parse`)
+        )
+      )
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkSending(false)
+    }
+  }
+
+  /** Send all un-parsed selected PDF imports to the Tidy Agent. */
+  const handleBulkSendPdfsToAgent = async () => {
+    const selected = pdfImports.filter(
+      (imp) => pdfSelectedIds.has(imp._id) && (!imp.parseJob || imp.parseJob.status === 'failed')
+    )
+    if (selected.length === 0) return
+    setPdfBulkSending(true)
+    try {
+      await Promise.allSettled(
+        selected.map((imp) => authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`))
+      )
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkSending(false)
     }
   }
 
@@ -1584,6 +1632,24 @@ export default function DocTidyInvoiceAudit() {
                     {emailPagination.total > 0 && (
                       <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
                     )}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`}
+                        onClick={() => void handleBulkSendEmailsToAgent()}
+                        disabled={emailBulkSending || workerOnline === false}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {emailBulkSending ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        Send {selectedEmailIds.size} to Tidy Agent
+                      </button>
+                    )}
                   </span>
                 </div>
 
@@ -1952,11 +2018,29 @@ export default function DocTidyInvoiceAudit() {
                     </button>
                   )}
 
-                  {/* Right side: count + spinner + Import button */}
+                  {/* Right side: count + spinner + bulk action + Import button */}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {pdfImportsLoading && <Spinner className="h-3 w-3" />}
                     {pdfImportsPagination.total > 0 && (
                       <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                    )}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={!workerOnline ? 'Tidy Agent is offline' : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`}
+                        onClick={() => void handleBulkSendPdfsToAgent()}
+                        disabled={pdfBulkSending || workerOnline === false}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {pdfBulkSending ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        Send {pdfSelectedIds.size} to Tidy Agent
+                      </button>
                     )}
                   </span>
                   <button
