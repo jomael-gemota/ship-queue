@@ -1703,7 +1703,11 @@ export default function DocTidyInvoiceAudit() {
                         }
                         onClick={() => void handleBulkSendEmailsToAgent(allSelectedEmailsCompleted)}
                         disabled={emailBulkSending || workerOnline === false}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedEmailsCompleted
+                            ? 'border border-amber-400 bg-transparent text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
                       >
                         {emailBulkSending ? (
                           <Spinner className="h-3 w-3" />
@@ -2104,7 +2108,11 @@ export default function DocTidyInvoiceAudit() {
                         }
                         onClick={() => void handleBulkSendPdfsToAgent(allSelectedPdfsCompleted)}
                         disabled={pdfBulkSending || workerOnline === false}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedPdfsCompleted
+                            ? 'border border-amber-400 bg-transparent text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
                       >
                         {pdfBulkSending ? (
                           <Spinner className="h-3 w-3" />
