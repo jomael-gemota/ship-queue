@@ -3,8 +3,6 @@ import { authApi } from '../../lib/api'
 import { useParseJobStream } from '../../hooks/useParseJobStream'
 import { ParseStatusChip, Spinner } from './docTidyUi'
 import ReasoningStepper from './ReasoningStepper'
-import JsonView from './JsonView'
-import TableView from './TableView'
 import CorrectionEditor, { CorrectionHistory } from './CorrectionEditor'
 import VendorSetup from './VendorSetup'
 import {
@@ -13,12 +11,10 @@ import {
   type DocTidyParseJob,
 } from '../../types/docTidy'
 
-type Tab = 'reasoning' | 'json' | 'tables' | 'corrections'
+type Tab = 'reasoning' | 'corrections'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'reasoning', label: 'Reasoning' },
-  { id: 'json', label: 'JSON' },
-  { id: 'tables', label: 'Tables' },
   { id: 'corrections', label: 'Corrections' },
 ]
 
@@ -257,16 +253,13 @@ export default function ParseJobPanel({
             />
           )}
 
-          {tab === 'json' && <JsonView value={json} />}
-
-          {tab === 'tables' && <TableView output={table} />}
-
           {tab === 'corrections' && (
             <div className="space-y-5">
               {json ? (
                 <CorrectionEditor
                   jobId={jobId}
                   original={json}
+                  tableOutput={table}
                   onSaved={() => {
                     void loadCorrections()
                     onChanged()
