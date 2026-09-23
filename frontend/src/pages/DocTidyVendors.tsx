@@ -366,22 +366,29 @@ const _TNORM = (s: string) => String(s).toLowerCase().replace(/[_\-\s]+/g, '')
 
 /**
  * Find the value of a JSON field whose normalised key matches `colName`.
- * Returns an empty string when no match is found.
+ * Returns `null` when no matching key exists (not the same as empty string).
  */
-function lookupColValue(item: Record<string, unknown>, colName: string): string {
+function lookupColValue(item: Record<string, unknown>, colName: string): string | null {
   const target = _TNORM(colName)
   for (const [k, v] of Object.entries(item)) {
     if (_TNORM(k) !== target) continue
     if (v === null || v === undefined) return ''
     if (!Array.isArray(v) && typeof v !== 'object') return String(v)
   }
-  return ''
+  return null   // no matching key found
 }
 
 /**
  * Produce a flat before→after diff for a tabular correction by comparing
- * `correctedTables` row-by-row against the original line items extracted from
- * `originalOutput`.  Only cells whose value actually changed are returned.
+ * `correctedTables` row-by-row against the original line items (or top-level
+ * fields) from `originalOutput`.
+ *
+ * Rules:
+ * - If a column name can't be matched to any field in the original JSON,
+ *   skip it (we have no "before" to compare against).
+ * - Document-level columns (those found on `originalOutput` directly, not in
+ *   any line-item row) are deduplicated so they appear once, not per-row.
+ * - Only changed cells are returned.
  */
 function diffTabularCorrection(
   originalOutput: Record<string, unknown> | null | undefined,
@@ -391,17 +398,13 @@ function diffTabularCorrection(
 
   // Try to find the line-items array in the original JSON.
   const ARRAY_KEYS = ['line_items', 'items', 'products', 'lineItems', 'order_items', 'orderItems']
-  let originalRows: Record<string, unknown>[] = []
+  let lineItems: Record<string, unknown>[] = []
   for (const key of ARRAY_KEYS) {
     const val = originalOutput[key]
     if (Array.isArray(val) && val.length > 0) {
-      originalRows = val as Record<string, unknown>[]
+      lineItems = val as Record<string, unknown>[]
       break
     }
-  }
-  // Fallback: treat the whole originalOutput as a single row (document-level table).
-  if (originalRows.length === 0 && Object.keys(originalOutput).length > 0) {
-    originalRows = [originalOutput]
   }
 
   const changes: Array<{ field: string; before: string; after: string }> = []
@@ -409,17 +412,37 @@ function diffTabularCorrection(
 
   for (const table of correctedTables) {
     const tablePrefix = correctedTables.length > 1 && table.title ? `${table.title} · ` : ''
-    for (let ri = 0; ri < table.rows.length; ri++) {
-      const origRow = originalRows[ri] ?? {}
-      const row = table.rows[ri]
-      for (let ci = 0; ci < table.columns.length; ci++) {
-        const colName = table.columns[ci]
-        const newVal = row[ci] === null || row[ci] === undefined ? '' : String(row[ci]).trim()
-        const oldVal = lookupColValue(origRow, colName)
-        if (oldVal !== newVal) {
-          const rowSuffix = multiRow ? ` (row ${ri + 1})` : ''
-          changes.push({ field: `${tablePrefix}${colName}${rowSuffix}`, before: oldVal, after: newVal })
+    const docLevelSeen = new Set<number>() // column indices already emitted as document-level
+
+    for (let ci = 0; ci < table.columns.length; ci++) {
+      const colName = table.columns[ci]
+
+      // Determine whether this is a document-level or line-item-level field.
+      const isDocLevel =
+        lookupColValue(originalOutput, colName) !== null &&
+        (lineItems.length === 0 || lineItems.every((r) => lookupColValue(r, colName) === null))
+
+      if (isDocLevel) {
+        // Document-level — compare once against originalOutput.
+        const oldVal = lookupColValue(originalOutput, colName)!
+        // Use the first row's corrected value (should be the same across all rows).
+        const newVal = String(table.rows[0]?.[ci] ?? '').trim()
+        if (oldVal !== newVal && !docLevelSeen.has(ci)) {
+          docLevelSeen.add(ci)
+          changes.push({ field: `${tablePrefix}${colName}`, before: oldVal, after: newVal })
         }
+        continue
+      }
+
+      // Line-item level — compare each row.
+      for (let ri = 0; ri < table.rows.length; ri++) {
+        const origRow = lineItems[ri] ?? {}
+        const newVal = String(table.rows[ri]?.[ci] ?? '').trim()
+        const oldVal = lookupColValue(origRow, colName)
+        if (oldVal === null) continue   // column not found in original row — skip
+        if (oldVal === newVal) continue // no change
+        const rowSuffix = multiRow ? ` (row ${ri + 1})` : ''
+        changes.push({ field: `${tablePrefix}${colName}${rowSuffix}`, before: oldVal, after: newVal })
       }
     }
   }
@@ -521,13 +544,13 @@ function CorrectionItem({
         <>
           <ul className="mt-2 space-y-1">
             {shown.map((change, i) => (
-              <li key={`${change.field}-${i}`} className="text-[11px] leading-relaxed">
-                <span className="font-mono text-[var(--text-200)]">{change.field}</span>
-                <span className="mx-1.5 text-[var(--text-200)]">·</span>
+              <li key={`${change.field}-${i}`} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-[11px]">
+                <span className="font-medium text-[var(--text-100)]">{change.field}</span>
+                <span className="text-[var(--text-200)]">·</span>
                 <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
                   {change.before || '—'}
                 </span>
-                <span className="mx-1.5 text-[var(--text-200)]">→</span>
+                <span className="text-[var(--text-200)]">→</span>
                 <span className="font-mono text-emerald-700 dark:text-emerald-400">
                   {change.after || '—'}
                 </span>
