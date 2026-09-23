@@ -9,6 +9,7 @@ import {
   getGroup,
   getScSyncStatus,
   importGroup,
+  previewImport,
   listGroups,
   rerunGroupScSync,
   rerunOrderScSync,
@@ -62,6 +63,7 @@ router.use(requireAuth);
 
 router.get('/', listGroups);
 router.post('/', createGroup);
+router.post('/import/preview', handleImportUpload, previewImport);
 router.post('/import', handleImportUpload, importGroup);
 router.get('/config', getHhB2bConfig);
 router.patch('/config', updateHhB2bConfig);
