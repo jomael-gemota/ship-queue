@@ -806,11 +806,11 @@ export default function DocTidyInvoiceAudit() {
   }, [activeWorkspace?._id])
 
   /* ── Shared column ordering (server-persisted, real-time via SSE) ── */
-  const [auditColOrder, setAuditColOrder] = useState<InvoiceAuditColumnId[]>(DEFAULT_AUDIT_COL_ORDER)
+  const [auditColOrder, setAuditColOrder] = useState<string[]>(DEFAULT_AUDIT_COL_ORDER)
   const [emailColOrder, setEmailColOrder] = useState<WorkspaceEmailColumnId[]>(DEFAULT_EMAIL_COL_ORDER)
   /** State tracks both source and hover target so `isDragging` is readable in render. */
-  const [auditDragSrc, setAuditDragSrc] = useState<InvoiceAuditColumnId | null>(null)
-  const [auditDragTarget, setAuditDragTarget] = useState<InvoiceAuditColumnId | null>(null)
+  const [auditDragSrc, setAuditDragSrc] = useState<string | null>(null)
+  const [auditDragTarget, setAuditDragTarget] = useState<string | null>(null)
   const [emailDragSrc, setEmailDragSrc] = useState<WorkspaceEmailColumnId | null>(null)
   const [emailDragTarget, setEmailDragTarget] = useState<WorkspaceEmailColumnId | null>(null)
 
@@ -1114,8 +1114,8 @@ export default function DocTidyInvoiceAudit() {
         const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
 
         if (auditColumnOrder && auditColumnOrder.length > 0) {
-          const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-            INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
+          const valid = auditColumnOrder.filter(
+            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
           )
           const merged = [...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))]
           setAuditColOrder(merged)
@@ -1142,7 +1142,7 @@ export default function DocTidyInvoiceAudit() {
 
   /** Persist column orders to the server (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
+    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
       void authApi.put('/doc-tidy/ui-prefs', {
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
@@ -1221,7 +1221,9 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
+            const valid = event.auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
@@ -1252,7 +1254,9 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
+            const valid = event.auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
@@ -1458,6 +1462,25 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const handleDynamicColVisChange = (next: Record<string, boolean>) => {
+    // Build the set of dynamic column ids that should be in the order (checked ones)
+    const checkedDynIds = new Set<string>()
+    for (const [key, checked] of Object.entries(next)) {
+      if (!checked) continue
+      if (extractedFields.doc.some((f) => f.key === key)) checkedDynIds.add(`dyn_doc_${key}`)
+      if (extractedFields.lineItem.some((f) => f.key === key)) checkedDynIds.add(`dyn_li_${key}`)
+    }
+
+    // Sync auditColOrder: keep static cols + checked dynamic cols, append any new ones at end
+    setAuditColOrder((prev) => {
+      const withoutUnchecked = prev.filter((id) => !/^dyn_(doc|li)_/.test(id) || checkedDynIds.has(id))
+      for (const id of checkedDynIds) {
+        if (!withoutUnchecked.includes(id)) withoutUnchecked.push(id)
+      }
+      // Persist the updated order
+      saveColOrdersRef.current(withoutUnchecked, emailColOrderRef.current, pdfColOrderRef.current)
+      return withoutUnchecked
+    })
+
     setDynamicColVisibility(next)
     if (activeWorkspace) {
       try {
@@ -1519,19 +1542,31 @@ export default function DocTidyInvoiceAudit() {
 
   const visibleCols = useMemo<AnyAuditColumn[]>(
     () => {
-      const staticCols: InvoiceAuditColumn[] = auditColOrder
-        .map((id) => INVOICE_AUDIT_COLUMNS.find((c) => c.id === id))
-        .filter((c): c is InvoiceAuditColumn => c !== undefined && colVisibility[c.id])
+      const staticColById = new Map(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c]))
+      const dynDocByKey  = new Map(extractedFields.doc.map((f) => [f.key, f]))
+      const dynLiByKey   = new Map(extractedFields.lineItem.map((f) => [f.key, f]))
+      const result: AnyAuditColumn[] = []
 
-      const dynDocCols: DynamicAuditColumn[] = extractedFields.doc
-        .filter((f) => dynamicColVisibility[f.key])
-        .map((f) => ({ type: 'dynamic' as const, id: `dyn_doc_${f.key}`, key: f.key, label: f.label, section: 'document' as const }))
+      for (const id of auditColOrder) {
+        if (id.startsWith('dyn_doc_')) {
+          const key = id.slice('dyn_doc_'.length)
+          const f = dynDocByKey.get(key)
+          if (f && (dynamicColVisibility[key] ?? false)) {
+            result.push({ type: 'dynamic', id, key, label: f.label, section: 'document' })
+          }
+        } else if (id.startsWith('dyn_li_')) {
+          const key = id.slice('dyn_li_'.length)
+          const f = dynLiByKey.get(key)
+          if (f && (dynamicColVisibility[key] ?? false)) {
+            result.push({ type: 'dynamic', id, key, label: f.label, section: 'lineItem' })
+          }
+        } else {
+          const col = staticColById.get(id as InvoiceAuditColumnId)
+          if (col && colVisibility[col.id]) result.push(col)
+        }
+      }
 
-      const dynLiCols: DynamicAuditColumn[] = extractedFields.lineItem
-        .filter((f) => dynamicColVisibility[f.key])
-        .map((f) => ({ type: 'dynamic' as const, id: `dyn_li_${f.key}`, key: f.key, label: f.label, section: 'lineItem' as const }))
-
-      return [...staticCols, ...dynDocCols, ...dynLiCols]
+      return result
     },
     [auditColOrder, colVisibility, extractedFields, dynamicColVisibility]
   )
@@ -2910,51 +2945,25 @@ export default function DocTidyInvoiceAudit() {
                           className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                         />
                       </Th>
-                      {visibleCols.map((col) => {
-                        if (isDynCol(col)) {
-                          // Dynamic extracted columns — no drag, bolt icon badge
-                          return (
-                            <th
-                              key={col.id}
-                              className={[
-                                'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
-                                'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
-                                'bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
-                                auditDragSrc === col.id ? 'bg-sky-100 dark:bg-sky-500/20' : '',
-                                auditDragTarget === col.id ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10' : '',
-                              ].join(' ')}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <svg className="h-3 w-3 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                                {col.label}
-                              </span>
-                            </th>
-                          )
-                        }
-                        // Static columns — draggable
-                        const staticId = col.id
-                        return (
-                          <DraggableTh
-                            key={staticId}
-                            label={col.label}
-                            align={col.numeric ? 'right' : 'left'}
-                            isDragging={auditDragSrc === staticId}
-                            isDragTarget={auditDragTarget === staticId}
-                            onDragStart={() => setAuditDragSrc(staticId)}
-                            onDragOver={() => setAuditDragTarget(staticId)}
-                            onDrop={() => {
-                              if (auditDragSrc && auditDragSrc !== staticId) {
-                                const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, staticId)
-                                setAuditColOrder(newOrder)
-                                saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
-                              }
-                            }}
-                            onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
-                          />
-                        )
-                      })}
+                      {visibleCols.map((col) => (
+                        <DraggableTh
+                          key={col.id}
+                          label={col.label}
+                          align={!isDynCol(col) && col.numeric ? 'right' : 'left'}
+                          isDragging={auditDragSrc === col.id}
+                          isDragTarget={auditDragTarget === col.id}
+                          onDragStart={() => setAuditDragSrc(col.id)}
+                          onDragOver={() => setAuditDragTarget(col.id)}
+                          onDrop={() => {
+                            if (auditDragSrc && auditDragSrc !== col.id) {
+                              const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
+                              setAuditColOrder(newOrder)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
+                            }
+                          }}
+                          onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
+                        />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -3143,10 +3152,9 @@ export default function DocTidyInvoiceAudit() {
                                         'px-2.5 py-1 text-[11px] whitespace-nowrap',
                                         !isDynCol(col) && col.numeric ? 'text-right tabular-nums' : '',
                                         !isDynCol(col) && col.mono ? 'font-mono' : '',
-                                        // Column-level drag highlight (static columns only)
-                                        !isDynCol(col) && auditDragSrc === col.id
+                                        auditDragSrc === col.id
                                           ? 'bg-sky-100/70 dark:bg-sky-500/15'
-                                          : !isDynCol(col) && auditDragTarget === col.id
+                                          : auditDragTarget === col.id
                                             ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
                                             : '',
                                       ].join(' ')}
