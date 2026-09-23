@@ -25,6 +25,8 @@ import {
   PAGE_SIZE_OPTIONS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
+  loadCollapsedWeeks,
+  saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
   type DocTidyEvent,
@@ -630,8 +632,8 @@ export default function DocTidyInvoiceAudit() {
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
-  /** Week keys (YYYY-MM-DD of Monday) whose rows are currently collapsed. */
-  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(new Set())
+  /** Week keys (YYYY-MM-DD of Monday) whose rows are currently collapsed. Persisted to localStorage. */
+  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
 
@@ -1286,6 +1288,11 @@ export default function DocTidyInvoiceAudit() {
     setColVisibility(next)
     saveAuditColumnVisibility(next)
   }
+
+  /** Persist collapsed weeks to localStorage whenever the set changes. */
+  useEffect(() => {
+    saveCollapsedWeeks(collapsedWeeks)
+  }, [collapsedWeeks])
 
   const visibleCols = useMemo(
     () =>
@@ -2753,11 +2760,15 @@ export default function DocTidyInvoiceAudit() {
                             ? 'Unknown date'
                             : formatWeekLabel(weekKey)
 
-                          // Count total line-item rows in this group
-                          const groupRowCount = groupJobs.reduce((sum, j) => {
+                          // Compute all row keys for this group (for select-all)
+                          const groupRowKeys = groupJobs.flatMap((j) => {
                             const li = extractJsonArray(j.jsonOutput ?? null, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
-                            return sum + (li.length > 0 ? li.length : 1)
-                          }, 0)
+                            const count = li.length > 0 ? li.length : 1
+                            return Array.from({ length: count }, (_, i) => `${j._id}-${i}`)
+                          })
+                          const groupRowCount = groupRowKeys.length
+                          const allGroupSelected = groupRowCount > 0 && groupRowKeys.every((k) => selectedRowKeys.has(k))
+                          const someGroupSelected = groupRowKeys.some((k) => selectedRowKeys.has(k))
 
                           const toggleWeek = () => setCollapsedWeeks((prev) => {
                             const next = new Set(prev)
@@ -2766,10 +2777,39 @@ export default function DocTidyInvoiceAudit() {
                             return next
                           })
 
+                          const toggleGroupSelection = (e: React.MouseEvent) => {
+                            e.stopPropagation()
+                            setSelectedRowKeys((prev) => {
+                              const next = new Set(prev)
+                              if (allGroupSelected) {
+                                for (const k of groupRowKeys) next.delete(k)
+                              } else {
+                                for (const k of groupRowKeys) next.add(k)
+                              }
+                              return next
+                            })
+                          }
+
                           const groupHeader = (
                             <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
+                              {/* Checkbox cell — stops propagation so it doesn't collapse the group */}
                               <td
-                                colSpan={totalCols}
+                                className="border-y border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={allGroupSelected}
+                                  ref={(el) => { if (el) el.indeterminate = someGroupSelected && !allGroupSelected }}
+                                  onChange={() => {/* controlled via onClick */}}
+                                  onClick={toggleGroupSelection}
+                                  aria-label={`Select all rows in week: ${label}`}
+                                  className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                />
+                              </td>
+                              {/* Label cell spans the rest */}
+                              <td
+                                colSpan={totalCols - 1}
                                 onClick={toggleWeek}
                                 className="cursor-pointer select-none border-y border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5"
                               >

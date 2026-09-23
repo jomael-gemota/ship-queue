@@ -509,6 +509,29 @@ export function saveAuditColumnVisibility(visibility: Record<InvoiceAuditColumnI
   }
 }
 
+const AUDIT_COLLAPSED_WEEKS_KEY = 'docTidy.invoiceAudit.collapsedWeeks'
+
+/** Load the set of collapsed week-start keys from localStorage. */
+export function loadCollapsedWeeks(): Set<string> {
+  try {
+    const raw = localStorage.getItem(AUDIT_COLLAPSED_WEEKS_KEY)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw) as string[]
+    return new Set(Array.isArray(arr) ? arr : [])
+  } catch {
+    return new Set()
+  }
+}
+
+/** Persist the set of collapsed week-start keys to localStorage. */
+export function saveCollapsedWeeks(keys: Set<string>): void {
+  try {
+    localStorage.setItem(AUDIT_COLLAPSED_WEEKS_KEY, JSON.stringify(Array.from(keys)))
+  } catch {
+    // localStorage can be blocked in some environments — silently ignore.
+  }
+}
+
 /**
  * Extract a scalar value from a free-form AI JSON output, trying multiple
  * common field-name variants. Keys are normalised to lowercase with all
