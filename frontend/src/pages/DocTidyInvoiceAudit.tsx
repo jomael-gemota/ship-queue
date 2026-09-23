@@ -233,7 +233,7 @@ function DraggableTh({
 
 /* ──────────────────────────────── Column Settings Drawer ── */
 
-type ExtractedFieldInfo = { key: string; label: string }
+type ExtractedFieldInfo = { key: string; label: string; section: 'document' | 'lineItem' }
 
 function ColumnSettingsDrawer({
   visibility,
@@ -291,22 +291,26 @@ function ColumnSettingsDrawer({
     </li>
   )
 
-  const DynColRow = ({ field }: { field: ExtractedFieldInfo }) => (
-    <li>
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
-        <input
-          type="checkbox"
-          checked={dynamicVisibility[field.key] ?? false}
-          onChange={() => onDynamicChange({ ...dynamicVisibility, [field.key]: !(dynamicVisibility[field.key] ?? false) })}
-          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
-        />
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--text-100)]">{field.label}</p>
-          <p className="text-[11px] text-[var(--text-200)] font-mono">{field.key}</p>
-        </div>
-      </label>
-    </li>
-  )
+  const DynColRow = ({ field }: { field: ExtractedFieldInfo }) => {
+    // Use the full column id (dyn_doc_<key> or dyn_li_<key>) as the visibility key.
+    const colId = field.section === 'document' ? `dyn_doc_${field.key}` : `dyn_li_${field.key}`
+    return (
+      <li>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+          <input
+            type="checkbox"
+            checked={dynamicVisibility[colId] ?? false}
+            onChange={() => onDynamicChange({ ...dynamicVisibility, [colId]: !(dynamicVisibility[colId] ?? false) })}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--text-100)]">{field.label}</p>
+            <p className="text-[11px] text-[var(--text-200)] font-mono">{field.key}</p>
+          </div>
+        </label>
+      </li>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1462,13 +1466,13 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const handleDynamicColVisChange = (next: Record<string, boolean>) => {
-    // Build the set of dynamic column ids that should be in the order (checked ones)
-    const checkedDynIds = new Set<string>()
-    for (const [key, checked] of Object.entries(next)) {
-      if (!checked) continue
-      if (extractedFields.doc.some((f) => f.key === key)) checkedDynIds.add(`dyn_doc_${key}`)
-      if (extractedFields.lineItem.some((f) => f.key === key)) checkedDynIds.add(`dyn_li_${key}`)
-    }
+    // The keys in `next` are full column ids (dyn_doc_<key> or dyn_li_<key>).
+    // Build the set of checked dynamic ids to sync into auditColOrder.
+    const checkedDynIds = new Set(
+      Object.entries(next)
+        .filter(([id, checked]) => checked && /^dyn_(doc|li)_/.test(id))
+        .map(([id]) => id)
+    )
 
     // Sync auditColOrder: keep static cols + checked dynamic cols, append any new ones at end
     setAuditColOrder((prev) => {
@@ -1476,7 +1480,6 @@ export default function DocTidyInvoiceAudit() {
       for (const id of checkedDynIds) {
         if (!withoutUnchecked.includes(id)) withoutUnchecked.push(id)
       }
-      // Persist the updated order
       saveColOrdersRef.current(withoutUnchecked, emailColOrderRef.current, pdfColOrderRef.current)
       return withoutUnchecked
     })
@@ -1535,8 +1538,8 @@ export default function DocTidyInvoiceAudit() {
     }
 
     return {
-      doc:      Array.from(docKeys.values()).map((key) => ({ key, label: keyToLabel(key) })),
-      lineItem: Array.from(liKeys.values()).map((key) => ({ key, label: keyToLabel(key) })),
+      doc:      Array.from(docKeys.values()).map((key) => ({ key, label: keyToLabel(key), section: 'document' as const })),
+      lineItem: Array.from(liKeys.values()).map((key) => ({ key, label: keyToLabel(key), section: 'lineItem' as const })),
     }
   }, [jobs])
 
@@ -1551,13 +1554,13 @@ export default function DocTidyInvoiceAudit() {
         if (id.startsWith('dyn_doc_')) {
           const key = id.slice('dyn_doc_'.length)
           const f = dynDocByKey.get(key)
-          if (f && (dynamicColVisibility[key] ?? false)) {
+          if (f && (dynamicColVisibility[id] ?? false)) {
             result.push({ type: 'dynamic', id, key, label: f.label, section: 'document' })
           }
         } else if (id.startsWith('dyn_li_')) {
           const key = id.slice('dyn_li_'.length)
           const f = dynLiByKey.get(key)
-          if (f && (dynamicColVisibility[key] ?? false)) {
+          if (f && (dynamicColVisibility[id] ?? false)) {
             result.push({ type: 'dynamic', id, key, label: f.label, section: 'lineItem' })
           }
         } else {
