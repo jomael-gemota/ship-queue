@@ -450,6 +450,9 @@ export function LiveReasoningSnippet({
     .map((s) => s.replace(/[.!?,;:]+$/, '').trim())
     .filter((s) => s.split(/\s+/).filter((w) => w.length > 1).length >= 2)
 
+  // Step number = how many segments have been produced so far (min 1)
+  const step = Math.max(1, segments.length)
+
   const lastSegment = segments[segments.length - 1] ?? cleaned
   const words = lastSegment.split(/\s+/).filter((w) => w.length > 0)
   const sliced = words.slice(0, 6).join(' ')
@@ -462,10 +465,15 @@ export function LiveReasoningSnippet({
       type="button"
       onClick={onOpen}
       title="Open to watch Tidy Agent work"
-      className="group inline-flex max-w-[260px] cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+      className="group inline-flex max-w-[300px] cursor-pointer items-center gap-2 text-[11px] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
     >
       <Spinner className="h-3.5 w-3.5 shrink-0 text-sky-500" />
-      <span className="min-w-0 truncate italic">
+      {/* Step badge */}
+      <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold tabular-nums text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10">
+        Step {step}
+      </span>
+      {/* Reasoning snippet */}
+      <span className="min-w-0 truncate italic text-[var(--text-200)] group-hover:text-sky-600 dark:group-hover:text-sky-400">
         {snippet || 'Thinking…'}
       </span>
     </button>
