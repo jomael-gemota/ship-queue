@@ -6,12 +6,19 @@ import {
   importHHSpreadsheet,
   importOutputRowKey,
   previewHHImport,
+  type HHImportPreviewResult,
   type HHImportReview,
 } from '../../lib/hhSportswear'
 import { HHImportPreviewTable } from './HHImportReview'
 import { flashHHGroupRow } from './hhUi'
 
 const ACCEPT = '.xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
+
+function isImportPreviewError(
+  result: HHImportPreviewResult,
+): result is Extract<HHImportPreviewResult, { ok: false }> {
+  return result.ok === false
+}
 
 const PASTE_PLACEHOLDER = '225702\t111-5023603-3399458\n225709\t111-5586027-4450636\n226012\t114-7413315-0341811'
 
@@ -134,8 +141,11 @@ export function HHImportButton() {
       request
         .then((result) => {
           if (cancelled) return
-          if (result.ok) setPreview({ status: 'ready', key, review: result.review })
-          else setPreview({ status: 'error', key, message: result.message, review: result.review })
+          if (isImportPreviewError(result)) {
+            setPreview({ status: 'error', key, message: result.message, review: result.review })
+            return
+          }
+          setPreview({ status: 'ready', key, review: result.review })
         })
         .catch((error: unknown) => {
           if (cancelled) return
@@ -184,7 +194,9 @@ export function HHImportButton() {
     setOpen(false)
     resetPicker()
   }
-  requestClose.current = close
+  useEffect(() => {
+    requestClose.current = close
+  }, [close])
 
   const stageFile = (file: File) => {
     const invalid = fileLooksValid(file)
