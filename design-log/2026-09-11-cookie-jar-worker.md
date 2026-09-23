@@ -27,11 +27,11 @@ Admins should be able to change name / enabled / cron from a UI later. Adding a
   `seller-central-outdoor-equipped-us`. Credentials used to *obtain* the cookie
   live in env.
 - **Mongo owns knobs and results.** `CookieJar` stores `key`, `name`, `enabled`,
-  `cron` (UTC), `cookie` (`select: false`), `lastRunAt`, `lastSuccessAt`,
+  `cron` (Asia/Manila), `cookie` (`select: false`), `lastRunAt`, `lastSuccessAt`,
   `lastError`.
 - **Insert-if-missing seed** on worker/API boot. The original
   `outdoor-equipped-us` row is renamed in place (cookie / last-run kept; name and
-  cron set to Seller Central Outdoor Equipped US / `0 */6 * * *`). After that,
+  cron set to Seller Central Outdoor Equipped US / `0 0,6,12,18 * * *`). After that,
   the worker never overwrites name / enabled / cron.
 - **Config poll** every 30s rebinds crons when enabled/cron change, so a
   Settings save takes effect without restarting the worker (the API cannot call
@@ -51,8 +51,9 @@ Admins should be able to change name / enabled / cron from a UI later. Adding a
   **manual** jars (`helly-hansen-sports-b2b`, `helly-hansen-work-b2b`): seeded
   and listed, not refreshed by Sphere. Prefer Dropship (B2B) → brand →
   Configurations for those cookies.
-- Cron is UTC. Set the schedule shorter than the cookie’s real TTL.
+- Cron is Philippines time (`Asia/Manila`). A start or restart waits for the
+  next matching clock time. Set the schedule shorter than the cookie’s real TTL.
 - Seller Central Outdoor Equipped US GETs Sphere
   `/api/v1/cookie/provide/seller-central-oe-us` (up to 3 tries) and stores
   `data.cookie`. Auth token is `COOKIE_JAR_OE_US_TOKEN`. Default cron is
-  `0 */6 * * *` UTC.
+  `0 0,6,12,18 * * *` (12:00 AM, 6:00 AM, 12:00 PM, 6:00 PM).

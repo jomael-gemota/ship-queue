@@ -15,7 +15,15 @@ import HHOrderGroup, {
   rollupHhCartStatus,
   rollupHhDetailsStatus,
 } from '../models/HHOrderGroup';
-import { parseHhImportCsv, parseHhImportText } from '../lib/hhImport';
+import {
+  HH_IMPORT_MAX_PASTE_CHARS,
+  parseHhImportCsv,
+  parseHhImportText,
+  parseReviewedOrders,
+  sampleHhImportReview,
+  type HhImportParseOk,
+  type HhImportReview,
+} from '../lib/hhImport';
 import { parseHhImportXlsx } from '../lib/hhImportXlsx';
 import { countUnsyncedHhOrders, enqueueHhGroupScSync, getHhScSyncRuntime } from '../services/hhScSync';
 import { countUndraftedHhOrders, enqueueHhCartDraft, getHhCartDraftRuntime } from '../services/hhCartDraft';
@@ -1222,6 +1230,82 @@ function parseBoolFlag(value: unknown, fallback = true): boolean {
   return fallback;
 }
 
+type ImportRead =
+  | { ok: true; sourceFileName: string; parsed: HhImportParseOk }
+  | { ok: false; status: number; message: string; review?: HhImportReview };
+
+async function readImportedOrders(req: Request): Promise<ImportRead> {
+  const reviewedRaw = req.body?.orders;
+  if (typeof reviewedRaw === 'string' && reviewedRaw.trim()) {
+    if (reviewedRaw.length > HH_IMPORT_MAX_PASTE_CHARS) {
+      return { ok: false, status: 400, message: 'The selected order list is too large.' };
+    }
+    let reviewed: unknown;
+    try {
+      reviewed = JSON.parse(reviewedRaw);
+    } catch {
+      return { ok: false, status: 400, message: 'Could not read the selected orders.' };
+    }
+    const parsed = parseReviewedOrders(reviewed);
+    if ('error' in parsed) {
+      return { ok: false, status: 400, message: parsed.error };
+    }
+    const named = asString(req.body?.sourceFileName, 255);
+    return { ok: true, sourceFileName: named || 'Pasted orders', parsed };
+  }
+
+  const file = req.file;
+  const pasted = typeof req.body?.text === 'string' ? req.body.text : '';
+  const usingPaste = !file?.buffer?.length && pasted.trim().length > 0;
+
+  if (!file?.buffer?.length && !usingPaste) {
+    return { ok: false, status: 400, message: 'Upload a file or paste Order ID and PO Number rows.' };
+  }
+
+  let parsed;
+  let sourceFileName: string;
+
+  if (usingPaste) {
+    parsed = parseHhImportText(pasted);
+    sourceFileName = 'Pasted orders';
+  } else {
+    const kind = importFileKind(file!.originalname);
+    if (!kind) {
+      return { ok: false, status: 400, message: 'Upload an .xlsx or .csv file.' };
+    }
+    parsed = kind === 'csv' ? parseHhImportCsv(file!.buffer.toString('utf8')) : await parseHhImportXlsx(file!.buffer);
+    sourceFileName = asString(file!.originalname, 255);
+  }
+
+  if ('error' in parsed) {
+    return { ok: false, status: 400, message: parsed.error, review: parsed.review };
+  }
+
+  return { ok: true, sourceFileName, parsed };
+}
+
+export const previewImport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const read = await readImportedOrders(req);
+    if (!read.ok) {
+      res.status(read.status).json({
+        message: read.message,
+        ...(read.review ? { review: sampleHhImportReview(read.review) } : {}),
+      });
+      return;
+    }
+
+    res.json({ data: sampleHhImportReview(read.parsed.review) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to check HH Sportswear import', error: (error as Error).message });
+  }
+};
+
 export const importGroup = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.user) {
@@ -1229,35 +1313,13 @@ export const importGroup = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const file = req.file;
-    const pasted = typeof req.body?.text === 'string' ? req.body.text : '';
-    const usingPaste = !file?.buffer?.length && pasted.trim().length > 0;
-
-    if (!file?.buffer?.length && !usingPaste) {
-      res.status(400).json({ message: 'Upload a file or paste Order ID and PO Number rows.' });
+    const read = await readImportedOrders(req);
+    if (!read.ok) {
+      res.status(read.status).json({ message: read.message });
       return;
     }
 
-    let parsed;
-    let sourceFileName: string;
-
-    if (usingPaste) {
-      parsed = parseHhImportText(pasted);
-      sourceFileName = 'Pasted orders';
-    } else {
-      const kind = importFileKind(file!.originalname);
-      if (!kind) {
-        res.status(400).json({ message: 'Upload an .xlsx or .csv file.' });
-        return;
-      }
-      parsed =
-        kind === 'csv' ? parseHhImportCsv(file!.buffer.toString('utf8')) : await parseHhImportXlsx(file!.buffer);
-      sourceFileName = asString(file!.originalname, 255);
-    }
-    if ('error' in parsed) {
-      res.status(400).json({ message: parsed.error });
-      return;
-    }
+    const { parsed, sourceFileName } = read;
 
     const group = await HHOrderGroup.create({
       brand: requestBrand(req),

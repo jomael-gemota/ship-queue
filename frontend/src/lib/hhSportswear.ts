@@ -1,5 +1,5 @@
 import { hhApiPath, type HHBrandId } from './hhBrand'
-import { authApi } from './api'
+import { ApiError, authApi } from './api'
 
 function hhPath(brand: HHBrandId, rest = '') {
   return hhApiPath(brand, rest)
@@ -543,6 +543,79 @@ export interface HHImportMeta {
   incompleteRowsSkipped: number
 }
 
+export interface HHImportDuplicate {
+  keptRow: number
+  skippedRow: number
+  orderId: string
+  po: string
+}
+
+export interface HHImportIncomplete {
+  row: number
+  orderId: string
+  po: string
+  missing: 'orderId' | 'po'
+}
+
+export interface HHImportOrderConflict {
+  orderId: string
+  rowCount: number
+  rows: Array<{ row: number; po: string }>
+}
+
+export interface HHImportPoConflict {
+  po: string
+  rowCount: number
+  rows: Array<{ row: number; orderId: string }>
+}
+
+export interface HHImportOddOrderId {
+  row: number
+  orderId: string
+  po: string
+  looksSwapped: boolean
+}
+
+export interface HHImportOutputRow {
+  row: number
+  orderId: string
+  po: string
+  oddOrderId: boolean
+  looksSwapped: boolean
+  sharedOrderId: boolean
+  sharedPo: boolean
+}
+
+export function importOutputRowKey(row: Pick<HHImportOutputRow, 'row' | 'orderId' | 'po'>): string {
+  return `${row.row}\u0000${row.orderId}\u0000${row.po}`
+}
+
+export interface HHImportReview {
+  orderCount: number
+  duplicateRowsSkipped: number
+  incompleteRowsSkipped: number
+  orderConflictCount: number
+  poConflictCount: number
+  oddOrderIdCount: number
+  duplicates: HHImportDuplicate[]
+  incomplete: HHImportIncomplete[]
+  orderConflicts: HHImportOrderConflict[]
+  poConflicts: HHImportPoConflict[]
+  oddOrderIds: HHImportOddOrderId[]
+  rows: HHImportOutputRow[]
+}
+
+export type HHImportPreviewResult =
+  | { ok: true; review: HHImportReview }
+  | { ok: false; message: string; review: HHImportReview | null }
+
+function reviewFromErrorBody(body: unknown): HHImportReview | null {
+  if (!body || typeof body !== 'object' || !('review' in body)) return null
+  const review = (body as { review?: unknown }).review
+  if (!review || typeof review !== 'object') return null
+  return review as HHImportReview
+}
+
 export function listHHGroups(brand: HHBrandId) {
   return authApi.get<{ data: HHOrderGroup[] }>(hhPath(brand))
 }
@@ -637,15 +710,36 @@ export function testHHB2bWebhook(brand: HHBrandId) {
 
 export function importHHSpreadsheet(
   brand: HHBrandId,
-  input: File | { text: string },
+  input: File | { text: string } | { orders: Array<{ orderId: string; po: string }>; sourceFileName?: string },
   options?: { fetchDetails?: boolean; draftCart?: boolean },
 ) {
   const body = new FormData()
   if (input instanceof File) body.append('file', input)
-  else body.append('text', input.text)
+  else if ('orders' in input) {
+    body.append('orders', JSON.stringify(input.orders))
+    if (input.sourceFileName) body.append('sourceFileName', input.sourceFileName)
+  } else body.append('text', input.text)
   body.append('fetchDetails', options?.fetchDetails === false ? 'false' : 'true')
   body.append('draftCart', options?.draftCart === false ? 'false' : 'true')
   return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>(hhPath(brand, '/import'), body)
+}
+
+export async function previewHHImport(
+  brand: HHBrandId,
+  input: File | { text: string },
+): Promise<HHImportPreviewResult> {
+  const body = new FormData()
+  if (input instanceof File) body.append('file', input)
+  else body.append('text', input.text)
+  try {
+    const res = await authApi.postForm<{ data: HHImportReview }>(hhPath(brand, '/import/preview'), body)
+    return { ok: true, review: res.data }
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { ok: false, message: error.message, review: reviewFromErrorBody(error.body) }
+    }
+    throw error
+  }
 }
 
 export function rerunHHGroupScSync(brand: HHBrandId, groupId: string, options?: { draftCart?: boolean }) {

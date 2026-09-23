@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
@@ -44,6 +45,31 @@ function sessionLabel(status: HHSessionCheck['status']): string {
   if (status === 'auth') return 'Needs a new cookie'
   if (status === 'down') return 'Not responding'
   return 'Not checked yet'
+}
+
+function sameCheckTimes(current: string[], saved: string[]): boolean {
+  if (current.length !== saved.length) return false
+  return current.every((time, index) => time === saved[index])
+}
+
+function ConfigSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/30 px-4 py-4 dark:border-[var(--bg-300)]">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</h3>
+        <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  )
 }
 
 function sessionPillClass(status: HHSessionCheck['status']): string {
@@ -147,8 +173,20 @@ export default function HHSportswearConfig() {
     }
   }
 
+  const savedTimes = saved?.sessionCheckTimes ?? []
+  const dirty =
+    saved != null &&
+    (baseUrl !== saved.baseUrl ||
+      catalog !== saved.catalog ||
+      accountId !== saved.accountId ||
+      placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
+      alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
+      !sameCheckTimes(checkTimes, savedTimes) ||
+      cookie.trim().length > 0 ||
+      clearCookie)
+
   const save = async () => {
-    if (busy) return
+    if (busy || !dirty) return
     setBusy(true)
     setSaveError(null)
     setSaveNotice(null)
@@ -191,9 +229,12 @@ export default function HHSportswearConfig() {
     return <p className="px-5 py-8 text-sm text-red-600 dark:text-red-400">{loadError}</p>
   }
 
+  const brandLabel = brand === 'workwear' ? 'Work' : 'Sports'
+  const sessionHost = brandDef.baseUrl.replace(/^https?:\/\//, '')
+
   return (
     <form
-      className="space-y-6 px-5 py-5"
+      className="space-y-5 px-5 py-5"
       onSubmit={(event) => {
         event.preventDefault()
         void save()
@@ -201,14 +242,18 @@ export default function HHSportswearConfig() {
     >
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-          B2B {brand === 'workwear' ? 'Work' : 'Sports'} account
+          B2B {brandLabel} account
         </h2>
-        <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-          Cart drafts POST to this {brandDef.supplier} B2B account. Sphere does not refresh the session — paste a
-          cookie from a logged-in browser. Place Order stays off until you enable it below.
+        <p className="max-w-2xl text-sm text-slate-500 dark:text-[var(--text-200)]">
+          Cart drafts go to this {brandDef.supplier} account. The session is a cookie you paste from a logged-in
+          browser. Sphere does not refresh it.
         </p>
       </div>
 
+      <ConfigSection
+        title="Account"
+        description="Where drafts are sent, and whether Place Order is allowed to submit."
+      >
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
           <label className={labelClass} htmlFor="hh-b2b-base-url">
@@ -222,9 +267,7 @@ export default function HHSportswearConfig() {
             autoComplete="off"
             spellCheck={false}
           />
-          <p className={hintClass}>
-            {brand === 'workwear' ? 'Work' : 'Sports'} portal, e.g. {brandDef.baseUrl}
-          </p>
+          <p className={hintClass}>{brandLabel} portal, e.g. {brandDef.baseUrl}</p>
         </div>
 
         <div className="space-y-1.5">
@@ -239,9 +282,7 @@ export default function HHSportswearConfig() {
             autoComplete="off"
             spellCheck={false}
           />
-          <p className={hintClass}>
-            {brandDef.catalog} for {brand === 'workwear' ? 'Work' : 'Sports'}; not the Fashion catalog.
-          </p>
+          <p className={hintClass}>{brandDef.catalog} for {brandLabel}. Not the Fashion catalog.</p>
         </div>
 
         <div className="space-y-1.5">
@@ -262,14 +303,13 @@ export default function HHSportswearConfig() {
         </div>
       </div>
 
-      <div className="space-y-2 border-t border-[var(--bg-300)] pt-5 dark:border-[var(--bg-300)]">
-        <div className="flex items-start gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
+        <div className="flex items-start gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
           <div className="min-w-0 flex-1">
             <p className={labelClass}>Place Order</p>
             <p className={`mt-0.5 ${hintClass}`}>
               {placeOrderEnabled
-                ? 'Enabled. Place Order re-checks the live cart, then submits matching Ready orders to Helly Hansen.'
-                : 'Off. Place Order still appears and re-checks the live cart, but Helly Hansen does not receive a submit.'}
+                ? 'On. Place Order re-checks the live cart, then submits matching Ready orders.'
+                : 'Off. Place Order still re-checks the live cart, but nothing is submitted.'}
             </p>
           </div>
           <button
@@ -290,29 +330,59 @@ export default function HHSportswearConfig() {
             />
           </button>
         </div>
-      </div>
+      </ConfigSection>
 
-      <div className="space-y-2 border-t border-[var(--bg-300)] pt-5 dark:border-[var(--bg-300)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={labelClass}>Session cookie</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-              saved?.hasCookie
-                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
-            }`}
+      <ConfigSection
+        title="Session"
+        description="Paste a cookie from a logged-in browser. Check session reads the catalog only."
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sessionPillClass(saved?.sessionCheck.status ?? null)}`}>
+              {sessionLabel(saved?.sessionCheck.status ?? null)}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                saved?.hasCookie
+                  ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
+              }`}
+            >
+              {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={checking || busy}
+            onClick={() => {
+              void checkSession()
+            }}
+            className={quietButtonClass}
           >
-            {saved?.hasCookie ? 'Stored' : 'None'}
-          </span>
+            {checking ? 'Checking…' : 'Check session'}
+          </button>
         </div>
-        {saved?.hasCookie && saved.cookieUpdatedAt ? (
-          <p className={hintClass}>Last updated {formatCreatedAt(saved.cookieUpdatedAt)}</p>
-        ) : (
+        <p className={hintClass}>
+          {saved?.sessionCheck.checkedAt
+            ? `Last checked ${formatCreatedAt(saved.sessionCheck.checkedAt)}.`
+            : 'No check has run yet.'}
+          {saved?.hasCookie && saved.cookieUpdatedAt ? ` Cookie updated ${formatCreatedAt(saved.cookieUpdatedAt)}.` : ''}
+          {saved?.sessionCheck.latencyMs != null && saved.sessionCheck.status === 'ok'
+            ? ` Responded in ${saved.sessionCheck.latencyMs} ms.`
+            : ''}
+        </p>
+        {saved?.sessionCheck.message && saved.sessionCheck.status && saved.sessionCheck.status !== 'ok' ? (
+          <p className="text-sm text-red-700 dark:text-red-300">{saved.sessionCheck.message}</p>
+        ) : null}
+        {checkError ? <p className="text-sm text-red-600 dark:text-red-400">{checkError}</p> : null}
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-b2b-cookie">
+            Session cookie
+          </label>
           <p className={hintClass}>
-            Paste the Cookie header from a logged-in {brandDef.baseUrl.replace(/^https?:\/\//, '')} tab. It is never
-            shown again.
+            Paste the Cookie header from a logged-in {sessionHost} tab. It is not shown again after you save.
           </p>
-        )}
+        </div>
         <textarea
           id="hh-b2b-cookie"
           className={`${inputClass} min-h-[7rem] font-mono text-xs`}
@@ -341,27 +411,15 @@ export default function HHSportswearConfig() {
             Clear the stored session
           </label>
         ) : null}
-      </div>
+      </ConfigSection>
 
-      <div className="space-y-3 border-t border-[var(--bg-300)] pt-5 dark:border-[var(--bg-300)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={labelClass}>Session check</span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sessionPillClass(saved?.sessionCheck.status ?? null)}`}>
-            {sessionLabel(saved?.sessionCheck.status ?? null)}
-          </span>
-        </div>
-        <p className={hintClass}>
-          {saved?.sessionCheck.checkedAt
-            ? `Last checked ${formatCreatedAt(saved.sessionCheck.checkedAt)}.`
-            : 'No check has run yet.'}{' '}
-          A check reads the catalog only. It does not create a draft or place an order.
-          {saved?.sessionCheck.latencyMs != null && saved.sessionCheck.status === 'ok'
-            ? ` Responded in ${saved.sessionCheck.latencyMs} ms.`
-            : ''}
-        </p>
+      <ConfigSection
+        title="Alerts"
+        description="When the daily check fails, and when the session recovers. Times are Philippines time."
+      >
         <div className="space-y-2">
           <span className={labelClass}>Check times</span>
-          <p className={hintClass}>{scheduleLabel} Save to apply. The clock is Philippines time (PHT).</p>
+          <p className={hintClass}>{scheduleLabel} Save to apply.</p>
           {checkTimes.length > 0 ? (
             <ul className="space-y-2">
               {checkTimes.map((time, index) => (
@@ -399,9 +457,6 @@ export default function HHSportswearConfig() {
             Add time
           </button>
         </div>
-        {saved?.sessionCheck.message && saved.sessionCheck.status && saved.sessionCheck.status !== 'ok' ? (
-          <p className="text-sm text-red-700 dark:text-red-300">{saved.sessionCheck.message}</p>
-        ) : null}
         <div className="space-y-1.5">
           <label className={labelClass} htmlFor="hh-b2b-webhook">
             Alert webhook
@@ -417,12 +472,10 @@ export default function HHSportswearConfig() {
             disabled={busy}
           />
           <p className={hintClass}>
-            Saved with the form. When a check starts failing, Ship Queue POSTs JSON to this URL, and again when the
-            session recovers. Repeat failures stay quiet. The body includes{' '}
-            <span className="font-mono">event</span>, <span className="font-mono">brand</span>,{' '}
+            Posted when a check starts failing, and again when the session recovers. Repeat failures stay quiet.
+            The body includes <span className="font-mono">event</span>, <span className="font-mono">brand</span>,{' '}
             <span className="font-mono">status</span>, <span className="font-mono">message</span>, and{' '}
-            <span className="font-mono">checkedAt</span>. Send test uses <span className="font-mono">event: test</span>{' '}
-            and does not check the session. Leave blank to keep the result in this app only.
+            <span className="font-mono">checkedAt</span>. Leave blank to keep the result in this app only.
           </p>
           {saved?.lastAlert.at ? (
             <p className={saved.lastAlert.error ? 'text-xs text-red-600 dark:text-red-400' : hintClass}>
@@ -432,16 +485,6 @@ export default function HHSportswearConfig() {
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={checking || busy}
-            onClick={() => {
-              void checkSession()
-            }}
-            className={quietButtonClass}
-          >
-            {checking ? 'Checking…' : 'Check session'}
-          </button>
           <button
             type="button"
             disabled={testingWebhook || busy || !savedWebhook || webhookDirty}
@@ -456,31 +499,43 @@ export default function HHSportswearConfig() {
             {webhookDirty
               ? 'Save the webhook URL before sending a test.'
               : savedWebhook
-                ? 'Send test uses the saved URL and does not check the session.'
+                ? 'Uses the saved URL. Does not check the session.'
                 : 'Save a webhook URL to send a test.'}
           </span>
-          {checkError ? <span className="text-sm text-red-600 dark:text-red-400">{checkError}</span> : null}
           {testNotice ? <span className="text-sm text-emerald-700 dark:text-emerald-300">{testNotice}</span> : null}
           {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
         </div>
-      </div>
+      </ConfigSection>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
+        <p
+          className={
+            saveError
+              ? 'text-sm text-red-600 dark:text-red-400'
+              : dirty
+                ? 'text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
+                : saveNotice
+                  ? 'text-sm text-emerald-700 dark:text-emerald-300'
+                  : hintClass
+          }
+        >
+          {saveError
+            ? saveError
+            : dirty
+              ? 'Unsaved changes'
+              : saveNotice
+                ? saveNotice
+                : saved?.updatedAt
+                  ? `Saved ${formatCreatedAt(saved.updatedAt)}${saved.updatedByName ? ` by ${saved.updatedByName}` : ''}`
+                  : 'No unsaved changes'}
+        </p>
         <button
           type="submit"
-          disabled={busy}
+          disabled={!dirty || busy}
           className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
         >
           {busy ? 'Saving…' : 'Save'}
         </button>
-        {saveNotice ? <span className="text-sm text-emerald-700 dark:text-emerald-300">{saveNotice}</span> : null}
-        {saveError ? <span className="text-sm text-red-600 dark:text-red-400">{saveError}</span> : null}
-        {saved?.updatedAt ? (
-          <span className={hintClass}>
-            Saved {formatCreatedAt(saved.updatedAt)}
-            {saved.updatedByName ? ` by ${saved.updatedByName}` : ''}
-          </span>
-        ) : null}
       </div>
     </form>
   )

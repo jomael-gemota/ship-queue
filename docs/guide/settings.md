@@ -80,13 +80,15 @@ admin can change them.
 ## Cookie Jar
 
 Cookie Jar is a background worker that refreshes stored session cookies on a
-schedule (for example Seller Central Outdoor Equipped US). Settings only edits the **schedule**;
-the cookie value itself is never shown.
+schedule. Settings shows one cookie at a time. **Seller Central Outdoor Equipped US**
+is selected by default. Settings only edits the **schedule**; the cookie value
+itself is never shown.
 
 - **Enabled** — turns that job on or off.
 - **Name** — label in this list. Does not change which fetcher runs.
-- **Cron schedule** — five-field cron in **UTC**, for example `0 */6 * * *`
-  (every 6 hours).
+- **Cron schedule** — five-field cron in **Philippines time**, for example
+  `0 0,6,12,18 * * *` (12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM). Starting the
+  worker does not fetch immediately; the next run is the next one of those times.
 - **Cookie / Last success / Last run** — status only. A stored cookie means the
   worker has a value; the page does not display it.
 

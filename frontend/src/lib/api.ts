@@ -4,10 +4,12 @@ const TOKEN_KEY = 'sq_token'
 /** An Error subclass that also carries the `code` field from API error responses. */
 export class ApiError extends Error {
   code?: string
-  constructor(message: string, code?: string) {
+  body?: unknown
+  constructor(message: string, code?: string, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
+    this.body = body
   }
 }
 
@@ -57,7 +59,7 @@ async function authFormRequest<T>(endpoint: string, body: FormData): Promise<T> 
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: 'An error occurred' }))
-    throw new ApiError(error.message || `HTTP ${res.status}`, error.code)
+    throw new ApiError(error.message || `HTTP ${res.status}`, error.code, error)
   }
 
   return res.json()

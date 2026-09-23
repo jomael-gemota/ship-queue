@@ -228,7 +228,8 @@ export function HHActionRow({
     cells.forEach((cell, i) => {
       const t = n <= 1 ? 1 : i / (n - 1)
       cell.style.setProperty('--hh-t', t.toFixed(4))
-      cell.style.zIndex = String(n - i)
+      // Later cells slide farther left. Keep them above the cell they pass so the text is not covered.
+      cell.style.zIndex = String(i + 1)
     })
   })
 
@@ -1148,22 +1149,14 @@ export function HHBatchProgress({
 }) {
   if (orders.length === 0) return <HHSummaryDash />
   const stages = hhBatchProgress(orders)
-  const tooltip = stages
-    .map((stage) => {
-      const fail = stage.failed > 0 ? ` · ${stage.failed} failed` : ''
-      return `${stage.label} ${stage.done}/${stage.total}${fail}`
-    })
-    .join('\n')
   return (
-    <Tooltip content={tooltip}>
-      <HHProgressRail>
-        {(index) => {
-          const stage = stages[index]
-          const prev = index > 0 ? stages[index - 1] : undefined
-          return <HHProgressStation stage={stage} railTone={prev?.tone} />
-        }}
-      </HHProgressRail>
-    </Tooltip>
+    <HHProgressRail>
+      {(index) => {
+        const stage = stages[index]
+        const prev = index > 0 ? stages[index - 1] : undefined
+        return <HHProgressStation stage={stage} railTone={prev?.tone} />
+      }}
+    </HHProgressRail>
   )
 }
 

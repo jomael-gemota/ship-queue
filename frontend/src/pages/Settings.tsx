@@ -299,6 +299,7 @@ export default function Settings() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <div className="space-y-6">
       <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
         <div className="flex items-start gap-3 mb-4">
           <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
@@ -580,6 +581,8 @@ export default function Settings() {
           </>
         )}
       </section>
+      <CookieJarSection isAdmin={isAdmin} onError={setError} onSuccess={setSuccess} />
+      </div>
 
       <div className="space-y-6">
       {/* Dropbox connection — powers the Dropbox Fetcher page */}
@@ -787,7 +790,6 @@ export default function Settings() {
         </section>
 
         <DocTidySettingsCard isAdmin={isAdmin} />
-        <CookieJarSection isAdmin={isAdmin} onError={setError} onSuccess={setSuccess} />
       </div>
       </div>
     </div>
