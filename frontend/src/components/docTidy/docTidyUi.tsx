@@ -437,15 +437,25 @@ export function LiveReasoningSnippet({
 }) {
   const stream = useParseJobStream(jobId)
 
-  // Strip markdown symbols, punctuation runs, and extra whitespace, then take
-  // the last 4 meaningful words for a concise, readable snippet.
+  // Strip markdown, split into sentence-level segments, take the first 4 words
+  // of the most recent segment so the snippet always reads as a sentence opener
+  // ("Extracting line items from…") rather than a dangling tail.
   const cleaned = stream.thinking
-    .replace(/[#*`_~>|[\]()\\]/g, ' ') // strip markdown
+    .replace(/[#*`_~>|[\]()\\]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  const words = cleaned.split(' ').filter((w) => w.length > 1) // skip lone chars
-  const raw = words.slice(-4).join(' ')
-  const snippet = raw ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase() : ''
+
+  const segments = cleaned
+    .split(/(?:[.!?])\s+|\n+/)
+    .map((s) => s.replace(/[.!?,;:]+$/, '').trim())
+    .filter((s) => s.split(/\s+/).filter((w) => w.length > 1).length >= 2)
+
+  const lastSegment = segments[segments.length - 1] ?? cleaned
+  const words = lastSegment.split(/\s+/).filter((w) => w.length > 0)
+  const sliced = words.slice(0, 4).join(' ')
+  const snippet = sliced
+    ? sliced.charAt(0).toUpperCase() + sliced.slice(1).toLowerCase() + (words.length > 4 ? '…' : '')
+    : ''
 
   return (
     <button
