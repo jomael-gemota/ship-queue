@@ -180,12 +180,12 @@ function EditableTableGrid({
                   {table.columns.map((_, c) => (
                     <td
                       key={c}
-                      className="border-r border-[var(--bg-300)] px-2 py-1 last:border-r-0"
+                      className="border-r border-[var(--bg-300)] px-2 py-1 last:border-r-0 min-w-[120px]"
                     >
                       <input
                         value={row[c]}
                         onChange={(e) => updateCell(r, c, e.target.value)}
-                        className="w-full min-w-[60px] bg-transparent text-sm text-[var(--text-100)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] rounded px-1"
+                        className="w-full bg-transparent text-sm text-[var(--text-100)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] rounded px-1"
                       />
                     </td>
                   ))}
