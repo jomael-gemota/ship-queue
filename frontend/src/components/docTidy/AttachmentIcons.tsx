@@ -120,7 +120,7 @@ export default function AttachmentIcons({
                   onClick={() => onOpenJob(job._id)}
                   className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                 >
-                  <SuccessIcon className="h-4 w-4 shrink-0" />
+                  <SuccessIcon className="h-5 w-5 shrink-0" />
                   View Tidy Reasoning
                 </button>
               ) : (
