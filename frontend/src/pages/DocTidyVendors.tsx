@@ -11,6 +11,7 @@ import { diffOutputs } from '../lib/correctionDiff'
 import {
   normalizeVendorName,
   vendorSamples,
+  type AgentTable,
   type DocTidyCorrection,
   type DocTidyVendor,
 } from '../types/docTidy'
@@ -358,6 +359,153 @@ function VendorEditor({
 /** How many changed fields a correction shows before collapsing the remainder. */
 const CHANGE_PREVIEW_LIMIT = 5
 
+/* ── Shared change-entry type ── */
+
+/**
+ * One entry in a correction diff.
+ * - `kind === 'value'`  (default): a field's value changed.
+ * - `kind === 'rename'`: a field was renamed; `renamedTo` holds the new name
+ *   and `sharedValue` holds the value that moved unchanged into the new key.
+ */
+type DiffChange =
+  | { kind?: 'value'; field: string; before: string; after: string }
+  | { kind: 'rename'; field: string; renamedTo: string; sharedValue: string; before: string; after: string }
+
+/**
+ * Post-processes a raw `diffOutputs` result to merge rename pairs.
+ *
+ * A rename is detected when a path appears as deleted (before=value, after='')
+ * AND a *different* path appears as added (before='', after=same_value).
+ * Those two entries are replaced with a single `{ kind:'rename' }` entry placed
+ * where the deleted entry was, and the added entry is suppressed.
+ */
+function mergeRenames(raw: Array<{ field: string; before: string; after: string }>): DiffChange[] {
+  // Build a map from value → the field name that added it.
+  const addedByValue = new Map<string, string>()
+  for (const c of raw) {
+    if (c.before === '' && c.after !== '') {
+      addedByValue.set(c.after, c.field)
+    }
+  }
+
+  const suppressedFields = new Set<string>()
+  const result: DiffChange[] = []
+
+  for (const c of raw) {
+    if (suppressedFields.has(c.field)) continue
+
+    if (c.before !== '' && c.after === '') {
+      // Potential "deleted" half of a rename — check whether the value was re-added elsewhere.
+      const newFieldName = addedByValue.get(c.before)
+      if (newFieldName && newFieldName !== c.field) {
+        suppressedFields.add(newFieldName) // suppress the matching "added" entry
+        result.push({
+          kind: 'rename',
+          field: c.field,
+          renamedTo: newFieldName,
+          sharedValue: c.before,
+          before: '',
+          after: '',
+        })
+        continue
+      }
+    }
+
+    result.push({ ...c })
+  }
+
+  return result
+}
+
+/** Normalise a string for fuzzy column↔field matching. */
+const _TNORM = (s: string) => String(s).toLowerCase().replace(/[_\-\s]+/g, '')
+
+/**
+ * Find the value of a JSON field whose normalised key matches `colName`.
+ * Returns `null` when no matching key exists (not the same as empty string).
+ */
+function lookupColValue(item: Record<string, unknown>, colName: string): string | null {
+  const target = _TNORM(colName)
+  for (const [k, v] of Object.entries(item)) {
+    if (_TNORM(k) !== target) continue
+    if (v === null || v === undefined) return ''
+    if (!Array.isArray(v) && typeof v !== 'object') return String(v)
+  }
+  return null   // no matching key found
+}
+
+/**
+ * Produce a flat before→after diff for a tabular correction by comparing
+ * `correctedTables` row-by-row against the original line items (or top-level
+ * fields) from `originalOutput`.
+ *
+ * Rules:
+ * - If a column name can't be matched to any field in the original JSON,
+ *   skip it (we have no "before" to compare against).
+ * - Document-level columns (those found on `originalOutput` directly, not in
+ *   any line-item row) are deduplicated so they appear once, not per-row.
+ * - Only changed cells are returned.
+ */
+function diffTabularCorrection(
+  originalOutput: Record<string, unknown> | null | undefined,
+  correctedTables: AgentTable[]
+): Array<{ field: string; before: string; after: string }> {
+  if (!originalOutput || !correctedTables.length) return []
+
+  // Try to find the line-items array in the original JSON.
+  const ARRAY_KEYS = ['line_items', 'items', 'products', 'lineItems', 'order_items', 'orderItems']
+  let lineItems: Record<string, unknown>[] = []
+  for (const key of ARRAY_KEYS) {
+    const val = originalOutput[key]
+    if (Array.isArray(val) && val.length > 0) {
+      lineItems = val as Record<string, unknown>[]
+      break
+    }
+  }
+
+  const changes: Array<{ field: string; before: string; after: string }> = []
+  const multiRow = correctedTables.some((t) => t.rows.length > 1)
+
+  for (const table of correctedTables) {
+    const tablePrefix = correctedTables.length > 1 && table.title ? `${table.title} · ` : ''
+    const docLevelSeen = new Set<number>() // column indices already emitted as document-level
+
+    for (let ci = 0; ci < table.columns.length; ci++) {
+      const colName = table.columns[ci]
+
+      // Determine whether this is a document-level or line-item-level field.
+      const isDocLevel =
+        lookupColValue(originalOutput, colName) !== null &&
+        (lineItems.length === 0 || lineItems.every((r) => lookupColValue(r, colName) === null))
+
+      if (isDocLevel) {
+        // Document-level — compare once against originalOutput.
+        const oldVal = lookupColValue(originalOutput, colName)!
+        // Use the first row's corrected value (should be the same across all rows).
+        const newVal = String(table.rows[0]?.[ci] ?? '').trim()
+        if (oldVal !== newVal && !docLevelSeen.has(ci)) {
+          docLevelSeen.add(ci)
+          changes.push({ field: `${tablePrefix}${colName}`, before: oldVal, after: newVal })
+        }
+        continue
+      }
+
+      // Line-item level — compare each row.
+      for (let ri = 0; ri < table.rows.length; ri++) {
+        const origRow = lineItems[ri] ?? {}
+        const newVal = String(table.rows[ri]?.[ci] ?? '').trim()
+        const oldVal = lookupColValue(origRow, colName)
+        if (oldVal === null) continue   // column not found in original row — skip
+        if (oldVal === newVal) continue // no change
+        const rowSuffix = multiRow ? ` (row ${ri + 1})` : ''
+        changes.push({ field: `${tablePrefix}${colName}${rowSuffix}`, before: oldVal, after: newVal })
+      }
+    }
+  }
+
+  return changes
+}
+
 function formatWhen(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -385,13 +533,40 @@ function CorrectionItem({
 }) {
   const [showAll, setShowAll] = useState(false)
 
-  // A correction saved before the agent's baseline was recorded has nothing to
-  // diff against; flattening `null` would mark every field as changed.
-  const hasBaseline = Boolean(correction.originalOutput)
-  const changes = useMemo(
-    () =>
-      hasBaseline ? diffOutputs(correction.originalOutput, correction.correctedOutput) : [],
-    [hasBaseline, correction.originalOutput, correction.correctedOutput]
+  // Tabular corrections store the full corrected table in correctedTables.
+  // Their correctedOutput is { tables: [...] } which has a completely different
+  // schema from originalOutput (the agent's JSON), so running diffOutputs on them
+  // produces nothing useful — ALL paths appear changed (schema mismatch).
+  // Detect tabular and take a different display path.
+  const isTabular =
+    correction.mode === 'tabular' &&
+    Array.isArray(correction.correctedTables) &&
+    correction.correctedTables.length > 0
+
+  // For JSON corrections: a valid baseline must be a non-empty object (not {} or null).
+  const hasBaseline =
+    !isTabular &&
+    Boolean(
+      correction.originalOutput &&
+        typeof correction.originalOutput === 'object' &&
+        Object.keys(correction.originalOutput).length > 0
+    )
+
+  const changes = useMemo<DiffChange[]>(
+    () => {
+      if (isTabular) {
+        return diffTabularCorrection(
+          correction.originalOutput,
+          correction.correctedTables as AgentTable[]
+        )
+      }
+      if (!hasBaseline) return []
+      const raw = diffOutputs(correction.originalOutput, correction.correctedOutput)
+        .map(({ path, before, after }) => ({ field: path, before, after }))
+      return mergeRenames(raw)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isTabular, hasBaseline, correction.originalOutput, correction.correctedOutput, correction.correctedTables]
   )
 
   const shown = showAll ? changes : changes.slice(0, CHANGE_PREVIEW_LIMIT)
@@ -421,21 +596,32 @@ function CorrectionItem({
         </p>
       )}
 
-      {/* Field-level changes */}
+      {/* Field-level changes — same flat before→after format for both JSON and tabular corrections */}
       {changes.length > 0 ? (
         <>
           <ul className="mt-2 space-y-1">
-            {shown.map((change) => (
-              <li key={change.path} className="text-[11px] leading-relaxed">
-                <span className="font-mono text-[var(--text-200)]">{change.path}</span>
-                <span className="mx-1.5 text-[var(--text-200)]">·</span>
-                <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
-                  {change.before || '—'}
-                </span>
-                <span className="mx-1.5 text-[var(--text-200)]">→</span>
-                <span className="font-mono text-emerald-700 dark:text-emerald-400">
-                  {change.after || '—'}
-                </span>
+            {shown.map((change, i) => (
+              <li key={`${change.field}-${i}`} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-[11px]">
+                {change.kind === 'rename' ? (
+                  <>
+                    <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">{change.field}</span>
+                    <span className="text-[var(--text-200)]">→</span>
+                    <span className="font-mono text-emerald-700 dark:text-emerald-400">{change.renamedTo}</span>
+                    <span className="text-[var(--text-200)] italic">(field renamed · value: {change.sharedValue})</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-[var(--text-100)]">{change.field}</span>
+                    <span className="text-[var(--text-200)]">·</span>
+                    <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
+                      {change.before || '—'}
+                    </span>
+                    <span className="text-[var(--text-200)]">→</span>
+                    <span className="font-mono text-emerald-700 dark:text-emerald-400">
+                      {change.after || '—'}
+                    </span>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -452,9 +638,11 @@ function CorrectionItem({
         </>
       ) : (
         <p className="mt-2 text-[11px] italic text-[var(--text-200)]">
-          {hasBaseline
-            ? 'No field differences — saved for the instruction above.'
-            : "The agent's original output was not recorded, so there is nothing to compare."}
+          {isTabular
+            ? 'No cell differences detected between the original and corrected values.'
+            : hasBaseline
+              ? 'No field differences — saved for the instruction above.'
+              : "The agent's original output was not recorded, so there is nothing to compare."}
         </p>
       )}
     </li>

@@ -465,7 +465,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   // ── Line item fields ──
   { id: 'liSku',             section: 'lineItem',  label: 'SKU',           description: 'Part number, SKU, or item code',               defaultVisible: true,  mono: true    },
   { id: 'liModel',           section: 'lineItem',  label: 'Model #',       description: 'Model number, style number, or product code',  defaultVisible: true,  mono: true    },
-  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: true                 },
+  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: false                },
   { id: 'liQuantity',        section: 'lineItem',  label: 'Qty',           description: 'Quantity ordered',                             defaultVisible: true,  numeric: true },
   { id: 'liUnitPrice',       section: 'lineItem',  label: 'Item Cost',     description: 'Unit price, item cost, or list price',         defaultVisible: true,  numeric: true },
   { id: 'liDiscountedPrice', section: 'lineItem',  label: 'Disc. Price',   description: 'Price after discount applied',                 defaultVisible: true,  numeric: true },
@@ -504,6 +504,29 @@ export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolea
 export function saveAuditColumnVisibility(visibility: Record<InvoiceAuditColumnId, boolean>): void {
   try {
     localStorage.setItem(AUDIT_COL_STORAGE_KEY, JSON.stringify(visibility))
+  } catch {
+    // localStorage can be blocked in some environments — silently ignore.
+  }
+}
+
+const AUDIT_COLLAPSED_WEEKS_KEY = 'docTidy.invoiceAudit.collapsedWeeks'
+
+/** Load the set of collapsed week-start keys from localStorage. */
+export function loadCollapsedWeeks(): Set<string> {
+  try {
+    const raw = localStorage.getItem(AUDIT_COLLAPSED_WEEKS_KEY)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw) as string[]
+    return new Set(Array.isArray(arr) ? arr : [])
+  } catch {
+    return new Set()
+  }
+}
+
+/** Persist the set of collapsed week-start keys to localStorage. */
+export function saveCollapsedWeeks(keys: Set<string>): void {
+  try {
+    localStorage.setItem(AUDIT_COLLAPSED_WEEKS_KEY, JSON.stringify(Array.from(keys)))
   } catch {
     // localStorage can be blocked in some environments — silently ignore.
   }

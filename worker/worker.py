@@ -75,6 +75,23 @@ MONGODB_DB = os.environ.get("MONGODB_DB", "ship-queue")
 WORKER_TOKEN = os.environ.get("DOC_TIDY_WORKER_TOKEN", "")
 RECONNECT_DELAY = 5  # seconds between reconnect attempts
 
+# Maximum number of jobs that may be running their AI inference phase at the same
+# time.  The Anthropic API (and most OpenAI-compatible endpoints) reject requests
+# beyond a concurrent-run quota; set this comfortably below that limit.
+# Override via MAX_CONCURRENT_JOBS env var (e.g. set to 8 if your API tier allows
+# more, or 1 to serialize completely).
+MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", 5))
+
+# Semaphore is created once and shared across all tasks in the event loop.
+_job_semaphore: asyncio.Semaphore | None = None
+
+
+def get_job_semaphore() -> asyncio.Semaphore:
+    global _job_semaphore
+    if _job_semaphore is None:
+        _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
+    return _job_semaphore
+
 
 def get_motor_client() -> motor.motor_asyncio.AsyncIOMotorClient:
     return motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
@@ -236,23 +253,34 @@ async def process_job(
         output_buffer = ""
         saw_reasoning = False
 
-        async for chunk in stream_tidy(
-            document_text, examples=examples, vendor_sku_samples=vendor_sku_samples
-        ):
-            token_type_str: str = (
-                "thinking" if chunk.token_type == TokenType.THINKING else "output"
+        # Acquire the semaphore only for the AI inference phase so that at most
+        # MAX_CONCURRENT_JOBS documents are hitting the API at the same time.
+        # The PDF fetch and text-extraction steps above run freely in parallel;
+        # they are cheap I/O and do not contribute to the Anthropic concurrent-run
+        # quota.
+        async with get_job_semaphore():
+            logger.info(
+                "Job %s: acquired inference slot (max %d concurrent)",
+                job_id,
+                MAX_CONCURRENT_JOBS,
             )
-            await send({
-                "type": "token",
-                "jobId": job_id,
-                "tokenType": token_type_str,
-                "content": chunk.content,
-            })
+            async for chunk in stream_tidy(
+                document_text, examples=examples, vendor_sku_samples=vendor_sku_samples
+            ):
+                token_type_str: str = (
+                    "thinking" if chunk.token_type == TokenType.THINKING else "output"
+                )
+                await send({
+                    "type": "token",
+                    "jobId": job_id,
+                    "tokenType": token_type_str,
+                    "content": chunk.content,
+                })
 
-            if chunk.token_type == TokenType.OUTPUT:
-                output_buffer += chunk.content
-            else:
-                saw_reasoning = True
+                if chunk.token_type == TokenType.OUTPUT:
+                    output_buffer += chunk.content
+                else:
+                    saw_reasoning = True
 
         if saw_reasoning:
             await step_done(
@@ -343,7 +371,13 @@ async def process_job(
         )
         result_table: dict | None = None
         try:
-            result_table = await generate_table_data(result_json)
+            async with get_job_semaphore():
+                logger.info(
+                    "Job %s: acquired inference slot for table pass (max %d concurrent)",
+                    job_id,
+                    MAX_CONCURRENT_JOBS,
+                )
+                result_table = await generate_table_data(result_json)
             await step_done(
                 "Tell the user the table view is ready.",
                 "Done — the table view is ready too.",

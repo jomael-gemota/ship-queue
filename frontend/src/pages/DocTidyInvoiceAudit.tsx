@@ -25,6 +25,8 @@ import {
   PAGE_SIZE_OPTIONS,
   loadAuditColumnVisibility,
   saveAuditColumnVisibility,
+  loadCollapsedWeeks,
+  saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
   type DocTidyEvent,
@@ -48,6 +50,85 @@ import {
 /** Strip common currency prefixes/symbols for cleaner display. */
 function formatTotal(raw: string): string {
   return raw.trim()
+}
+
+/* ──────────────────────── Dynamic / extracted-field column types ── */
+
+/**
+ * A column discovered at runtime from the `jsonOutput` of loaded parse jobs —
+ * not one of the statically-declared `INVOICE_AUDIT_COLUMNS`.
+ */
+interface DynamicAuditColumn {
+  type: 'dynamic'
+  /** Stable id for React keys – prefixed `dyn_doc_` or `dyn_li_`. */
+  id: string
+  /** The exact key as it appears in `jsonOutput` (or a line-item object). */
+  key: string
+  /** Human-readable label derived from the key. */
+  label: string
+  section: 'document' | 'lineItem'
+}
+
+type AnyAuditColumn = InvoiceAuditColumn | DynamicAuditColumn
+
+/** Type guard: is this a dynamic (agent-extracted) column? */
+function isDynCol(col: AnyAuditColumn): col is DynamicAuditColumn {
+  return (col as DynamicAuditColumn).type === 'dynamic'
+}
+
+/* ── Helpers for building the extracted-fields list ── */
+
+const _NORM = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+
+/** Normalised JSON keys already handled by a static InvoiceAuditColumn alias. */
+const KNOWN_DOC_JSON_KEYS = new Set(([
+  // vendorName
+  'vendor_name', 'vendor', 'supplier', 'company', 'from',
+  // documentType
+  'document_type', 'type', 'doc_type',
+  // invoiceNumber
+  'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice',
+  // poNumber
+  'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no',
+  // orderDate
+  'order_date', 'date_of_order', 'order date',
+  // invoiceDate
+  'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date',
+  // terms
+  'payment_terms', 'terms', 'net_terms', 'payment terms',
+  // trackingNumber
+  'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number',
+  // totalValue
+  'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due',
+] as const).map(_NORM))
+
+/** Normalised line-item keys already handled by a static `li*` column alias. */
+const KNOWN_LI_JSON_KEYS = new Set(([
+  'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number',
+  'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no',
+  'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name',
+  'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount',
+  'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price',
+  'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price',
+  'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc',
+  'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount',
+  'uom', 'unit', 'unit_of_measure', 'unit_measure',
+  'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst',
+  'notes', 'note', 'remarks', 'comments', 'comment',
+] as const).map(_NORM))
+
+/** Normalised keys that are the line-items array itself — skip at document level. */
+const LINE_ITEMS_ARRAY_KEYS = new Set(
+  ['line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'].map(_NORM)
+)
+
+/** Convert a snake/kebab-case raw key to a Title Case label. */
+function keyToLabel(key: string): string {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function formatBytes(bytes: number): string {
@@ -152,14 +233,24 @@ function DraggableTh({
 
 /* ──────────────────────────────── Column Settings Drawer ── */
 
+type ExtractedFieldInfo = { key: string; label: string; section: 'document' | 'lineItem' }
+
 function ColumnSettingsDrawer({
   visibility,
   onChange,
   onClose,
+  extractedDocFields,
+  extractedLiFields,
+  dynamicVisibility,
+  onDynamicChange,
 }: {
   visibility: Record<InvoiceAuditColumnId, boolean>
   onChange: (next: Record<InvoiceAuditColumnId, boolean>) => void
   onClose: () => void
+  extractedDocFields: ExtractedFieldInfo[]
+  extractedLiFields: ExtractedFieldInfo[]
+  dynamicVisibility: Record<string, boolean>
+  onDynamicChange: (next: Record<string, boolean>) => void
 }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -174,10 +265,14 @@ function ColumnSettingsDrawer({
       INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
     ) as Record<InvoiceAuditColumnId, boolean>
     onChange(defaults)
+    // Also clear all dynamic (extracted) column visibility
+    onDynamicChange({})
   }
 
-  const docCols   = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
-  const liCols    = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+  const docCols = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
+  const liCols  = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+
+  const hasExtracted = extractedDocFields.length > 0 || extractedLiFields.length > 0
 
   const ColRow = ({ col }: { col: (typeof INVOICE_AUDIT_COLUMNS)[number] }) => (
     <li>
@@ -195,6 +290,27 @@ function ColumnSettingsDrawer({
       </label>
     </li>
   )
+
+  const DynColRow = ({ field }: { field: ExtractedFieldInfo }) => {
+    // Use the full column id (dyn_doc_<key> or dyn_li_<key>) as the visibility key.
+    const colId = field.section === 'document' ? `dyn_doc_${field.key}` : `dyn_li_${field.key}`
+    return (
+      <li>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+          <input
+            type="checkbox"
+            checked={dynamicVisibility[colId] ?? false}
+            onChange={() => onDynamicChange({ ...dynamicVisibility, [colId]: !(dynamicVisibility[colId] ?? false) })}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--text-100)]">{field.label}</p>
+            <p className="text-[11px] text-[var(--text-200)] font-mono">{field.key}</p>
+          </div>
+        </label>
+      </li>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -254,6 +370,49 @@ function ColumnSettingsDrawer({
               {liCols.map((col) => <ColRow key={col.id} col={col} />)}
             </ul>
           </div>
+
+          {/* ── Extracted fields section ── */}
+          {hasExtracted && (
+            <div>
+              {/* Divider */}
+              <div className="border-t border-[var(--bg-300)] mb-4" />
+
+              <div className="flex items-center gap-2 mb-1">
+                {/* Bolt / extracted icon */}
+                <svg className="h-3.5 w-3.5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                  Extracted fields
+                </p>
+              </div>
+              <p className="text-[11px] text-[var(--text-200)] mb-3 pl-1 leading-relaxed">
+                Additional fields the Tidy Agent found in your documents. Unchecked by default.
+              </p>
+
+              {extractedDocFields.length > 0 && (
+                <div className={extractedLiFields.length > 0 ? 'mb-4' : ''}>
+                  <p className="text-[11px] font-semibold text-[var(--text-200)] mb-1 pl-1 uppercase tracking-wide">
+                    Document level
+                  </p>
+                  <ul className="space-y-1">
+                    {extractedDocFields.map((f) => <DynColRow key={f.key} field={f} />)}
+                  </ul>
+                </div>
+              )}
+
+              {extractedLiFields.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-[var(--text-200)] mb-1 pl-1 uppercase tracking-wide">
+                    Line item level
+                  </p>
+                  <ul className="space-y-1">
+                    {extractedLiFields.map((f) => <DynColRow key={f.key} field={f} />)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -488,6 +647,40 @@ function isLineItemCol(id: InvoiceAuditColumnId): boolean {
   return id.startsWith('li')
 }
 
+/* ─────────────────────────── Week-grouping helpers ── */
+
+/**
+ * Returns the ISO date string (YYYY-MM-DD) for the Monday that starts the
+ * calendar week containing `dateStr`. Returns `null` if `dateStr` is not
+ * parseable.
+ */
+function getWeekStartKey(dateStr: string): string | null {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return null
+  const day = d.getDay() // 0=Sun … 6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diffToMonday)
+  const yyyy = monday.getFullYear()
+  const mm = String(monday.getMonth() + 1).padStart(2, '0')
+  const dd = String(monday.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/**
+ * Formats a week-start ISO key (YYYY-MM-DD) as a human-readable range:
+ * "Mon Sep 21 – Sun Sep 27, 2026".
+ */
+function formatWeekLabel(weekKey: string): string {
+  const monday = new Date(`${weekKey}T00:00:00`)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  return `${fmt(monday)} – ${fmt(sunday)}, ${sunday.getFullYear()}`
+}
+
 /* ─────────────────────────── Confirm Delete Dialog ── */
 
 function ConfirmDeleteDialog({
@@ -596,15 +789,32 @@ export default function DocTidyInvoiceAudit() {
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
+  /** Week keys (YYYY-MM-DD of Monday) whose rows are currently collapsed. Persisted to localStorage. */
+  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
+  /** Visibility of dynamically-discovered extra columns (keyed by raw JSON key). */
+  const [dynamicColVisibility, setDynamicColVisibility] = useState<Record<string, boolean>>({})
+
+  /* Load/reset dynamic column visibility whenever the active workspace changes. */
+  useEffect(() => {
+    if (!activeWorkspace) { setDynamicColVisibility({}); return }
+    const storageKey = `docTidy.invoiceAudit.dynamicColumns.${activeWorkspace._id}`
+    try {
+      const raw = localStorage.getItem(storageKey)
+      setDynamicColVisibility(raw ? (JSON.parse(raw) as Record<string, boolean>) : {})
+    } catch {
+      setDynamicColVisibility({})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?._id])
 
   /* ── Shared column ordering (server-persisted, real-time via SSE) ── */
-  const [auditColOrder, setAuditColOrder] = useState<InvoiceAuditColumnId[]>(DEFAULT_AUDIT_COL_ORDER)
+  const [auditColOrder, setAuditColOrder] = useState<string[]>(DEFAULT_AUDIT_COL_ORDER)
   const [emailColOrder, setEmailColOrder] = useState<WorkspaceEmailColumnId[]>(DEFAULT_EMAIL_COL_ORDER)
   /** State tracks both source and hover target so `isDragging` is readable in render. */
-  const [auditDragSrc, setAuditDragSrc] = useState<InvoiceAuditColumnId | null>(null)
-  const [auditDragTarget, setAuditDragTarget] = useState<InvoiceAuditColumnId | null>(null)
+  const [auditDragSrc, setAuditDragSrc] = useState<string | null>(null)
+  const [auditDragTarget, setAuditDragTarget] = useState<string | null>(null)
   const [emailDragSrc, setEmailDragSrc] = useState<WorkspaceEmailColumnId | null>(null)
   const [emailDragTarget, setEmailDragTarget] = useState<WorkspaceEmailColumnId | null>(null)
 
@@ -908,8 +1118,8 @@ export default function DocTidyInvoiceAudit() {
         const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
 
         if (auditColumnOrder && auditColumnOrder.length > 0) {
-          const valid = auditColumnOrder.filter((id): id is InvoiceAuditColumnId =>
-            INVOICE_AUDIT_COLUMNS.some((c) => c.id === id)
+          const valid = auditColumnOrder.filter(
+            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
           )
           const merged = [...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))]
           setAuditColOrder(merged)
@@ -936,7 +1146,7 @@ export default function DocTidyInvoiceAudit() {
 
   /** Persist column orders to the server (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: InvoiceAuditColumnId[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
+    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
       void authApi.put('/doc-tidy/ui-prefs', {
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
@@ -1015,7 +1225,9 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
+            const valid = event.auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
@@ -1046,7 +1258,9 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'ui_prefs') {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
-            const valid = event.auditColumnOrder.filter((id): id is InvoiceAuditColumnId => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id))
+            const valid = event.auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
             setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
@@ -1251,12 +1465,113 @@ export default function DocTidyInvoiceAudit() {
     saveAuditColumnVisibility(next)
   }
 
-  const visibleCols = useMemo(
-    () =>
-      auditColOrder
-        .map((id) => INVOICE_AUDIT_COLUMNS.find((c) => c.id === id))
-        .filter((c): c is InvoiceAuditColumn => c !== undefined && colVisibility[c.id]),
-    [auditColOrder, colVisibility]
+  const handleDynamicColVisChange = (next: Record<string, boolean>) => {
+    // The keys in `next` are full column ids (dyn_doc_<key> or dyn_li_<key>).
+    // Build the set of checked dynamic ids to sync into auditColOrder.
+    const checkedDynIds = new Set(
+      Object.entries(next)
+        .filter(([id, checked]) => checked && /^dyn_(doc|li)_/.test(id))
+        .map(([id]) => id)
+    )
+
+    // Sync auditColOrder: keep static cols + checked dynamic cols, append any new ones at end
+    setAuditColOrder((prev) => {
+      const withoutUnchecked = prev.filter((id) => !/^dyn_(doc|li)_/.test(id) || checkedDynIds.has(id))
+      for (const id of checkedDynIds) {
+        if (!withoutUnchecked.includes(id)) withoutUnchecked.push(id)
+      }
+      saveColOrdersRef.current(withoutUnchecked, emailColOrderRef.current, pdfColOrderRef.current)
+      return withoutUnchecked
+    })
+
+    setDynamicColVisibility(next)
+    if (activeWorkspace) {
+      try {
+        localStorage.setItem(`docTidy.invoiceAudit.dynamicColumns.${activeWorkspace._id}`, JSON.stringify(next))
+      } catch { /* ignore */ }
+    }
+  }
+
+  /** Persist collapsed weeks to localStorage whenever the set changes. */
+  useEffect(() => {
+    saveCollapsedWeeks(collapsedWeeks)
+  }, [collapsedWeeks])
+
+  /**
+   * Scan the currently-loaded jobs for JSON keys not covered by any static column.
+   * Returns two arrays: extra document-level fields and extra line-item-level fields.
+   */
+  const extractedFields = useMemo<{ doc: ExtractedFieldInfo[]; lineItem: ExtractedFieldInfo[] }>(() => {
+    const docKeys = new Map<string, string>()  // normKey → first rawKey seen
+    const liKeys  = new Map<string, string>()
+
+    for (const job of jobs) {
+      const json = job.jsonOutput
+      if (!json || typeof json !== 'object') continue
+
+      for (const [rawKey, val] of Object.entries(json)) {
+        const n = _NORM(rawKey)
+        if (LINE_ITEMS_ARRAY_KEYS.has(n)) {
+          // This is a line-items array — scan its item keys
+          if (Array.isArray(val)) {
+            for (const item of val) {
+              if (item && typeof item === 'object' && !Array.isArray(item)) {
+                for (const liRawKey of Object.keys(item as Record<string, unknown>)) {
+                  const ln = _NORM(liRawKey)
+                  if (!KNOWN_LI_JSON_KEYS.has(ln) && !liKeys.has(ln)) {
+                    liKeys.set(ln, liRawKey)
+                  }
+                }
+              }
+            }
+          }
+        } else if (
+          !KNOWN_DOC_JSON_KEYS.has(n) &&
+          val !== null &&
+          val !== undefined &&
+          !Array.isArray(val) &&
+          typeof val !== 'object'
+        ) {
+          if (!docKeys.has(n)) docKeys.set(n, rawKey)
+        }
+      }
+    }
+
+    return {
+      doc:      Array.from(docKeys.values()).map((key) => ({ key, label: keyToLabel(key), section: 'document' as const })),
+      lineItem: Array.from(liKeys.values()).map((key) => ({ key, label: keyToLabel(key), section: 'lineItem' as const })),
+    }
+  }, [jobs])
+
+  const visibleCols = useMemo<AnyAuditColumn[]>(
+    () => {
+      const staticColById = new Map(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c]))
+      const dynDocByKey  = new Map(extractedFields.doc.map((f) => [f.key, f]))
+      const dynLiByKey   = new Map(extractedFields.lineItem.map((f) => [f.key, f]))
+      const result: AnyAuditColumn[] = []
+
+      for (const id of auditColOrder) {
+        if (id.startsWith('dyn_doc_')) {
+          const key = id.slice('dyn_doc_'.length)
+          const f = dynDocByKey.get(key)
+          if (f && (dynamicColVisibility[id] ?? false)) {
+            result.push({ type: 'dynamic', id, key, label: f.label, section: 'document' })
+          }
+        } else if (id.startsWith('dyn_li_')) {
+          const key = id.slice('dyn_li_'.length)
+          const f = dynLiByKey.get(key)
+          if (f && (dynamicColVisibility[id] ?? false)) {
+            result.push({ type: 'dynamic', id, key, label: f.label, section: 'lineItem' })
+          }
+        } else {
+          const col = staticColById.get(id as InvoiceAuditColumnId)
+          if (col && colVisibility[col.id]) result.push(col)
+        }
+      }
+
+      return result
+    },
+    [auditColOrder, colVisibility, extractedFields, dynamicColVisibility]
   )
 
   /** Email columns in user-defined order. */
@@ -1358,7 +1673,14 @@ export default function DocTidyInvoiceAudit() {
           const item = rowItems[itemIdx]
           const row: Record<string, string> = {}
           for (const col of visibleCols) {
-            if (isLineItemCol(col.id)) {
+            if (isDynCol(col)) {
+              // Dynamic extracted column — read the raw JSON key directly
+              const val = col.section === 'lineItem'
+                ? (item as Record<string, unknown> | null)?.[col.key]
+                : (job.jsonOutput ?? {})[col.key]
+              row[col.label] = (val !== null && val !== undefined && !Array.isArray(val) && typeof val !== 'object')
+                ? String(val) : ''
+            } else if (isLineItemCol(col.id)) {
               row[col.label] = item ? liField(item as Record<string, unknown>, ...liFieldKeys(col.id)) : ''
             } else {
               row[col.label] = docFieldStr(col.id, job)
@@ -2630,7 +2952,7 @@ export default function DocTidyInvoiceAudit() {
                         <DraggableTh
                           key={col.id}
                           label={col.label}
-                          align={col.numeric ? 'right' : 'left'}
+                          align={!isDynCol(col) && col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
                           onDragStart={() => setAuditDragSrc(col.id)}
@@ -2687,64 +3009,179 @@ export default function DocTidyInvoiceAudit() {
                         </td>
                       </tr>
                     ) : (
-                      /* ── Flattened rows: one row per line item, alternating per row ── */
+                      /* ── Flattened rows grouped by invoice-date week (Mon–Sun) ── */
                       (() => {
-                        let rowIdx = 0
-                        return jobs.flatMap((job) => {
+                        // 1. Build week buckets
+                        const weekMap = new Map<string, ParseJobListItem[]>()
+                        const UNKNOWN_KEY = '__unknown__'
+                        for (const job of jobs) {
                           const json = job.jsonOutput ?? null
-                          const lineItems = extractJsonArray(
-                            json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
-                          )
-                          const rowItems: (Record<string, unknown> | null)[] =
-                            lineItems.length > 0 ? lineItems : [null]
+                          const invDateStr = extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+                          const key = getWeekStartKey(invDateStr) ?? UNKNOWN_KEY
+                          if (!weekMap.has(key)) weekMap.set(key, [])
+                          weekMap.get(key)!.push(job)
+                        }
 
-                          return rowItems.map((item, itemIdx) => {
-                            const isEven = rowIdx % 2 === 0
-                            const rowKey = `${job._id}-${itemIdx}`
-                            const isSelected = selectedRowKeys.has(rowKey)
-                            rowIdx++
-                            return (
-                              <tr
-                                key={rowKey}
-                                className={`transition-colors align-middle ${
-                                  isSelected
-                                    ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                                    : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
-                                }`}
-                              >
-                                {/* Checkbox — one per line-item row */}
-                                <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggleAuditRow(rowKey)}
-                                    aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
-                                    className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
-                                  />
-                                </td>
-                                {visibleCols.map((col) => (
-                                  <td
-                                    key={col.id}
-                                    className={[
-                                      'px-2.5 py-1 text-[11px] whitespace-nowrap',
-                                      col.numeric ? 'text-right tabular-nums' : '',
-                                      col.mono ? 'font-mono' : '',
-                                      // Column-level drag highlight
-                                      auditDragSrc === col.id
-                                        ? 'bg-sky-100/70 dark:bg-sky-500/15'
-                                        : auditDragTarget === col.id
-                                          ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
-                                          : '',
-                                    ].join(' ')}
-                                  >
-                                    {isLineItemCol(col.id)
-                                      ? liCellFor(col.id, item)
-                                      : docCellFor(col.id, job)}
-                                  </td>
-                                ))}
-                              </tr>
-                            )
+                        // 2. Sort weeks newest-first; unknown always last
+                        const sortedKeys = Array.from(weekMap.keys()).sort((a, b) => {
+                          if (a === UNKNOWN_KEY) return 1
+                          if (b === UNKNOWN_KEY) return -1
+                          return b.localeCompare(a)
+                        })
+
+                        // 3. Render each group
+                        let rowIdx = 0
+                        const totalCols = visibleCols.length + 1 // +1 for checkbox col
+                        return sortedKeys.flatMap((weekKey) => {
+                          const groupJobs = weekMap.get(weekKey)!
+                          const isCollapsed = collapsedWeeks.has(weekKey)
+                          const label = weekKey === UNKNOWN_KEY
+                            ? 'Unknown date'
+                            : formatWeekLabel(weekKey)
+
+                          // Compute all row keys for this group (for select-all)
+                          const groupRowKeys = groupJobs.flatMap((j) => {
+                            const li = extractJsonArray(j.jsonOutput ?? null, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+                            const count = li.length > 0 ? li.length : 1
+                            return Array.from({ length: count }, (_, i) => `${j._id}-${i}`)
                           })
+                          const groupRowCount = groupRowKeys.length
+                          const allGroupSelected = groupRowCount > 0 && groupRowKeys.every((k) => selectedRowKeys.has(k))
+                          const someGroupSelected = groupRowKeys.some((k) => selectedRowKeys.has(k))
+
+                          const toggleWeek = () => setCollapsedWeeks((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(weekKey)) next.delete(weekKey)
+                            else next.add(weekKey)
+                            return next
+                          })
+
+                          const toggleGroupSelection = (e: React.MouseEvent) => {
+                            e.stopPropagation()
+                            setSelectedRowKeys((prev) => {
+                              const next = new Set(prev)
+                              if (allGroupSelected) {
+                                for (const k of groupRowKeys) next.delete(k)
+                              } else {
+                                for (const k of groupRowKeys) next.add(k)
+                              }
+                              return next
+                            })
+                          }
+
+                          const groupHeader = (
+                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
+                              {/* Checkbox cell — stops propagation so it doesn't collapse the group */}
+                              <td
+                                className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-2 border-l-[3px] border-l-[var(--accent-200)]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={allGroupSelected}
+                                  ref={(el) => { if (el) el.indeterminate = someGroupSelected && !allGroupSelected }}
+                                  onChange={() => {/* controlled via onClick */}}
+                                  onClick={toggleGroupSelection}
+                                  aria-label={`Select all rows in week: ${label}`}
+                                  className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                />
+                              </td>
+                              {/* Label cell spans the rest */}
+                              <td
+                                colSpan={totalCols - 1}
+                                onClick={toggleWeek}
+                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {/* Chevron */}
+                                  <svg
+                                    className={`h-3 w-3 shrink-0 text-[var(--accent-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                  {/* Calendar icon */}
+                                  <svg className="h-3.5 w-3.5 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span className="text-[11px] font-semibold text-[var(--text-100)]">{label}</span>
+                                  <span className="rounded-full bg-[var(--accent-200)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)]">
+                                    {groupRowCount} {groupRowCount === 1 ? 'row' : 'rows'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+
+                          if (isCollapsed) return [groupHeader]
+
+                          const dataRows = groupJobs.flatMap((job) => {
+                            const json = job.jsonOutput ?? null
+                            const lineItems = extractJsonArray(
+                              json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
+                            )
+                            const rowItems: (Record<string, unknown> | null)[] =
+                              lineItems.length > 0 ? lineItems : [null]
+
+                            return rowItems.map((item, itemIdx) => {
+                              const isEven = rowIdx % 2 === 0
+                              const rowKey = `${job._id}-${itemIdx}`
+                              const isSelected = selectedRowKeys.has(rowKey)
+                              rowIdx++
+                              return (
+                                <tr
+                                  key={rowKey}
+                                  className={`transition-colors align-middle ${
+                                    isSelected
+                                      ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
+                                  }`}
+                                >
+                                  {/* Checkbox — one per line-item row */}
+                                  <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleAuditRow(rowKey)}
+                                      aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
+                                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                    />
+                                  </td>
+                                  {visibleCols.map((col) => (
+                                    <td
+                                      key={col.id}
+                                      className={[
+                                        'px-2.5 py-1 text-[11px] whitespace-nowrap',
+                                        !isDynCol(col) && col.numeric ? 'text-right tabular-nums' : '',
+                                        !isDynCol(col) && col.mono ? 'font-mono' : '',
+                                        auditDragSrc === col.id
+                                          ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                                          : auditDragTarget === col.id
+                                            ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                            : '',
+                                      ].join(' ')}
+                                    >
+                                      {isDynCol(col)
+                                        ? (() => {
+                                            const rawVal = col.section === 'lineItem'
+                                              ? (item as Record<string, unknown> | null)?.[col.key]
+                                              : (job.jsonOutput ?? {})[col.key]
+                                            return (rawVal !== null && rawVal !== undefined && !Array.isArray(rawVal) && typeof rawVal !== 'object')
+                                              ? <span>{String(rawVal)}</span>
+                                              : <span className="text-[var(--text-200)]">—</span>
+                                          })()
+                                        : isLineItemCol(col.id)
+                                          ? liCellFor(col.id, item)
+                                          : docCellFor(col.id, job)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              )
+                            })
+                          })
+
+                          return [groupHeader, ...dataRows]
                         })
                       })()
                     )}
@@ -2766,6 +3203,10 @@ export default function DocTidyInvoiceAudit() {
           visibility={colVisibility}
           onChange={handleColVisChange}
           onClose={() => setShowColSettings(false)}
+          extractedDocFields={extractedFields.doc}
+          extractedLiFields={extractedFields.lineItem}
+          dynamicVisibility={dynamicColVisibility}
+          onDynamicChange={handleDynamicColVisChange}
         />
       )}
 
