@@ -488,6 +488,40 @@ function isLineItemCol(id: InvoiceAuditColumnId): boolean {
   return id.startsWith('li')
 }
 
+/* ─────────────────────────── Week-grouping helpers ── */
+
+/**
+ * Returns the ISO date string (YYYY-MM-DD) for the Monday that starts the
+ * calendar week containing `dateStr`. Returns `null` if `dateStr` is not
+ * parseable.
+ */
+function getWeekStartKey(dateStr: string): string | null {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return null
+  const day = d.getDay() // 0=Sun … 6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diffToMonday)
+  const yyyy = monday.getFullYear()
+  const mm = String(monday.getMonth() + 1).padStart(2, '0')
+  const dd = String(monday.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/**
+ * Formats a week-start ISO key (YYYY-MM-DD) as a human-readable range:
+ * "Mon Sep 21 – Sun Sep 27, 2026".
+ */
+function formatWeekLabel(weekKey: string): string {
+  const monday = new Date(`${weekKey}T00:00:00`)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  return `${fmt(monday)} – ${fmt(sunday)}, ${sunday.getFullYear()}`
+}
+
 /* ─────────────────────────── Confirm Delete Dialog ── */
 
 function ConfirmDeleteDialog({
@@ -596,6 +630,8 @@ export default function DocTidyInvoiceAudit() {
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
+  /** Week keys (YYYY-MM-DD of Monday) whose rows are currently collapsed. */
+  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(new Set())
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
 
@@ -2687,64 +2723,138 @@ export default function DocTidyInvoiceAudit() {
                         </td>
                       </tr>
                     ) : (
-                      /* ── Flattened rows: one row per line item, alternating per row ── */
+                      /* ── Flattened rows grouped by invoice-date week (Mon–Sun) ── */
                       (() => {
-                        let rowIdx = 0
-                        return jobs.flatMap((job) => {
+                        // 1. Build week buckets
+                        const weekMap = new Map<string, ParseJobListItem[]>()
+                        const UNKNOWN_KEY = '__unknown__'
+                        for (const job of jobs) {
                           const json = job.jsonOutput ?? null
-                          const lineItems = extractJsonArray(
-                            json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
-                          )
-                          const rowItems: (Record<string, unknown> | null)[] =
-                            lineItems.length > 0 ? lineItems : [null]
+                          const invDateStr = extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+                          const key = getWeekStartKey(invDateStr) ?? UNKNOWN_KEY
+                          if (!weekMap.has(key)) weekMap.set(key, [])
+                          weekMap.get(key)!.push(job)
+                        }
 
-                          return rowItems.map((item, itemIdx) => {
-                            const isEven = rowIdx % 2 === 0
-                            const rowKey = `${job._id}-${itemIdx}`
-                            const isSelected = selectedRowKeys.has(rowKey)
-                            rowIdx++
-                            return (
-                              <tr
-                                key={rowKey}
-                                className={`transition-colors align-middle ${
-                                  isSelected
-                                    ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                                    : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
-                                }`}
-                              >
-                                {/* Checkbox — one per line-item row */}
-                                <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggleAuditRow(rowKey)}
-                                    aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
-                                    className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
-                                  />
-                                </td>
-                                {visibleCols.map((col) => (
-                                  <td
-                                    key={col.id}
-                                    className={[
-                                      'px-2.5 py-1 text-[11px] whitespace-nowrap',
-                                      col.numeric ? 'text-right tabular-nums' : '',
-                                      col.mono ? 'font-mono' : '',
-                                      // Column-level drag highlight
-                                      auditDragSrc === col.id
-                                        ? 'bg-sky-100/70 dark:bg-sky-500/15'
-                                        : auditDragTarget === col.id
-                                          ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
-                                          : '',
-                                    ].join(' ')}
-                                  >
-                                    {isLineItemCol(col.id)
-                                      ? liCellFor(col.id, item)
-                                      : docCellFor(col.id, job)}
-                                  </td>
-                                ))}
-                              </tr>
-                            )
+                        // 2. Sort weeks newest-first; unknown always last
+                        const sortedKeys = Array.from(weekMap.keys()).sort((a, b) => {
+                          if (a === UNKNOWN_KEY) return 1
+                          if (b === UNKNOWN_KEY) return -1
+                          return b.localeCompare(a)
+                        })
+
+                        // 3. Render each group
+                        let rowIdx = 0
+                        const totalCols = visibleCols.length + 1 // +1 for checkbox col
+                        return sortedKeys.flatMap((weekKey) => {
+                          const groupJobs = weekMap.get(weekKey)!
+                          const isCollapsed = collapsedWeeks.has(weekKey)
+                          const label = weekKey === UNKNOWN_KEY
+                            ? 'Unknown date'
+                            : formatWeekLabel(weekKey)
+
+                          // Count total line-item rows in this group
+                          const groupRowCount = groupJobs.reduce((sum, j) => {
+                            const li = extractJsonArray(j.jsonOutput ?? null, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems')
+                            return sum + (li.length > 0 ? li.length : 1)
+                          }, 0)
+
+                          const toggleWeek = () => setCollapsedWeeks((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(weekKey)) next.delete(weekKey)
+                            else next.add(weekKey)
+                            return next
                           })
+
+                          const groupHeader = (
+                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
+                              <td
+                                colSpan={totalCols}
+                                onClick={toggleWeek}
+                                className="cursor-pointer select-none border-y border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {/* Chevron */}
+                                  <svg
+                                    className={`h-3 w-3 shrink-0 text-[var(--text-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                  {/* Calendar icon */}
+                                  <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span className="text-[11px] font-semibold text-[var(--text-100)]">{label}</span>
+                                  <span className="rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+                                    {groupRowCount} {groupRowCount === 1 ? 'row' : 'rows'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+
+                          if (isCollapsed) return [groupHeader]
+
+                          const dataRows = groupJobs.flatMap((job) => {
+                            const json = job.jsonOutput ?? null
+                            const lineItems = extractJsonArray(
+                              json, 'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
+                            )
+                            const rowItems: (Record<string, unknown> | null)[] =
+                              lineItems.length > 0 ? lineItems : [null]
+
+                            return rowItems.map((item, itemIdx) => {
+                              const isEven = rowIdx % 2 === 0
+                              const rowKey = `${job._id}-${itemIdx}`
+                              const isSelected = selectedRowKeys.has(rowKey)
+                              rowIdx++
+                              return (
+                                <tr
+                                  key={rowKey}
+                                  className={`transition-colors align-middle ${
+                                    isSelected
+                                      ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'
+                                  }`}
+                                >
+                                  {/* Checkbox — one per line-item row */}
+                                  <td className="px-2.5 py-1" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleAuditRow(rowKey)}
+                                      aria-label={`Select row ${itemIdx + 1} of ${job.filename}`}
+                                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+                                    />
+                                  </td>
+                                  {visibleCols.map((col) => (
+                                    <td
+                                      key={col.id}
+                                      className={[
+                                        'px-2.5 py-1 text-[11px] whitespace-nowrap',
+                                        col.numeric ? 'text-right tabular-nums' : '',
+                                        col.mono ? 'font-mono' : '',
+                                        // Column-level drag highlight
+                                        auditDragSrc === col.id
+                                          ? 'bg-sky-100/70 dark:bg-sky-500/15'
+                                          : auditDragTarget === col.id
+                                            ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
+                                            : '',
+                                      ].join(' ')}
+                                    >
+                                      {isLineItemCol(col.id)
+                                        ? liCellFor(col.id, item)
+                                        : docCellFor(col.id, job)}
+                                    </td>
+                                  ))}
+                                </tr>
+                              )
+                            })
+                          })
+
+                          return [groupHeader, ...dataRows]
                         })
                       })()
                     )}

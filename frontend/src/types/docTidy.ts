@@ -465,7 +465,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   // ── Line item fields ──
   { id: 'liSku',             section: 'lineItem',  label: 'SKU',           description: 'Part number, SKU, or item code',               defaultVisible: true,  mono: true    },
   { id: 'liModel',           section: 'lineItem',  label: 'Model #',       description: 'Model number, style number, or product code',  defaultVisible: true,  mono: true    },
-  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: true                 },
+  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: false                },
   { id: 'liQuantity',        section: 'lineItem',  label: 'Qty',           description: 'Quantity ordered',                             defaultVisible: true,  numeric: true },
   { id: 'liUnitPrice',       section: 'lineItem',  label: 'Item Cost',     description: 'Unit price, item cost, or list price',         defaultVisible: true,  numeric: true },
   { id: 'liDiscountedPrice', section: 'lineItem',  label: 'Disc. Price',   description: 'Price after discount applied',                 defaultVisible: true,  numeric: true },
