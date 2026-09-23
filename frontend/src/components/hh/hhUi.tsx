@@ -228,7 +228,8 @@ export function HHActionRow({
     cells.forEach((cell, i) => {
       const t = n <= 1 ? 1 : i / (n - 1)
       cell.style.setProperty('--hh-t', t.toFixed(4))
-      cell.style.zIndex = String(n - i)
+      // Later cells slide farther left. Keep them above the cell they pass so the text is not covered.
+      cell.style.zIndex = String(i + 1)
     })
   })
 
