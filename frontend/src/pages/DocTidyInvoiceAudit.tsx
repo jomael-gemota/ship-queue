@@ -2794,7 +2794,7 @@ export default function DocTidyInvoiceAudit() {
                             <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
                               {/* Checkbox cell — stops propagation so it doesn't collapse the group */}
                               <td
-                                className="border-y border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5"
+                                className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-2 border-l-[3px] border-l-[var(--accent-200)]"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <input
@@ -2811,23 +2811,23 @@ export default function DocTidyInvoiceAudit() {
                               <td
                                 colSpan={totalCols - 1}
                                 onClick={toggleWeek}
-                                className="cursor-pointer select-none border-y border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5"
+                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-2"
                               >
                                 <div className="flex items-center gap-2">
                                   {/* Chevron */}
                                   <svg
-                                    className={`h-3 w-3 shrink-0 text-[var(--text-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
+                                    className={`h-3 w-3 shrink-0 text-[var(--accent-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                   >
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                   </svg>
                                   {/* Calendar icon */}
-                                  <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="h-3.5 w-3.5 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
                                   <span className="text-[11px] font-semibold text-[var(--text-100)]">{label}</span>
-                                  <span className="rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+                                  <span className="rounded-full bg-[var(--accent-200)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)]">
                                     {groupRowCount} {groupRowCount === 1 ? 'row' : 'rows'}
                                   </span>
                                 </div>
