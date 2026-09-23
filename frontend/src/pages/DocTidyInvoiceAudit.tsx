@@ -3,6 +3,7 @@ import { authApi } from '../lib/api'
 import {
   Banner,
   DocumentTypeBadge,
+  LiveReasoningSnippet,
   PaginationArrows,
   Spinner,
   TableActionButton,
@@ -2002,18 +2003,19 @@ export default function DocTidyInvoiceAudit() {
                                     onOpenJob={setOpenJobId}
                                     onChanged={() => void fetchEmails(true)}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteEmail(msg)}
-                                    title={msg.parseJobs?.some(j => isParseRunning(j.status)) ? 'Cannot delete while Tidy Agent is parsing' : 'Delete this message'}
-                                    aria-label="Delete message"
-                                    disabled={msg.parseJobs?.some(j => isParseRunning(j.status)) ?? false}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  {!msg.parseJobs?.some(j => isParseRunning(j.status)) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteEmail(msg)}
+                                      title="Delete this message"
+                                      aria-label="Delete message"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -2352,23 +2354,13 @@ export default function DocTidyInvoiceAudit() {
                                       )
                                     }
 
-                                    // Running — spinner to open panel + abort ×
+                                    // Running — live reasoning snippet; abort lives inside the reasoning panel
                                     if (isRunning) {
                                       return (
-                                        <span className="flex items-center gap-0.5">
-                                          <TableActionButton label="Open to watch Tidy Agent work" onClick={() => setOpenJobId(job._id)}>
-                                            <Spinner className="h-5 w-5 text-sky-500" />
-                                          </TableActionButton>
-                                          <TableActionButton label="Stop / abort this parse" onClick={() => void handleAbortPdfJob(job._id)} disabled={Boolean(isAborting)}>
-                                            {isAborting ? (
-                                              <Spinner className="h-5 w-5 text-slate-400" />
-                                            ) : (
-                                              <svg className="h-4 w-4 text-rose-400 hover:text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                              </svg>
-                                            )}
-                                          </TableActionButton>
-                                        </span>
+                                        <LiveReasoningSnippet
+                                          jobId={job._id}
+                                          onOpen={() => setOpenJobId(job._id)}
+                                        />
                                       )
                                     }
 
@@ -2406,19 +2398,20 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   })()}
 
-                                  {/* Delete */}
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeletePdf(imp)}
-                                    title={isRunning ? 'Cannot delete while Tidy Agent is parsing' : 'Delete this import'}
-                                    aria-label="Delete import"
-                                    disabled={Boolean(isRunning)}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  {/* Delete — hidden while the agent is running */}
+                                  {!isRunning && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeletePdf(imp)}
+                                      title="Delete this import"
+                                      aria-label="Delete import"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>

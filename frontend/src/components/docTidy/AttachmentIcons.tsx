@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { authApi } from '../../lib/api'
 import { ErrorIcon, SuccessIcon } from '../labels/labelUi'
-import { Spinner, TableActionButton } from './docTidyUi'
+import { LiveReasoningSnippet, Spinner, TableActionButton } from './docTidyUi'
 import { PARSEABLE } from './AttachmentCell'
-import { isParseRunning, type DocTidyMessage, type DocTidyParseJob, type ParseJobSummary } from '../../types/docTidy'
+import { isParseRunning, type DocTidyMessage, type DocTidyParseJob } from '../../types/docTidy'
 
 /**
  * Parse-action icons for one message row in the results table.
@@ -32,7 +32,6 @@ export default function AttachmentIcons({
 }) {
   const [startingIndex, setStartingIndex] = useState<number | null>(null)
   const [failedIndex, setFailedIndex] = useState<{ index: number; message: string } | null>(null)
-  const [abortingJobId, setAbortingJobId] = useState<string | null>(null)
 
   const startParse = async (index: number) => {
     setStartingIndex(index)
@@ -42,23 +41,10 @@ export default function AttachmentIcons({
         `/doc-tidy/messages/${message._id}/attachments/${index}/parse`
       )
       onChanged()
-      // Don't auto-open the panel — the spinner button is now the explicit entry point
     } catch (err) {
       setFailedIndex({ index, message: (err as Error).message })
     } finally {
       setStartingIndex(null)
-    }
-  }
-
-  const abortJob = async (job: ParseJobSummary) => {
-    setAbortingJobId(job._id)
-    try {
-      await authApi.post(`/doc-tidy/parse-jobs/${job._id}/abort`)
-      onChanged()
-    } catch {
-      // Silently ignore — the user can try again or open the panel
-    } finally {
-      setAbortingJobId(null)
     }
   }
 
@@ -77,35 +63,15 @@ export default function AttachmentIcons({
 
         if (job) {
           const running = isParseRunning(job.status)
-          const isAborting = abortingJobId === job._id
 
-          // Running jobs: always show a "view progress" button + a separate abort button
+          // Running — live reasoning snippet; abort lives inside the reasoning panel
           if (running) {
             return (
-              <span key={i} className="flex items-center gap-0.5">
-                {/* View progress — opens the reasoning panel */}
-                <TableActionButton
-                  label="Open to watch Tidy Agent work"
-                  onClick={() => onOpenJob(job._id)}
-                >
-                  <Spinner className="h-5 w-5 text-sky-500" />
-                </TableActionButton>
-
-                {/* Abort — stop the parse */}
-                <TableActionButton
-                  label="Stop / abort this parse"
-                  onClick={() => void abortJob(job)}
-                  disabled={isAborting}
-                >
-                  {isAborting ? (
-                    <Spinner className="h-5 w-5 text-slate-400" />
-                  ) : (
-                    <svg className="h-4 w-4 text-rose-400 hover:text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  )}
-                </TableActionButton>
-              </span>
+              <LiveReasoningSnippet
+                key={i}
+                jobId={job._id}
+                onOpen={() => onOpenJob(job._id)}
+              />
             )
           }
 

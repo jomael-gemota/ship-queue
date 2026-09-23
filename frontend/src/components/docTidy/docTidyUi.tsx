@@ -1,3 +1,4 @@
+import { useParseJobStream } from '../../hooks/useParseJobStream'
 import {
   DOCUMENT_TYPE_ICONS,
   DOCUMENT_TYPE_LABELS,
@@ -415,6 +416,53 @@ export function RuleCriteria({ rule }: { rule: DocTidyRuleInput }) {
         </span>
       ))}
     </div>
+  )
+}
+
+/* ------------------------------------------------- live reasoning chip */
+
+/**
+ * Streams the last five words of a running job's reasoning transcript and
+ * renders them as a compact, pulsing chip in the Actions column.
+ *
+ * Opening a per-job SSE connection only while the job is actually running
+ * keeps server load trivial. Clicking the chip opens the full reasoning panel.
+ */
+export function LiveReasoningSnippet({
+  jobId,
+  onOpen,
+}: {
+  jobId: string
+  onOpen: () => void
+}) {
+  const stream = useParseJobStream(jobId)
+  const words = stream.thinking.trim().split(/\s+/).filter(Boolean)
+  const snippet = words.length > 0 ? words.slice(-5).join(' ') : ''
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Open to watch Tidy Agent work"
+      className="group inline-flex max-w-[200px] cursor-pointer items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] transition-colors hover:border-sky-300 hover:bg-sky-100 dark:border-sky-500/20 dark:bg-sky-500/10 dark:hover:border-sky-500/40 dark:hover:bg-sky-500/20"
+    >
+      {/* Pulsing activity dot */}
+      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500" />
+      {/* Live reasoning words */}
+      <span className="min-w-0 truncate italic text-sky-700 dark:text-sky-300">
+        {snippet || 'Thinking…'}
+      </span>
+      {/* Subtle "open" caret that appears on hover */}
+      <svg
+        className="h-3 w-3 shrink-0 text-sky-400 opacity-0 transition-opacity group-hover:opacity-100"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        aria-hidden
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
   )
 }
 
