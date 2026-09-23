@@ -6,7 +6,6 @@ import {
   LiveReasoningSnippet,
   PaginationArrows,
   Spinner,
-  TableActionButton,
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
@@ -643,7 +642,6 @@ export default function DocTidyInvoiceAudit() {
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
-  const [pdfAbortingJobId, setPdfAbortingJobId] = useState<string | null>(null)
   const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
   const [pdfBulkSending, setPdfBulkSending] = useState(false)
   const pdfSelectAllRef = useRef<HTMLInputElement>(null)
@@ -739,17 +737,6 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  const handleAbortPdfJob = async (jobId: string) => {
-    setPdfAbortingJobId(jobId)
-    try {
-      await authApi.post(`/doc-tidy/parse-jobs/${jobId}/abort`)
-      void fetchPdfImports()
-    } catch {
-      // silently ignore — user can try again
-    } finally {
-      setPdfAbortingJobId(null)
-    }
-  }
 
   const confirmAndDeletePdfImport = async (imp: PdfImport) => {
     setPdfDeleting(true)
@@ -2247,7 +2234,6 @@ export default function DocTidyInvoiceAudit() {
                           const isSelected = pdfSelectedIds.has(imp._id)
                           const job = imp.parseJob
                           const isRunning = job && isParseRunning(job.status)
-                          const isAborting = job && pdfAbortingJobId === job._id
                           const dragCls = (id: PdfImportColumnId) =>
                             pdfDragSrc === id
                               ? 'bg-sky-100/70 dark:bg-sky-500/15'
