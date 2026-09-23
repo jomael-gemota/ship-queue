@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { useHHList } from '../../context/HHListContext'
-import { downloadHHImportTemplate, importHHSpreadsheet } from '../../lib/hhSportswear'
+import {
+  downloadHHImportTemplate,
+  importHHSpreadsheet,
+  importOutputRowKey,
+  previewHHImport,
+  type HHImportReview,
+} from '../../lib/hhSportswear'
+import { HHImportPreviewTable } from './HHImportReview'
 import { flashHHGroupRow } from './hhUi'
 
 const ACCEPT = '.xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
@@ -61,6 +68,11 @@ function fileLooksValid(file: File): string | null {
   return null
 }
 
+type ImportPreview =
+  | { status: 'idle' }
+  | { status: 'ready'; key: string; review: HHImportReview }
+  | { status: 'error'; key: string; message: string; review: HHImportReview | null }
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`
@@ -78,16 +90,19 @@ export function HHImportButton() {
   const [dragging, setDragging] = useState(false)
   const [fetchDetails, setFetchDetails] = useState(true)
   const [draftCart, setDraftCart] = useState(true)
+  const [preview, setPreview] = useState<ImportPreview>({ status: 'idle' })
+  const [picked, setPicked] = useState<{ key: string; excluded: string[] } | null>(null)
   const dragDepth = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pasteRef = useRef<HTMLTextAreaElement>(null)
+  const requestClose = useRef<() => void>(() => {})
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || importBusy) return
       if (event.target instanceof HTMLTextAreaElement) return
-      setOpen(false)
+      requestClose.current()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -97,6 +112,46 @@ export function HHImportButton() {
     if (!open || tab !== 'paste' || importBusy) return
     pasteRef.current?.focus()
   }, [open, tab, importBusy])
+
+  const sourceKey =
+    tab === 'paste'
+      ? paste.trim()
+        ? `paste:${paste}`
+        : ''
+      : selectedFile
+        ? `file:${selectedFile.name}:${selectedFile.size}:${selectedFile.lastModified}`
+        : ''
+
+  useEffect(() => {
+    if (!open || !sourceKey) return
+    const key = sourceKey
+    const usingPaste = tab === 'paste'
+    const text = paste
+    const file = selectedFile
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      const request = usingPaste ? previewHHImport(brand, { text }) : previewHHImport(brand, file!)
+      request
+        .then((result) => {
+          if (cancelled) return
+          if (result.ok) setPreview({ status: 'ready', key, review: result.review })
+          else setPreview({ status: 'error', key, message: result.message, review: result.review })
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return
+          setPreview({
+            status: 'error',
+            key,
+            message: error instanceof Error ? error.message : 'Could not check these rows.',
+            review: null,
+          })
+        })
+    }, usingPaste ? 400 : 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [open, sourceKey, tab, paste, selectedFile, brand])
 
   const resetFileInput = () => {
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -115,9 +170,21 @@ export function HHImportButton() {
 
   const close = () => {
     if (importBusy) return
+    const hasPaste = paste.trim().length > 0
+    const hasFile = selectedFile != null
+    if (hasPaste || hasFile) {
+      const message =
+        hasPaste && hasFile
+          ? 'Discard the pasted orders and the selected file?'
+          : hasPaste
+            ? 'Discard the pasted orders and close?'
+            : 'Discard the selected file and close?'
+      if (!window.confirm(message)) return
+    }
     setOpen(false)
     resetPicker()
   }
+  requestClose.current = close
 
   const stageFile = (file: File) => {
     const invalid = fileLooksValid(file)
@@ -129,34 +196,6 @@ export function HHImportButton() {
     }
     setSelectedFile(file)
     setImportError(null)
-  }
-
-  const createBatch = () => {
-    const usingPaste = tab === 'paste'
-    if (importBusy) return
-    if (usingPaste ? !paste.trim() : !selectedFile) return
-    const file = selectedFile
-    setImportBusy(true)
-    setImportError(null)
-    const request = usingPaste
-      ? importHHSpreadsheet(brand, { text: paste }, { fetchDetails, draftCart: fetchDetails && draftCart })
-      : importHHSpreadsheet(brand, file!, { fetchDetails, draftCart: fetchDetails && draftCart })
-    request
-      .then((res) => {
-        flashHHGroupRow(res.data.id)
-        handleClearFilters()
-        setPage(1)
-        setGroups((current) => [res.data, ...current.filter((group) => group.id !== res.data.id)])
-        setOpen(false)
-        resetPicker()
-      })
-      .catch((error: unknown) => {
-        setImportError(error instanceof Error ? error.message : 'Failed to import spreadsheet')
-      })
-      .finally(() => {
-        setImportBusy(false)
-        resetFileInput()
-      })
   }
 
   const onDragEnter = (event: DragEvent) => {
@@ -205,14 +244,75 @@ export function HHImportButton() {
         ? selectedFile.name
         : 'Drop the Order ID / PO file here'
 
+  const matchedPreview = preview.status !== 'idle' && preview.key === sourceKey ? preview : null
+  const checking = Boolean(sourceKey) && !matchedPreview
+  const readyReview = matchedPreview?.status === 'ready' ? matchedPreview.review : null
+  const previewError = matchedPreview?.status === 'error' ? matchedPreview : null
+  const outputRows = readyReview?.rows ?? []
+  const excludedKeys = new Set(
+    readyReview == null
+      ? []
+      : picked?.key === sourceKey
+        ? picked.excluded
+        : outputRows.filter((row) => row.oddOrderId).map(importOutputRowKey),
+  )
+  const includedCount = outputRows.filter((row) => !excludedKeys.has(importOutputRowKey(row))).length
+  const canCreate = !importBusy && includedCount > 0
+  const orderLabel = readyReview
+    ? `${includedCount} order${includedCount === 1 ? '' : 's'} will be created`
+    : null
+
+  const toggleExcluded = (key: string) => {
+    const next = new Set(excludedKeys)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setPicked({ key: sourceKey, excluded: [...next] })
+  }
+
+  const createBatch = () => {
+    if (importBusy || !readyReview) return
+    const orders = outputRows
+      .filter((row) => !excludedKeys.has(importOutputRowKey(row)))
+      .map((row) => ({ orderId: row.orderId, po: row.po }))
+    if (orders.length === 0) return
+    setImportBusy(true)
+    setImportError(null)
+    importHHSpreadsheet(
+      brand,
+      {
+        orders,
+        sourceFileName: tab === 'file' && selectedFile ? selectedFile.name : 'Pasted orders',
+      },
+      { fetchDetails, draftCart: fetchDetails && draftCart },
+    )
+      .then((res) => {
+        flashHHGroupRow(res.data.id)
+        handleClearFilters()
+        setPage(1)
+        setGroups((current) => [res.data, ...current.filter((group) => group.id !== res.data.id)])
+        setOpen(false)
+        resetPicker()
+      })
+      .catch((error: unknown) => {
+        setImportError(error instanceof Error ? error.message : 'Failed to import spreadsheet')
+      })
+      .finally(() => {
+        setImportBusy(false)
+        resetFileInput()
+      })
+  }
+
   const dropHint = importBusy
     ? 'Creating the group and unique orders'
-    : selectedFile
-      ? `${formatFileSize(selectedFile.size)} · click to choose a different file`
-      : 'or click to browse'
+    : !selectedFile
+      ? 'or click to browse'
+      : checking
+        ? 'Checking rows…'
+        : orderLabel
+          ? `${formatFileSize(selectedFile.size)} · ${orderLabel}`
+          : `${formatFileSize(selectedFile.size)} · click to choose a different file`
 
   const pasteRows = paste.split(/\r?\n/).filter((line) => line.trim()).length
-  const canCreate = !importBusy && (tab === 'paste' ? paste.trim().length > 0 : Boolean(selectedFile))
 
   const tabClass = (id: ImportTab) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
@@ -252,7 +352,7 @@ export function HHImportButton() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="hh-import-title"
-            className="relative z-10 w-full max-w-xl space-y-5 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl"
+            className="relative z-10 max-h-[calc(100vh-2rem)] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl"
           >
             <div className="flex items-start justify-between gap-3">
               <h3 id="hh-import-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
@@ -371,25 +471,38 @@ export function HHImportButton() {
                   id="hh-import-paste"
                   value={paste}
                   disabled={importBusy}
-                  rows={8}
+                  rows={readyReview ? 3 : 6}
                   spellCheck={false}
                   placeholder={PASTE_PLACEHOLDER}
                   onChange={(event) => {
                     setPaste(event.target.value)
                     setImportError(null)
                   }}
-                  className="w-full resize-y rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 font-mono text-xs leading-5 text-slate-800 outline-none placeholder:text-slate-400 focus:border-[var(--accent-200)] focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40 dark:text-[var(--text-100)] dark:placeholder:text-[var(--text-200)]"
+                  className="w-full resize-none overflow-y-auto rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 font-mono text-xs leading-5 text-slate-800 outline-none placeholder:text-slate-400 focus:border-[var(--accent-200)] focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40 dark:text-[var(--text-100)] dark:placeholder:text-[var(--text-200)]"
                 />
                 <p className="mt-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
                   {pasteRows === 0
                     ? 'Paste from Excel or a text list. Tabs, commas, or spaces are fine.'
-                    : `${pasteRows} row${pasteRows === 1 ? '' : 's'} ready`}
+                    : checking
+                      ? 'Checking rows…'
+                      : orderLabel ?? `${pasteRows} row${pasteRows === 1 ? '' : 's'} ready`}
                 </p>
               </div>
             )}
 
+            {previewError && <p className="text-sm text-red-600 dark:text-red-400">{previewError.message}</p>}
             {importError && <p className="text-sm text-red-600 dark:text-red-400">{importError}</p>}
+            {readyReview && (
+              <HHImportPreviewTable
+                review={readyReview}
+                excluded={excludedKeys}
+                disabled={importBusy}
+                onToggle={toggleExcluded}
+                onSetExcluded={(keys) => setPicked({ key: sourceKey, excluded: keys })}
+              />
+            )}
 
+            {!readyReview && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--text-200)]">
                 Columns
@@ -411,9 +524,10 @@ export function HHImportButton() {
                 </li>
               </ul>
               <p className="mt-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
-                Columns can be in either order. Headers are optional if one column is an Amazon Order ID. Duplicate Order ID + PO rows become one order.
+                Columns can be in either order. Headers are optional if one column is an Amazon Order ID. Rows are checked before the batch is created.
               </p>
             </div>
+            )}
 
             <div className="space-y-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--text-200)]">
@@ -443,13 +557,24 @@ export function HHImportButton() {
             </div>
 
             <div className="flex flex-col gap-2">
+              {readyReview && includedCount === 0 && (
+                <p className="text-center text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  Select at least one order.
+                </p>
+              )}
               <button
                 type="button"
                 disabled={!canCreate}
                 onClick={createBatch}
                 className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
               >
-                {importBusy ? 'Creating batch…' : 'Create batch'}
+                {importBusy
+                  ? 'Creating batch…'
+                  : checking
+                    ? 'Checking…'
+                    : includedCount > 0
+                      ? `Create ${includedCount} ${includedCount === 1 ? 'order' : 'orders'}`
+                      : 'Create batch'}
               </button>
               <button
                 type="button"
