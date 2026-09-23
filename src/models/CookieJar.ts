@@ -4,8 +4,10 @@ import { Schema, model, Document } from 'mongoose';
 /** Registry key for the Seller Central OE US jar. Must match a fetcher in `src/cookie-jar/registry.ts`. */
 export const SELLER_CENTRAL_OE_US_KEY = 'seller-central-outdoor-equipped-us';
 export const SELLER_CENTRAL_OE_US_NAME = 'Seller Central Outdoor Equipped US';
-/** Minute 0 of every 6th hour UTC (00:00, 06:00, 12:00, 18:00). */
-export const SELLER_CENTRAL_OE_US_CRON = '0 */6 * * *';
+/** Cron fields are interpreted in this zone. Philippines does not observe DST. */
+export const COOKIE_JAR_TIMEZONE = 'Asia/Manila';
+/** 12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM Philippines time. */
+export const SELLER_CENTRAL_OE_US_CRON = '0 0,6,12,18 * * *';
 
 /** Helly Hansen Sports B2B session. Stored manually — no Sphere fetcher. */
 export const HELLY_HANSEN_SPORTS_B2B_KEY = 'helly-hansen-sports-b2b';
@@ -20,7 +22,7 @@ const LEGACY_SELLER_CENTRAL_OE_US_KEY = 'outdoor-equipped-us';
 export const DEFAULT_JAR_CRON = SELLER_CENTRAL_OE_US_CRON;
 export const MAX_JAR_NAME_LEN = 80;
 
-/** Five-field cron in UTC (minute hour day month weekday). */
+/** Five-field cron in Philippines time (minute hour day month weekday). */
 export function validateJarCron(cron: string): string | null {
   const trimmed = cron.trim();
   if (!trimmed) return 'Cron is required';
@@ -42,7 +44,7 @@ export interface ICookieJar extends Document {
   /** UI label. Safe to rename without changing which fetcher runs. */
   name: string;
   enabled: boolean;
-  /** Standard 5-field cron, interpreted in UTC. */
+  /** Standard 5-field cron, interpreted in Asia/Manila. */
   cron: string;
   /** Last successful cookie payload. Omitted from queries unless explicitly selected. */
   cookie?: string;

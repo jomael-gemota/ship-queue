@@ -403,8 +403,9 @@ npm run cookie-jar:dev   # local
 npm run cookie-jar       # compiled (Railway start command for the worker service)
 ```
 
-Keep the worker at **one replica**. Cron expressions are UTC. A future Settings
-UI can edit the Mongo row; the worker re-reads config every 30 seconds.
+Keep the worker at **one replica**. Cron expressions are Philippines time
+(`Asia/Manila`). The worker re-reads config every 30 seconds and runs only at
+the next matching clock time, not when the process starts.
 
 ### Health
 
