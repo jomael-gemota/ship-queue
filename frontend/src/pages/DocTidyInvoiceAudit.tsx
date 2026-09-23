@@ -1769,7 +1769,7 @@ export default function DocTidyInvoiceAudit() {
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
                           />
                         ))}
-                        <Th label="Actions" align="center" />
+                        <Th label="Actions" align="center" className="min-w-[200px]" />
                       </tr>
                     </thead>
                     <tbody>
@@ -2225,7 +2225,7 @@ export default function DocTidyInvoiceAudit() {
                               onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
                             />
                           ))}
-                          <Th label="Actions" align="center" />
+                          <Th label="Actions" align="center" className="min-w-[200px]" />
                         </tr>
                       </thead>
                       <tbody>

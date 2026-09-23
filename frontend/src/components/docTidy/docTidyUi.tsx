@@ -436,32 +436,46 @@ export function LiveReasoningSnippet({
   onOpen: () => void
 }) {
   const stream = useParseJobStream(jobId)
-  const words = stream.thinking.trim().split(/\s+/).filter(Boolean)
-  const snippet = words.length > 0 ? words.slice(-5).join(' ') : ''
+
+  // Strip markdown, split into sentence-level segments, take the first 4 words
+  // of the most recent segment so the snippet always reads as a sentence opener
+  // ("Extracting line items from…") rather than a dangling tail.
+  const cleaned = stream.thinking
+    .replace(/[#*`_~>|[\]()\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const segments = cleaned
+    .split(/(?:[.!?])\s+|\n+/)
+    .map((s) => s.replace(/[.!?,;:]+$/, '').trim())
+    .filter((s) => s.split(/\s+/).filter((w) => w.length > 1).length >= 2)
+
+  // Step number = how many segments have been produced so far (min 1)
+  const step = Math.max(1, segments.length)
+
+  const lastSegment = segments[segments.length - 1] ?? cleaned
+  const words = lastSegment.split(/\s+/).filter((w) => w.length > 0)
+  const sliced = words.slice(0, 6).join(' ')
+  const snippet = sliced
+    ? sliced.charAt(0).toUpperCase() + sliced.slice(1).toLowerCase() + (words.length > 6 ? '…' : '')
+    : ''
 
   return (
     <button
       type="button"
       onClick={onOpen}
       title="Open to watch Tidy Agent work"
-      className="group inline-flex max-w-[200px] cursor-pointer items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] transition-colors hover:border-sky-300 hover:bg-sky-100 dark:border-sky-500/20 dark:bg-sky-500/10 dark:hover:border-sky-500/40 dark:hover:bg-sky-500/20"
+      className="group inline-flex max-w-[300px] cursor-pointer items-center gap-2 text-[11px] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
     >
-      {/* Pulsing activity dot */}
-      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500" />
-      {/* Live reasoning words */}
-      <span className="min-w-0 truncate italic text-sky-700 dark:text-sky-300">
+      <Spinner className="h-3.5 w-3.5 shrink-0 text-sky-500" />
+      {/* Step badge */}
+      <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold tabular-nums text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10">
+        Step {step}
+      </span>
+      {/* Reasoning snippet */}
+      <span className="min-w-0 truncate italic text-[var(--text-200)] group-hover:text-sky-600 dark:group-hover:text-sky-400">
         {snippet || 'Thinking…'}
       </span>
-      {/* Subtle "open" caret that appears on hover */}
-      <svg
-        className="h-3 w-3 shrink-0 text-sky-400 opacity-0 transition-opacity group-hover:opacity-100"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        aria-hidden
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
     </button>
   )
 }
