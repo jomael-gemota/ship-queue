@@ -444,7 +444,8 @@ export function LiveReasoningSnippet({
     .replace(/\s+/g, ' ')
     .trim()
   const words = cleaned.split(' ').filter((w) => w.length > 1) // skip lone chars
-  const snippet = words.slice(-4).join(' ')
+  const raw = words.slice(-4).join(' ')
+  const snippet = raw ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase() : ''
 
   return (
     <button
