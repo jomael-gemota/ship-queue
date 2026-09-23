@@ -1705,7 +1705,7 @@ export default function DocTidyInvoiceAudit() {
                         disabled={emailBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedEmailsCompleted
-                            ? 'border border-amber-400 bg-transparent text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10'
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
                             : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
                         }`}
                       >
@@ -2110,7 +2110,7 @@ export default function DocTidyInvoiceAudit() {
                         disabled={pdfBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedPdfsCompleted
-                            ? 'border border-amber-400 bg-transparent text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10'
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
                             : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
                         }`}
                       >
