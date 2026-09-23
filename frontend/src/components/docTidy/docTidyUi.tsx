@@ -453,9 +453,7 @@ export function LiveReasoningSnippet({
       title="Open to watch Tidy Agent work"
       className="group inline-flex max-w-[200px] cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
     >
-      {/* Pulsing activity dot */}
-      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500" />
-      {/* Live reasoning words */}
+      <Spinner className="h-3.5 w-3.5 shrink-0 text-sky-500" />
       <span className="min-w-0 truncate italic">
         {snippet || 'Thinking…'}
       </span>
