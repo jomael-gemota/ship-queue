@@ -52,6 +52,85 @@ function formatTotal(raw: string): string {
   return raw.trim()
 }
 
+/* ──────────────────────── Dynamic / extracted-field column types ── */
+
+/**
+ * A column discovered at runtime from the `jsonOutput` of loaded parse jobs —
+ * not one of the statically-declared `INVOICE_AUDIT_COLUMNS`.
+ */
+interface DynamicAuditColumn {
+  type: 'dynamic'
+  /** Stable id for React keys – prefixed `dyn_doc_` or `dyn_li_`. */
+  id: string
+  /** The exact key as it appears in `jsonOutput` (or a line-item object). */
+  key: string
+  /** Human-readable label derived from the key. */
+  label: string
+  section: 'document' | 'lineItem'
+}
+
+type AnyAuditColumn = InvoiceAuditColumn | DynamicAuditColumn
+
+/** Type guard: is this a dynamic (agent-extracted) column? */
+function isDynCol(col: AnyAuditColumn): col is DynamicAuditColumn {
+  return (col as DynamicAuditColumn).type === 'dynamic'
+}
+
+/* ── Helpers for building the extracted-fields list ── */
+
+const _NORM = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+
+/** Normalised JSON keys already handled by a static InvoiceAuditColumn alias. */
+const KNOWN_DOC_JSON_KEYS = new Set(([
+  // vendorName
+  'vendor_name', 'vendor', 'supplier', 'company', 'from',
+  // documentType
+  'document_type', 'type', 'doc_type',
+  // invoiceNumber
+  'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice',
+  // poNumber
+  'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no',
+  // orderDate
+  'order_date', 'date_of_order', 'order date',
+  // invoiceDate
+  'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date',
+  // terms
+  'payment_terms', 'terms', 'net_terms', 'payment terms',
+  // trackingNumber
+  'tracking_number', 'tracking', 'tracking_no', 'shipment_tracking', 'tracking number',
+  // totalValue
+  'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due',
+] as const).map(_NORM))
+
+/** Normalised line-item keys already handled by a static `li*` column alias. */
+const KNOWN_LI_JSON_KEYS = new Set(([
+  'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number',
+  'model', 'model_number', 'model_no', 'style', 'style_number', 'style_no',
+  'description', 'name', 'product', 'item', 'item_description', 'desc', 'product_name',
+  'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty', 'amount',
+  'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price',
+  'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price',
+  'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc',
+  'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price', 'amount',
+  'uom', 'unit', 'unit_of_measure', 'unit_measure',
+  'tax', 'tax_amount', 'tax_value', 'vat', 'gst', 'hst',
+  'notes', 'note', 'remarks', 'comments', 'comment',
+] as const).map(_NORM))
+
+/** Normalised keys that are the line-items array itself — skip at document level. */
+const LINE_ITEMS_ARRAY_KEYS = new Set(
+  ['line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'].map(_NORM)
+)
+
+/** Convert a snake/kebab-case raw key to a Title Case label. */
+function keyToLabel(key: string): string {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 function formatBytes(bytes: number): string {
   if (!bytes || bytes < 0) return ''
   if (bytes < 1024) return `${bytes} B`
@@ -154,14 +233,24 @@ function DraggableTh({
 
 /* ──────────────────────────────── Column Settings Drawer ── */
 
+type ExtractedFieldInfo = { key: string; label: string }
+
 function ColumnSettingsDrawer({
   visibility,
   onChange,
   onClose,
+  extractedDocFields,
+  extractedLiFields,
+  dynamicVisibility,
+  onDynamicChange,
 }: {
   visibility: Record<InvoiceAuditColumnId, boolean>
   onChange: (next: Record<InvoiceAuditColumnId, boolean>) => void
   onClose: () => void
+  extractedDocFields: ExtractedFieldInfo[]
+  extractedLiFields: ExtractedFieldInfo[]
+  dynamicVisibility: Record<string, boolean>
+  onDynamicChange: (next: Record<string, boolean>) => void
 }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -176,10 +265,14 @@ function ColumnSettingsDrawer({
       INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
     ) as Record<InvoiceAuditColumnId, boolean>
     onChange(defaults)
+    // Also clear all dynamic (extracted) column visibility
+    onDynamicChange({})
   }
 
-  const docCols   = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
-  const liCols    = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+  const docCols = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'document')
+  const liCols  = INVOICE_AUDIT_COLUMNS.filter((c) => c.section === 'lineItem')
+
+  const hasExtracted = extractedDocFields.length > 0 || extractedLiFields.length > 0
 
   const ColRow = ({ col }: { col: (typeof INVOICE_AUDIT_COLUMNS)[number] }) => (
     <li>
@@ -193,6 +286,23 @@ function ColumnSettingsDrawer({
         <div className="min-w-0">
           <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
           <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+        </div>
+      </label>
+    </li>
+  )
+
+  const DynColRow = ({ field }: { field: ExtractedFieldInfo }) => (
+    <li>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 transition-colors hover:bg-[var(--bg-200)]">
+        <input
+          type="checkbox"
+          checked={dynamicVisibility[field.key] ?? false}
+          onChange={() => onDynamicChange({ ...dynamicVisibility, [field.key]: !(dynamicVisibility[field.key] ?? false) })}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--accent-200)]"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--text-100)]">{field.label}</p>
+          <p className="text-[11px] text-[var(--text-200)] font-mono">{field.key}</p>
         </div>
       </label>
     </li>
@@ -256,6 +366,49 @@ function ColumnSettingsDrawer({
               {liCols.map((col) => <ColRow key={col.id} col={col} />)}
             </ul>
           </div>
+
+          {/* ── Extracted fields section ── */}
+          {hasExtracted && (
+            <div>
+              {/* Divider */}
+              <div className="border-t border-[var(--bg-300)] mb-4" />
+
+              <div className="flex items-center gap-2 mb-1">
+                {/* Bolt / extracted icon */}
+                <svg className="h-3.5 w-3.5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                  Extracted fields
+                </p>
+              </div>
+              <p className="text-[11px] text-[var(--text-200)] mb-3 pl-1 leading-relaxed">
+                Additional fields the Tidy Agent found in your documents. Unchecked by default.
+              </p>
+
+              {extractedDocFields.length > 0 && (
+                <div className={extractedLiFields.length > 0 ? 'mb-4' : ''}>
+                  <p className="text-[11px] font-semibold text-[var(--text-200)] mb-1 pl-1 uppercase tracking-wide">
+                    Document level
+                  </p>
+                  <ul className="space-y-1">
+                    {extractedDocFields.map((f) => <DynColRow key={f.key} field={f} />)}
+                  </ul>
+                </div>
+              )}
+
+              {extractedLiFields.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-[var(--text-200)] mb-1 pl-1 uppercase tracking-wide">
+                    Line item level
+                  </p>
+                  <ul className="space-y-1">
+                    {extractedLiFields.map((f) => <DynColRow key={f.key} field={f} />)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -636,6 +789,21 @@ export default function DocTidyInvoiceAudit() {
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
+  /** Visibility of dynamically-discovered extra columns (keyed by raw JSON key). */
+  const [dynamicColVisibility, setDynamicColVisibility] = useState<Record<string, boolean>>({})
+
+  /* Load/reset dynamic column visibility whenever the active workspace changes. */
+  useEffect(() => {
+    if (!activeWorkspace) { setDynamicColVisibility({}); return }
+    const storageKey = `docTidy.invoiceAudit.dynamicColumns.${activeWorkspace._id}`
+    try {
+      const raw = localStorage.getItem(storageKey)
+      setDynamicColVisibility(raw ? (JSON.parse(raw) as Record<string, boolean>) : {})
+    } catch {
+      setDynamicColVisibility({})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?._id])
 
   /* ── Shared column ordering (server-persisted, real-time via SSE) ── */
   const [auditColOrder, setAuditColOrder] = useState<InvoiceAuditColumnId[]>(DEFAULT_AUDIT_COL_ORDER)
@@ -1289,17 +1457,83 @@ export default function DocTidyInvoiceAudit() {
     saveAuditColumnVisibility(next)
   }
 
+  const handleDynamicColVisChange = (next: Record<string, boolean>) => {
+    setDynamicColVisibility(next)
+    if (activeWorkspace) {
+      try {
+        localStorage.setItem(`docTidy.invoiceAudit.dynamicColumns.${activeWorkspace._id}`, JSON.stringify(next))
+      } catch { /* ignore */ }
+    }
+  }
+
   /** Persist collapsed weeks to localStorage whenever the set changes. */
   useEffect(() => {
     saveCollapsedWeeks(collapsedWeeks)
   }, [collapsedWeeks])
 
-  const visibleCols = useMemo(
-    () =>
-      auditColOrder
+  /**
+   * Scan the currently-loaded jobs for JSON keys not covered by any static column.
+   * Returns two arrays: extra document-level fields and extra line-item-level fields.
+   */
+  const extractedFields = useMemo<{ doc: ExtractedFieldInfo[]; lineItem: ExtractedFieldInfo[] }>(() => {
+    const docKeys = new Map<string, string>()  // normKey → first rawKey seen
+    const liKeys  = new Map<string, string>()
+
+    for (const job of jobs) {
+      const json = job.jsonOutput
+      if (!json || typeof json !== 'object') continue
+
+      for (const [rawKey, val] of Object.entries(json)) {
+        const n = _NORM(rawKey)
+        if (LINE_ITEMS_ARRAY_KEYS.has(n)) {
+          // This is a line-items array — scan its item keys
+          if (Array.isArray(val)) {
+            for (const item of val) {
+              if (item && typeof item === 'object' && !Array.isArray(item)) {
+                for (const liRawKey of Object.keys(item as Record<string, unknown>)) {
+                  const ln = _NORM(liRawKey)
+                  if (!KNOWN_LI_JSON_KEYS.has(ln) && !liKeys.has(ln)) {
+                    liKeys.set(ln, liRawKey)
+                  }
+                }
+              }
+            }
+          }
+        } else if (
+          !KNOWN_DOC_JSON_KEYS.has(n) &&
+          val !== null &&
+          val !== undefined &&
+          !Array.isArray(val) &&
+          typeof val !== 'object'
+        ) {
+          if (!docKeys.has(n)) docKeys.set(n, rawKey)
+        }
+      }
+    }
+
+    return {
+      doc:      Array.from(docKeys.values()).map((key) => ({ key, label: keyToLabel(key) })),
+      lineItem: Array.from(liKeys.values()).map((key) => ({ key, label: keyToLabel(key) })),
+    }
+  }, [jobs])
+
+  const visibleCols = useMemo<AnyAuditColumn[]>(
+    () => {
+      const staticCols: InvoiceAuditColumn[] = auditColOrder
         .map((id) => INVOICE_AUDIT_COLUMNS.find((c) => c.id === id))
-        .filter((c): c is InvoiceAuditColumn => c !== undefined && colVisibility[c.id]),
-    [auditColOrder, colVisibility]
+        .filter((c): c is InvoiceAuditColumn => c !== undefined && colVisibility[c.id])
+
+      const dynDocCols: DynamicAuditColumn[] = extractedFields.doc
+        .filter((f) => dynamicColVisibility[f.key])
+        .map((f) => ({ type: 'dynamic' as const, id: `dyn_doc_${f.key}`, key: f.key, label: f.label, section: 'document' as const }))
+
+      const dynLiCols: DynamicAuditColumn[] = extractedFields.lineItem
+        .filter((f) => dynamicColVisibility[f.key])
+        .map((f) => ({ type: 'dynamic' as const, id: `dyn_li_${f.key}`, key: f.key, label: f.label, section: 'lineItem' as const }))
+
+      return [...staticCols, ...dynDocCols, ...dynLiCols]
+    },
+    [auditColOrder, colVisibility, extractedFields, dynamicColVisibility]
   )
 
   /** Email columns in user-defined order. */
@@ -1401,7 +1635,14 @@ export default function DocTidyInvoiceAudit() {
           const item = rowItems[itemIdx]
           const row: Record<string, string> = {}
           for (const col of visibleCols) {
-            if (isLineItemCol(col.id)) {
+            if (isDynCol(col)) {
+              // Dynamic extracted column — read the raw JSON key directly
+              const val = col.section === 'lineItem'
+                ? (item as Record<string, unknown> | null)?.[col.key]
+                : (job.jsonOutput ?? {})[col.key]
+              row[col.label] = (val !== null && val !== undefined && !Array.isArray(val) && typeof val !== 'object')
+                ? String(val) : ''
+            } else if (isLineItemCol(col.id)) {
               row[col.label] = item ? liField(item as Record<string, unknown>, ...liFieldKeys(col.id)) : ''
             } else {
               row[col.label] = docFieldStr(col.id, job)
@@ -2669,25 +2910,51 @@ export default function DocTidyInvoiceAudit() {
                           className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                         />
                       </Th>
-                      {visibleCols.map((col) => (
-                        <DraggableTh
-                          key={col.id}
-                          label={col.label}
-                          align={col.numeric ? 'right' : 'left'}
-                          isDragging={auditDragSrc === col.id}
-                          isDragTarget={auditDragTarget === col.id}
-                          onDragStart={() => setAuditDragSrc(col.id)}
-                          onDragOver={() => setAuditDragTarget(col.id)}
-                          onDrop={() => {
-                            if (auditDragSrc && auditDragSrc !== col.id) {
-                              const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
-                              setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
-                            }
-                          }}
-                          onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
-                        />
-                      ))}
+                      {visibleCols.map((col) => {
+                        if (isDynCol(col)) {
+                          // Dynamic extracted columns — no drag, bolt icon badge
+                          return (
+                            <th
+                              key={col.id}
+                              className={[
+                                'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
+                                'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+                                'bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
+                                auditDragSrc === col.id ? 'bg-sky-100 dark:bg-sky-500/20' : '',
+                                auditDragTarget === col.id ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10' : '',
+                              ].join(' ')}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <svg className="h-3 w-3 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                {col.label}
+                              </span>
+                            </th>
+                          )
+                        }
+                        // Static columns — draggable
+                        const staticId = col.id
+                        return (
+                          <DraggableTh
+                            key={staticId}
+                            label={col.label}
+                            align={col.numeric ? 'right' : 'left'}
+                            isDragging={auditDragSrc === staticId}
+                            isDragTarget={auditDragTarget === staticId}
+                            onDragStart={() => setAuditDragSrc(staticId)}
+                            onDragOver={() => setAuditDragTarget(staticId)}
+                            onDrop={() => {
+                              if (auditDragSrc && auditDragSrc !== staticId) {
+                                const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, staticId)
+                                setAuditColOrder(newOrder)
+                                saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
+                              }
+                            }}
+                            onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
+                          />
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -2874,19 +3141,28 @@ export default function DocTidyInvoiceAudit() {
                                       key={col.id}
                                       className={[
                                         'px-2.5 py-1 text-[11px] whitespace-nowrap',
-                                        col.numeric ? 'text-right tabular-nums' : '',
-                                        col.mono ? 'font-mono' : '',
-                                        // Column-level drag highlight
-                                        auditDragSrc === col.id
+                                        !isDynCol(col) && col.numeric ? 'text-right tabular-nums' : '',
+                                        !isDynCol(col) && col.mono ? 'font-mono' : '',
+                                        // Column-level drag highlight (static columns only)
+                                        !isDynCol(col) && auditDragSrc === col.id
                                           ? 'bg-sky-100/70 dark:bg-sky-500/15'
-                                          : auditDragTarget === col.id
+                                          : !isDynCol(col) && auditDragTarget === col.id
                                             ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400'
                                             : '',
                                       ].join(' ')}
                                     >
-                                      {isLineItemCol(col.id)
-                                        ? liCellFor(col.id, item)
-                                        : docCellFor(col.id, job)}
+                                      {isDynCol(col)
+                                        ? (() => {
+                                            const rawVal = col.section === 'lineItem'
+                                              ? (item as Record<string, unknown> | null)?.[col.key]
+                                              : (job.jsonOutput ?? {})[col.key]
+                                            return (rawVal !== null && rawVal !== undefined && !Array.isArray(rawVal) && typeof rawVal !== 'object')
+                                              ? <span>{String(rawVal)}</span>
+                                              : <span className="text-[var(--text-200)]">—</span>
+                                          })()
+                                        : isLineItemCol(col.id)
+                                          ? liCellFor(col.id, item)
+                                          : docCellFor(col.id, job)}
                                     </td>
                                   ))}
                                 </tr>
@@ -2916,6 +3192,10 @@ export default function DocTidyInvoiceAudit() {
           visibility={colVisibility}
           onChange={handleColVisChange}
           onClose={() => setShowColSettings(false)}
+          extractedDocFields={extractedFields.doc}
+          extractedLiFields={extractedFields.lineItem}
+          dynamicVisibility={dynamicColVisibility}
+          onDynamicChange={handleDynamicColVisChange}
         />
       )}
 
