@@ -267,6 +267,7 @@ export default function ParseJobPanel({
                 <CorrectionEditor
                   jobId={jobId}
                   original={json}
+                  tableOutput={table}
                   onSaved={() => {
                     void loadCorrections()
                     onChanged()
