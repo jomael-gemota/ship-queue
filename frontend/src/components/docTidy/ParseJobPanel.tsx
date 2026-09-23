@@ -184,7 +184,7 @@ export default function ParseJobPanel({
               onClick={rerun}
               disabled={rerunning || isParseRunning(status)}
               title={isParseRunning(status) ? 'Agent is already running' : 'Send this document to Tidy Agent again'}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-amber-400 bg-amber-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-amber-400 bg-transparent px-3 py-1.5 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-50 hover:border-amber-500 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {rerunning ? (
                 <Spinner className="h-3.5 w-3.5" />
