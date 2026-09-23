@@ -359,7 +359,63 @@ function VendorEditor({
 /** How many changed fields a correction shows before collapsing the remainder. */
 const CHANGE_PREVIEW_LIMIT = 5
 
-/* ── Tabular correction diff helpers ── */
+/* ── Shared change-entry type ── */
+
+/**
+ * One entry in a correction diff.
+ * - `kind === 'value'`  (default): a field's value changed.
+ * - `kind === 'rename'`: a field was renamed; `renamedTo` holds the new name
+ *   and `sharedValue` holds the value that moved unchanged into the new key.
+ */
+type DiffChange =
+  | { kind?: 'value'; field: string; before: string; after: string }
+  | { kind: 'rename'; field: string; renamedTo: string; sharedValue: string; before: string; after: string }
+
+/**
+ * Post-processes a raw `diffOutputs` result to merge rename pairs.
+ *
+ * A rename is detected when a path appears as deleted (before=value, after='')
+ * AND a *different* path appears as added (before='', after=same_value).
+ * Those two entries are replaced with a single `{ kind:'rename' }` entry placed
+ * where the deleted entry was, and the added entry is suppressed.
+ */
+function mergeRenames(raw: Array<{ field: string; before: string; after: string }>): DiffChange[] {
+  // Build a map from value → the field name that added it.
+  const addedByValue = new Map<string, string>()
+  for (const c of raw) {
+    if (c.before === '' && c.after !== '') {
+      addedByValue.set(c.after, c.field)
+    }
+  }
+
+  const suppressedFields = new Set<string>()
+  const result: DiffChange[] = []
+
+  for (const c of raw) {
+    if (suppressedFields.has(c.field)) continue
+
+    if (c.before !== '' && c.after === '') {
+      // Potential "deleted" half of a rename — check whether the value was re-added elsewhere.
+      const newFieldName = addedByValue.get(c.before)
+      if (newFieldName && newFieldName !== c.field) {
+        suppressedFields.add(newFieldName) // suppress the matching "added" entry
+        result.push({
+          kind: 'rename',
+          field: c.field,
+          renamedTo: newFieldName,
+          sharedValue: c.before,
+          before: '',
+          after: '',
+        })
+        continue
+      }
+    }
+
+    result.push({ ...c })
+  }
+
+  return result
+}
 
 /** Normalise a string for fuzzy column↔field matching. */
 const _TNORM = (s: string) => String(s).toLowerCase().replace(/[_\-\s]+/g, '')
@@ -496,7 +552,7 @@ function CorrectionItem({
         Object.keys(correction.originalOutput).length > 0
     )
 
-  const changes = useMemo<Array<{ field: string; before: string; after: string }>>(
+  const changes = useMemo<DiffChange[]>(
     () => {
       if (isTabular) {
         return diffTabularCorrection(
@@ -505,8 +561,9 @@ function CorrectionItem({
         )
       }
       if (!hasBaseline) return []
-      return diffOutputs(correction.originalOutput, correction.correctedOutput)
+      const raw = diffOutputs(correction.originalOutput, correction.correctedOutput)
         .map(({ path, before, after }) => ({ field: path, before, after }))
+      return mergeRenames(raw)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isTabular, hasBaseline, correction.originalOutput, correction.correctedOutput, correction.correctedTables]
@@ -545,15 +602,26 @@ function CorrectionItem({
           <ul className="mt-2 space-y-1">
             {shown.map((change, i) => (
               <li key={`${change.field}-${i}`} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-[11px]">
-                <span className="font-medium text-[var(--text-100)]">{change.field}</span>
-                <span className="text-[var(--text-200)]">·</span>
-                <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
-                  {change.before || '—'}
-                </span>
-                <span className="text-[var(--text-200)]">→</span>
-                <span className="font-mono text-emerald-700 dark:text-emerald-400">
-                  {change.after || '—'}
-                </span>
+                {change.kind === 'rename' ? (
+                  <>
+                    <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">{change.field}</span>
+                    <span className="text-[var(--text-200)]">→</span>
+                    <span className="font-mono text-emerald-700 dark:text-emerald-400">{change.renamedTo}</span>
+                    <span className="text-[var(--text-200)] italic">(field renamed · value: {change.sharedValue})</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium text-[var(--text-100)]">{change.field}</span>
+                    <span className="text-[var(--text-200)]">·</span>
+                    <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
+                      {change.before || '—'}
+                    </span>
+                    <span className="text-[var(--text-200)]">→</span>
+                    <span className="font-mono text-emerald-700 dark:text-emerald-400">
+                      {change.after || '—'}
+                    </span>
+                  </>
+                )}
               </li>
             ))}
           </ul>
