@@ -2001,9 +2001,10 @@ export default function DocTidyInvoiceAudit() {
                                   <button
                                     type="button"
                                     onClick={() => setConfirmDeleteEmail(msg)}
-                                    title="Delete this message"
+                                    title={msg.parseJobs?.some(j => isParseRunning(j.status)) ? 'Cannot delete while Tidy Agent is parsing' : 'Delete this message'}
                                     aria-label="Delete message"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    disabled={msg.parseJobs?.some(j => isParseRunning(j.status)) ?? false}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -2363,30 +2364,18 @@ export default function DocTidyInvoiceAudit() {
                                       )
                                     }
 
-                                    // Completed — emerald check + rerun button
+                                    // Completed — emerald check + "View Tidy Reasoning" text link
                                     if (job.status === 'completed') {
                                       return (
-                                        <span className="flex items-center gap-0.5">
-                                          <TableActionButton label="Open Tidy Agent's reasoning and output" onClick={() => setOpenJobId(job._id)}>
-                                            <SuccessIcon className="h-5 w-5 text-emerald-500" />
-                                          </TableActionButton>
-                                          <button
-                                            type="button"
-                                            title={!workerOnline ? 'Tidy Agent is offline' : 'Send to Tidy Agent for Rerun'}
-                                            onClick={() => void handleSendToAgent(imp)}
-                                            disabled={isSending || !workerOnline}
-                                            className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
-                                          >
-                                            {isSending ? (
-                                              <Spinner className="h-3 w-3" />
-                                            ) : (
-                                              <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                                              </svg>
-                                            )}
-                                            Rerun
-                                          </button>
-                                        </span>
+                                        <button
+                                          type="button"
+                                          title="Open Tidy Agent's reasoning and output"
+                                          onClick={() => setOpenJobId(job._id)}
+                                          className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                        >
+                                          <SuccessIcon className="h-4 w-4 shrink-0" />
+                                          View Tidy Reasoning
+                                        </button>
                                       )
                                     }
 
@@ -2413,9 +2402,10 @@ export default function DocTidyInvoiceAudit() {
                                   <button
                                     type="button"
                                     onClick={() => setConfirmDeletePdf(imp)}
-                                    title="Delete this import"
+                                    title={isRunning ? 'Cannot delete while Tidy Agent is parsing' : 'Delete this import'}
                                     aria-label="Delete import"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    disabled={Boolean(isRunning)}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

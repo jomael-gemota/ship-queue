@@ -109,41 +109,27 @@ export default function AttachmentIcons({
             )
           }
 
-          // Finished / failed — open the panel on click, with a Rerun button for completed jobs.
+          // Finished / failed — open the panel on click.
+          // Completed jobs show a "View Tidy Reasoning" text link; failed jobs keep the icon-only button.
           return (
             <span key={i} className="flex items-center gap-0.5">
-              <TableActionButton
-                label={
-                  job.error ??
-                  (job.status === 'failed'
-                    ? 'Parse failed — open to see error'
-                    : 'Open Tidy Agent\u2019s reasoning and output')
-                }
-                onClick={() => onOpenJob(job._id)}
-              >
-                {job.status === 'failed' ? (
-                  <ErrorIcon className="h-5 w-5 text-rose-500" />
-                ) : (
-                  <SuccessIcon className="h-5 w-5 text-emerald-500" />
-                )}
-              </TableActionButton>
-              {job.status === 'completed' && (
+              {job.status === 'completed' ? (
                 <button
                   type="button"
-                  title="Send to Tidy Agent for Rerun"
-                  onClick={() => void startParse(i)}
-                  disabled={startingIndex !== null}
-                  className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Open Tidy Agent's reasoning and output"
+                  onClick={() => onOpenJob(job._id)}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                 >
-                  {startingIndex === i ? (
-                    <Spinner className="h-3 w-3" />
-                  ) : (
-                    <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                      <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                    </svg>
-                  )}
-                  Rerun
+                  <SuccessIcon className="h-4 w-4 shrink-0" />
+                  View Tidy Reasoning
                 </button>
+              ) : (
+                <TableActionButton
+                  label={job.error ?? 'Parse failed — open to see error'}
+                  onClick={() => onOpenJob(job._id)}
+                >
+                  <ErrorIcon className="h-5 w-5 text-rose-500" />
+                </TableActionButton>
               )}
             </span>
           )
