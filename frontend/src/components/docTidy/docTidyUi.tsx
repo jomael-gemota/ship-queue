@@ -452,9 +452,9 @@ export function LiveReasoningSnippet({
 
   const lastSegment = segments[segments.length - 1] ?? cleaned
   const words = lastSegment.split(/\s+/).filter((w) => w.length > 0)
-  const sliced = words.slice(0, 4).join(' ')
+  const sliced = words.slice(0, 6).join(' ')
   const snippet = sliced
-    ? sliced.charAt(0).toUpperCase() + sliced.slice(1).toLowerCase() + (words.length > 4 ? '…' : '')
+    ? sliced.charAt(0).toUpperCase() + sliced.slice(1).toLowerCase() + (words.length > 6 ? '…' : '')
     : ''
 
   return (
@@ -462,7 +462,7 @@ export function LiveReasoningSnippet({
       type="button"
       onClick={onOpen}
       title="Open to watch Tidy Agent work"
-      className="group inline-flex max-w-[200px] cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+      className="group inline-flex max-w-[260px] cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
     >
       <Spinner className="h-3.5 w-3.5 shrink-0 text-sky-500" />
       <span className="min-w-0 truncate italic">
