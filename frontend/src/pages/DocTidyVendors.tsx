@@ -11,6 +11,7 @@ import { diffOutputs } from '../lib/correctionDiff'
 import {
   normalizeVendorName,
   vendorSamples,
+  type AgentTable,
   type DocTidyCorrection,
   type DocTidyVendor,
 } from '../types/docTidy'
@@ -358,6 +359,74 @@ function VendorEditor({
 /** How many changed fields a correction shows before collapsing the remainder. */
 const CHANGE_PREVIEW_LIMIT = 5
 
+/* ── Tabular correction diff helpers ── */
+
+/** Normalise a string for fuzzy column↔field matching. */
+const _TNORM = (s: string) => String(s).toLowerCase().replace(/[_\-\s]+/g, '')
+
+/**
+ * Find the value of a JSON field whose normalised key matches `colName`.
+ * Returns an empty string when no match is found.
+ */
+function lookupColValue(item: Record<string, unknown>, colName: string): string {
+  const target = _TNORM(colName)
+  for (const [k, v] of Object.entries(item)) {
+    if (_TNORM(k) !== target) continue
+    if (v === null || v === undefined) return ''
+    if (!Array.isArray(v) && typeof v !== 'object') return String(v)
+  }
+  return ''
+}
+
+/**
+ * Produce a flat before→after diff for a tabular correction by comparing
+ * `correctedTables` row-by-row against the original line items extracted from
+ * `originalOutput`.  Only cells whose value actually changed are returned.
+ */
+function diffTabularCorrection(
+  originalOutput: Record<string, unknown> | null | undefined,
+  correctedTables: AgentTable[]
+): Array<{ field: string; before: string; after: string }> {
+  if (!originalOutput || !correctedTables.length) return []
+
+  // Try to find the line-items array in the original JSON.
+  const ARRAY_KEYS = ['line_items', 'items', 'products', 'lineItems', 'order_items', 'orderItems']
+  let originalRows: Record<string, unknown>[] = []
+  for (const key of ARRAY_KEYS) {
+    const val = originalOutput[key]
+    if (Array.isArray(val) && val.length > 0) {
+      originalRows = val as Record<string, unknown>[]
+      break
+    }
+  }
+  // Fallback: treat the whole originalOutput as a single row (document-level table).
+  if (originalRows.length === 0 && Object.keys(originalOutput).length > 0) {
+    originalRows = [originalOutput]
+  }
+
+  const changes: Array<{ field: string; before: string; after: string }> = []
+  const multiRow = correctedTables.some((t) => t.rows.length > 1)
+
+  for (const table of correctedTables) {
+    const tablePrefix = correctedTables.length > 1 && table.title ? `${table.title} · ` : ''
+    for (let ri = 0; ri < table.rows.length; ri++) {
+      const origRow = originalRows[ri] ?? {}
+      const row = table.rows[ri]
+      for (let ci = 0; ci < table.columns.length; ci++) {
+        const colName = table.columns[ci]
+        const newVal = row[ci] === null || row[ci] === undefined ? '' : String(row[ci]).trim()
+        const oldVal = lookupColValue(origRow, colName)
+        if (oldVal !== newVal) {
+          const rowSuffix = multiRow ? ` (row ${ri + 1})` : ''
+          changes.push({ field: `${tablePrefix}${colName}${rowSuffix}`, before: oldVal, after: newVal })
+        }
+      }
+    }
+  }
+
+  return changes
+}
+
 function formatWhen(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -385,13 +454,39 @@ function CorrectionItem({
 }) {
   const [showAll, setShowAll] = useState(false)
 
-  // A correction saved before the agent's baseline was recorded has nothing to
-  // diff against; flattening `null` would mark every field as changed.
-  const hasBaseline = Boolean(correction.originalOutput)
-  const changes = useMemo(
-    () =>
-      hasBaseline ? diffOutputs(correction.originalOutput, correction.correctedOutput) : [],
-    [hasBaseline, correction.originalOutput, correction.correctedOutput]
+  // Tabular corrections store the full corrected table in correctedTables.
+  // Their correctedOutput is { tables: [...] } which has a completely different
+  // schema from originalOutput (the agent's JSON), so running diffOutputs on them
+  // produces nothing useful — ALL paths appear changed (schema mismatch).
+  // Detect tabular and take a different display path.
+  const isTabular =
+    correction.mode === 'tabular' &&
+    Array.isArray(correction.correctedTables) &&
+    correction.correctedTables.length > 0
+
+  // For JSON corrections: a valid baseline must be a non-empty object (not {} or null).
+  const hasBaseline =
+    !isTabular &&
+    Boolean(
+      correction.originalOutput &&
+        typeof correction.originalOutput === 'object' &&
+        Object.keys(correction.originalOutput).length > 0
+    )
+
+  const changes = useMemo<Array<{ field: string; before: string; after: string }>>(
+    () => {
+      if (isTabular) {
+        return diffTabularCorrection(
+          correction.originalOutput,
+          correction.correctedTables as AgentTable[]
+        )
+      }
+      if (!hasBaseline) return []
+      return diffOutputs(correction.originalOutput, correction.correctedOutput)
+        .map(({ path, before, after }) => ({ field: path, before, after }))
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isTabular, hasBaseline, correction.originalOutput, correction.correctedOutput, correction.correctedTables]
   )
 
   const shown = showAll ? changes : changes.slice(0, CHANGE_PREVIEW_LIMIT)
@@ -421,13 +516,13 @@ function CorrectionItem({
         </p>
       )}
 
-      {/* Field-level changes */}
+      {/* Field-level changes — same flat before→after format for both JSON and tabular corrections */}
       {changes.length > 0 ? (
         <>
           <ul className="mt-2 space-y-1">
-            {shown.map((change) => (
-              <li key={change.path} className="text-[11px] leading-relaxed">
-                <span className="font-mono text-[var(--text-200)]">{change.path}</span>
+            {shown.map((change, i) => (
+              <li key={`${change.field}-${i}`} className="text-[11px] leading-relaxed">
+                <span className="font-mono text-[var(--text-200)]">{change.field}</span>
                 <span className="mx-1.5 text-[var(--text-200)]">·</span>
                 <span className="font-mono text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400">
                   {change.before || '—'}
@@ -452,9 +547,11 @@ function CorrectionItem({
         </>
       ) : (
         <p className="mt-2 text-[11px] italic text-[var(--text-200)]">
-          {hasBaseline
-            ? 'No field differences — saved for the instruction above.'
-            : "The agent's original output was not recorded, so there is nothing to compare."}
+          {isTabular
+            ? 'No cell differences detected between the original and corrected values.'
+            : hasBaseline
+              ? 'No field differences — saved for the instruction above.'
+              : "The agent's original output was not recorded, so there is nothing to compare."}
         </p>
       )}
     </li>
