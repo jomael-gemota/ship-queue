@@ -1566,6 +1566,7 @@ export default function DocTidyInvoiceAudit() {
       formData.append('file', file)
       const res = await authApi.upload<{ count: number; importBatchId: string }>('/doc-tidy/order-imports', formData)
       setImportSuccess({ count: res.count, batchId: res.importBatchId })
+      setShowImportModal(false)
       void fetchOrderImportsRef.current()
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed')
