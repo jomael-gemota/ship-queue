@@ -49,6 +49,13 @@ import {
   sendPdfImportToAgent,
   deletePdfImport,
 } from '../controllers/docTidyPdfImport.controller';
+import {
+  orderImportUpload,
+  listOrderImports,
+  uploadOrderImports,
+  deleteOrderImport,
+  deleteOrderImportBatch,
+} from '../controllers/docTidyOrderImport.controller';
 
 const router = Router();
 
@@ -103,6 +110,12 @@ router.get('/pdf-imports', listPdfImports);
 router.post('/pdf-imports', pdfUpload.array('files'), uploadPdfImports);
 router.post('/pdf-imports/:id/parse', sendPdfImportToAgent);
 router.delete('/pdf-imports/:id', deletePdfImport);
+
+// Order imports (CSV/XLSX) — primary data source for the Invoice Audit table.
+router.get('/order-imports', listOrderImports);
+router.post('/order-imports', orderImportUpload.single('file'), uploadOrderImports);
+router.delete('/order-imports/batch/:batchId', deleteOrderImportBatch);
+router.delete('/order-imports/:id', deleteOrderImport);
 
 // The mailbox connection and attachment destination are admin-managed.
 router.get('/config', getConfig);

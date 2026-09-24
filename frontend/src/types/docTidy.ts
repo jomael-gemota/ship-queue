@@ -406,42 +406,36 @@ export interface ParseJobsResponse {
   }
 }
 
-/** All column ids available in the Invoice Audit table (document-level + line item). */
+/** All column ids available in the redesigned Invoice Audit table (v2). */
 export type InvoiceAuditColumnId =
-  // ── Document-level ──
-  | 'vendorName'
-  | 'documentType'
-  | 'invoiceNumber'
+  // ── Order import fields ──
   | 'poNumber'
-  | 'orderDate'
+  | 'orderSku'
+  | 'orderQty'
+  // ── Invoice fields (from parsed PDFs) ──
+  | 'invoiceSku'
   | 'invoiceDate'
+  | 'invoiceNumber'
   | 'terms'
-  | 'trackingNumber'
-  | 'totalValue'
-  // ── Line item (inline, prefixed li) ──
-  | 'liSku'
-  | 'liModel'
-  | 'liDescription'
-  | 'liQuantity'
-  | 'liUnitPrice'
-  | 'liDiscountedPrice'
-  | 'liDiscountPercent'
-  | 'liLineTotal'
-  | 'liUom'
-  | 'liTaxAmount'
-  | 'liNotes'
-  // ── Meta ──
-  | 'filename'
-  | 'parsedAt'
-  | 'requestedBy'
+  | 'itemCost'
+  | 'dcCogs'
+  | 'invoiceQty'
+  | 'discountedCostPct'
+  | 'dropshipFee'
+  | 'miscCharges'
+  | 'totalCost'
+  // ── Computed ──
+  | 'discrepancy'
+
+/** Which logical section a column belongs to (used by the settings drawer). */
+export type InvoiceAuditColumnSection = 'order' | 'invoice' | 'computed'
 
 export interface InvoiceAuditColumn {
   id: InvoiceAuditColumnId
   label: string
   description: string
   defaultVisible: boolean
-  /** Which logical section this column belongs to (used by the settings drawer). */
-  section: 'document' | 'lineItem'
+  section: InvoiceAuditColumnSection
   /** Right-align header and cell; apply tabular-nums. */
   numeric?: boolean
   /** Render cell value in monospace. */
@@ -449,31 +443,24 @@ export interface InvoiceAuditColumn {
 }
 
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
-  // ── Document fields ──
-  { id: 'vendorName',        section: 'document',  label: 'Vendor',        description: 'Vendor or supplier name',                      defaultVisible: true  },
-  { id: 'documentType',      section: 'document',  label: 'Type',          description: 'Document type (Invoice, Order Confirmation…)', defaultVisible: true  },
-  { id: 'invoiceNumber',     section: 'document',  label: 'Invoice #',     description: 'Invoice number from the document',             defaultVisible: true  },
-  { id: 'poNumber',          section: 'document',  label: 'PO Number',     description: 'Purchase order number',                        defaultVisible: true  },
-  { id: 'orderDate',         section: 'document',  label: 'Order Date',    description: 'Date the order was placed',                    defaultVisible: true  },
-  { id: 'invoiceDate',       section: 'document',  label: 'Invoice Date',  description: 'Date printed on the invoice',                  defaultVisible: true  },
-  { id: 'totalValue',        section: 'document',  label: 'Total Value',   description: 'Grand total / invoice amount',                 defaultVisible: true,  numeric: true },
-  { id: 'terms',             section: 'document',  label: 'Terms',         description: 'Payment terms (e.g. Net 30)',                  defaultVisible: false },
-  { id: 'trackingNumber',    section: 'document',  label: 'Tracking #',    description: 'Shipment tracking number',                     defaultVisible: false },
-  { id: 'filename',          section: 'document',  label: 'Filename',      description: 'Original PDF filename',                        defaultVisible: false },
-  { id: 'parsedAt',          section: 'document',  label: 'Parsed At',     description: 'When the agent completed parsing',             defaultVisible: false },
-  { id: 'requestedBy',       section: 'document',  label: 'Requested By',  description: 'Who triggered the parse',                      defaultVisible: false },
-  // ── Line item fields ──
-  { id: 'liSku',             section: 'lineItem',  label: 'SKU',           description: 'Part number, SKU, or item code',               defaultVisible: true,  mono: true    },
-  { id: 'liModel',           section: 'lineItem',  label: 'Model #',       description: 'Model number, style number, or product code',  defaultVisible: true,  mono: true    },
-  { id: 'liDescription',     section: 'lineItem',  label: 'Description',   description: 'Product or item description',                  defaultVisible: false                },
-  { id: 'liQuantity',        section: 'lineItem',  label: 'Qty',           description: 'Quantity ordered',                             defaultVisible: true,  numeric: true },
-  { id: 'liUnitPrice',       section: 'lineItem',  label: 'Item Cost',     description: 'Unit price, item cost, or list price',         defaultVisible: true,  numeric: true },
-  { id: 'liDiscountedPrice', section: 'lineItem',  label: 'Disc. Price',   description: 'Price after discount applied',                 defaultVisible: true,  numeric: true },
-  { id: 'liDiscountPercent', section: 'lineItem',  label: 'Discount %',    description: 'Percentage discount applied',                  defaultVisible: true,  numeric: true },
-  { id: 'liLineTotal',       section: 'lineItem',  label: 'Total Cost',    description: 'Total cost for this line item',                defaultVisible: true,  numeric: true },
-  { id: 'liUom',             section: 'lineItem',  label: 'UOM',           description: 'Unit of measure (e.g. EA, CS, LB)',            defaultVisible: false, mono: true    },
-  { id: 'liTaxAmount',       section: 'lineItem',  label: 'Tax',           description: 'Tax amount for this line',                     defaultVisible: false, numeric: true },
-  { id: 'liNotes',           section: 'lineItem',  label: 'Notes',         description: 'Additional notes or remarks on this line',     defaultVisible: false },
+  // ── Order fields ──
+  { id: 'poNumber',           section: 'order',    label: 'PO #',                              description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true   },
+  { id: 'orderSku',           section: 'order',    label: 'Order SKU',                         description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true   },
+  { id: 'orderQty',           section: 'order',    label: 'Order Qty',                         description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true },
+  // ── Invoice fields ──
+  { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',                       description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true   },
+  { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',                      description: 'Date printed on the matched invoice',                              defaultVisible: true               },
+  { id: 'invoiceNumber',      section: 'invoice',  label: 'Invoice #',                         description: 'Invoice number from the matched invoice',                          defaultVisible: true,  mono: true   },
+  { id: 'terms',              section: 'invoice',  label: 'Terms',                             description: 'Payment terms (e.g. Net 30) from the matched invoice',             defaultVisible: false              },
+  { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',                         description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true },
+  { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',                           description: 'Distribution center cost of goods sold (future source)',           defaultVisible: false, numeric: true },
+  { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',                       description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true },
+  { id: 'discountedCostPct',  section: 'invoice',  label: 'Discounted Cost/%',                 description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true },
+  { id: 'dropshipFee',        section: 'invoice',  label: 'Dropship Fee',                      description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true },
+  { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',                     description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true },
+  { id: 'totalCost',          section: 'invoice',  label: 'Total Cost (incl. Tax & DS Fees)',  description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true },
+  // ── Computed ──
+  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',                       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
 ]
 
 /** Default order mirrors the declaration order in INVOICE_AUDIT_COLUMNS. */
@@ -482,7 +469,11 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 /** Default order mirrors the declaration order in WORKSPACE_EMAIL_COLUMNS. */
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
-const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns'
+/**
+ * v2 key — bumped from `docTidy.invoiceAudit.columns` when the column set was
+ * redesigned (2026-09-24 order-import redesign). Old v1 preferences are ignored.
+ */
+const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v2'
 
 /** Load per-column visibility from localStorage, falling back to defaults. */
 export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {
@@ -578,10 +569,53 @@ export function extractJsonArray(
 }
 
 /* ─────────────────────────── (Legacy) Line Item Column types ─ removed ── */
-// Superseded by the inline li* columns in InvoiceAuditColumnId.
-// Kept as a placeholder so future imports fail loudly rather than silently.
-/** @deprecated Use the InvoiceAuditColumnId li* variants instead. */
+// Superseded by the redesigned InvoiceAuditColumnId set (2026-09-24).
+/** @deprecated Use the new InvoiceAuditColumnId variants instead. */
 export type LineItemColumnId = never
+
+/* ──────────────────────────────────────── Order Imports ── */
+
+/**
+ * One order-line record imported from a CSV or XLSX file.
+ * These are the **primary rows** in the Invoice Audit table.
+ */
+export interface DocTidyOrderImport {
+  _id: string
+  workspaceId: string
+  /** Groups all rows from the same file upload. */
+  importBatchId: string
+  processedDate: string
+  poNumber: string
+  purchasedDate: string
+  customerName: string
+  orderId: string
+  orderSku: string
+  orderQty: string
+  status: string
+  importedByUserId?: string
+  importedByName?: string
+  /**
+   * DC cost of goods sold from the Channel Precision API.
+   * `null`  = not yet fetched
+   * `"n/a"` = fetched, SKU not found
+   * Any other string = the cost value
+   */
+  dcCogs?: string | null
+  dcMsrp?: string | null
+  dcCogsAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OrderImportsResponse {
+  data: DocTidyOrderImport[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    pages: number
+  }
+}
 
 /* ──────────────────────────────────────── Direct PDF Imports ── */
 
