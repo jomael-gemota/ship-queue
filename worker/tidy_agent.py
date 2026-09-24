@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum, auto
 
+import openai
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,15 @@ REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", 120))
 # Maximum tokens the model may generate per request.  Large line-item tables
 # need plenty of room or the JSON gets cut off mid-array.
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", 8192))
+
+# ── Rate-limit retry ──────────────────────────────────────────────────────────
+# When the inference backend returns 429 (too many concurrent runs), the job
+# retries automatically rather than failing.  Delay schedule:
+#   base_delay × 1.5^(attempt-1): 15 s, 22 s, 34 s, 51 s, 76 s, …
+# The semaphore slot is intentionally held during the sleep so we don't release
+# a slot that another job would immediately fill and hit the same limit.
+RETRY_MAX_ATTEMPTS = int(os.environ.get("TIDY_RETRY_MAX_ATTEMPTS", 6))
+RETRY_BASE_DELAY = float(os.environ.get("TIDY_RETRY_BASE_DELAY", 15))  # seconds
 
 SYSTEM_PROMPT = """You are Tidy, an intelligent document parser built by Doc Tidy.
 
@@ -297,94 +308,139 @@ async def stream_tidy(
     )
     messages.append({"role": "user", "content": f"{apply_hint}Document text:\n\n{document_text}"})
 
-    # temperature is not supported by OpenAI reasoning models (e.g. gpt-5.5).
-    # Omit it universally — the system prompt guides determinism sufficiently.
-    stream = await client.chat.completions.create(
-        model=model,
-        messages=messages,
-        stream=True,
-        max_tokens=MAX_TOKENS,
-    )
+    # ── Retry loop: recover from 429 "too many concurrent runs" ──────────────
+    # The Hermes backend enforces a global concurrent-run cap shared across all
+    # worker processes.  When we exceed it we receive a RateLimitError before any
+    # tokens are streamed, so it is safe to retry the entire create call.  We
+    # hold the semaphore slot during the sleep (done by the caller in worker.py)
+    # to avoid releasing a slot that the next queued job would immediately fill
+    # and hit the same limit.
+    last_rate_exc: openai.RateLimitError | None = None
 
-    async for chunk in stream:
-        # Some OpenAI-compatible backends emit chunks with no usable choice —
-        # e.g. usage-only final frames, keep-alive frames, or partial frames
-        # under load — where `choices` is None or empty (and occasionally the
-        # `delta` itself is None).  Indexing those raised
-        # `TypeError: 'NoneType' object is not subscriptable`, which surfaced
-        # intermittently and cleared on retry.  Skip anything without a delta.
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if delta is None:
-            continue
+    for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
+        # Reset per-attempt streaming state.
+        buffer = ""
+        in_thinking = False
+        thinking_done = False
 
-        # Reasoning models (e.g. GPT-5.5, Hermes thinking) stream their
-        # chain-of-thought in a dedicated `reasoning_content` (or `reasoning`)
-        # field rather than inside <thinking> tags in `content`.  Surface it
-        # directly as THINKING so the reasoning panel populates.
-        reasoning = _extract_reasoning(delta)
-        if reasoning:
-            yield StreamChunk(TokenType.THINKING, reasoning)
+        try:
+            # temperature is not supported by OpenAI reasoning models (e.g. gpt-5.5).
+            # Omit it universally — the system prompt guides determinism sufficiently.
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True,
+                max_tokens=MAX_TOKENS,
+            )
 
-        content = delta.content
-        if content is None:
-            continue
+            async for chunk in stream:
+                # Some OpenAI-compatible backends emit chunks with no usable choice —
+                # e.g. usage-only final frames, keep-alive frames, or partial frames
+                # under load — where `choices` is None or empty (and occasionally the
+                # `delta` itself is None).  Indexing those raised
+                # `TypeError: 'NoneType' object is not subscriptable`, which surfaced
+                # intermittently and cleared on retry.  Skip anything without a delta.
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta is None:
+                    continue
 
-        buffer += content
+                # Reasoning models (e.g. GPT-5.5, Hermes thinking) stream their
+                # chain-of-thought in a dedicated `reasoning_content` (or `reasoning`)
+                # field rather than inside <thinking> tags in `content`.  Surface it
+                # directly as THINKING so the reasoning panel populates.
+                reasoning = _extract_reasoning(delta)
+                if reasoning:
+                    yield StreamChunk(TokenType.THINKING, reasoning)
 
-        # Process buffer greedily
-        while buffer:
-            if not thinking_done:
-                if not in_thinking:
-                    # Look for <thinking> opening
-                    tag_pos = buffer.find("<thinking>")
-                    if tag_pos != -1:
-                        pre = buffer[:tag_pos]
-                        if pre:
-                            # Text before <thinking> — treat as output (unlikely but safe)
-                            yield StreamChunk(TokenType.OUTPUT, pre)
-                        buffer = buffer[tag_pos + len("<thinking>"):]
-                        in_thinking = True
+                content = delta.content
+                if content is None:
+                    continue
+
+                buffer += content
+
+                # Process buffer greedily
+                while buffer:
+                    if not thinking_done:
+                        if not in_thinking:
+                            # Look for <thinking> opening
+                            tag_pos = buffer.find("<thinking>")
+                            if tag_pos != -1:
+                                pre = buffer[:tag_pos]
+                                if pre:
+                                    # Text before <thinking> — treat as output (unlikely but safe)
+                                    yield StreamChunk(TokenType.OUTPUT, pre)
+                                buffer = buffer[tag_pos + len("<thinking>"):]
+                                in_thinking = True
+                            else:
+                                # Haven't found tag yet — hold partial if it could be a partial tag
+                                if buffer.endswith("<") or buffer.endswith("<t") or \
+                                        buffer.endswith("<th") or buffer.endswith("<thi") or \
+                                        buffer.endswith("<thin") or buffer.endswith("<think") or \
+                                        buffer.endswith("<thinki") or buffer.endswith("<thinkin"):
+                                    break  # wait for more data
+                                yield StreamChunk(TokenType.OUTPUT, buffer)
+                                buffer = ""
+                        else:
+                            # Inside <thinking> — look for </thinking>
+                            close_pos = buffer.find("</thinking>")
+                            if close_pos != -1:
+                                thinking_chunk = buffer[:close_pos]
+                                if thinking_chunk:
+                                    yield StreamChunk(TokenType.THINKING, thinking_chunk)
+                                buffer = buffer[close_pos + len("</thinking>"):]
+                                in_thinking = False
+                                thinking_done = True
+                            else:
+                                # Check for partial closing tag at end
+                                partial_match = _partial_close_suffix(buffer)
+                                if partial_match:
+                                    safe = buffer[: len(buffer) - partial_match]
+                                    if safe:
+                                        yield StreamChunk(TokenType.THINKING, safe)
+                                    buffer = buffer[len(buffer) - partial_match :]
+                                    break
+                                yield StreamChunk(TokenType.THINKING, buffer)
+                                buffer = ""
                     else:
-                        # Haven't found tag yet — hold partial if it could be a partial tag
-                        if buffer.endswith("<") or buffer.endswith("<t") or \
-                                buffer.endswith("<th") or buffer.endswith("<thi") or \
-                                buffer.endswith("<thin") or buffer.endswith("<think") or \
-                                buffer.endswith("<thinki") or buffer.endswith("<thinkin"):
-                            break  # wait for more data
+                        # All remaining content is JSON output
                         yield StreamChunk(TokenType.OUTPUT, buffer)
                         buffer = ""
-                else:
-                    # Inside <thinking> — look for </thinking>
-                    close_pos = buffer.find("</thinking>")
-                    if close_pos != -1:
-                        thinking_chunk = buffer[:close_pos]
-                        if thinking_chunk:
-                            yield StreamChunk(TokenType.THINKING, thinking_chunk)
-                        buffer = buffer[close_pos + len("</thinking>"):]
-                        in_thinking = False
-                        thinking_done = True
-                    else:
-                        # Check for partial closing tag at end
-                        partial_match = _partial_close_suffix(buffer)
-                        if partial_match:
-                            safe = buffer[: len(buffer) - partial_match]
-                            if safe:
-                                yield StreamChunk(TokenType.THINKING, safe)
-                            buffer = buffer[len(buffer) - partial_match :]
-                            break
-                        yield StreamChunk(TokenType.THINKING, buffer)
-                        buffer = ""
-            else:
-                # All remaining content is JSON output
-                yield StreamChunk(TokenType.OUTPUT, buffer)
-                buffer = ""
 
-    # Flush remaining buffer
-    if buffer.strip():
-        token_type = TokenType.THINKING if in_thinking else TokenType.OUTPUT
-        yield StreamChunk(token_type, buffer)
+            # Flush remaining buffer
+            if buffer.strip():
+                token_type = TokenType.THINKING if in_thinking else TokenType.OUTPUT
+                yield StreamChunk(token_type, buffer)
+
+            return  # success — done
+
+        except openai.RateLimitError as exc:
+            last_rate_exc = exc
+            if attempt >= RETRY_MAX_ATTEMPTS:
+                logger.error(
+                    "Rate limit retry exhausted after %d attempts: %s",
+                    RETRY_MAX_ATTEMPTS,
+                    exc,
+                )
+                break
+            delay = RETRY_BASE_DELAY * (1.5 ** (attempt - 1))
+            logger.warning(
+                "Rate limited by inference API (attempt %d/%d); retrying in %.0f s — %s",
+                attempt,
+                RETRY_MAX_ATTEMPTS,
+                delay,
+                exc,
+            )
+            yield StreamChunk(
+                TokenType.THINKING,
+                f"\n⏳ The inference queue is full — I'll retry in {delay:.0f} s "
+                f"(attempt {attempt}/{RETRY_MAX_ATTEMPTS})...\n",
+            )
+            await asyncio.sleep(delay)
+
+    # All retry attempts exhausted — surface the original error.
+    raise last_rate_exc  # type: ignore[misc]
 
 
 def _extract_reasoning(delta) -> str | None:
@@ -449,6 +505,8 @@ async def generate_table_data(json_data: dict) -> dict:
     Makes a single non-streaming Hermes call and returns a dict shaped like
     ``{"tables": [{"title", "columns", "rows"}, ...]}``.  Raises on failure so the
     caller can decide how to degrade (the worker treats this as non-fatal).
+
+    Retries automatically on 429 rate-limit errors (same backoff as stream_tidy).
     """
     client, model = _make_hermes_client()
 
@@ -458,21 +516,46 @@ async def generate_table_data(json_data: dict) -> dict:
 
     logger.info("Requesting tabular formatting from Hermes model '%s'", model)
 
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": TABLE_SYSTEM_PROMPT},
-            {"role": "user", "content": f"JSON to tabulate:\n\n{payload}"},
-        ],
-        stream=False,
-        max_tokens=MAX_TOKENS,
-    )
+    last_rate_exc: openai.RateLimitError | None = None
 
-    content = (response.choices[0].message.content or "") if response.choices else ""
-    parsed = extract_json(content)
+    for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": TABLE_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"JSON to tabulate:\n\n{payload}"},
+                ],
+                stream=False,
+                max_tokens=MAX_TOKENS,
+            )
 
-    tables = parsed.get("tables") if isinstance(parsed, dict) else None
-    if not isinstance(tables, list):
-        raise ValueError("Hermes table output missing a 'tables' array")
+            content = (response.choices[0].message.content or "") if response.choices else ""
+            parsed = extract_json(content)
 
-    return {"tables": tables}
+            tables = parsed.get("tables") if isinstance(parsed, dict) else None
+            if not isinstance(tables, list):
+                raise ValueError("Hermes table output missing a 'tables' array")
+
+            return {"tables": tables}
+
+        except openai.RateLimitError as exc:
+            last_rate_exc = exc
+            if attempt >= RETRY_MAX_ATTEMPTS:
+                logger.error(
+                    "Rate limit retry exhausted on table pass after %d attempts: %s",
+                    RETRY_MAX_ATTEMPTS,
+                    exc,
+                )
+                break
+            delay = RETRY_BASE_DELAY * (1.5 ** (attempt - 1))
+            logger.warning(
+                "Rate limited on table pass (attempt %d/%d); retrying in %.0f s — %s",
+                attempt,
+                RETRY_MAX_ATTEMPTS,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+
+    raise last_rate_exc  # type: ignore[misc]
