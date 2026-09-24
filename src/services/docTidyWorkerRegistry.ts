@@ -86,6 +86,108 @@ export function pushToJob(jobId: string, event: JobStreamEvent): void {
   }
 }
 
+/* --------------------------------------------------- live progress digest */
+
+/**
+ * Per-job summary of a running transcript: the step number and the few words a
+ * table row shows while the job works.
+ *
+ * Derived here, once per job, rather than in each browser: a table watching a
+ * large batch used to open one stream per row and re-derive this from the whole
+ * accumulated transcript on every token, which is what made a 200-file batch
+ * unusable. See design-log/2026-09-25-parse-progress-multiplexing.md.
+ */
+interface JobProgress {
+  /** Blank-line separators seen so far — i.e. how many steps have closed. */
+  breaks: number;
+  /** Trailing characters of the previous chunk, so a separator split across two
+   *  chunks is still recognised. */
+  carry: string;
+  /** Recent transcript, capped: only the current step is ever read from it. */
+  tail: string;
+  timer: ReturnType<typeof setTimeout> | null;
+  dirty: boolean;
+}
+
+const PROGRESS_THROTTLE_MS = 800;
+const PROGRESS_TAIL_CHARS = 600;
+const PROGRESS_CARRY_CHARS = 8;
+const SNIPPET_WORDS = 7;
+
+const jobProgress = new Map<string, JobProgress>();
+
+/**
+ * A run of blank lines separating two blocks. A run rather than a single blank
+ * line, so a longer gap counts as one break — matching how `ReasoningStepper`
+ * splits the same transcript with `/\n\n+/`.
+ */
+const STEP_BREAK = /\n[^\S\n]*(?:\n[^\S\n]*)+/g;
+
+const countBreaks = (text: string): number => (text.match(STEP_BREAK) ?? []).length;
+
+/** Strips markdown noise and clips to a few words, so the chip reads as a phrase. */
+function summarize(line: string): string {
+  const cleaned = line.replace(/[#*`_~>|[\]()\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+
+  const words = cleaned.split(' ');
+  const text = words.slice(0, SNIPPET_WORDS).join(' ').replace(/[.,;:!?]+$/, '');
+  return words.length > SNIPPET_WORDS ? `${text}…` : text;
+}
+
+function flushProgress(jobId: string): void {
+  const progress = jobProgress.get(jobId);
+  if (!progress || !progress.dirty) return;
+  progress.dirty = false;
+
+  // Everything after the last blank line is the step currently being written.
+  const currentStep = progress.tail.split(STEP_BREAK).pop() ?? '';
+  const lines = currentStep.split('\n').map(line => line.trim()).filter(Boolean);
+
+  broadcast({
+    type: 'parse_progress',
+    parseJobId: jobId,
+    step: Math.max(1, progress.breaks + (lines.length > 0 ? 1 : 0)),
+    snippet: summarize(lines[lines.length - 1] ?? ''),
+  });
+}
+
+function recordProgress(jobId: string, chunk: string): void {
+  if (!chunk) return;
+
+  let progress = jobProgress.get(jobId);
+  if (!progress) {
+    progress = { breaks: 0, carry: '', tail: '', timer: null, dirty: false };
+    jobProgress.set(jobId, progress);
+  }
+
+  // Counting over `carry + chunk` and subtracting what `carry` already
+  // contributed is what stops a "\n" + "\n" arriving separately from being
+  // missed, without counting the same separator twice.
+  const combined = progress.carry + chunk;
+  progress.breaks += countBreaks(combined) - countBreaks(progress.carry);
+  progress.carry = combined.slice(-PROGRESS_CARRY_CHARS);
+  progress.tail = (progress.tail + chunk).slice(-PROGRESS_TAIL_CHARS);
+  progress.dirty = true;
+
+  if (progress.timer) return;
+  progress.timer = setTimeout(() => {
+    const current = jobProgress.get(jobId);
+    if (current) current.timer = null;
+    flushProgress(jobId);
+  }, PROGRESS_THROTTLE_MS);
+  if (typeof progress.timer.unref === 'function') progress.timer.unref();
+}
+
+/** Drops a finished job's digest. Exported for the abort path, which ends a run
+ *  without the worker reporting anything. */
+export function clearJobProgress(jobId: string): void {
+  const progress = jobProgress.get(jobId);
+  if (!progress) return;
+  if (progress.timer) clearTimeout(progress.timer);
+  jobProgress.delete(jobId);
+}
+
 /**
  * Appends to the job's transcript with a `$concat` pipeline update.
  *
@@ -118,6 +220,7 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
     // Relay first: a slow database write must not delay or drop a live token.
     pushToJob(jobId, { type: tokenType, content });
     if (tokenType === 'thinking') {
+      recordProgress(jobId, content);
       appendThinking(jobId, content).catch(err =>
         console.error('[doc-tidy worker] failed to persist reasoning for', jobId, err)
       );
@@ -150,8 +253,10 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
     );
     if (result.modifiedCount === 0) {
       // Job was already aborted — discard this stale completion silently.
+      clearJobProgress(jobId);
       return;
     }
+    clearJobProgress(jobId);
     pushToJob(jobId, { type: 'done', json: msg.json ?? null, table: msg.table ?? null });
     announceParseStatus(jobId, 'completed');
     // Fire-and-forget: write matched invoice fields onto any order imports that
@@ -169,6 +274,7 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
       { _id: jobId, status: { $ne: 'failed' } },
       { $set: { status: 'failed', error: message } }
     );
+    clearJobProgress(jobId);
     pushToJob(jobId, { type: 'error', message });
     announceParseStatus(jobId, 'failed');
   }
