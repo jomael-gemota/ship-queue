@@ -635,35 +635,45 @@ function discrepancyCell(
     cogsMatch = null
   }
 
-  const Badge = ({ ok, label, pending = false }: { ok: boolean | null; label: string; pending?: boolean }) => {
-    if (pending) return (
-      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-200)] text-[var(--text-200)] italic">
-        {label}…
-      </span>
-    )
-    if (ok === null) return (
-      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-200)] text-[var(--text-200)]">
-        {label} —
-      </span>
-    )
-    return ok ? (
-      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-        ✓ {label}
-      </span>
-    ) : (
-      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
-        ✗ {label}
-      </span>
-    )
-  }
+  // Collect only the badges that need attention (mismatches, pending, or unknown).
+  // Matches are intentionally omitted — if nothing is collected the row is clean.
+  const badges: React.ReactNode[] = []
 
-  return (
-    <span className="flex flex-wrap gap-1">
-      <Badge ok={invoiceSku ? skuMatch : null} label="SKU" />
-      <Badge ok={invoiceQtyRaw ? qtyMatch : null} label="Qty" />
-      <Badge ok={cogsMatch} label="COGS" pending={order.dcCogs == null} />
-    </span>
-  )
+  if (invoiceSku && !skuMatch)
+    badges.push(
+      <span key="sku" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+        ✗ SKU
+      </span>
+    )
+
+  if (invoiceQtyRaw && !qtyMatch)
+    badges.push(
+      <span key="qty" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+        ✗ Qty
+      </span>
+    )
+
+  if (order.dcCogs == null)
+    badges.push(
+      <span key="cogs-pending" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-200)] text-[var(--text-200)] italic">
+        COGS…
+      </span>
+    )
+  else if (cogsMatch === false)
+    badges.push(
+      <span key="cogs" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
+        ✗ COGS
+      </span>
+    )
+
+  if (badges.length === 0)
+    return (
+      <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+        All good
+      </span>
+    )
+
+  return <span className="flex flex-wrap gap-1">{badges}</span>
 }
 
 /** Return the plain-string value for a column (used by Excel export). */
@@ -725,24 +735,20 @@ function auditColStr(
     case 'totalCost':         return inv.totalCost
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
-      const parts: string[] = []
-      if (inv.invoiceSku) parts.push(normForMatch(order.orderSku) === normForMatch(inv.invoiceSku) ? '✓ SKU' : '✗ SKU')
-      if (inv.invoiceQty) parts.push(normForMatch(order.orderQty) === normForMatch(inv.invoiceQty) ? '✓ Qty' : '✗ Qty')
-      const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
+      const issues: string[] = []
+      if (inv.invoiceSku && normForMatch(order.orderSku) !== normForMatch(inv.invoiceSku)) issues.push('✗ SKU')
+      if (inv.invoiceQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
       if (order.dcCogs == null) {
-        parts.push('COGS pending')
-      } else if (dcCogs && inv.itemCost) {
-        const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
-        const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
-        if (!isNaN(costNum) && !isNaN(cogsNum)) {
-          parts.push(Math.abs(costNum - cogsNum) < 0.005 ? '✓ COGS' : '✗ COGS')
-        } else {
-          parts.push('COGS —')
-        }
+        issues.push('COGS pending')
       } else {
-        parts.push('COGS —')
+        const dcCogs = order.dcCogs !== 'n/a' ? order.dcCogs : null
+        if (dcCogs && inv.itemCost) {
+          const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+          const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
+          if (!isNaN(costNum) && !isNaN(cogsNum) && Math.abs(costNum - cogsNum) >= 0.005) issues.push('✗ COGS')
+        }
       }
-      return parts.join(', ')
+      return issues.length === 0 ? 'All good' : issues.join(', ')
     }
     default: return ''
   }
