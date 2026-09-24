@@ -81,6 +81,58 @@ export async function fetchDcCogs(sku: string): Promise<CostResult | null> {
 }
 
 /**
+ * Shared helper: fetch COGS for a set of records matched by a Mongoose filter.
+ * Deduplicates SKUs, calls the DC API once per unique SKU (up to 5 at a time),
+ * and bulk-writes the results back to the database.
+ */
+async function _populateCogsForFilter(
+  filter: Record<string, unknown>
+): Promise<void> {
+  if (!API_KEY || !CLIENT_ID) {
+    console.warn('[dcCogs] Skipping COGS population — CHANNEL_PRECISION_API_KEY or CHANNEL_PRECISION_CLIENT_ID is not configured.');
+    return;
+  }
+
+  const records = await DocTidyOrderImport.find(filter).lean();
+  if (records.length === 0) return;
+
+  const uniqueSkus = [...new Set(records.map((r) => r.orderSku).filter(Boolean))];
+
+  const cogsMap = new Map<string, CostResult | null>();
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < uniqueSkus.length; i += BATCH_SIZE) {
+    const batch = uniqueSkus.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map((sku) => fetchDcCogs(sku)));
+    batch.forEach((sku, idx) => cogsMap.set(sku, results[idx]));
+
+    if (i + BATCH_SIZE < uniqueSkus.length) {
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+
+  const bulkOps = uniqueSkus.map((sku) => {
+    const result = cogsMap.get(sku);
+    return {
+      updateMany: {
+        filter: { ...filter, orderSku: sku } as Record<string, unknown>,
+        update: {
+          $set: {
+            dcCogs:   result ? result.cost || 'n/a' : 'n/a',
+            dcMsrp:   result ? result.msrp || '' : '',
+            dcCogsAt: new Date(),
+          },
+        },
+      },
+    };
+  });
+
+  if (bulkOps.length > 0) {
+    await DocTidyOrderImport.bulkWrite(bulkOps);
+  }
+}
+
+/**
  * Populate DC COGS for every record in an import batch that does not yet have
  * a value.  Runs in the background (fire-and-forget); callers should NOT await
  * this unless they explicitly want to block on it.
@@ -89,56 +141,24 @@ export async function fetchDcCogs(sku: string): Promise<CostResult | null> {
  * between batches to avoid hammering the upstream API.
  */
 export async function populateCogsForBatch(importBatchId: string): Promise<void> {
-  if (!API_KEY || !CLIENT_ID) return;
-
   try {
-    // Fetch all records in the batch that still need COGS.
-    const records = await DocTidyOrderImport.find({
-      importBatchId,
-      dcCogs: null,
-    }).lean();
-
-    if (records.length === 0) return;
-
-    // Deduplicate SKUs so we call the API once per unique value.
-    const uniqueSkus = [...new Set(records.map((r) => r.orderSku).filter(Boolean))];
-
-    const cogsMap = new Map<string, CostResult | null>();
-
-    // Process in batches of 5 (concurrency limit).
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < uniqueSkus.length; i += BATCH_SIZE) {
-      const batch = uniqueSkus.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(batch.map((sku) => fetchDcCogs(sku)));
-      batch.forEach((sku, idx) => cogsMap.set(sku, results[idx]));
-
-      // Small courtesy delay between batches.
-      if (i + BATCH_SIZE < uniqueSkus.length) {
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    }
-
-    // Persist the results — one bulk-write per unique SKU.
-    const bulkOps = uniqueSkus.map((sku) => {
-      const result = cogsMap.get(sku);
-      return {
-        updateMany: {
-          filter: { importBatchId, orderSku: sku },
-          update: {
-            $set: {
-              dcCogs:   result ? result.cost || 'n/a' : 'n/a',
-              dcMsrp:   result ? result.msrp || '' : '',
-              dcCogsAt: new Date(),
-            },
-          },
-        },
-      };
-    });
-
-    if (bulkOps.length > 0) {
-      await DocTidyOrderImport.bulkWrite(bulkOps);
-    }
+    await _populateCogsForFilter({ importBatchId, dcCogs: null });
   } catch (err) {
-    console.error('[dcCogs] Background population failed:', err);
+    console.error('[dcCogs] Background population failed (batch):', err);
+  }
+}
+
+/**
+ * Re-populate DC COGS for every record in a workspace whose COGS is still
+ * `null` (never fetched).  Intended to recover rows that were imported before
+ * the DC credentials were configured, or whose background job silently failed.
+ *
+ * Runs in the background (fire-and-forget).
+ */
+export async function populateCogsForWorkspace(workspaceId: string): Promise<void> {
+  try {
+    await _populateCogsForFilter({ workspaceId, dcCogs: null });
+  } catch (err) {
+    console.error('[dcCogs] Background population failed (workspace):', err);
   }
 }

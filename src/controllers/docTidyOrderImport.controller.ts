@@ -4,7 +4,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import DocTidyOrderImport, { IDocTidyOrderImport } from '../models/DocTidyOrderImport';
-import { populateCogsForBatch } from '../services/dcCogs.service';
+import { populateCogsForBatch, populateCogsForWorkspace } from '../services/dcCogs.service';
 
 /* ── multer — memory storage; parsing happens in this controller ── */
 export const orderImportUpload = multer({
@@ -260,6 +260,26 @@ export const uploadOrderImports = async (req: Request, res: Response): Promise<v
     void populateCogsForBatch(importBatchId);
   } catch (error) {
     fail(res, error, 'Failed to upload order imports');
+  }
+};
+
+/* ── Re-trigger DC COGS lookup for all pending rows in a workspace ── */
+export const refreshCogsForWorkspace = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId } = req.params;
+    if (!isValidObjectId(workspaceId)) {
+      res.status(400).json({ message: 'Invalid workspaceId' });
+      return;
+    }
+
+    const pendingCount = await DocTidyOrderImport.countDocuments({ workspaceId, dcCogs: null });
+
+    // Fire-and-forget — response returns immediately with the count of rows queued.
+    void populateCogsForWorkspace(workspaceId);
+
+    res.json({ queued: pendingCount });
+  } catch (error) {
+    fail(res, error, 'Failed to queue COGS refresh');
   }
 };
 

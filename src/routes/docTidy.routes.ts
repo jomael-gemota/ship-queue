@@ -55,6 +55,7 @@ import {
   uploadOrderImports,
   deleteOrderImport,
   deleteOrderImportBatch,
+  refreshCogsForWorkspace,
 } from '../controllers/docTidyOrderImport.controller';
 
 const router = Router();
@@ -114,6 +115,8 @@ router.delete('/pdf-imports/:id', deletePdfImport);
 // Order imports (CSV/XLSX) — primary data source for the Invoice Audit table.
 router.get('/order-imports', listOrderImports);
 router.post('/order-imports', orderImportUpload.single('file'), uploadOrderImports);
+// Re-trigger DC COGS lookup for all pending rows in a workspace.
+router.post('/order-imports/workspace/:workspaceId/refresh-cogs', refreshCogsForWorkspace);
 router.delete('/order-imports/batch/:batchId', deleteOrderImportBatch);
 router.delete('/order-imports/:id', deleteOrderImport);
 
