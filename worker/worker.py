@@ -82,8 +82,25 @@ RECONNECT_DELAY = 5  # seconds between reconnect attempts
 # more, or 1 to serialize completely).
 MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", 5))
 
-# Semaphore is created once and shared across all tasks in the event loop.
+# Maximum number of jobs that may be anywhere in the pipeline at once, including
+# the PDF download, text extraction and narration phases that sit outside the
+# inference semaphore above.  Without this bound a bulk send of 200 files starts
+# 200 tasks immediately, and the text-extraction work alone saturates the machine
+# and starves the WebSocket relay the reasoning streams depend on.
+# See design-log/2026-09-25-parse-progress-multiplexing.md.
+MAX_ACTIVE_JOBS = int(os.environ.get("MAX_ACTIVE_JOBS", 12))
+if MAX_ACTIVE_JOBS < MAX_CONCURRENT_JOBS:
+    logging.getLogger("worker").warning(
+        "MAX_ACTIVE_JOBS (%d) is below MAX_CONCURRENT_JOBS (%d); raising it so the "
+        "inference slots can actually be filled.",
+        MAX_ACTIVE_JOBS,
+        MAX_CONCURRENT_JOBS,
+    )
+    MAX_ACTIVE_JOBS = MAX_CONCURRENT_JOBS
+
+# Semaphores are created once and shared across all tasks in the event loop.
 _job_semaphore: asyncio.Semaphore | None = None
+_active_semaphore: asyncio.Semaphore | None = None
 
 
 def get_job_semaphore() -> asyncio.Semaphore:
@@ -91,6 +108,13 @@ def get_job_semaphore() -> asyncio.Semaphore:
     if _job_semaphore is None:
         _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
     return _job_semaphore
+
+
+def get_active_semaphore() -> asyncio.Semaphore:
+    global _active_semaphore
+    if _active_semaphore is None:
+        _active_semaphore = asyncio.Semaphore(MAX_ACTIVE_JOBS)
+    return _active_semaphore
 
 
 def get_motor_client() -> motor.motor_asyncio.AsyncIOMotorClient:
@@ -196,7 +220,10 @@ async def process_job(
             "Tell the user you're now reading the text off the pages.",
             "Now I'll read the text from the pages...",
         )
-        document_text = extract_text(pdf_bytes)
+        # pdfplumber (and Tesseract, for scanned pages) is synchronous and
+        # CPU-bound. Running it inline would block the event loop, and with it
+        # every other job's token relay, for the whole extraction.
+        document_text = await asyncio.to_thread(extract_text, pdf_bytes)
         logger.info("Job %s: text extracted (%d chars)", job_id, len(document_text))
         char_str = f"{len(document_text):,}"
         await step_done(
@@ -450,6 +477,20 @@ async def process_job(
         await send({"type": "error", "jobId": job_id, "message": str(exc)})
 
 
+async def run_job(
+    job_id: str,
+    ws,
+    db: motor.motor_asyncio.AsyncIOMotorDatabase,
+) -> None:
+    """Waits for a pipeline slot, then runs the job.
+
+    A job queued behind the bound stays `pending` until a slot frees, so a bulk
+    send drains in waves instead of starting every document at once.
+    """
+    async with get_active_semaphore():
+        await process_job(job_id, ws, db)
+
+
 async def run_worker() -> None:
     """Connect to the server and handle incoming job messages."""
     if not WORKER_TOKEN:
@@ -488,7 +529,7 @@ async def run_worker() -> None:
 
                     if msg_type == "job":
                         job_id: str = msg["jobId"]
-                        task = asyncio.create_task(process_job(job_id, ws, db))
+                        task = asyncio.create_task(run_job(job_id, ws, db))
                         active_tasks[job_id] = task
                         task.add_done_callback(
                             lambda _t, jid=job_id: active_tasks.pop(jid, None)

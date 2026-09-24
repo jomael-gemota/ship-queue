@@ -11,13 +11,12 @@ import {
 } from '../components/docTidy/docTidyUi'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import { formatDate, formatDateTime } from '../lib/format'
-import { newMessageStore } from '../lib/docTidyStore'
+import { newMessageStore, subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
   PAGE_SIZE_OPTIONS,
   type DocTidyConfig,
-  type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocumentType,
@@ -156,8 +155,7 @@ export default function DocTidy() {
   // The server pushes a signal, not rows, so the refetch honours whatever
   // filters and page the user is currently on.
   useEffect(() => {
-    return authApi.eventStream<DocTidyEvent>(
-      '/doc-tidy/stream',
+    return subscribeDocTidyEvents(
       (event) => {
         if (event.type === 'connected') {
           setLive(true)

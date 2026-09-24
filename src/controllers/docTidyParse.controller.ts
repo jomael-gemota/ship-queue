@@ -13,7 +13,12 @@ import {
   requestParse,
   rerunParse,
 } from '../services/docTidyParse.service';
-import { addJobClient, hasWorker, sendToWorker } from '../services/docTidyWorkerRegistry';
+import {
+  addJobClient,
+  clearJobProgress,
+  hasWorker,
+  sendToWorker,
+} from '../services/docTidyWorkerRegistry';
 import { embedText } from '../lib/embeddings';
 
 /** Maps a thrown ParseRequestError onto its status; anything else is a 500. */
@@ -88,6 +93,7 @@ export const abortParseJob = async (req: Request, res: Response): Promise<void> 
     // guard in handleWorkerMessage will discard any late 'complete' that
     // arrives after reconnection.
     sendToWorker({ type: 'cancel', jobId: id });
+    clearJobProgress(id);
 
     res.json({ data: job });
   } catch (error) {

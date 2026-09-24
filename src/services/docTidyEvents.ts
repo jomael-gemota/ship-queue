@@ -10,7 +10,14 @@ import type { Response } from 'express';
  */
 
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status' | 'ui_prefs';
+  type:
+    | 'imported'
+    | 'ping'
+    | 'connected'
+    | 'parse_status'
+    | 'parse_progress'
+    | 'worker_status'
+    | 'ui_prefs';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
   /**
@@ -18,9 +25,19 @@ export interface DocTidyEvent {
    * table showing that document can move its status chip without refetching the
    * whole page. Unlike `imported`, this carries the id because the client can
    * apply it to a row it already holds.
+   *
+   * For `parse_progress`: which running job the `step`/`snippet` below describe.
    */
   parseJobId?: string;
   parseStatus?: string;
+  /**
+   * For `parse_progress`: how far through its transcript a running job is, and
+   * a few words of what it is doing. Carried on this shared stream rather than
+   * the per-job one so a table watching hundreds of jobs still needs exactly one
+   * connection. See design-log/2026-09-25-parse-progress-multiplexing.md.
+   */
+  step?: number;
+  snippet?: string;
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean;
   /**

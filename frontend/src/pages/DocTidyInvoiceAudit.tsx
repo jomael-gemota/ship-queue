@@ -17,6 +17,7 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
+import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   INVOICE_AUDIT_COLUMNS,
   WORKSPACE_EMAIL_COLUMNS,
@@ -29,7 +30,6 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
-  type DocTidyEvent,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
@@ -48,6 +48,31 @@ import {
   type DocTidyOrderImport,
   type OrderImportsResponse,
 } from '../types/docTidy'
+
+/**
+ * How long an SSE-triggered refetch waits for the stream to go quiet.
+ *
+ * A bulk parse emits a status event per job per transition, and each one used to
+ * fire its own full list request. 400ms collapses a whole wave into one.
+ */
+const SSE_REFETCH_DEBOUNCE_MS = 400
+
+/** Trailing-edge debounce that always calls the latest `run`. */
+function useDebouncedRefetch(run: () => void, delay = SSE_REFETCH_DEBOUNCE_MS): () => void {
+  const runRef = useRef(run)
+  useEffect(() => { runRef.current = run })
+
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+
+  return useCallback(() => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      runRef.current()
+    }, delay)
+  }, [delay])
+}
 
 /* ──────────────────── Invoice match helpers ── */
 
@@ -1082,8 +1107,12 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Send all parseable, un-parsed (or failed) attachments across selected email rows. */
-  const handleBulkSendEmailsToAgent = async (isRerun = false) => {
+  /**
+   * Send all parseable attachments across selected email rows to the Tidy Agent.
+   * Always includes completed jobs (rerun them) — only skips actively
+   * running/pending jobs since those are already being processed.
+   */
+  const handleBulkSendEmailsToAgent = async () => {
     const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
     const tasks: Array<{ msgId: string; index: number }> = []
     for (const msg of selectedMsgs) {
@@ -1091,10 +1120,8 @@ export default function DocTidyInvoiceAudit() {
         const att = msg.attachments[i]
         if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
         const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        // Always skip actively running/pending jobs
+        // Skip jobs that are actively running — they'll finish on their own
         if (job && (job.status === 'pending' || job.status === 'processing')) continue
-        // Skip completed jobs unless this is a rerun
-        if (!isRerun && job?.status === 'completed') continue
         tasks.push({ msgId: msg._id, index: i })
       }
     }
@@ -1112,14 +1139,17 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Send all un-parsed selected PDF imports to the Tidy Agent. */
-  const handleBulkSendPdfsToAgent = async (isRerun = false) => {
+  /**
+   * Send all selected PDF imports to the Tidy Agent.
+   * Always includes completed jobs (rerun them) — only skips actively
+   * running/pending jobs since those are already being processed.
+   */
+  const handleBulkSendPdfsToAgent = async () => {
     const selected = pdfImports.filter(
       (imp) =>
         pdfSelectedIds.has(imp._id) &&
-        (!imp.parseJob ||
-          imp.parseJob.status === 'failed' ||
-          (isRerun && imp.parseJob.status === 'completed'))
+        imp.parseJob?.status !== 'pending' &&
+        imp.parseJob?.status !== 'processing'
     )
     if (selected.length === 0) return
     setPdfBulkSending(true)
@@ -1309,19 +1339,19 @@ export default function DocTidyInvoiceAudit() {
      without needing to reconnect on every filter change. */
   const fetchEmailsRef = useRef(fetchEmails)
   useEffect(() => { fetchEmailsRef.current = fetchEmails }, [fetchEmails])
+  const refetchEmailsSoon = useDebouncedRefetch(() => { void fetchEmailsRef.current(true) })
 
   /* SSE — subscribe while on the emails tab to keep parse statuses live */
   useEffect(() => {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
-    return authApi.eventStream<DocTidyEvent>(
-      '/doc-tidy/stream',
+    return subscribeDocTidyEvents(
       (event) => {
         if (event.type === 'imported') {
-          void fetchEmailsRef.current(true)
+          refetchEmailsSoon()
         }
         if (event.type === 'parse_status' &&
             (event.parseStatus === 'completed' || event.parseStatus === 'failed')) {
-          void fetchEmailsRef.current(true)
+          refetchEmailsSoon()
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
@@ -1345,16 +1375,16 @@ export default function DocTidyInvoiceAudit() {
       },
       () => {}
     )
-  }, [workspaceTab, activeWorkspace])
+  }, [workspaceTab, activeWorkspace, refetchEmailsSoon])
 
   /* SSE — subscribe while on the audit tab to auto-populate completed results */
+  const refetchAllJobsSoon = useDebouncedRefetch(() => { void fetchAllJobsRef.current() })
   useEffect(() => {
     if (workspaceTab !== 'audit' || !activeWorkspace) return
-    return authApi.eventStream<DocTidyEvent>(
-      '/doc-tidy/stream',
+    return subscribeDocTidyEvents(
       (event) => {
         if (event.type === 'parse_status' && event.parseStatus === 'completed') {
-          void fetchAllJobsRef.current()
+          refetchAllJobsSoon()
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
@@ -1378,28 +1408,22 @@ export default function DocTidyInvoiceAudit() {
       },
       () => {}
     )
-  }, [workspaceTab, activeWorkspace])
-
-  /* SSE — also track worker status from the emails tab */
-  useEffect(() => {
-    if (workspaceTab !== 'emails' || !activeWorkspace) return
-    // worker_status events are handled within the existing emails SSE — merged below
-  }, [workspaceTab, activeWorkspace])
+  }, [workspaceTab, activeWorkspace, refetchAllJobsSoon])
 
   /* SSE — refresh PDF imports when a parse job status changes */
   const fetchPdfImportsRef = useRef(fetchPdfImports)
   useEffect(() => { fetchPdfImportsRef.current = fetchPdfImports }, [fetchPdfImports])
+  const refetchPdfImportsSoon = useDebouncedRefetch(() => { void fetchPdfImportsRef.current() })
   useEffect(() => {
     if (workspaceTab !== 'pdf-imports' || !activeWorkspace) return
-    return authApi.eventStream<DocTidyEvent>(
-      '/doc-tidy/stream',
+    return subscribeDocTidyEvents(
       (event) => {
-        if (event.type === 'parse_status') void fetchPdfImportsRef.current()
+        if (event.type === 'parse_status') refetchPdfImportsSoon()
         if (event.type === 'worker_status') setWorkerOnline(event.workerOnline ?? false)
       },
       () => {}
     )
-  }, [workspaceTab, activeWorkspace])
+  }, [workspaceTab, activeWorkspace, refetchPdfImportsSoon])
 
   /* Fetch initial worker status whenever a workspace is active */
   useEffect(() => {
@@ -2051,7 +2075,7 @@ export default function DocTidyInvoiceAudit() {
                               ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
                               : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
                         }
-                        onClick={() => void handleBulkSendEmailsToAgent(allSelectedEmailsCompleted)}
+                        onClick={() => void handleBulkSendEmailsToAgent()}
                         disabled={emailBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedEmailsCompleted
@@ -2457,7 +2481,7 @@ export default function DocTidyInvoiceAudit() {
                               ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
                               : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
                         }
-                        onClick={() => void handleBulkSendPdfsToAgent(allSelectedPdfsCompleted)}
+                        onClick={() => void handleBulkSendPdfsToAgent()}
                         disabled={pdfBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedPdfsCompleted
