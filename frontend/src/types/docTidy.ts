@@ -461,8 +461,8 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',                         description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true },
   { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',                           description: 'Distribution center cost of goods sold (future source)',           defaultVisible: false, numeric: true },
   { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',                       description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true },
-  { id: 'discountedCostPct',  section: 'invoice',  label: 'Discounted Cost/%',                 description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true },
-  { id: 'dropshipFee',        section: 'invoice',  label: 'Dropship Fee',                      description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true },
+  { id: 'discountedCostPct',  section: 'invoice',  label: 'Disc. Cost/%',                      description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true },
+  { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',                            description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true },
   { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',                     description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true },
   { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',                        description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true },
   // ── Computed ──

@@ -207,7 +207,7 @@ function DraggableTh({
       onDragEnd={onDragEnd}
       className={[
         'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
-        'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide select-none align-top max-w-[90px]',
+        'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
         // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved
@@ -220,7 +220,7 @@ function DraggableTh({
           : '',
       ].join(' ')}
     >
-      <span className={`flex items-start gap-1.5 ${flexAlign}`}>
+      <span className={`flex items-center gap-1.5 ${flexAlign}`}>
         {/* Six-dot drag handle */}
         <svg
           className={`h-3 w-3 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-300 dark:text-[var(--bg-300)]'}`}
@@ -1771,7 +1771,17 @@ export default function DocTidyInvoiceAudit() {
       case 'poNumber':      return monoCell(order.poNumber)
       case 'orderSku':      return monoCell(order.orderSku)
       case 'orderQty':      return numCell(order.orderQty)
-      case 'customerName':  return textCell(order.customerName ?? '')
+      case 'customerName': {
+        const name = order.customerName ?? ''
+        if (!name) return emDash
+        const words = name.trim().split(/\s+/)
+        const display = words.length > 3 ? words.slice(0, 3).join(' ') + '…' : name
+        return (
+          <span className="block max-w-[110px] truncate text-[var(--text-100)]" title={name}>
+            {display}
+          </span>
+        )
+      }
       case 'purchasedDate': return textCell(order.purchasedDate ?? '')
       case 'status':        return textCell(order.status ?? '')
       case 'dcCogs': {
