@@ -476,10 +476,11 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v2 key — bumped from `docTidy.invoiceAudit.columns` when the column set was
- * redesigned (2026-09-24 order-import redesign). Old v1 preferences are ignored.
+ * v3 key — bumped from v2 when Customer Name, Purchased Date and Status were
+ * added (2026-09-25).  Old v2 preferences are ignored so new columns appear in
+ * their correct positions rather than being appended at the far right.
  */
-const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v2'
+const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v3'
 
 /** Load per-column visibility from localStorage, falling back to defaults. */
 export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {

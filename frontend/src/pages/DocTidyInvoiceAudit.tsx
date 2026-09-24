@@ -125,6 +125,37 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/* ──────────────────────── Column-order merge helper ── */
+
+/**
+ * Merge a user's saved column order with the current default order.
+ *
+ * - Existing columns stay in the user's position.
+ * - New columns (absent from the saved order) are inserted at their
+ *   natural position in `defaults`, not appended at the far right.
+ *   This prevents new columns from ending up hidden off-screen after
+ *   a schema update.
+ */
+function mergeColOrder(stored: string[], defaults: string[]): string[] {
+  const storedSet = new Set(stored)
+  const newCols = defaults.filter((id) => !storedSet.has(id))
+  if (newCols.length === 0) return stored
+
+  const result = [...stored]
+  for (const newId of newCols) {
+    const defaultIdx = defaults.indexOf(newId)
+    // Walk backwards in the default order to find the nearest predecessor
+    // that already exists in the result array, then insert after it.
+    let insertAfter = -1
+    for (let i = defaultIdx - 1; i >= 0; i--) {
+      const idx = result.indexOf(defaults[i])
+      if (idx !== -1) { insertAfter = idx; break }
+    }
+    result.splice(insertAfter + 1, 0, newId)
+  }
+  return result
+}
+
 /* ──────────────────────────────── Drag-reorder helpers ── */
 
 /** Moves `src` to the position of `dst` in-place order. */
@@ -1188,8 +1219,7 @@ export default function DocTidyInvoiceAudit() {
           const valid = auditColumnOrder.filter(
             (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
           )
-          const merged = [...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))]
-          setAuditColOrder(merged)
+          setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
         }
 
         if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
@@ -1295,15 +1325,15 @@ export default function DocTidyInvoiceAudit() {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
             )
-            setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
+            setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
             const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
-            setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+            setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
           }
           if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
             const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
-            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
+            setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
           }
         }
       },
@@ -1328,15 +1358,15 @@ export default function DocTidyInvoiceAudit() {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
             )
-            setAuditColOrder([...valid, ...DEFAULT_AUDIT_COL_ORDER.filter((id) => !valid.includes(id))])
+            setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
           }
           if (event.wsEmailColumnOrder && event.wsEmailColumnOrder.length > 0) {
             const valid = event.wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId => WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id))
-            setEmailColOrder([...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))])
+            setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
           }
           if (event.pdfImportColOrder && event.pdfImportColOrder.length > 0) {
             const valid = event.pdfImportColOrder.filter((id): id is PdfImportColumnId => PDF_IMPORT_COLUMNS.some((c) => c.id === id))
-            setPdfColOrder([...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))])
+            setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
           }
         }
       },
