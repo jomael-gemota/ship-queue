@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Types } from 'mongoose';
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import { broadcast } from './docTidyEvents';
+import { writeMatchCacheForJob } from './invoiceMatchCache.service';
 
 /**
  * Transport between the Express server and the Python worker that runs the
@@ -153,6 +154,11 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
     }
     pushToJob(jobId, { type: 'done', json: msg.json ?? null, table: msg.table ?? null });
     announceParseStatus(jobId, 'completed');
+    // Fire-and-forget: write matched invoice fields onto any order imports that
+    // correspond to this job's PO # + SKU.  Must not block the worker loop.
+    writeMatchCacheForJob(jobId).catch(err =>
+      console.error('[doc-tidy worker] failed to write invoice match cache for', jobId, err)
+    );
     return;
   }
 

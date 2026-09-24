@@ -412,6 +412,9 @@ export type InvoiceAuditColumnId =
   | 'poNumber'
   | 'orderSku'
   | 'orderQty'
+  | 'customerName'
+  | 'purchasedDate'
+  | 'status'
   // ── Invoice fields (from parsed PDFs) ──
   | 'invoiceSku'
   | 'invoiceDate'
@@ -444,9 +447,12 @@ export interface InvoiceAuditColumn {
 
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   // ── Order fields ──
-  { id: 'poNumber',           section: 'order',    label: 'PO #',                              description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true   },
-  { id: 'orderSku',           section: 'order',    label: 'Order SKU',                         description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true   },
-  { id: 'orderQty',           section: 'order',    label: 'Order Qty',                         description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true },
+  { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true    },
+  { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true    },
+  { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true },
+  { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true                 },
+  { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true                 },
+  { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true                 },
   // ── Invoice fields ──
   { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',                       description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true   },
   { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',                      description: 'Date printed on the matched invoice',                              defaultVisible: true               },
@@ -470,10 +476,11 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v2 key — bumped from `docTidy.invoiceAudit.columns` when the column set was
- * redesigned (2026-09-24 order-import redesign). Old v1 preferences are ignored.
+ * v3 key — bumped from v2 when Customer Name, Purchased Date and Status were
+ * added (2026-09-25).  Old v2 preferences are ignored so new columns appear in
+ * their correct positions rather than being appended at the far right.
  */
-const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v2'
+const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v3'
 
 /** Load per-column visibility from localStorage, falling back to defaults. */
 export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {
@@ -603,8 +610,32 @@ export interface DocTidyOrderImport {
   dcCogs?: string | null
   dcMsrp?: string | null
   dcCogsAt?: string | null
+  /**
+   * Inline invoice match cache — written by the server the moment a matching
+   * parse job completes.  When present the audit table reads these fields
+   * directly instead of loading all parse jobs for client-side matching.
+   */
+  matchedInvoice?: MatchedInvoiceCache | null
   createdAt: string
   updatedAt: string
+}
+
+/** Mirror of IMatchedInvoice from the backend model. */
+export interface MatchedInvoiceCache {
+  jobId: string
+  driveFileId?: string
+  invoiceSku?: string
+  invoiceDate?: string
+  invoiceNumber?: string
+  terms?: string
+  itemCost?: string
+  invoiceQty?: string
+  discountedPrice?: string
+  discountPct?: string
+  dropshipFee?: string
+  miscCharges?: string
+  totalCost?: string
+  cachedAt: string
 }
 
 export interface OrderImportsResponse {
