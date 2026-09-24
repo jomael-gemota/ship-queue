@@ -653,6 +653,9 @@ function auditColStr(
     case 'poNumber':          return order.poNumber
     case 'orderSku':          return order.orderSku
     case 'orderQty':          return order.orderQty
+    case 'customerName':      return order.customerName ?? ''
+    case 'purchasedDate':     return order.purchasedDate ?? ''
+    case 'status':            return order.status ?? ''
     case 'invoiceSku':        return liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number')
     case 'invoiceDate':       return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
     case 'invoiceNumber':     return extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
@@ -1700,9 +1703,12 @@ export default function DocTidyInvoiceAudit() {
 
     switch (colId) {
       // ── Order import fields ──
-      case 'poNumber':    return monoCell(order.poNumber)
-      case 'orderSku':    return monoCell(order.orderSku)
-      case 'orderQty':    return numCell(order.orderQty)
+      case 'poNumber':       return monoCell(order.poNumber)
+      case 'orderSku':       return monoCell(order.orderSku)
+      case 'orderQty':       return numCell(order.orderQty)
+      case 'customerName':   return textCell(order.customerName ?? '')
+      case 'purchasedDate':  return textCell(order.purchasedDate ?? '')
+      case 'status':         return textCell(order.status ?? '')
 
       // ── Invoice fields ──
       case 'invoiceSku':  return monoCell(liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'))

@@ -412,6 +412,9 @@ export type InvoiceAuditColumnId =
   | 'poNumber'
   | 'orderSku'
   | 'orderQty'
+  | 'customerName'
+  | 'purchasedDate'
+  | 'status'
   // ── Invoice fields (from parsed PDFs) ──
   | 'invoiceSku'
   | 'invoiceDate'
@@ -444,9 +447,12 @@ export interface InvoiceAuditColumn {
 
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   // ── Order fields ──
-  { id: 'poNumber',           section: 'order',    label: 'PO #',                              description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true   },
-  { id: 'orderSku',           section: 'order',    label: 'Order SKU',                         description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true   },
-  { id: 'orderQty',           section: 'order',    label: 'Order Qty',                         description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true },
+  { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true    },
+  { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true    },
+  { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true },
+  { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true                 },
+  { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true                 },
+  { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true                 },
   // ── Invoice fields ──
   { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',                       description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true   },
   { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',                      description: 'Date printed on the matched invoice',                              defaultVisible: true               },
