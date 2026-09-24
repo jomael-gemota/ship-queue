@@ -30,6 +30,18 @@ export interface IDocTidyOrderImport extends Document {
   importedByUserId?: string;
   importedByName?: string;
 
+  /**
+   * DC cost of goods sold, fetched from the Channel Precision bt_costs API.
+   * `null`  = not yet fetched
+   * `"n/a"` = fetched but no matching SKU found
+   * Any other string = the cost value (e.g. "12.50")
+   */
+  dcCogs?: string | null;
+  /** MSRP from the same API response (field name `mspr` in the source). */
+  dcMsrp?: string | null;
+  /** When the COGS was last fetched (for staleness checks). */
+  dcCogsAt?: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +68,10 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
 
     importedByUserId: { type: String },
     importedByName:   { type: String },
+
+    dcCogs:   { type: String, default: null },
+    dcMsrp:   { type: String, default: null },
+    dcCogsAt: { type: Date,   default: null },
   },
   { timestamps: true }
 );

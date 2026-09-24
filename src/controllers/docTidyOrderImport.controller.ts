@@ -4,6 +4,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import DocTidyOrderImport, { IDocTidyOrderImport } from '../models/DocTidyOrderImport';
+import { populateCogsForBatch } from '../services/dcCogs.service';
 
 /* ── multer — memory storage; parsing happens in this controller ── */
 export const orderImportUpload = multer({
@@ -252,6 +253,11 @@ export const uploadOrderImports = async (req: Request, res: Response): Promise<v
       importBatchId,
       count: created.length,
     });
+
+    // Fire-and-forget: populate DC COGS for the new batch in the background.
+    // This does NOT block the response — the frontend can re-fetch order
+    // imports after a moment to pick up the populated values.
+    void populateCogsForBatch(importBatchId);
   } catch (error) {
     fail(res, error, 'Failed to upload order imports');
   }
