@@ -2951,7 +2951,11 @@ export default function DocTidyInvoiceAudit() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orderLoading ? (
+                    {/* Show skeleton while orders are loading OR while jobs haven't arrived yet
+                        on the first load (jobs.length === 0 + loading). This prevents a flash
+                        where orderImports populate before fetchAllJobs returns, causing every
+                        invoice-matched cell to briefly render as "—" against an empty jobs array. */}
+                    {(orderLoading || (loading && jobs.length === 0)) ? (
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                           <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
