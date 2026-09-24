@@ -571,7 +571,7 @@ function liVal(item: Record<string, unknown> | null, ...candidates: string[]): s
 
 /**
  * Render the Discrepancy Checker cell.
- * Checks Order SKU vs Invoice SKU and Order Qty vs Invoice Qty.
+ * Checks: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty, Item Cost vs DC COGS.
  */
 function discrepancyCell(
   order: DocTidyOrderImport,
@@ -589,10 +589,33 @@ function discrepancyCell(
     'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'
   ) || extractJsonField(match.job.jsonOutput ?? null, 'quantity', 'qty')
 
-  const skuMatch = normForMatch(order.orderSku) === normForMatch(invoiceSku)
-  const qtyMatch = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
+  const itemCostRaw = liVal(match.item,
+    'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'
+  )
 
-  const Badge = ({ ok, label }: { ok: boolean | null; label: string }) => {
+  const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
+  const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
+
+  // COGS comparison: compare as floats (rounded to 2 dp) to handle minor formatting differences.
+  const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
+  let cogsMatch: boolean | null = null
+  if (dcCogs && itemCostRaw) {
+    const costNum = parseFloat(itemCostRaw.replace(/[^0-9.-]/g, ''))
+    const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
+    if (!isNaN(costNum) && !isNaN(cogsNum)) {
+      cogsMatch = Math.abs(costNum - cogsNum) < 0.005
+    }
+  } else if (order.dcCogs == null) {
+    // COGS not yet fetched — show pending state
+    cogsMatch = null
+  }
+
+  const Badge = ({ ok, label, pending = false }: { ok: boolean | null; label: string; pending?: boolean }) => {
+    if (pending) return (
+      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-200)] text-[var(--text-200)] italic">
+        {label}…
+      </span>
+    )
     if (ok === null) return (
       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-200)] text-[var(--text-200)]">
         {label} —
@@ -613,7 +636,7 @@ function discrepancyCell(
     <span className="flex flex-wrap gap-1">
       <Badge ok={invoiceSku ? skuMatch : null} label="SKU" />
       <Badge ok={invoiceQtyRaw ? qtyMatch : null} label="Qty" />
-      <Badge ok={null} label="COGS" />
+      <Badge ok={cogsMatch} label="COGS" pending={order.dcCogs == null} />
     </span>
   )
 }
@@ -635,7 +658,7 @@ function auditColStr(
     case 'invoiceNumber':     return extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
     case 'terms':             return extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms')
     case 'itemCost':          return liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price')
-    case 'dcCogs':            return ''
+    case 'dcCogs':            return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     case 'invoiceQty':        return liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty')
     case 'discountedCostPct': {
       const price = liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price')
@@ -661,7 +684,21 @@ function auditColStr(
       const parts: string[] = []
       if (invSku) parts.push(normForMatch(order.orderSku) === normForMatch(invSku) ? '✓ SKU' : '✗ SKU')
       if (invQty) parts.push(normForMatch(order.orderQty) === normForMatch(invQty) ? '✓ Qty' : '✗ Qty')
-      parts.push('COGS —')
+      const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
+      const itemCostRaw = liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price')
+      if (order.dcCogs == null) {
+        parts.push('COGS pending')
+      } else if (dcCogs && itemCostRaw) {
+        const costNum = parseFloat(itemCostRaw.replace(/[^0-9.-]/g, ''))
+        const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
+        if (!isNaN(costNum) && !isNaN(cogsNum)) {
+          parts.push(Math.abs(costNum - cogsNum) < 0.005 ? '✓ COGS' : '✗ COGS')
+        } else {
+          parts.push('COGS —')
+        }
+      } else {
+        parts.push('COGS —')
+      }
       return parts.join(', ')
     }
     default: return ''
@@ -1669,7 +1706,13 @@ export default function DocTidyInvoiceAudit() {
       }
       case 'terms':       return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
       case 'itemCost':    return numCell(liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'))
-      case 'dcCogs':      return emDash // blank — future source
+      case 'dcCogs': {
+        if (order.dcCogs == null) {
+          return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
+        }
+        if (order.dcCogs === 'n/a') return emDash
+        return numCell(order.dcCogs)
+      }
       case 'invoiceQty':  return numCell(liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'))
       case 'discountedCostPct': {
         const price = liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price')
@@ -2771,9 +2814,9 @@ export default function DocTidyInvoiceAudit() {
                 {/* Resync invoice data button */}
                 <button
                   type="button"
-                  onClick={() => void fetchAllJobsRef.current()}
-                  disabled={loading}
-                  title="Re-fetch all parsed invoices and re-match against imported orders"
+                  onClick={() => { void fetchAllJobsRef.current(); void fetchOrderImportsRef.current() }}
+                  disabled={loading || orderLoading}
+                  title="Re-fetch parsed invoices + order COGS and re-match against imported orders"
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
@@ -3178,9 +3221,14 @@ export default function DocTidyInvoiceAudit() {
                 </p>
               )}
               {importSuccess && (
-                <p className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 px-3.5 py-2.5 text-xs text-emerald-700 dark:text-emerald-400">
-                  ✓ Imported {importSuccess.count.toLocaleString()} order {importSuccess.count === 1 ? 'row' : 'rows'} successfully.
-                </p>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 px-3.5 py-2.5 space-y-1">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    ✓ Imported {importSuccess.count.toLocaleString()} order {importSuccess.count === 1 ? 'row' : 'rows'} successfully.
+                  </p>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-500">
+                    DC COGS is being fetched in the background — close this dialog and use <strong>Resync</strong> in a moment to see the values.
+                  </p>
+                </div>
               )}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">

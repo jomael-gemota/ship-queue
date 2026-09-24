@@ -594,6 +594,15 @@ export interface DocTidyOrderImport {
   status: string
   importedByUserId?: string
   importedByName?: string
+  /**
+   * DC cost of goods sold from the Channel Precision API.
+   * `null`  = not yet fetched
+   * `"n/a"` = fetched, SKU not found
+   * Any other string = the cost value
+   */
+  dcCogs?: string | null
+  dcMsrp?: string | null
+  dcCogsAt?: string | null
   createdAt: string
   updatedAt: string
 }
