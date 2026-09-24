@@ -2850,14 +2850,17 @@ export default function DocTidyInvoiceAudit() {
                 {loading && (
                   <div className="sticky top-0 left-0 z-30 w-full">
                     {/* Animated indeterminate progress bar */}
-                    <div className="h-0.5 w-full overflow-hidden bg-[var(--bg-300)]">
-                      <div className="h-full w-1/3 animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-[var(--accent-200)]"
+                    <div className="h-0.5 w-full overflow-hidden bg-violet-200 dark:bg-violet-800/40">
+                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
                         style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
                     </div>
-                    <div className="flex items-center gap-2 border-b border-[var(--accent-200)]/30 bg-[var(--primary-100)] px-4 py-2">
-                      <Spinner className="h-3 w-3 shrink-0 text-[var(--accent-200)]" />
-                      <span className="text-[11px] font-medium text-[var(--accent-200)]">
-                        Syncing invoice data — matching parsed PDFs against your orders…
+                    <div className="flex items-center gap-2.5 border-b border-violet-200 dark:border-violet-700/40 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/30 dark:to-indigo-900/30 px-4 py-2.5">
+                      <Spinner className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+                      <span className="text-[11px] font-semibold tracking-wide text-violet-700 dark:text-violet-300">
+                        Syncing invoice data
+                      </span>
+                      <span className="text-[11px] text-violet-500 dark:text-violet-400">
+                        — matching parsed PDFs against your orders…
                       </span>
                     </div>
                   </div>
