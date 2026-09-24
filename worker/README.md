@@ -112,12 +112,12 @@ it stays stuck until someone re-runs it.
 
 Two processes run on the Ubuntu machine: the **Doc Tidy worker** (this Python
 process) and the **Hermes gateway** (the local LLM inference server the worker
-calls via `HERMES_BASE_URL`, typically Ollama).
+calls via `HERMES_BASE_URL`).
 
 ### Restart both
 
 ```bash
-sudo systemctl restart ollama
+sudo systemctl restart hermes-gateway
 sudo systemctl restart doc-tidy-worker
 ```
 
@@ -133,14 +133,14 @@ sudo systemctl restart doc-tidy-worker
 Safe to do at any time — any jobs that were mid-flight are automatically
 re-dispatched by the server the moment the worker reconnects and sends `ready`.
 
-### Restart just the Hermes gateway (Ollama)
+### Restart just the Hermes gateway
 
 ```bash
-sudo systemctl restart ollama
+sudo systemctl restart hermes-gateway
 ```
 
 The worker will keep retrying the WebSocket connection to Ship Queue and the
-HTTP connection to Ollama until both are back. No manual intervention needed.
+HTTP connection to the Hermes gateway until both are back. No manual intervention needed.
 
 ### Check status
 
@@ -150,28 +150,23 @@ sudo systemctl status doc-tidy-worker
 journalctl -u doc-tidy-worker -f          # live logs
 
 # Hermes gateway
-sudo systemctl status ollama
-journalctl -u ollama -f                   # live logs
+sudo systemctl status hermes-gateway
+journalctl -u hermes-gateway -f           # live logs
 ```
 
 ### Stop both (e.g. for maintenance)
 
 ```bash
 sudo systemctl stop doc-tidy-worker
-sudo systemctl stop ollama
+sudo systemctl stop hermes-gateway
 ```
 
 ### Start both after maintenance
 
 ```bash
-sudo systemctl start ollama
+sudo systemctl start hermes-gateway
 sudo systemctl start doc-tidy-worker
 ```
-
-> **Note — Ollama service name:** if you installed the Hermes gateway as
-> something other than Ollama (e.g. a custom `hermes-gateway` unit), replace
-> `ollama` with your actual service name in the commands above. You can find
-> it with `sudo systemctl list-units --type=service | grep -i hermes`.
 
 ## Upgrading from the standalone doc-tidy app
 
