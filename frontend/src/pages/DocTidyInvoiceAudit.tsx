@@ -1082,8 +1082,12 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Send all parseable, un-parsed (or failed) attachments across selected email rows. */
-  const handleBulkSendEmailsToAgent = async (isRerun = false) => {
+  /**
+   * Send all parseable attachments across selected email rows to the Tidy Agent.
+   * Always includes completed jobs (rerun them) — only skips actively
+   * running/pending jobs since those are already being processed.
+   */
+  const handleBulkSendEmailsToAgent = async () => {
     const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
     const tasks: Array<{ msgId: string; index: number }> = []
     for (const msg of selectedMsgs) {
@@ -1091,10 +1095,8 @@ export default function DocTidyInvoiceAudit() {
         const att = msg.attachments[i]
         if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
         const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        // Always skip actively running/pending jobs
+        // Skip jobs that are actively running — they'll finish on their own
         if (job && (job.status === 'pending' || job.status === 'processing')) continue
-        // Skip completed jobs unless this is a rerun
-        if (!isRerun && job?.status === 'completed') continue
         tasks.push({ msgId: msg._id, index: i })
       }
     }
@@ -1112,14 +1114,17 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Send all un-parsed selected PDF imports to the Tidy Agent. */
-  const handleBulkSendPdfsToAgent = async (isRerun = false) => {
+  /**
+   * Send all selected PDF imports to the Tidy Agent.
+   * Always includes completed jobs (rerun them) — only skips actively
+   * running/pending jobs since those are already being processed.
+   */
+  const handleBulkSendPdfsToAgent = async () => {
     const selected = pdfImports.filter(
       (imp) =>
         pdfSelectedIds.has(imp._id) &&
-        (!imp.parseJob ||
-          imp.parseJob.status === 'failed' ||
-          (isRerun && imp.parseJob.status === 'completed'))
+        imp.parseJob?.status !== 'pending' &&
+        imp.parseJob?.status !== 'processing'
     )
     if (selected.length === 0) return
     setPdfBulkSending(true)
@@ -2051,7 +2056,7 @@ export default function DocTidyInvoiceAudit() {
                               ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
                               : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
                         }
-                        onClick={() => void handleBulkSendEmailsToAgent(allSelectedEmailsCompleted)}
+                        onClick={() => void handleBulkSendEmailsToAgent()}
                         disabled={emailBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedEmailsCompleted
@@ -2457,7 +2462,7 @@ export default function DocTidyInvoiceAudit() {
                               ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
                               : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
                         }
-                        onClick={() => void handleBulkSendPdfsToAgent(allSelectedPdfsCompleted)}
+                        onClick={() => void handleBulkSendPdfsToAgent()}
                         disabled={pdfBulkSending || workerOnline === false}
                         className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                           allSelectedPdfsCompleted
