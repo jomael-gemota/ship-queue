@@ -962,6 +962,7 @@ export default function DocTidyInvoiceAudit() {
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
   const [emailBulkSending, setEmailBulkSending] = useState(false)
+  const [emailBulkAborting, setEmailBulkAborting] = useState(false)
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
@@ -983,6 +984,7 @@ export default function DocTidyInvoiceAudit() {
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
   const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
   const [pdfBulkSending, setPdfBulkSending] = useState(false)
+  const [pdfBulkAborting, setPdfBulkAborting] = useState(false)
   const pdfSelectAllRef = useRef<HTMLInputElement>(null)
   const [pdfDragOver, setPdfDragOver] = useState(false)
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
@@ -1163,6 +1165,57 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
+  /**
+   * Abort all running parse jobs across selected email rows.
+   * Only targets jobs that are actively pending or processing — finished/failed
+   * jobs are ignored, same as the per-job Abort in ParseJobPanel.
+   */
+  const handleBulkAbortEmails = async () => {
+    const jobIds: string[] = []
+    for (const msg of emailMessages) {
+      if (!selectedEmailIds.has(msg._id)) continue
+      for (const job of msg.parseJobs ?? []) {
+        if (job.status === 'pending' || job.status === 'processing') {
+          jobIds.push(job._id)
+        }
+      }
+    }
+    if (jobIds.length === 0) return
+    setEmailBulkAborting(true)
+    try {
+      await Promise.allSettled(
+        jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
+      )
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkAborting(false)
+    }
+  }
+
+  /**
+   * Abort all running parse jobs across selected PDF imports.
+   */
+  const handleBulkAbortPdfs = async () => {
+    const jobIds = pdfImports
+      .filter(
+        (imp) =>
+          pdfSelectedIds.has(imp._id) &&
+          imp.parseJob != null &&
+          (imp.parseJob.status === 'pending' || imp.parseJob.status === 'processing')
+      )
+      .map((imp) => imp.parseJob!._id)
+    if (jobIds.length === 0) return
+    setPdfBulkAborting(true)
+    try {
+      await Promise.allSettled(
+        jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
+      )
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkAborting(false)
+    }
+  }
+
   /* Selection helpers */
   const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
@@ -1197,6 +1250,20 @@ export default function DocTidyInvoiceAudit() {
         }
         return hasParseable
       })
+  /** True when at least one selected email has a running (pending/processing) parse job. */
+  const anySelectedEmailRunning =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
+
+  /** True when at least one selected PDF import has a running parse job. */
+  const anySelectedPdfRunning =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .some((imp) => imp.parseJob?.status === 'pending' || imp.parseJob?.status === 'processing')
+
   useEffect(() => {
     if (pdfSelectAllRef.current) {
       pdfSelectAllRef.current.indeterminate = somePdfOnPageSelected && !allPdfOnPageSelected
@@ -2065,6 +2132,24 @@ export default function DocTidyInvoiceAudit() {
                     {emailPagination.total > 0 && (
                       <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
                     )}
+                    {anySelectedEmailRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortEmails()}
+                        disabled={emailBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {emailBulkAborting ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
+                    )}
                     {selectedEmailIds.size > 0 && (
                       <button
                         type="button"
@@ -2470,6 +2555,24 @@ export default function DocTidyInvoiceAudit() {
                     {pdfImportsLoading && <Spinner className="h-3 w-3" />}
                     {pdfImportsPagination.total > 0 && (
                       <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                    )}
+                    {anySelectedPdfRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs for ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortPdfs()}
+                        disabled={pdfBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {pdfBulkAborting ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
                     )}
                     {pdfSelectedIds.size > 0 && (
                       <button
