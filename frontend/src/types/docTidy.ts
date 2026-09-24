@@ -464,7 +464,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'discountedCostPct',  section: 'invoice',  label: 'Discounted Cost/%',                 description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true },
   { id: 'dropshipFee',        section: 'invoice',  label: 'Dropship Fee',                      description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true },
   { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',                     description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true },
-  { id: 'totalCost',          section: 'invoice',  label: 'Total Cost (incl. Tax & DS Fees)',  description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true },
+  { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',                        description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true },
   // ── Computed ──
   { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',                       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
 ]
