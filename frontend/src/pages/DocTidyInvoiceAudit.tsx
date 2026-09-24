@@ -3065,7 +3065,28 @@ export default function DocTidyInvoiceAudit() {
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
-                <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide mb-2">Expected columns</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const header = 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,Status'
+                      const blob = new Blob([header + '\n'], { type: 'text/csv' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = 'order-import-template.csv'
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download template
+                  </button>
+                </div>
                 <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
                   Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · Status
                 </p>
