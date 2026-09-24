@@ -207,7 +207,7 @@ function DraggableTh({
       onDragEnd={onDragEnd}
       className={[
         'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
-        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+        'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
         // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved

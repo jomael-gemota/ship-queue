@@ -155,7 +155,7 @@ function EditableTableGrid({
               {table.columns.map((col, i) => (
                 <th
                   key={i}
-                  className="border-b border-r border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] last:border-r-0"
+                  className="border-b border-r border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] last:border-r-0"
                 >
                   {col}
                 </th>

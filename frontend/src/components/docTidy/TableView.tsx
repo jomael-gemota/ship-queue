@@ -35,7 +35,7 @@ function AgentTableView({ table }: { table: AgentTable }) {
               {table.columns.map((column, i) => (
                 <th
                   key={i}
-                  className="whitespace-nowrap border-b border-r border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] last:border-r-0"
+                  className="whitespace-nowrap border-b border-r border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] last:border-r-0"
                 >
                   {column}
                 </th>
