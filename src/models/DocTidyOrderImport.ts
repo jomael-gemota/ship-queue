@@ -42,8 +42,39 @@ export interface IDocTidyOrderImport extends Document {
   /** When the COGS was last fetched (for staleness checks). */
   dcCogsAt?: Date | null;
 
+  /**
+   * Cached invoice match — written the moment a parse job completes and a
+   * matching PO # + SKU is found.  Storing these values here means the Invoice
+   * Audit table only ever needs to query this collection; it never has to load
+   * all parse jobs to do client-side matching.
+   *
+   * `null` = not yet matched (job not yet parsed, or no matching invoice found)
+   */
+  matchedInvoice?: IMatchedInvoice | null;
+
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** All invoice fields extracted from the matched parse job and stored inline. */
+export interface IMatchedInvoice {
+  /** The parse job whose jsonOutput was the source of truth. */
+  jobId: Types.ObjectId;
+  /** Google Drive file ID — used to render the invoice link. */
+  driveFileId?: string;
+  invoiceSku?: string;
+  invoiceDate?: string;
+  invoiceNumber?: string;
+  terms?: string;
+  itemCost?: string;
+  invoiceQty?: string;
+  discountedPrice?: string;
+  discountPct?: string;
+  dropshipFee?: string;
+  miscCharges?: string;
+  totalCost?: string;
+  /** When the cache was last written. */
+  cachedAt: Date;
 }
 
 const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
@@ -72,6 +103,26 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
     dcCogs:   { type: String, default: null },
     dcMsrp:   { type: String, default: null },
     dcCogsAt: { type: Date,   default: null },
+
+    matchedInvoice: {
+      type: new Schema({
+        jobId:            { type: Schema.Types.ObjectId, required: true },
+        driveFileId:      { type: String },
+        invoiceSku:       { type: String },
+        invoiceDate:      { type: String },
+        invoiceNumber:    { type: String },
+        terms:            { type: String },
+        itemCost:         { type: String },
+        invoiceQty:       { type: String },
+        discountedPrice:  { type: String },
+        discountPct:      { type: String },
+        dropshipFee:      { type: String },
+        miscCharges:      { type: String },
+        totalCost:        { type: String },
+        cachedAt:         { type: Date, required: true },
+      }, { _id: false }),
+      default: null,
+    },
   },
   { timestamps: true }
 );

@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import DocTidyOrderImport, { IDocTidyOrderImport } from '../models/DocTidyOrderImport';
 import { populateCogsForBatch, populateCogsForWorkspace } from '../services/dcCogs.service';
+import { rebuildMatchCacheForWorkspace } from '../services/invoiceMatchCache.service';
 
 /* ── multer — memory storage; parsing happens in this controller ── */
 export const orderImportUpload = multer({
@@ -280,6 +281,29 @@ export const refreshCogsForWorkspace = async (req: Request, res: Response): Prom
     res.json({ queued: pendingCount });
   } catch (error) {
     fail(res, error, 'Failed to queue COGS refresh');
+  }
+};
+
+/* ── Rebuild invoice match cache for all uncached rows in a workspace ── */
+export const rebuildMatchCache = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId } = req.params;
+    if (!isValidObjectId(workspaceId)) {
+      res.status(400).json({ message: 'Invalid workspaceId' });
+      return;
+    }
+
+    const uncachedCount = await DocTidyOrderImport.countDocuments({
+      workspaceId,
+      matchedInvoice: null,
+    });
+
+    // Fire-and-forget — the client re-fetches order imports after a delay.
+    void rebuildMatchCacheForWorkspace(workspaceId);
+
+    res.json({ queued: uncachedCount });
+  } catch (error) {
+    fail(res, error, 'Failed to queue match cache rebuild');
   }
 };
 
