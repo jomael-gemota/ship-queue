@@ -1467,6 +1467,18 @@ export default function DocTidyInvoiceAudit() {
     }
   }, [activeWorkspace])
 
+  /* Auto-trigger COGS refresh on audit tab open — fires in the background so
+     any rows that are still pending (e.g. from a previous import where the DC
+     credentials were not yet configured) get populated without manual action.
+     Re-polls order imports 4 s later to surface the newly written values. */
+  useEffect(() => {
+    if (workspaceTab !== 'audit' || !activeWorkspace) return
+    void triggerCogsRefresh().then(() => {
+      setTimeout(() => void fetchOrderImportsRef.current(), 4000)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceTab, activeWorkspace])
+
   /* ── Handle order file import ── */
   const handleImportFile = async (file: File) => {
     if (!activeWorkspace) return
