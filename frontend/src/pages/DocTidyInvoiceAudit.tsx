@@ -1457,6 +1457,16 @@ export default function DocTidyInvoiceAudit() {
   // eslint-disable-next-line react-hooks/immutability
   useEffect(() => { fetchAllJobsRef.current = fetchAllJobs }, [fetchAllJobs])
 
+  /* ── Trigger DC COGS refresh for any pending rows in the workspace ── */
+  const triggerCogsRefresh = useCallback(async () => {
+    if (!activeWorkspace) return
+    try {
+      await authApi.post(`/doc-tidy/order-imports/workspace/${activeWorkspace._id}/refresh-cogs`)
+    } catch {
+      // Non-critical: COGS refresh failing should not surface as a blocking error.
+    }
+  }, [activeWorkspace])
+
   /* ── Handle order file import ── */
   const handleImportFile = async (file: File) => {
     if (!activeWorkspace) return
@@ -2814,7 +2824,16 @@ export default function DocTidyInvoiceAudit() {
                 {/* Resync invoice data button */}
                 <button
                   type="button"
-                  onClick={() => { void fetchAllJobsRef.current(); void fetchOrderImportsRef.current() }}
+                  onClick={() => {
+                    void fetchAllJobsRef.current()
+                    void fetchOrderImportsRef.current()
+                    // Also kick off a COGS re-fetch for any rows that are still pending,
+                    // then pull fresh order data from the DB a few seconds later to pick
+                    // up the newly populated values.
+                    void triggerCogsRefresh().then(() => {
+                      setTimeout(() => void fetchOrderImportsRef.current(), 4000)
+                    })
+                  }}
                   disabled={loading || orderLoading}
                   title="Re-fetch parsed invoices + order COGS and re-match against imported orders"
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-50"
