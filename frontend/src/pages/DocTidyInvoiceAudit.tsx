@@ -2768,13 +2768,24 @@ export default function DocTidyInvoiceAudit() {
                   Import Orders
                 </button>
 
-                {/* Invoice matching indicator */}
-                {loading && (
-                  <span className="flex items-center gap-1 text-[11px] text-[var(--text-200)]">
-                    <Spinner className="h-3 w-3" />
-                    Loading invoice data…
-                  </span>
-                )}
+                {/* Resync invoice data button */}
+                <button
+                  type="button"
+                  onClick={() => void fetchAllJobsRef.current()}
+                  disabled={loading}
+                  title="Re-fetch all parsed invoices and re-match against imported orders"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? (
+                    <Spinner className="h-3.5 w-3.5 text-[var(--accent-200)]" />
+                  ) : (
+                    <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                  {loading ? 'Syncing…' : 'Resync'}
+                </button>
 
                 {/* Column settings */}
                 <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
