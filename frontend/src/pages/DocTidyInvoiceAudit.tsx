@@ -2845,7 +2845,30 @@ export default function DocTidyInvoiceAudit() {
               )}
 
               {/* Table */}
-              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
+              <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
+                {/* Resync overlay — appears while fetchAllJobs is in-flight */}
+                {loading && (
+                  <div className="sticky top-0 left-0 z-30 w-full">
+                    {/* Animated indeterminate progress bar */}
+                    <div className="h-0.5 w-full overflow-hidden bg-[var(--bg-300)]">
+                      <div className="h-full w-1/3 animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-[var(--accent-200)]"
+                        style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
+                    </div>
+                    <div className="flex items-center gap-2 border-b border-[var(--accent-200)]/30 bg-[var(--primary-100)] px-4 py-2">
+                      <Spinner className="h-3 w-3 shrink-0 text-[var(--accent-200)]" />
+                      <span className="text-[11px] font-medium text-[var(--accent-200)]">
+                        Syncing invoice data — matching parsed PDFs against your orders…
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <style>{`
+                  @keyframes audit-resync-slide {
+                    0%   { transform: translateX(-100%); }
+                    50%  { transform: translateX(200%); }
+                    100% { transform: translateX(-100%); }
+                  }
+                `}</style>
                 <table className="w-full text-[11px] border-separate border-spacing-0">
                   <thead>
                     <tr>
