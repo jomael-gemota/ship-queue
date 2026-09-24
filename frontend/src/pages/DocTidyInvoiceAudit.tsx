@@ -577,21 +577,15 @@ function discrepancyCell(
   order: DocTidyOrderImport,
   match: InvoiceMatch | null
 ): React.ReactNode {
-  if (!match) {
+  // Use cached invoice data first; fall back to client-side match.
+  const inv = resolveInvoiceFields(order, match)
+  if (!inv.hasMatch) {
     return <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
   }
 
-  const invoiceSku = liVal(match.item,
-    'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'
-  ) || extractJsonField(match.job.jsonOutput ?? null, 'sku', 'part_number')
-
-  const invoiceQtyRaw = liVal(match.item,
-    'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'
-  ) || extractJsonField(match.job.jsonOutput ?? null, 'quantity', 'qty')
-
-  const itemCostRaw = liVal(match.item,
-    'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'
-  )
+  const invoiceSku    = inv.invoiceSku
+  const invoiceQtyRaw = inv.invoiceQty
+  const itemCostRaw   = inv.itemCost
 
   const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
   const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
@@ -642,57 +636,72 @@ function discrepancyCell(
 }
 
 /** Return the plain-string value for a column (used by Excel export). */
+/**
+ * Resolve invoice field values for a row, preferring the server-written
+ * `matchedInvoice` cache and falling back to client-side matching.
+ */
+function resolveInvoiceFields(
+  order: DocTidyOrderImport,
+  match: InvoiceMatch | null
+) {
+  const c = order.matchedInvoice   // cached (fast path)
+  const json  = match?.job.jsonOutput ?? null
+  const item  = match?.item ?? null
+
+  return {
+    hasMatch:        !!(c ?? match),
+    driveFileId:     c?.driveFileId ?? match?.job.driveFileId,
+    invoiceSku:      c?.invoiceSku   ?? liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'),
+    invoiceDate:     c?.invoiceDate  ?? extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'),
+    invoiceNumber:   c?.invoiceNumber ?? extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'),
+    terms:           c?.terms        ?? extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'),
+    itemCost:        c?.itemCost     ?? liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'),
+    invoiceQty:      c?.invoiceQty   ?? liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'),
+    discountedPrice: c?.discountedPrice ?? liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'),
+    discountPct:     c?.discountPct  ?? liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
+    dropshipFee:     c?.dropshipFee  ?? (liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')),
+    miscCharges:     c?.miscCharges  ?? (liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')),
+    totalCost:       c?.totalCost    ?? (liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')),
+  }
+}
+
 function auditColStr(
   colId: InvoiceAuditColumnId,
   order: DocTidyOrderImport,
   match: InvoiceMatch | null
 ): string {
-  const json = match?.job.jsonOutput ?? null
-  const item = match?.item ?? null
   switch (colId) {
-    case 'poNumber':          return order.poNumber
-    case 'orderSku':          return order.orderSku
-    case 'orderQty':          return order.orderQty
-    case 'customerName':      return order.customerName ?? ''
-    case 'purchasedDate':     return order.purchasedDate ?? ''
-    case 'status':            return order.status ?? ''
-    case 'invoiceSku':        return liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number')
-    case 'invoiceDate':       return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
-    case 'invoiceNumber':     return extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
-    case 'terms':             return extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms')
-    case 'itemCost':          return liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price')
-    case 'dcCogs':            return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
-    case 'invoiceQty':        return liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty')
-    case 'discountedCostPct': {
-      const price = liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price')
-      const pct   = liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc')
-      return [price, pct ? `(${pct}%)` : ''].filter(Boolean).join(' ')
-    }
-    case 'dropshipFee':       return (
-      liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') ||
-      extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')
-    )
-    case 'miscCharges':       return (
-      liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') ||
-      extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')
-    )
-    case 'totalCost':         return (
-      liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') ||
-      extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')
-    )
+    case 'poNumber':      return order.poNumber
+    case 'orderSku':      return order.orderSku
+    case 'orderQty':      return order.orderQty
+    case 'customerName':  return order.customerName ?? ''
+    case 'purchasedDate': return order.purchasedDate ?? ''
+    case 'status':        return order.status ?? ''
+    case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
+    default: break
+  }
+  const inv = resolveInvoiceFields(order, match)
+  switch (colId) {
+    case 'invoiceSku':        return inv.invoiceSku
+    case 'invoiceDate':       return inv.invoiceDate
+    case 'invoiceNumber':     return inv.invoiceNumber
+    case 'terms':             return inv.terms
+    case 'itemCost':          return inv.itemCost
+    case 'invoiceQty':        return inv.invoiceQty
+    case 'discountedCostPct': return [inv.discountedPrice, inv.discountPct ? `(${inv.discountPct}%)` : ''].filter(Boolean).join(' ')
+    case 'dropshipFee':       return inv.dropshipFee
+    case 'miscCharges':       return inv.miscCharges
+    case 'totalCost':         return inv.totalCost
     case 'discrepancy': {
-      if (!match) return 'No match'
-      const invSku = liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number')
-      const invQty = liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty')
+      if (!inv.hasMatch) return 'No match'
       const parts: string[] = []
-      if (invSku) parts.push(normForMatch(order.orderSku) === normForMatch(invSku) ? '✓ SKU' : '✗ SKU')
-      if (invQty) parts.push(normForMatch(order.orderQty) === normForMatch(invQty) ? '✓ Qty' : '✗ Qty')
+      if (inv.invoiceSku) parts.push(normForMatch(order.orderSku) === normForMatch(inv.invoiceSku) ? '✓ SKU' : '✗ SKU')
+      if (inv.invoiceQty) parts.push(normForMatch(order.orderQty) === normForMatch(inv.invoiceQty) ? '✓ Qty' : '✗ Qty')
       const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
-      const itemCostRaw = liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price')
       if (order.dcCogs == null) {
         parts.push('COGS pending')
-      } else if (dcCogs && itemCostRaw) {
-        const costNum = parseFloat(itemCostRaw.replace(/[^0-9.-]/g, ''))
+      } else if (dcCogs && inv.itemCost) {
+        const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
         const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
         if (!isNaN(costNum) && !isNaN(cogsNum)) {
           parts.push(Math.abs(costNum - cogsNum) < 0.005 ? '✓ COGS' : '✗ COGS')
@@ -1427,7 +1436,12 @@ export default function DocTidyInvoiceAudit() {
     if (workspaceTab === 'audit') void fetchOrderImports()
   }, [workspaceTab, fetchOrderImports])
 
-  /* ── Fetch all parse jobs (for invoice matching — loaded once, not paginated) ── */
+  /* ── Fetch all parse jobs (for invoice matching — fallback for uncached rows) ──
+   *
+   * Once every row in the workspace has a `matchedInvoice` cache written by the
+   * server, this call is skipped entirely so the table stays fast even as the
+   * parse-job collection grows into the thousands.
+   */
   const fetchAllJobs = useCallback(async () => {
     if (!activeWorkspace) return
     setLoading(true)
@@ -1449,8 +1463,16 @@ export default function DocTidyInvoiceAudit() {
   }, [activeWorkspace])
 
   useEffect(() => {
-    if (workspaceTab === 'audit') void fetchAllJobs()
-  }, [workspaceTab, fetchAllJobs])
+    if (workspaceTab !== 'audit') return
+    // Skip the expensive parse-jobs fetch if every loaded row already has a
+    // server-written matchedInvoice cache — nothing to fall back to.
+    if (orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
+      setJobs([])   // clear any stale jobs from a previous workspace
+      setLoading(false)
+      return
+    }
+    void fetchAllJobs()
+  }, [workspaceTab, fetchAllJobs, orderImports])
 
   /* Keep stable refs for SSE-triggered refetches */
   const fetchOrderImportsRef = useRef(fetchOrderImports)
@@ -1470,13 +1492,22 @@ export default function DocTidyInvoiceAudit() {
     }
   }, [activeWorkspace])
 
-  /* Auto-trigger COGS refresh on audit tab open — fires in the background so
-     any rows that are still pending (e.g. from a previous import where the DC
-     credentials were not yet configured) get populated without manual action.
-     Re-polls order imports 4 s later to surface the newly written values. */
+  /* ── Trigger server-side invoice match cache rebuild for uncached rows ── */
+  const triggerMatchCacheRebuild = useCallback(async () => {
+    if (!activeWorkspace) return
+    try {
+      await authApi.post(`/doc-tidy/order-imports/workspace/${activeWorkspace._id}/rebuild-match-cache`)
+    } catch {
+      // Non-critical.
+    }
+  }, [activeWorkspace])
+
+  /* Auto-trigger on audit tab open:
+     1. Kick off COGS refresh and match cache rebuild (fire-and-forget).
+     2. Re-poll order imports 4 s later to surface the newly written values. */
   useEffect(() => {
     if (workspaceTab !== 'audit' || !activeWorkspace) return
-    void triggerCogsRefresh().then(() => {
+    void Promise.all([triggerCogsRefresh(), triggerMatchCacheRebuild()]).then(() => {
       setTimeout(() => void fetchOrderImportsRef.current(), 4000)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1698,42 +1729,14 @@ export default function DocTidyInvoiceAudit() {
     order: DocTidyOrderImport,
     match: InvoiceMatch | null
   ): React.ReactNode => {
-    const json = match?.job.jsonOutput ?? null
-    const item = match?.item ?? null
-
+    // ── Order import fields (always from the DB row directly) ──
     switch (colId) {
-      // ── Order import fields ──
-      case 'poNumber':       return monoCell(order.poNumber)
-      case 'orderSku':       return monoCell(order.orderSku)
-      case 'orderQty':       return numCell(order.orderQty)
-      case 'customerName':   return textCell(order.customerName ?? '')
-      case 'purchasedDate':  return textCell(order.purchasedDate ?? '')
-      case 'status':         return textCell(order.status ?? '')
-
-      // ── Invoice fields ──
-      case 'invoiceSku':  return monoCell(liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'))
-      case 'invoiceDate': return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
-      case 'invoiceNumber': {
-        const invNum = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
-        if (!invNum) return emDash
-        const driveId = match?.job.driveFileId
-        if (driveId) {
-          return (
-            <a href={`https://drive.google.com/file/d/${driveId}/view`}
-              target="_blank" rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--accent-200)] hover:underline">
-              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-              </svg>
-              {invNum}
-            </a>
-          )
-        }
-        return monoCell(invNum)
-      }
-      case 'terms':       return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
-      case 'itemCost':    return numCell(liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'))
+      case 'poNumber':      return monoCell(order.poNumber)
+      case 'orderSku':      return monoCell(order.orderSku)
+      case 'orderQty':      return numCell(order.orderQty)
+      case 'customerName':  return textCell(order.customerName ?? '')
+      case 'purchasedDate': return textCell(order.purchasedDate ?? '')
+      case 'status':        return textCell(order.status ?? '')
       case 'dcCogs': {
         if (order.dcCogs == null) {
           return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
@@ -1741,29 +1744,48 @@ export default function DocTidyInvoiceAudit() {
         if (order.dcCogs === 'n/a') return emDash
         return numCell(order.dcCogs)
       }
-      case 'invoiceQty':  return numCell(liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'))
+      default: break
+    }
+
+    // ── Invoice fields — prefer matchedInvoice cache, fall back to client match ──
+    const inv = resolveInvoiceFields(order, match)
+
+    switch (colId) {
+      case 'invoiceSku':    return monoCell(inv.invoiceSku)
+      case 'invoiceDate':   return textCell(inv.invoiceDate)
+      case 'invoiceNumber': {
+        if (!inv.invoiceNumber) return emDash
+        if (inv.driveFileId) {
+          return (
+            <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--accent-200)] hover:underline">
+              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+              </svg>
+              {inv.invoiceNumber}
+            </a>
+          )
+        }
+        return monoCell(inv.invoiceNumber)
+      }
+      case 'terms':       return textCell(inv.terms)
+      case 'itemCost':    return numCell(inv.itemCost)
+      case 'invoiceQty':  return numCell(inv.invoiceQty)
       case 'discountedCostPct': {
-        const price = liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price')
-        const pct   = liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc')
-        if (!price && !pct) return emDash
+        if (!inv.discountedPrice && !inv.discountPct) return emDash
         return (
           <span className="tabular-nums text-[var(--text-100)]">
-            {price}{price && pct ? ' ' : ''}{pct ? <span className="text-[var(--text-200)]">({pct}%)</span> : null}
+            {inv.discountedPrice}
+            {inv.discountedPrice && inv.discountPct ? ' ' : ''}
+            {inv.discountPct ? <span className="text-[var(--text-200)]">({inv.discountPct}%)</span> : null}
           </span>
         )
       }
-      case 'dropshipFee': return numCell(
-        liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') ||
-        extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')
-      )
-      case 'miscCharges': return numCell(
-        liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') ||
-        extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')
-      )
-      case 'totalCost':   return numCell(
-        liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') ||
-        extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')
-      )
+      case 'dropshipFee': return numCell(inv.dropshipFee)
+      case 'miscCharges': return numCell(inv.miscCharges)
+      case 'totalCost':   return numCell(inv.totalCost)
 
       // ── Computed ──
       case 'discrepancy': return discrepancyCell(order, match)
@@ -2845,10 +2867,9 @@ export default function DocTidyInvoiceAudit() {
                   onClick={() => {
                     void fetchAllJobsRef.current()
                     void fetchOrderImportsRef.current()
-                    // Also kick off a COGS re-fetch for any rows that are still pending,
-                    // then pull fresh order data from the DB a few seconds later to pick
-                    // up the newly populated values.
-                    void triggerCogsRefresh().then(() => {
+                    // Kick off COGS refresh + match cache rebuild, then re-fetch orders
+                    // a few seconds later to surface all newly written values.
+                    void Promise.all([triggerCogsRefresh(), triggerMatchCacheRebuild()]).then(() => {
                       setTimeout(() => void fetchOrderImportsRef.current(), 4000)
                     })
                   }}

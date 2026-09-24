@@ -609,8 +609,32 @@ export interface DocTidyOrderImport {
   dcCogs?: string | null
   dcMsrp?: string | null
   dcCogsAt?: string | null
+  /**
+   * Inline invoice match cache — written by the server the moment a matching
+   * parse job completes.  When present the audit table reads these fields
+   * directly instead of loading all parse jobs for client-side matching.
+   */
+  matchedInvoice?: MatchedInvoiceCache | null
   createdAt: string
   updatedAt: string
+}
+
+/** Mirror of IMatchedInvoice from the backend model. */
+export interface MatchedInvoiceCache {
+  jobId: string
+  driveFileId?: string
+  invoiceSku?: string
+  invoiceDate?: string
+  invoiceNumber?: string
+  terms?: string
+  itemCost?: string
+  invoiceQty?: string
+  discountedPrice?: string
+  discountPct?: string
+  dropshipFee?: string
+  miscCharges?: string
+  totalCost?: string
+  cachedAt: string
 }
 
 export interface OrderImportsResponse {
