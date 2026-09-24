@@ -1,4 +1,4 @@
-import { useParseJobStream } from '../../hooks/useParseJobStream'
+import { useParseProgress } from '../../lib/docTidyStore'
 import {
   DOCUMENT_TYPE_ICONS,
   DOCUMENT_TYPE_LABELS,
@@ -422,11 +422,14 @@ export function RuleCriteria({ rule }: { rule: DocTidyRuleInput }) {
 /* ------------------------------------------------- live reasoning chip */
 
 /**
- * Streams the last five words of a running job's reasoning transcript and
- * renders them as a compact, pulsing chip in the Actions column.
+ * Shows how far a running job has got and what it is doing, as a compact,
+ * pulsing chip in the Actions column. Clicking it opens the full reasoning panel.
  *
- * Opening a per-job SSE connection only while the job is actually running
- * keeps server load trivial. Clicking the chip opens the full reasoning panel.
+ * Both values arrive on the shared `/doc-tidy/stream`, already summarised by the
+ * server. The chip deliberately holds no connection and no transcript of its
+ * own: a table showing a large batch renders hundreds of these at once, and one
+ * stream plus one regex pass per chip per token is what made such a batch
+ * unusable. See design-log/2026-09-25-parse-progress-multiplexing.md.
  */
 export function LiveReasoningSnippet({
   jobId,
@@ -435,30 +438,11 @@ export function LiveReasoningSnippet({
   jobId: string
   onOpen: () => void
 }) {
-  const stream = useParseJobStream(jobId)
+  const progress = useParseProgress(jobId)
 
-  // Strip markdown, split into sentence-level segments, take the first 4 words
-  // of the most recent segment so the snippet always reads as a sentence opener
-  // ("Extracting line items from…") rather than a dangling tail.
-  const cleaned = stream.thinking
-    .replace(/[#*`_~>|[\]()\\]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  const segments = cleaned
-    .split(/(?:[.!?])\s+|\n+/)
-    .map((s) => s.replace(/[.!?,;:]+$/, '').trim())
-    .filter((s) => s.split(/\s+/).filter((w) => w.length > 1).length >= 2)
-
-  // Step number = how many segments have been produced so far (min 1)
-  const step = Math.max(1, segments.length)
-
-  const lastSegment = segments[segments.length - 1] ?? cleaned
-  const words = lastSegment.split(/\s+/).filter((w) => w.length > 0)
-  const sliced = words.slice(0, 6).join(' ')
-  const snippet = sliced
-    ? sliced.charAt(0).toUpperCase() + sliced.slice(1).toLowerCase() + (words.length > 6 ? '…' : '')
-    : ''
+  const step = progress?.step ?? 1
+  const raw = progress?.snippet ?? ''
+  const snippet = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : ''
 
   return (
     <button

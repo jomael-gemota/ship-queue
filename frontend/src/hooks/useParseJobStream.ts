@@ -27,6 +27,9 @@ const IDLE: ParseJobStreamState = {
 
 const CONNECTING: ParseJobStreamState = { ...IDLE, status: 'pending', live: true }
 
+/** How long tokens accumulate before being applied as one state update. */
+const FLUSH_INTERVAL_MS = 100
+
 /** The state, plus which subscription produced it. */
 type Tracked = ParseJobStreamState & { key: string }
 
@@ -75,6 +78,32 @@ export function useParseJobStream(jobId: string | null, epoch = 0): ParseJobStre
       closeRef.current = null
     }
 
+    // Tokens arrive far faster than the panel needs to repaint, so they are
+    // accumulated and applied on a timer: one render per flush rather than one
+    // per token. Terminal events flush first so nothing is dropped or reordered.
+    let pendingThinking = ''
+    let pendingOutput = ''
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+    const flush = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      if (!pendingThinking && !pendingOutput) return
+
+      const thinking = pendingThinking
+      const output = pendingOutput
+      pendingThinking = ''
+      pendingOutput = ''
+      update((s) => ({ thinking: s.thinking + thinking, output: s.output + output }))
+    }
+
+    const scheduleFlush = () => {
+      if (flushTimer) return
+      flushTimer = setTimeout(flush, FLUSH_INTERVAL_MS)
+    }
+
     const close = authApi.eventStream<ParseStreamEvent>(
       `/doc-tidy/parse-jobs/${jobId}/stream`,
       (event) => {
@@ -84,12 +113,15 @@ export function useParseJobStream(jobId: string | null, epoch = 0): ParseJobStre
             update((s) => ({ status: event.status ?? s.status }))
             break
           case 'thinking':
-            update((s) => ({ thinking: s.thinking + (event.content ?? '') }))
+            pendingThinking += event.content ?? ''
+            scheduleFlush()
             break
           case 'output':
-            update((s) => ({ output: s.output + (event.content ?? '') }))
+            pendingOutput += event.content ?? ''
+            scheduleFlush()
             break
           case 'done':
+            flush()
             update(() => ({
               json: event.json ?? null,
               table: event.table ?? null,
@@ -99,6 +131,7 @@ export function useParseJobStream(jobId: string | null, epoch = 0): ParseJobStre
             finish()
             break
           case 'error':
+            flush()
             update(() => ({
               status: 'failed',
               error: event.message ?? 'The agent failed to parse this document',
@@ -108,12 +141,16 @@ export function useParseJobStream(jobId: string | null, epoch = 0): ParseJobStre
             break
         }
       },
-      () => update(() => ({ live: false }))
+      () => {
+        flush()
+        update(() => ({ live: false }))
+      }
     )
 
     closeRef.current = close
     return () => {
       closeRef.current = null
+      if (flushTimer) clearTimeout(flushTimer)
       close()
     }
   }, [jobId, key])

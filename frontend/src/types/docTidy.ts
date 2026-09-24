@@ -169,11 +169,23 @@ export interface RunAllResult {
 
 /** Pushed over `/doc-tidy/stream` when the server stores new messages. */
 export interface DocTidyEvent {
-  type: 'imported' | 'ping' | 'connected' | 'parse_status' | 'worker_status' | 'ui_prefs'
+  type:
+    | 'imported'
+    | 'ping'
+    | 'connected'
+    | 'parse_status'
+    | 'parse_progress'
+    | 'worker_status'
+    | 'ui_prefs'
   imported?: number
-  /** For `parse_status`, so a table can move one chip without refetching. */
+  /** For `parse_status`, so a table can move one chip without refetching.
+   *  For `parse_progress`, which running job `step`/`snippet` describe. */
   parseJobId?: string
   parseStatus?: ParseJobStatus
+  /** For `parse_progress`: how far along a running job is, and what it is doing.
+   *  Multiplexed here so a table watching many jobs needs one connection. */
+  step?: number
+  snippet?: string
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean
   /**
