@@ -207,7 +207,7 @@ function DraggableTh({
       onDragEnd={onDragEnd}
       className={[
         'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
-        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+        'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
         // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved
@@ -1566,6 +1566,7 @@ export default function DocTidyInvoiceAudit() {
       formData.append('file', file)
       const res = await authApi.upload<{ count: number; importBatchId: string }>('/doc-tidy/order-imports', formData)
       setImportSuccess({ count: res.count, batchId: res.importBatchId })
+      setShowImportModal(false)
       void fetchOrderImportsRef.current()
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed')
@@ -1770,7 +1771,17 @@ export default function DocTidyInvoiceAudit() {
       case 'poNumber':      return monoCell(order.poNumber)
       case 'orderSku':      return monoCell(order.orderSku)
       case 'orderQty':      return numCell(order.orderQty)
-      case 'customerName':  return textCell(order.customerName ?? '')
+      case 'customerName': {
+        const name = order.customerName ?? ''
+        if (!name) return emDash
+        const words = name.trim().split(/\s+/)
+        const display = words.length > 3 ? words.slice(0, 3).join(' ') + '…' : name
+        return (
+          <span className="block max-w-[110px] truncate text-[var(--text-100)]" title={name}>
+            {display}
+          </span>
+        )
+      }
       case 'purchasedDate': return textCell(order.purchasedDate ?? '')
       case 'status':        return textCell(order.status ?? '')
       case 'dcCogs': {
@@ -3027,7 +3038,7 @@ export default function DocTidyInvoiceAudit() {
                         <DraggableTh
                           key={col.id}
                           label={col.label}
-                          align={col.numeric ? 'right' : 'left'}
+                          align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
                           onDragStart={() => setAuditDragSrc(col.id)}
@@ -3181,7 +3192,7 @@ export default function DocTidyInvoiceAudit() {
                                   <td key={col.id}
                                     className={[
                                       'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
-                                      col.numeric ? 'text-right tabular-nums' : '',
+                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                       col.mono ? 'font-mono' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
