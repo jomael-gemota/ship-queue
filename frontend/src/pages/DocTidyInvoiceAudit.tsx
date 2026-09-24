@@ -3038,7 +3038,7 @@ export default function DocTidyInvoiceAudit() {
                         <DraggableTh
                           key={col.id}
                           label={col.label}
-                          align={col.numeric ? 'right' : 'left'}
+                          align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
                           onDragStart={() => setAuditDragSrc(col.id)}
@@ -3192,7 +3192,7 @@ export default function DocTidyInvoiceAudit() {
                                   <td key={col.id}
                                     className={[
                                       'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
-                                      col.numeric ? 'text-right tabular-nums' : '',
+                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                       col.mono ? 'font-mono' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
