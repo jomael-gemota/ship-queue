@@ -906,7 +906,17 @@ function discrepancyCell(
   const inv = resolveInvoiceFields(order, match)
   if (!inv.hasMatch) {
     return (
-      <Tooltip content="No invoice was matched for this order.&#10;Parse an invoice PDF that contains this PO # to enable checks.">
+      <Tooltip richContent={
+        <div className="px-3.5 py-3 space-y-1.5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
+            <p className="text-[11px] font-semibold text-slate-300">No invoice matched</p>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Parse an invoice PDF containing this PO # to enable SKU, Qty, and COGS checks.
+          </p>
+        </div>
+      }>
         <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
       </Tooltip>
     )
@@ -935,22 +945,116 @@ function discrepancyCell(
     cogsMatch = null
   }
 
-  // ── Build the hover tooltip (shows all 3 checks with values) ──
+  // ── Build the rich hover tooltip showing all 3 checks ──
+  type CheckRow = {
+    key: string
+    label: string
+    orderVal: string
+    invoiceVal: string
+    /** true = match, false = mismatch, null = pending, undefined = no data to compare */
+    status: boolean | null | undefined
+    pending?: boolean
+    noData?: boolean
+  }
+
   const dash = '—'
-  const check = (ok: boolean | null) => ok === true ? '✓' : ok === false ? '✗' : '?'
 
-  const skuLine  = `SKU   Order: ${order.orderSku || dash}  →  Invoice: ${invoiceSku || dash}  ${invoiceSku ? check(skuMatch) : dash}`
-  const qtyLine  = `Qty   Order: ${order.orderQty || dash}  →  Invoice: ${invoiceQtyRaw || dash}  ${invoiceQtyRaw ? check(qtyMatch) : dash}`
-  const cogsLine =
-    order.dcCogs == null
-      ? 'COGS  DC: (pending…)'
-      : !dcCogs
-        ? `COGS  DC: ${dash}  (no DC COGS on file)`
-        : !effectiveCostRaw
-          ? `COGS  DC: ${dcCogs}  →  Invoice: ${dash}`
-          : `COGS  DC: ${dcCogs}  →  Invoice: ${effectiveCostRaw}  ${check(cogsMatch)}`
+  const cogsRow: CheckRow = (() => {
+    if (order.dcCogs == null)
+      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: dash, status: null, pending: true }
+    if (!dcCogs)
+      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: effectiveCostRaw || dash, status: undefined, noData: true }
+    return {
+      key: 'cogs', label: 'COGS',
+      orderVal: dcCogs,
+      invoiceVal: effectiveCostRaw || dash,
+      status: cogsMatch,
+    }
+  })()
 
-  const tooltipContent = [skuLine, qtyLine, cogsLine].join('\n')
+  const checkRows: CheckRow[] = [
+    {
+      key: 'sku', label: 'SKU',
+      orderVal: order.orderSku || dash,
+      invoiceVal: invoiceSku || dash,
+      status: invoiceSku ? skuMatch : undefined,
+      noData: !invoiceSku,
+    },
+    {
+      key: 'qty', label: 'Qty',
+      orderVal: order.orderQty || dash,
+      invoiceVal: invoiceQtyRaw || dash,
+      status: invoiceQtyRaw ? qtyMatch : undefined,
+      noData: !invoiceQtyRaw,
+    },
+    cogsRow,
+  ]
+
+  const discrepancyTooltip = (
+    <div>
+      {/* Header */}
+      <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+          Discrepancy Checks
+        </p>
+      </div>
+      {/* Rows */}
+      <div className="divide-y divide-white/5 px-1 py-1">
+        {checkRows.map((row) => {
+          const isPending  = row.pending
+          const isNoData   = row.noData
+          const isMatch    = row.status === true
+          const isMismatch = row.status === false
+
+          const iconBg  = isPending  ? 'bg-amber-500/15 text-amber-400'
+                        : isNoData   ? 'bg-slate-700 text-slate-500'
+                        : isMatch    ? 'bg-emerald-500/15 text-emerald-400'
+                        : isMismatch ? 'bg-rose-500/15 text-rose-400'
+                        :              'bg-slate-700 text-slate-500'
+          const icon    = isPending  ? '…'
+                        : isNoData   ? '–'
+                        : isMatch    ? '✓'
+                        : isMismatch ? '✗'
+                        :              '–'
+
+          return (
+            <div key={row.key} className="flex items-center gap-2.5 px-2.5 py-2.5">
+              {/* Status icon */}
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${iconBg}`}>
+                {icon}
+              </span>
+
+              {/* Label */}
+              <span className="w-8 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {row.label}
+              </span>
+
+              {/* Values */}
+              {isPending ? (
+                <span className="italic text-amber-400 text-[11px]">Pending DC COGS…</span>
+              ) : isNoData ? (
+                <span className="flex items-center gap-1 text-[11px] text-slate-500 italic">
+                  {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11px] font-mono min-w-0">
+                  <span className="text-slate-300 truncate">{row.orderVal}</span>
+                  <span className="text-slate-600 shrink-0">→</span>
+                  <span className={`truncate ${isMismatch ? 'text-rose-400 font-semibold' : 'text-slate-300'}`}>
+                    {row.invoiceVal}
+                  </span>
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* Footer hint */}
+      <div className="border-t border-white/10 px-3.5 py-2">
+        <p className="text-[10px] text-slate-600">Order → Invoice</p>
+      </div>
+    </div>
+  )
 
   // Collect only the badges that need attention (mismatches, pending, or unknown).
   // Matches are intentionally omitted — if nothing is collected the row is clean.
@@ -985,7 +1089,7 @@ function discrepancyCell(
 
   if (badges.length === 0)
     return (
-      <Tooltip content={tooltipContent}>
+      <Tooltip richContent={discrepancyTooltip}>
         <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
           All good
         </span>
@@ -993,7 +1097,7 @@ function discrepancyCell(
     )
 
   return (
-    <Tooltip content={tooltipContent}>
+    <Tooltip richContent={discrepancyTooltip}>
       <span className="flex flex-wrap gap-1">{badges}</span>
     </Tooltip>
   )
@@ -2272,19 +2376,62 @@ export default function DocTidyInvoiceAudit() {
           <span className="inline-flex items-center gap-1.5 tabular-nums">
             <span className="text-[var(--text-100)]">{effectiveCost}</span>
             {discounted && (
-              <Tooltip content={(() => {
-                  const parts: string[] = []
-                  if (inv.itemCost) parts.push(`Original: ${inv.itemCost}`)
-                  if (inv.discountPct) parts.push(`${inv.discountPct.trim().replace(/%+$/, '')}% off`)
-                  else if (inv.itemCost && inv.discountedPrice) {
+              <Tooltip richContent={(() => {
+                  // Compute display discount pct
+                  let pctDisplay = ''
+                  if (inv.discountPct) {
+                    pctDisplay = inv.discountPct.trim().replace(/%+$/, '') + '%'
+                  } else if (inv.itemCost && inv.discountedPrice) {
                     const orig = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
                     const disc = parseFloat(inv.discountedPrice.replace(/[^0-9.-]/g, ''))
                     if (!isNaN(orig) && !isNaN(disc) && orig > 0) {
-                      const pct = ((1 - disc / orig) * 100).toFixed(1)
-                      parts.push(`${pct}% off`)
+                      pctDisplay = ((1 - disc / orig) * 100).toFixed(1) + '%'
                     }
                   }
-                  return parts.join('\n') || 'Discounted price'
+                  return (
+                    <div>
+                      {/* Header */}
+                      <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                          Discount Breakdown
+                        </p>
+                      </div>
+                      {/* Rows */}
+                      <div className="divide-y divide-white/5 px-1 py-1">
+                        {inv.itemCost && (
+                          <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">$</span>
+                              <span className="text-[11px] text-slate-400">List price</span>
+                            </div>
+                            <span className="tabular-nums text-[11px] text-slate-300 line-through decoration-slate-600">
+                              {inv.itemCost}
+                            </span>
+                          </div>
+                        )}
+                        {pctDisplay && (
+                          <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-400">%</span>
+                              <span className="text-[11px] text-slate-400">Discount</span>
+                            </div>
+                            <span className="tabular-nums text-[11px] font-semibold text-amber-400">
+                              {pctDisplay} off
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-bold text-emerald-400">✓</span>
+                            <span className="text-[11px] font-semibold text-slate-300">You pay</span>
+                          </div>
+                          <span className="tabular-nums text-[11px] font-bold text-emerald-400">
+                            {effectiveCost}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 })()}>
                 <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 cursor-default select-none">
                   % OFF

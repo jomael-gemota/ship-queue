@@ -7,9 +7,13 @@ const PAD = 8
 
 export function Tooltip({
   content,
+  richContent,
   children,
 }: {
+  /** Plain-text tooltip. Supports multi-line via '\n'. */
   content?: string
+  /** Rich JSX tooltip — renders inside a styled floating card. */
+  richContent?: ReactNode
   children: ReactNode
 }) {
   const triggerRef = useRef<HTMLSpanElement>(null)
@@ -54,9 +58,9 @@ export function Tooltip({
       window.removeEventListener('scroll', close, true)
       window.removeEventListener('resize', close)
     }
-  }, [open, content])
+  }, [open, content, richContent])
 
-  if (!content) return children
+  if (!content && !richContent) return <>{children}</>
 
   return (
     <>
@@ -73,20 +77,38 @@ export function Tooltip({
       </span>
       {open &&
         createPortal(
-          <div
-            ref={tipRef}
-            role="tooltip"
-            className={`pointer-events-none fixed z-[80] max-w-xs rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium leading-snug text-white shadow-lg dark:bg-[var(--bg-300)] dark:text-[var(--text-100)] ${
-              content.includes('\n') ? 'whitespace-pre-line text-left' : 'text-center'
-            }`}
-            style={{
-              top: coords.top,
-              left: coords.left,
-              visibility: coords.ready ? 'visible' : 'hidden',
-            }}
-          >
-            {content}
-          </div>,
+          richContent ? (
+            /* Rich JSX tooltip — no padding/text defaults; content provides its own. */
+            <div
+              ref={tipRef}
+              role="tooltip"
+              className="pointer-events-none fixed z-[80] overflow-hidden rounded-xl bg-slate-900 shadow-2xl ring-1 ring-white/10 dark:bg-[var(--bg-300)] dark:ring-white/5"
+              style={{
+                top: coords.top,
+                left: coords.left,
+                visibility: coords.ready ? 'visible' : 'hidden',
+                minWidth: 260,
+              }}
+            >
+              {richContent}
+            </div>
+          ) : (
+            /* Plain-text tooltip */
+            <div
+              ref={tipRef}
+              role="tooltip"
+              className={`pointer-events-none fixed z-[80] max-w-xs rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium leading-snug text-white shadow-lg dark:bg-[var(--bg-300)] dark:text-[var(--text-100)] ${
+                content!.includes('\n') ? 'whitespace-pre-line text-left' : 'text-center'
+              }`}
+              style={{
+                top: coords.top,
+                left: coords.left,
+                visibility: coords.ready ? 'visible' : 'hidden',
+              }}
+            >
+              {content}
+            </div>
+          ),
           document.body,
         )}
     </>
