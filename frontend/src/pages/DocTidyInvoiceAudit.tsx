@@ -789,7 +789,11 @@ function auditColStr(
     case 'terms':             return inv.terms
     case 'itemCost':          return inv.itemCost
     case 'invoiceQty':        return inv.invoiceQty
-    case 'discountedCostPct': return [inv.discountedPrice, inv.discountPct ? `(${inv.discountPct}%)` : ''].filter(Boolean).join(' ')
+    case 'discountedCostPct': {
+      // Strip any trailing % the AI may have already included before re-adding it.
+      const pctStr = inv.discountPct ? inv.discountPct.trim().replace(/%+$/, '') : ''
+      return [inv.discountedPrice, pctStr ? `(${pctStr}%)` : ''].filter(Boolean).join(' ')
+    }
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
@@ -1957,7 +1961,7 @@ export default function DocTidyInvoiceAudit() {
               <Tooltip content={(() => {
                   const parts: string[] = []
                   if (inv.itemCost) parts.push(`Original: ${inv.itemCost}`)
-                  if (inv.discountPct) parts.push(`${inv.discountPct}% off`)
+                  if (inv.discountPct) parts.push(`${inv.discountPct.trim().replace(/%+$/, '')}% off`)
                   else if (inv.itemCost && inv.discountedPrice) {
                     const orig = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
                     const disc = parseFloat(inv.discountedPrice.replace(/[^0-9.-]/g, ''))
@@ -1979,11 +1983,13 @@ export default function DocTidyInvoiceAudit() {
       case 'invoiceQty':  return numCell(inv.invoiceQty)
       case 'discountedCostPct': {
         if (!inv.discountedPrice && !inv.discountPct) return emDash
+        // Strip any trailing % the AI may have already included before re-adding it.
+        const pctDisplay = inv.discountPct ? inv.discountPct.trim().replace(/%+$/, '') : ''
         return (
           <span className="tabular-nums text-[var(--text-100)]">
             {inv.discountedPrice}
-            {inv.discountedPrice && inv.discountPct ? ' ' : ''}
-            {inv.discountPct ? <span className="text-[var(--text-200)]">({inv.discountPct}%)</span> : null}
+            {inv.discountedPrice && pctDisplay ? ' ' : ''}
+            {pctDisplay ? <span className="text-[var(--text-200)]">({pctDisplay}%)</span> : null}
           </span>
         )
       }
