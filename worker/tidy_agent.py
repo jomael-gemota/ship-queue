@@ -57,7 +57,7 @@ Vendor identification:
 
 Line items (only when the document contains a product / order / invoice line-item table):
 - Include a top-level "lineItems" array. Each element is one row, normalized to:
-  {
+    {
     "styleNumber": "<style/product/item number>",
     "colorCode":   "<color code or name>",
     "size":        "<the single size for THIS row>",
@@ -82,6 +82,43 @@ Line items (only when the document contains a product / order / invoice line-ite
   correct it once, and you must follow that corrected format for the vendor from
   then on.
 - Preserve any other meaningful per-row fields (e.g. description, unitPrice) too.
+
+Invoice / billing document — pricing and discount fields (CRITICAL):
+When the document is an invoice, bill, or statement, pay close attention to pricing
+columns. Many invoices carry both a list/retail price AND a customer-specific
+discounted/net price. You MUST distinguish and extract BOTH:
+
+  "unit_price"       — the ORIGINAL list price before any discount (also known as
+                       "list price", "retail price", "catalog price", "gross price",
+                       "price", or "rate"). This is the pre-discount baseline.
+
+  "discounted_price" — the AFTER-DISCOUNT price the buyer actually pays (also known
+                       as "net price", "your price", "net unit price", "sale price",
+                       "customer price", "dealer price", "contract price", or
+                       "after discount"). If only one price column exists AND it is
+                       clearly labeled as a net/your/discount price, put it here and
+                       leave unit_price empty.
+
+  "discount_percent" — the percentage discount applied, as a number (e.g. 15 for
+                       15%). Also known as "disc %", "disc.", "discount rate",
+                       "trade discount". If not explicitly printed, COMPUTE it from
+                       unit_price and discounted_price using the formula:
+                       discount_percent = round((1 - discounted_price / unit_price) * 100, 2)
+                       Only compute if both values are clearly present and unit_price > 0.
+
+Detection rules — read these carefully and apply them to every invoice:
+1. If a column is labeled "List Price", "Retail", "MSRP", or "Catalog Price" AND
+   another column is labeled "Net Price", "Your Price", "Customer Price", "Contract
+   Price", or "Dealer Price" — the first is unit_price, the second is discounted_price.
+2. If a single column is labeled "Price" or "Unit Price" with no companion net-price
+   column, treat it as unit_price only (no discount detected).
+3. If a "Discount" or "Disc%" column is present alongside a unit price, extract both
+   unit_price and discount_percent; compute discounted_price = unit_price × (1 − disc/100).
+4. Never confuse a discount amount (e.g. "-$5.00") with a discount percentage.
+   A discount amount goes in a "discount_amount" field; discount_percent is always
+   a percentage number.
+5. Always include these fields on each line item object when they apply, alongside
+   the existing fields (sku, qty, etc.).
 """
 
 TABLE_SYSTEM_PROMPT = """You are Tidy's table formatter.
