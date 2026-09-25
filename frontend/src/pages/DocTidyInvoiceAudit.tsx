@@ -75,6 +75,9 @@ function useDebouncedRefetch(run: () => void, delay = SSE_REFETCH_DEBOUNCE_MS): 
   }, [delay])
 }
 
+/** Sentinel used in column filter sets to represent empty / blank cells. */
+const BLANK_SENTINEL = '__BLANK__'
+
 /* ──────────────────── Invoice match helpers ── */
 
 /**
@@ -204,20 +207,24 @@ function DraggableTh({
   align = 'left',
   isDragging,
   isDragTarget,
+  hasActiveFilter,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
+  onFilterClick,
 }: {
   label: string
   iconPath?: string
   align?: 'left' | 'center' | 'right'
   isDragging?: boolean
   isDragTarget?: boolean
+  hasActiveFilter?: boolean
   onDragStart: () => void
   onDragOver: () => void
   onDrop: () => void
   onDragEnd: () => void
+  onFilterClick?: (rect: DOMRect) => void
 }) {
   const textAlign =
     align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
@@ -246,7 +253,7 @@ function DraggableTh({
           : '',
       ].join(' ')}
     >
-      <span className={`flex items-center gap-1.5 ${flexAlign}`}>
+      <span className={`flex items-center gap-1 ${flexAlign}`}>
         {/* Six-dot drag handle */}
         <svg
           className={`h-3 w-3 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-300 dark:text-[var(--bg-300)]'}`}
@@ -269,9 +276,238 @@ function DraggableTh({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
           </svg>
         )}
-        {label}
+        <span className="flex-1 min-w-0">{label}</span>
+        {/* Column filter button — shown for every draggable column */}
+        {onFilterClick && (
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onFilterClick(e.currentTarget.getBoundingClientRect())
+            }}
+            title={hasActiveFilter ? 'Filtered — click to edit' : 'Filter column'}
+            className={[
+              'shrink-0 rounded p-0.5 transition-colors cursor-pointer',
+              hasActiveFilter
+                ? 'text-[var(--accent-200)]'
+                : 'text-slate-300 dark:text-[var(--bg-300)] hover:text-slate-500 dark:hover:text-[var(--text-200)]',
+            ].join(' ')}
+          >
+            {hasActiveFilter ? (
+              /* Solid funnel when filter is active */
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              /* Outline funnel when no filter */
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 01.707 1.707L14 11.414V19a1 1 0 01-.553.894l-4 2A1 1 0 018 21v-9.586L3.293 5.707A1 1 0 013 5V4z" />
+              </svg>
+            )}
+          </button>
+        )}
       </span>
     </th>
+  )
+}
+
+/* ──────────────────────────────── Column Filter Dropdown ── */
+
+/**
+ * Excel-style per-column filter dropdown.
+ * Shows all unique values for the column (from the current page) with checkboxes.
+ * A special "(Blank)" entry lets users filter for empty/null cells.
+ */
+function ColumnFilterDropdown({
+  allValues,
+  activeFilter,
+  anchorRect,
+  onApply,
+  onClose,
+}: {
+  allValues: Map<string, number>
+  activeFilter: Set<string> | null | undefined
+  anchorRect: DOMRect
+  onApply: (values: Set<string> | null) => void
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    activeFilter ? new Set(activeFilter) : new Set()
+  )
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  /* Close on Escape or outside click */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onDown = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [onClose])
+
+  /* Split values: blank count + sorted non-blank entries */
+  const { blankCount, nonBlank } = useMemo(() => {
+    const blankCnt = allValues.get('') ?? 0
+    const nonBlankEntries = Array.from(allValues.entries())
+      .filter(([v]) => v !== '')
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    return { blankCount: blankCnt, nonBlank: nonBlankEntries }
+  }, [allValues])
+
+  /* Filter the non-blank list by search query */
+  const filteredNonBlank = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return nonBlank
+    return nonBlank.filter(([v]) => v.toLowerCase().includes(q))
+  }, [nonBlank, search])
+
+  /* All items currently visible in the list (for Select All logic) */
+  const visibleItems = useMemo<string[]>(() => {
+    const items: string[] = []
+    if (!search.trim() && blankCount > 0) items.push(BLANK_SENTINEL)
+    for (const [v] of filteredNonBlank) items.push(v)
+    return items
+  }, [search, blankCount, filteredNonBlank])
+
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((v) => selected.has(v))
+  const someVisibleSelected = visibleItems.some((v) => selected.has(v))
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        for (const v of visibleItems) next.delete(v)
+      } else {
+        for (const v of visibleItems) next.add(v)
+      }
+      return next
+    })
+  }
+
+  const toggle = (v: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(v)) next.delete(v)
+      else next.add(v)
+      return next
+    })
+  }
+
+  const apply = () => {
+    onApply(selected.size > 0 ? new Set(selected) : null)
+    onClose()
+  }
+
+  const clear = () => {
+    onApply(null)
+    onClose()
+  }
+
+  /* Position the dropdown below (or above if near bottom) the anchor */
+  const dropdownWidth = 240
+  const left = Math.min(anchorRect.left, window.innerWidth - dropdownWidth - 8)
+  const spaceBelow = window.innerHeight - anchorRect.bottom
+  const top = spaceBelow < 280 ? anchorRect.top - 4 - 320 : anchorRect.bottom + 4
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{ position: 'fixed', top, left, width: dropdownWidth, zIndex: 9999 }}
+      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl overflow-hidden text-[11px] flex flex-col"
+    >
+      {/* Search */}
+      <div className="px-2.5 py-2 border-b border-[var(--bg-300)]">
+        <input
+          autoFocus
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search values…"
+          className="w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]"
+        />
+      </div>
+
+      {/* Select All row */}
+      <label className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)] border-b border-[var(--bg-300)]">
+        <input
+          type="checkbox"
+          checked={allVisibleSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected
+          }}
+          onChange={toggleSelectAll}
+          className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+        />
+        <span className="font-semibold text-[var(--text-100)]">(Select All)</span>
+      </label>
+
+      {/* Values list */}
+      <div className="max-h-56 overflow-y-auto">
+        {/* Blank option */}
+        {!search.trim() && blankCount > 0 && (
+          <label className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)]">
+            <input
+              type="checkbox"
+              checked={selected.has(BLANK_SENTINEL)}
+              onChange={() => toggle(BLANK_SENTINEL)}
+              className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+            />
+            <span className="italic text-[var(--text-200)] flex-1">(Blank)</span>
+            <span className="text-[var(--text-200)] tabular-nums">{blankCount}</span>
+          </label>
+        )}
+        {filteredNonBlank.map(([val, count]) => (
+          <label key={val} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)]">
+            <input
+              type="checkbox"
+              checked={selected.has(val)}
+              onChange={() => toggle(val)}
+              className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
+            />
+            <span className="truncate text-[var(--text-100)] flex-1" title={val}>{val}</span>
+            <span className="text-[var(--text-200)] tabular-nums shrink-0">{count}</span>
+          </label>
+        ))}
+        {visibleItems.length === 0 && (
+          <div className="px-3 py-4 text-center italic text-[var(--text-200)]">No matching values</div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-3 py-2">
+        <button
+          type="button"
+          onClick={clear}
+          className="cursor-pointer text-[11px] text-[var(--text-200)] hover:text-rose-500 hover:underline"
+        >
+          Clear filter
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-2.5 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={apply}
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[11px] font-medium text-white"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -965,6 +1201,14 @@ export default function DocTidyInvoiceAudit() {
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
+
+  /* ── Column filters (Excel-style per-column value filters) ── */
+  /** Map of colId → set of allowed values (including BLANK_SENTINEL for empty cells). null/absent = no filter. */
+  const [colFilters, setColFilters] = useState<Partial<Record<InvoiceAuditColumnId, Set<string>>>>({})
+  /** Which column's filter dropdown is currently open. */
+  const [filterOpenColId, setFilterOpenColId] = useState<InvoiceAuditColumnId | null>(null)
+  /** Bounding rect of the filter button that was clicked (used to position the dropdown). */
+  const [filterAnchorRect, setFilterAnchorRect] = useState<DOMRect | null>(null)
 
   /* ── All parse jobs for matching (fetched silently per workspace open) ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
@@ -1716,6 +1960,9 @@ export default function DocTidyInvoiceAudit() {
     setAuditSearch('')
     setDebouncedAuditSearch('')
     setSelectedRowKeys(new Set())
+    setColFilters({})
+    setFilterOpenColId(null)
+    setFilterAnchorRect(null)
     setError(null)
     setOrderError(null)
     setImportSuccess(null)
@@ -1740,6 +1987,9 @@ export default function DocTidyInvoiceAudit() {
     setAuditSearch('')
     setDebouncedAuditSearch('')
     setSelectedRowKeys(new Set())
+    setColFilters({})
+    setFilterOpenColId(null)
+    setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
@@ -1793,6 +2043,43 @@ export default function DocTidyInvoiceAudit() {
     return map
   }, [orderImports, jobs])
 
+  /**
+   * Collect unique string values for a given column across all currently loaded
+   * order import rows. Used to populate the column filter dropdown.
+   * Returns Map<displayValue, count> ('' key = blank/empty cells).
+   */
+  const getColUniqueValues = useCallback((colId: InvoiceAuditColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const order of orderImports) {
+      const match = invoiceMatchMap.get(order._id) ?? null
+      const val = auditColStr(colId, order, match).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [orderImports, invoiceMatchMap])
+
+  /**
+   * Client-side filter applied on top of the server-fetched `orderImports`.
+   * Each active column filter is AND-ed together.
+   * A row passes when its cell value is in the allowed set (or BLANK_SENTINEL matches an empty cell).
+   */
+  const filteredOrderImports = useMemo(() => {
+    const activeEntries = Object.entries(colFilters).filter(
+      (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return orderImports
+    return orderImports.filter((order) => {
+      const match = invoiceMatchMap.get(order._id) ?? null
+      return activeEntries.every(([colId, allowed]) => {
+        const val = auditColStr(colId, order, match).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    })
+  }, [orderImports, colFilters, invoiceMatchMap])
+
+  const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
+
   const visibleCols = useMemo<InvoiceAuditColumn[]>(
     () => {
       const colById = new Map(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c]))
@@ -1813,7 +2100,7 @@ export default function DocTidyInvoiceAudit() {
   )
 
   /* ── Selection helpers (audit table — one key per order import row) ── */
-  const pageRowKeys = useMemo(() => orderImports.map((o) => o._id), [orderImports])
+  const pageRowKeys = useMemo(() => filteredOrderImports.map((o) => o._id), [filteredOrderImports])
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
   const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
@@ -3134,6 +3421,24 @@ export default function DocTidyInvoiceAudit() {
                   {loading ? 'Syncing…' : 'Resync'}
                 </button>
 
+                {/* Active column filters pill */}
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setColFilters({})}
+                    title="Clear all column filters"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                  >
+                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                    </svg>
+                    {activeFilterCount} column filter{activeFilterCount !== 1 ? 's' : ''} active
+                    <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                )}
+
                 {/* Column settings */}
                 <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
                   className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
@@ -3175,6 +3480,14 @@ export default function DocTidyInvoiceAudit() {
                     </select>
                     {orderPagination.total > 0 && (
                       <span>{startItem}–{endItem} of {orderPagination.total.toLocaleString()}</span>
+                    )}
+                    {activeFilterCount > 0 && (
+                      <span className="flex items-center gap-1 text-[var(--accent-200)] font-medium">
+                        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                          <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                        </svg>
+                        {filteredOrderImports.length} of {orderImports.length} shown
+                      </span>
                     )}
                     {selectedRowKeys.size > 0 && (
                       <span className="flex items-center gap-1.5">
@@ -3228,7 +3541,7 @@ export default function DocTidyInvoiceAudit() {
                           type="checkbox"
                           checked={allPageSelected}
                           onChange={toggleAllAuditPage}
-                          disabled={orderImports.length === 0}
+                          disabled={filteredOrderImports.length === 0}
                           aria-label={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
                           className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                         />
@@ -3240,6 +3553,7 @@ export default function DocTidyInvoiceAudit() {
                           align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
+                          hasActiveFilter={!!(colFilters[col.id]?.size)}
                           onDragStart={() => setAuditDragSrc(col.id)}
                           onDragOver={() => setAuditDragTarget(col.id)}
                           onDrop={() => {
@@ -3250,6 +3564,15 @@ export default function DocTidyInvoiceAudit() {
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
+                          onFilterClick={(rect) => {
+                            if (filterOpenColId === col.id) {
+                              setFilterOpenColId(null)
+                              setFilterAnchorRect(null)
+                            } else {
+                              setFilterOpenColId(col.id)
+                              setFilterAnchorRect(rect)
+                            }
+                          }}
                         />
                       ))}
                     </tr>
@@ -3305,11 +3628,31 @@ export default function DocTidyInvoiceAudit() {
                           </div>
                         </td>
                       </tr>
+                    ) : filteredOrderImports.length === 0 && activeFilterCount > 0 ? (
+                      /* Column filters eliminated all rows on this page */
+                      <tr>
+                        <td colSpan={visibleCols.length + 1} className="py-14 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                              <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                              <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                            </div>
+                            <button onClick={() => setColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                              Clear all column filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     ) : (
                       (() => {
                         const weekMap = new Map<string, DocTidyOrderImport[]>()
                         const UNKNOWN_KEY = '__unknown__'
-                        for (const order of orderImports) {
+                        for (const order of filteredOrderImports) {
                           const key = getWeekStartKey(order.processedDate) ?? UNKNOWN_KEY
                           if (!weekMap.has(key)) weekMap.set(key, [])
                           weekMap.get(key)!.push(order)
@@ -3422,6 +3765,27 @@ export default function DocTidyInvoiceAudit() {
           visibility={colVisibility}
           onChange={handleColVisChange}
           onClose={() => setShowColSettings(false)}
+        />
+      )}
+
+      {/* ── Column filter dropdown (portal-rendered, fixed position) ── */}
+      {filterOpenColId && filterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getColUniqueValues(filterOpenColId)}
+          activeFilter={colFilters[filterOpenColId]}
+          anchorRect={filterAnchorRect}
+          onApply={(values) => {
+            setColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[filterOpenColId]
+              } else {
+                next[filterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setFilterOpenColId(null); setFilterAnchorRect(null) }}
         />
       )}
 
