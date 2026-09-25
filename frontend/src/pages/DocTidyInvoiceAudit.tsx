@@ -232,7 +232,7 @@ function DraggableTh({
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       onDragEnd={onDragEnd}
       className={[
-        'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
+        'sticky top-0 z-20 border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0',
         'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
