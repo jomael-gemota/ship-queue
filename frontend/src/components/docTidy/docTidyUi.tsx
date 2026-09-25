@@ -35,7 +35,7 @@ export function Th({
 
   return (
     <th
-      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap ${textAlign} ${className}`}
+      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap ${textAlign} ${className}`}
     >
       {children ?? (
         <span className={`flex items-center gap-1.5 ${flexAlign}`}>

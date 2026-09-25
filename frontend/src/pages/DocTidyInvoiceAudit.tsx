@@ -17,6 +17,7 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
+import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -73,6 +74,9 @@ function useDebouncedRefetch(run: () => void, delay = SSE_REFETCH_DEBOUNCE_MS): 
     }, delay)
   }, [delay])
 }
+
+/** Sentinel used in column filter sets to represent empty / blank cells. */
+const BLANK_SENTINEL = '__BLANK__'
 
 /* ──────────────────── Invoice match helpers ── */
 
@@ -203,20 +207,24 @@ function DraggableTh({
   align = 'left',
   isDragging,
   isDragTarget,
+  hasActiveFilter,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
+  onFilterClick,
 }: {
   label: string
   iconPath?: string
   align?: 'left' | 'center' | 'right'
   isDragging?: boolean
   isDragTarget?: boolean
+  hasActiveFilter?: boolean
   onDragStart: () => void
   onDragOver: () => void
   onDrop: () => void
   onDragEnd: () => void
+  onFilterClick?: (rect: DOMRect) => void
 }) {
   const textAlign =
     align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
@@ -231,7 +239,7 @@ function DraggableTh({
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       onDragEnd={onDragEnd}
       className={[
-        'sticky top-0 z-20 border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0',
+        'sticky top-0 z-20 border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0',
         'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
@@ -245,7 +253,7 @@ function DraggableTh({
           : '',
       ].join(' ')}
     >
-      <span className={`flex items-center gap-1.5 ${flexAlign}`}>
+      <span className={`flex items-center gap-1 ${flexAlign}`}>
         {/* Six-dot drag handle */}
         <svg
           className={`h-3 w-3 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-300 dark:text-[var(--bg-300)]'}`}
@@ -268,9 +276,238 @@ function DraggableTh({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
           </svg>
         )}
-        {label}
+        <span className="flex-1 min-w-0">{label}</span>
+        {/* Column filter button — shown for every draggable column */}
+        {onFilterClick && (
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onFilterClick(e.currentTarget.getBoundingClientRect())
+            }}
+            title={hasActiveFilter ? 'Filtered — click to edit' : 'Filter column'}
+            className={[
+              'shrink-0 rounded p-0.5 transition-colors cursor-pointer',
+              hasActiveFilter
+                ? 'text-[var(--accent-200)]'
+                : 'text-slate-300 dark:text-[var(--bg-300)] hover:text-slate-500 dark:hover:text-[var(--text-200)]',
+            ].join(' ')}
+          >
+            {hasActiveFilter ? (
+              /* Solid funnel when filter is active */
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              /* Outline funnel when no filter */
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 01.707 1.707L14 11.414V19a1 1 0 01-.553.894l-4 2A1 1 0 018 21v-9.586L3.293 5.707A1 1 0 013 5V4z" />
+              </svg>
+            )}
+          </button>
+        )}
       </span>
     </th>
+  )
+}
+
+/* ──────────────────────────────── Column Filter Dropdown ── */
+
+/**
+ * Excel-style per-column filter dropdown.
+ * Shows all unique values for the column (from the current page) with checkboxes.
+ * A special "(Blank)" entry lets users filter for empty/null cells.
+ */
+function ColumnFilterDropdown({
+  allValues,
+  activeFilter,
+  anchorRect,
+  onApply,
+  onClose,
+}: {
+  allValues: Map<string, number>
+  activeFilter: Set<string> | null | undefined
+  anchorRect: DOMRect
+  onApply: (values: Set<string> | null) => void
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    activeFilter ? new Set(activeFilter) : new Set()
+  )
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  /* Close on Escape or outside click */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onDown = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [onClose])
+
+  /* Split values: blank count + sorted non-blank entries */
+  const { blankCount, nonBlank } = useMemo(() => {
+    const blankCnt = allValues.get('') ?? 0
+    const nonBlankEntries = Array.from(allValues.entries())
+      .filter(([v]) => v !== '')
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    return { blankCount: blankCnt, nonBlank: nonBlankEntries }
+  }, [allValues])
+
+  /* Filter the non-blank list by search query */
+  const filteredNonBlank = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return nonBlank
+    return nonBlank.filter(([v]) => v.toLowerCase().includes(q))
+  }, [nonBlank, search])
+
+  /* All items currently visible in the list (for Select All logic) */
+  const visibleItems = useMemo<string[]>(() => {
+    const items: string[] = []
+    if (!search.trim() && blankCount > 0) items.push(BLANK_SENTINEL)
+    for (const [v] of filteredNonBlank) items.push(v)
+    return items
+  }, [search, blankCount, filteredNonBlank])
+
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((v) => selected.has(v))
+  const someVisibleSelected = visibleItems.some((v) => selected.has(v))
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        for (const v of visibleItems) next.delete(v)
+      } else {
+        for (const v of visibleItems) next.add(v)
+      }
+      return next
+    })
+  }
+
+  const toggle = (v: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(v)) next.delete(v)
+      else next.add(v)
+      return next
+    })
+  }
+
+  const apply = () => {
+    onApply(selected.size > 0 ? new Set(selected) : null)
+    onClose()
+  }
+
+  const clear = () => {
+    onApply(null)
+    onClose()
+  }
+
+  /* Position the dropdown below (or above if near bottom) the anchor */
+  const dropdownWidth = 240
+  const left = Math.min(anchorRect.left, window.innerWidth - dropdownWidth - 8)
+  const spaceBelow = window.innerHeight - anchorRect.bottom
+  const top = spaceBelow < 280 ? anchorRect.top - 4 - 320 : anchorRect.bottom + 4
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{ position: 'fixed', top, left, width: dropdownWidth, zIndex: 9999 }}
+      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl overflow-hidden text-[11px] flex flex-col"
+    >
+      {/* Search */}
+      <div className="px-2.5 py-2 border-b border-[var(--bg-300)]">
+        <input
+          autoFocus
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search values…"
+          className="w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]"
+        />
+      </div>
+
+      {/* Select All row */}
+      <label className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)] border-b border-[var(--bg-300)]">
+        <input
+          type="checkbox"
+          checked={allVisibleSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected
+          }}
+          onChange={toggleSelectAll}
+          className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+        />
+        <span className="font-semibold text-[var(--text-100)]">(Select All)</span>
+      </label>
+
+      {/* Values list */}
+      <div className="max-h-56 overflow-y-auto">
+        {/* Blank option */}
+        {!search.trim() && blankCount > 0 && (
+          <label className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)]">
+            <input
+              type="checkbox"
+              checked={selected.has(BLANK_SENTINEL)}
+              onChange={() => toggle(BLANK_SENTINEL)}
+              className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]"
+            />
+            <span className="italic text-[var(--text-200)] flex-1">(Blank)</span>
+            <span className="text-[var(--text-200)] tabular-nums">{blankCount}</span>
+          </label>
+        )}
+        {filteredNonBlank.map(([val, count]) => (
+          <label key={val} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-200)]">
+            <input
+              type="checkbox"
+              checked={selected.has(val)}
+              onChange={() => toggle(val)}
+              className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
+            />
+            <span className="truncate text-[var(--text-100)] flex-1" title={val}>{val}</span>
+            <span className="text-[var(--text-200)] tabular-nums shrink-0">{count}</span>
+          </label>
+        ))}
+        {visibleItems.length === 0 && (
+          <div className="px-3 py-4 text-center italic text-[var(--text-200)]">No matching values</div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-3 py-2">
+        <button
+          type="button"
+          onClick={clear}
+          className="cursor-pointer text-[11px] text-[var(--text-200)] hover:text-rose-500 hover:underline"
+        >
+          Clear filter
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-2.5 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={apply}
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[11px] font-medium text-white"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -601,10 +838,10 @@ function WorkspaceCard({
 /** Generic empty-dash cell. */
 const emDash = <span className="text-[var(--text-200)]">—</span>
 
-/** Monospace text cell (SKU / PO # / invoice number). */
+/** Text cell for codes / identifiers (SKU / PO # / invoice number). */
 function monoCell(value: string): React.ReactNode {
   if (!value) return emDash
-  return <span className="font-mono text-[11px] text-[var(--text-100)]">{value}</span>
+  return <span className="text-[11px] text-[var(--text-100)]">{value}</span>
 }
 
 /** Plain text cell. */
@@ -625,6 +862,38 @@ function liVal(item: Record<string, unknown> | null, ...candidates: string[]): s
   return extractJsonField(item, ...candidates)
 }
 
+/** Minimal shape required by discount helpers — subset of resolveInvoiceFields return. */
+type DiscountFields = { itemCost: string; discountedPrice: string; discountPct: string }
+
+/**
+ * Resolve the effective (post-discount) cost for COGS comparison and cell display.
+ * Priority:
+ *   1. discountedPrice — explicit after-discount price on the invoice.
+ *   2. itemCost × (1 − discountPct/100) — computed when only a percentage is present.
+ *   3. itemCost — raw price (no discount detected).
+ */
+function resolveEffectiveCost(inv: DiscountFields): string {
+  if (inv.discountedPrice) return inv.discountedPrice
+
+  if (inv.itemCost && inv.discountPct) {
+    const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+    const pctNum  = parseFloat(inv.discountPct.replace(/[^0-9.-]/g, ''))
+    if (!isNaN(costNum) && !isNaN(pctNum) && pctNum > 0 && pctNum < 100) {
+      const discounted = costNum * (1 - pctNum / 100)
+      // Preserve dollar-sign prefix if the original had one.
+      const prefix = inv.itemCost.trim().startsWith('$') ? '$' : ''
+      return `${prefix}${discounted.toFixed(2)}`
+    }
+  }
+
+  return inv.itemCost
+}
+
+/** True when the invoice has any discount signal (explicit price or percentage). */
+function hasDiscount(inv: DiscountFields): boolean {
+  return !!(inv.discountedPrice || inv.discountPct)
+}
+
 /**
  * Render the Discrepancy Checker cell.
  * Checks: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty, Item Cost vs DC COGS.
@@ -636,12 +905,30 @@ function discrepancyCell(
   // Use cached invoice data first; fall back to client-side match.
   const inv = resolveInvoiceFields(order, match)
   if (!inv.hasMatch) {
-    return <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
+    return (
+      <Tooltip trigger="click" richContent={
+        <div className="px-3.5 py-3 space-y-1.5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
+            <p className="text-[11px] font-semibold text-slate-300">No invoice matched</p>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Parse an invoice PDF containing this PO # to enable SKU, Qty, and COGS checks.
+          </p>
+        </div>
+      }>
+        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-200)] italic underline decoration-dotted underline-offset-2">
+          No match
+        </span>
+      </Tooltip>
+    )
   }
 
   const invoiceSku    = inv.invoiceSku
   const invoiceQtyRaw = inv.invoiceQty
-  const itemCostRaw   = inv.itemCost
+  // Use the effective (post-discount) cost for COGS validation so discounted
+  // invoices don't produce false ✗ COGS mismatches.
+  const effectiveCostRaw = resolveEffectiveCost(inv)
 
   const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
   const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
@@ -649,8 +936,8 @@ function discrepancyCell(
   // COGS comparison: compare as floats (rounded to 2 dp) to handle minor formatting differences.
   const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
   let cogsMatch: boolean | null = null
-  if (dcCogs && itemCostRaw) {
-    const costNum = parseFloat(itemCostRaw.replace(/[^0-9.-]/g, ''))
+  if (dcCogs && effectiveCostRaw) {
+    const costNum = parseFloat(effectiveCostRaw.replace(/[^0-9.-]/g, ''))
     const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
     if (!isNaN(costNum) && !isNaN(cogsNum)) {
       cogsMatch = Math.abs(costNum - cogsNum) < 0.005
@@ -659,6 +946,150 @@ function discrepancyCell(
     // COGS not yet fetched — show pending state
     cogsMatch = null
   }
+
+  // ── Build the rich hover tooltip showing all 3 checks ──
+  type CheckRow = {
+    key: string
+    label: string
+    orderVal: string
+    invoiceVal: string
+    /** true = match, false = mismatch, null = pending, undefined = no data to compare */
+    status: boolean | null | undefined
+    pending?: boolean
+    noData?: boolean
+  }
+
+  const dash = '—'
+
+  const cogsRow: CheckRow = (() => {
+    if (order.dcCogs == null)
+      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: dash, status: null, pending: true }
+    if (!dcCogs)
+      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: effectiveCostRaw || dash, status: undefined, noData: true }
+    return {
+      key: 'cogs', label: 'COGS',
+      orderVal: dcCogs,
+      invoiceVal: effectiveCostRaw || dash,
+      status: cogsMatch,
+    }
+  })()
+
+  const checkRows: CheckRow[] = [
+    {
+      key: 'sku', label: 'SKU',
+      orderVal: order.orderSku || dash,
+      invoiceVal: invoiceSku || dash,
+      status: invoiceSku ? skuMatch : undefined,
+      noData: !invoiceSku,
+    },
+    {
+      key: 'qty', label: 'Qty',
+      orderVal: order.orderQty || dash,
+      invoiceVal: invoiceQtyRaw || dash,
+      status: invoiceQtyRaw ? qtyMatch : undefined,
+      noData: !invoiceQtyRaw,
+    },
+    cogsRow,
+  ]
+
+  const hasAnyMismatch = checkRows.some((r) => r.status === false)
+
+  const discrepancyTooltip = (
+    <div style={{ minWidth: 300 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          {hasAnyMismatch ? (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-500/20 text-[10px] font-bold text-rose-400">!</span>
+          ) : (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400">✓</span>
+          )}
+          <p className="text-[11px] font-semibold text-slate-200">
+            {hasAnyMismatch ? 'Discrepancies found' : 'All checks passed'}
+          </p>
+        </div>
+        <span className="text-[10px] text-slate-600">Click away to close</span>
+      </div>
+
+      {/* Column labels */}
+      <div className="flex items-center gap-2.5 border-b border-white/5 px-3.5 py-1.5">
+        <span className="w-5 shrink-0" />
+        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600">Check</span>
+        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+          <span className="flex-1">Order</span>
+          <span className="text-slate-700">→</span>
+          <span className="flex-1">Invoice</span>
+        </div>
+      </div>
+
+      {/* Check rows */}
+      <div className="divide-y divide-white/5">
+        {checkRows.map((row) => {
+          const isPending  = row.pending
+          const isNoData   = row.noData
+          const isMatch    = row.status === true
+          const isMismatch = row.status === false
+
+          const iconBg = isPending  ? 'bg-amber-500/15 text-amber-400'
+                       : isNoData   ? 'bg-slate-700/60 text-slate-500'
+                       : isMatch    ? 'bg-emerald-500/15 text-emerald-400'
+                       : isMismatch ? 'bg-rose-500/20 text-rose-400'
+                       :              'bg-slate-700/60 text-slate-500'
+          const icon   = isPending  ? '…'
+                       : isNoData   ? '–'
+                       : isMatch    ? '✓'
+                       : isMismatch ? '✗'
+                       :              '–'
+
+          /* Row background tint for mismatches */
+          const rowBg  = isMismatch ? 'bg-rose-500/5' : ''
+
+          return (
+            <div key={row.key} className={`flex items-center gap-2.5 px-3.5 py-2.5 ${rowBg}`}>
+              {/* Status icon */}
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${iconBg}`}>
+                {icon}
+              </span>
+
+              {/* Label */}
+              <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                {row.label}
+              </span>
+
+              {/* Values */}
+              {isPending ? (
+                <span className="italic text-[11px] text-amber-400">Pending DC COGS…</span>
+              ) : isNoData ? (
+                <span className="italic text-[11px] text-slate-600">
+                  {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
+                </span>
+              ) : (
+                <div className="flex flex-1 items-center gap-1.5 font-mono text-[11px] min-w-0">
+                  {/* Order value */}
+                  <span className="flex-1 truncate text-slate-300">{row.orderVal}</span>
+                  {/* Arrow */}
+                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-slate-600'}`}>→</span>
+                  {/* Invoice value */}
+                  <span className={`flex-1 truncate font-semibold ${isMismatch ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {row.invoiceVal}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
+        <p className="text-[10px] text-slate-600">
+          {hasAnyMismatch
+            ? 'Review highlighted values — invoice differs from order.'
+            : 'Order data matches the matched invoice.'}
+        </p>
+      </div>
+    </div>
+  )
 
   // Collect only the badges that need attention (mismatches, pending, or unknown).
   // Matches are intentionally omitted — if nothing is collected the row is clean.
@@ -693,12 +1124,26 @@ function discrepancyCell(
 
   if (badges.length === 0)
     return (
-      <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-        All good
-      </span>
+      <Tooltip trigger="click" richContent={discrepancyTooltip}>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 underline decoration-dotted underline-offset-2 dark:text-emerald-400">
+          All good
+          <svg className="h-2.5 w-2.5 opacity-50" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+        </span>
+      </Tooltip>
     )
 
-  return <span className="flex flex-wrap gap-1">{badges}</span>
+  return (
+    <Tooltip trigger="click" richContent={discrepancyTooltip}>
+      <span className="inline-flex flex-wrap items-center gap-1">
+        {badges}
+        <svg className="h-2.5 w-2.5 shrink-0 text-slate-400 dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+      </span>
+    </Tooltip>
+  )
 }
 
 /** Return the plain-string value for a column (used by Excel export). */
@@ -754,7 +1199,11 @@ function auditColStr(
     case 'terms':             return inv.terms
     case 'itemCost':          return inv.itemCost
     case 'invoiceQty':        return inv.invoiceQty
-    case 'discountedCostPct': return [inv.discountedPrice, inv.discountPct ? `(${inv.discountPct}%)` : ''].filter(Boolean).join(' ')
+    case 'discountedCostPct': {
+      // Strip any trailing % the AI may have already included before re-adding it.
+      const pctStr = inv.discountPct ? inv.discountPct.trim().replace(/%+$/, '') : ''
+      return [inv.discountedPrice, pctStr ? `(${pctStr}%)` : ''].filter(Boolean).join(' ')
+    }
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
@@ -767,8 +1216,10 @@ function auditColStr(
         issues.push('COGS pending')
       } else {
         const dcCogs = order.dcCogs !== 'n/a' ? order.dcCogs : null
-        if (dcCogs && inv.itemCost) {
-          const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+        // Use effective (post-discount) cost so discounts don't flag false mismatches.
+        const effectiveCost = resolveEffectiveCost(inv)
+        if (dcCogs && effectiveCost) {
+          const costNum = parseFloat(effectiveCost.replace(/[^0-9.-]/g, ''))
           const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
           if (!isNaN(costNum) && !isNaN(cogsNum) && Math.abs(costNum - cogsNum) >= 0.005) issues.push('✗ COGS')
         }
@@ -924,6 +1375,14 @@ export default function DocTidyInvoiceAudit() {
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
   const [showColSettings, setShowColSettings] = useState(false)
+
+  /* ── Column filters (Excel-style per-column value filters) ── */
+  /** Map of colId → set of allowed values (including BLANK_SENTINEL for empty cells). null/absent = no filter. */
+  const [colFilters, setColFilters] = useState<Partial<Record<InvoiceAuditColumnId, Set<string>>>>({})
+  /** Which column's filter dropdown is currently open. */
+  const [filterOpenColId, setFilterOpenColId] = useState<InvoiceAuditColumnId | null>(null)
+  /** Bounding rect of the filter button that was clicked (used to position the dropdown). */
+  const [filterAnchorRect, setFilterAnchorRect] = useState<DOMRect | null>(null)
 
   /* ── All parse jobs for matching (fetched silently per workspace open) ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
@@ -1675,6 +2134,9 @@ export default function DocTidyInvoiceAudit() {
     setAuditSearch('')
     setDebouncedAuditSearch('')
     setSelectedRowKeys(new Set())
+    setColFilters({})
+    setFilterOpenColId(null)
+    setFilterAnchorRect(null)
     setError(null)
     setOrderError(null)
     setImportSuccess(null)
@@ -1699,6 +2161,9 @@ export default function DocTidyInvoiceAudit() {
     setAuditSearch('')
     setDebouncedAuditSearch('')
     setSelectedRowKeys(new Set())
+    setColFilters({})
+    setFilterOpenColId(null)
+    setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
   }
@@ -1752,6 +2217,43 @@ export default function DocTidyInvoiceAudit() {
     return map
   }, [orderImports, jobs])
 
+  /**
+   * Collect unique string values for a given column across all currently loaded
+   * order import rows. Used to populate the column filter dropdown.
+   * Returns Map<displayValue, count> ('' key = blank/empty cells).
+   */
+  const getColUniqueValues = useCallback((colId: InvoiceAuditColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const order of orderImports) {
+      const match = invoiceMatchMap.get(order._id) ?? null
+      const val = auditColStr(colId, order, match).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [orderImports, invoiceMatchMap])
+
+  /**
+   * Client-side filter applied on top of the server-fetched `orderImports`.
+   * Each active column filter is AND-ed together.
+   * A row passes when its cell value is in the allowed set (or BLANK_SENTINEL matches an empty cell).
+   */
+  const filteredOrderImports = useMemo(() => {
+    const activeEntries = Object.entries(colFilters).filter(
+      (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return orderImports
+    return orderImports.filter((order) => {
+      const match = invoiceMatchMap.get(order._id) ?? null
+      return activeEntries.every(([colId, allowed]) => {
+        const val = auditColStr(colId, order, match).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    })
+  }, [orderImports, colFilters, invoiceMatchMap])
+
+  const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
+
   const visibleCols = useMemo<InvoiceAuditColumn[]>(
     () => {
       const colById = new Map(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c]))
@@ -1772,7 +2274,7 @@ export default function DocTidyInvoiceAudit() {
   )
 
   /* ── Selection helpers (audit table — one key per order import row) ── */
-  const pageRowKeys = useMemo(() => orderImports.map((o) => o._id), [orderImports])
+  const pageRowKeys = useMemo(() => filteredOrderImports.map((o) => o._id), [filteredOrderImports])
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
   const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
@@ -1898,7 +2400,7 @@ export default function DocTidyInvoiceAudit() {
             <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
               target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--accent-200)] hover:underline">
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
               <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
               </svg>
@@ -1909,15 +2411,89 @@ export default function DocTidyInvoiceAudit() {
         return monoCell(inv.invoiceNumber)
       }
       case 'terms':       return textCell(inv.terms)
-      case 'itemCost':    return numCell(inv.itemCost)
+      case 'itemCost': {
+        const effectiveCost = resolveEffectiveCost(inv)
+        if (!effectiveCost) return emDash
+        const discounted = hasDiscount(inv)
+        return (
+          <span className="inline-flex items-center gap-1.5 tabular-nums">
+            <span className="text-[var(--text-100)]">{effectiveCost}</span>
+            {discounted && (
+              <Tooltip richContent={(() => {
+                  // Compute display discount pct
+                  let pctDisplay = ''
+                  if (inv.discountPct) {
+                    pctDisplay = inv.discountPct.trim().replace(/%+$/, '') + '%'
+                  } else if (inv.itemCost && inv.discountedPrice) {
+                    const orig = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+                    const disc = parseFloat(inv.discountedPrice.replace(/[^0-9.-]/g, ''))
+                    if (!isNaN(orig) && !isNaN(disc) && orig > 0) {
+                      pctDisplay = ((1 - disc / orig) * 100).toFixed(1) + '%'
+                    }
+                  }
+                  return (
+                    <div>
+                      {/* Header */}
+                      <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                          Discount Breakdown
+                        </p>
+                      </div>
+                      {/* Rows */}
+                      <div className="divide-y divide-white/5 px-1 py-1">
+                        {inv.itemCost && (
+                          <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">$</span>
+                              <span className="text-[11px] text-slate-400">List price</span>
+                            </div>
+                            <span className="tabular-nums text-[11px] text-slate-300 line-through decoration-slate-600">
+                              {inv.itemCost}
+                            </span>
+                          </div>
+                        )}
+                        {pctDisplay && (
+                          <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-400">%</span>
+                              <span className="text-[11px] text-slate-400">Discount</span>
+                            </div>
+                            <span className="tabular-nums text-[11px] font-semibold text-amber-400">
+                              {pctDisplay} off
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-bold text-emerald-400">✓</span>
+                            <span className="text-[11px] font-semibold text-slate-300">You pay</span>
+                          </div>
+                          <span className="tabular-nums text-[11px] font-bold text-emerald-400">
+                            {effectiveCost}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}>
+                <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 cursor-default select-none">
+                  % OFF
+                </span>
+              </Tooltip>
+            )}
+          </span>
+        )
+      }
       case 'invoiceQty':  return numCell(inv.invoiceQty)
       case 'discountedCostPct': {
         if (!inv.discountedPrice && !inv.discountPct) return emDash
+        // Strip any trailing % the AI may have already included before re-adding it.
+        const pctDisplay = inv.discountPct ? inv.discountPct.trim().replace(/%+$/, '') : ''
         return (
           <span className="tabular-nums text-[var(--text-100)]">
             {inv.discountedPrice}
-            {inv.discountedPrice && inv.discountPct ? ' ' : ''}
-            {inv.discountPct ? <span className="text-[var(--text-200)]">({inv.discountPct}%)</span> : null}
+            {inv.discountedPrice && pctDisplay ? ' ' : ''}
+            {pctDisplay ? <span className="text-[var(--text-200)]">({pctDisplay}%)</span> : null}
           </span>
         )
       }
@@ -3062,6 +3638,24 @@ export default function DocTidyInvoiceAudit() {
                   {loading ? 'Syncing…' : 'Resync'}
                 </button>
 
+                {/* Active column filters pill */}
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setColFilters({})}
+                    title="Clear all column filters"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                  >
+                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                    </svg>
+                    {activeFilterCount} column filter{activeFilterCount !== 1 ? 's' : ''} active
+                    <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                )}
+
                 {/* Column settings */}
                 <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
                   className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
@@ -3103,6 +3697,14 @@ export default function DocTidyInvoiceAudit() {
                     </select>
                     {orderPagination.total > 0 && (
                       <span>{startItem}–{endItem} of {orderPagination.total.toLocaleString()}</span>
+                    )}
+                    {activeFilterCount > 0 && (
+                      <span className="flex items-center gap-1 text-[var(--accent-200)] font-medium">
+                        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                          <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                        </svg>
+                        {filteredOrderImports.length} of {orderImports.length} shown
+                      </span>
                     )}
                     {selectedRowKeys.size > 0 && (
                       <span className="flex items-center gap-1.5">
@@ -3156,7 +3758,7 @@ export default function DocTidyInvoiceAudit() {
                           type="checkbox"
                           checked={allPageSelected}
                           onChange={toggleAllAuditPage}
-                          disabled={orderImports.length === 0}
+                          disabled={filteredOrderImports.length === 0}
                           aria-label={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
                           className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                         />
@@ -3168,6 +3770,7 @@ export default function DocTidyInvoiceAudit() {
                           align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
+                          hasActiveFilter={!!(colFilters[col.id]?.size)}
                           onDragStart={() => setAuditDragSrc(col.id)}
                           onDragOver={() => setAuditDragTarget(col.id)}
                           onDrop={() => {
@@ -3178,6 +3781,15 @@ export default function DocTidyInvoiceAudit() {
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
+                          onFilterClick={(rect) => {
+                            if (filterOpenColId === col.id) {
+                              setFilterOpenColId(null)
+                              setFilterAnchorRect(null)
+                            } else {
+                              setFilterOpenColId(col.id)
+                              setFilterAnchorRect(rect)
+                            }
+                          }}
                         />
                       ))}
                     </tr>
@@ -3233,11 +3845,31 @@ export default function DocTidyInvoiceAudit() {
                           </div>
                         </td>
                       </tr>
+                    ) : filteredOrderImports.length === 0 && activeFilterCount > 0 ? (
+                      /* Column filters eliminated all rows on this page */
+                      <tr>
+                        <td colSpan={visibleCols.length + 1} className="py-14 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                              <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                              <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                            </div>
+                            <button onClick={() => setColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                              Clear all column filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     ) : (
                       (() => {
                         const weekMap = new Map<string, DocTidyOrderImport[]>()
                         const UNKNOWN_KEY = '__unknown__'
-                        for (const order of orderImports) {
+                        for (const order of filteredOrderImports) {
                           const key = getWeekStartKey(order.processedDate) ?? UNKNOWN_KEY
                           if (!weekMap.has(key)) weekMap.set(key, [])
                           weekMap.get(key)!.push(order)
@@ -3320,7 +3952,6 @@ export default function DocTidyInvoiceAudit() {
                                     className={[
                                       'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
-                                      col.mono ? 'font-mono' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
                                     ].join(' ')}>
@@ -3351,6 +3982,27 @@ export default function DocTidyInvoiceAudit() {
           visibility={colVisibility}
           onChange={handleColVisChange}
           onClose={() => setShowColSettings(false)}
+        />
+      )}
+
+      {/* ── Column filter dropdown (portal-rendered, fixed position) ── */}
+      {filterOpenColId && filterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getColUniqueValues(filterOpenColId)}
+          activeFilter={colFilters[filterOpenColId]}
+          anchorRect={filterAnchorRect}
+          onApply={(values) => {
+            setColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[filterOpenColId]
+              } else {
+                next[filterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setFilterOpenColId(null); setFilterAnchorRect(null) }}
         />
       )}
 
