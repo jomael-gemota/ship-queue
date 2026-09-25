@@ -17,6 +17,7 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
+import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   INVOICE_AUDIT_COLUMNS,
@@ -625,6 +626,38 @@ function liVal(item: Record<string, unknown> | null, ...candidates: string[]): s
   return extractJsonField(item, ...candidates)
 }
 
+/** Minimal shape required by discount helpers — subset of resolveInvoiceFields return. */
+type DiscountFields = { itemCost: string; discountedPrice: string; discountPct: string }
+
+/**
+ * Resolve the effective (post-discount) cost for COGS comparison and cell display.
+ * Priority:
+ *   1. discountedPrice — explicit after-discount price on the invoice.
+ *   2. itemCost × (1 − discountPct/100) — computed when only a percentage is present.
+ *   3. itemCost — raw price (no discount detected).
+ */
+function resolveEffectiveCost(inv: DiscountFields): string {
+  if (inv.discountedPrice) return inv.discountedPrice
+
+  if (inv.itemCost && inv.discountPct) {
+    const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+    const pctNum  = parseFloat(inv.discountPct.replace(/[^0-9.-]/g, ''))
+    if (!isNaN(costNum) && !isNaN(pctNum) && pctNum > 0 && pctNum < 100) {
+      const discounted = costNum * (1 - pctNum / 100)
+      // Preserve dollar-sign prefix if the original had one.
+      const prefix = inv.itemCost.trim().startsWith('$') ? '$' : ''
+      return `${prefix}${discounted.toFixed(2)}`
+    }
+  }
+
+  return inv.itemCost
+}
+
+/** True when the invoice has any discount signal (explicit price or percentage). */
+function hasDiscount(inv: DiscountFields): boolean {
+  return !!(inv.discountedPrice || inv.discountPct)
+}
+
 /**
  * Render the Discrepancy Checker cell.
  * Checks: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty, Item Cost vs DC COGS.
@@ -641,7 +674,9 @@ function discrepancyCell(
 
   const invoiceSku    = inv.invoiceSku
   const invoiceQtyRaw = inv.invoiceQty
-  const itemCostRaw   = inv.itemCost
+  // Use the effective (post-discount) cost for COGS validation so discounted
+  // invoices don't produce false ✗ COGS mismatches.
+  const effectiveCostRaw = resolveEffectiveCost(inv)
 
   const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
   const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
@@ -649,8 +684,8 @@ function discrepancyCell(
   // COGS comparison: compare as floats (rounded to 2 dp) to handle minor formatting differences.
   const dcCogs = order.dcCogs && order.dcCogs !== 'n/a' ? order.dcCogs : null
   let cogsMatch: boolean | null = null
-  if (dcCogs && itemCostRaw) {
-    const costNum = parseFloat(itemCostRaw.replace(/[^0-9.-]/g, ''))
+  if (dcCogs && effectiveCostRaw) {
+    const costNum = parseFloat(effectiveCostRaw.replace(/[^0-9.-]/g, ''))
     const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
     if (!isNaN(costNum) && !isNaN(cogsNum)) {
       cogsMatch = Math.abs(costNum - cogsNum) < 0.005
@@ -767,8 +802,10 @@ function auditColStr(
         issues.push('COGS pending')
       } else {
         const dcCogs = order.dcCogs !== 'n/a' ? order.dcCogs : null
-        if (dcCogs && inv.itemCost) {
-          const costNum = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+        // Use effective (post-discount) cost so discounts don't flag false mismatches.
+        const effectiveCost = resolveEffectiveCost(inv)
+        if (dcCogs && effectiveCost) {
+          const costNum = parseFloat(effectiveCost.replace(/[^0-9.-]/g, ''))
           const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
           if (!isNaN(costNum) && !isNaN(cogsNum) && Math.abs(costNum - cogsNum) >= 0.005) issues.push('✗ COGS')
         }
@@ -1909,7 +1946,23 @@ export default function DocTidyInvoiceAudit() {
         return monoCell(inv.invoiceNumber)
       }
       case 'terms':       return textCell(inv.terms)
-      case 'itemCost':    return numCell(inv.itemCost)
+      case 'itemCost': {
+        const effectiveCost = resolveEffectiveCost(inv)
+        if (!effectiveCost) return emDash
+        const discounted = hasDiscount(inv)
+        return (
+          <span className="inline-flex items-center gap-1.5 tabular-nums">
+            <span className="text-[var(--text-100)]">{effectiveCost}</span>
+            {discounted && (
+              <Tooltip content={inv.itemCost ? `Original: ${inv.itemCost}` : 'Discounted price'}>
+                <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 cursor-default select-none">
+                  % OFF
+                </span>
+              </Tooltip>
+            )}
+          </span>
+        )
+      }
       case 'invoiceQty':  return numCell(inv.invoiceQty)
       case 'discountedCostPct': {
         if (!inv.discountedPrice && !inv.discountPct) return emDash
