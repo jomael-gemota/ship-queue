@@ -602,10 +602,10 @@ function WorkspaceCard({
 /** Generic empty-dash cell. */
 const emDash = <span className="text-[var(--text-200)]">—</span>
 
-/** Monospace text cell (SKU / PO # / invoice number). */
+/** Text cell for codes / identifiers (SKU / PO # / invoice number). */
 function monoCell(value: string): React.ReactNode {
   if (!value) return emDash
-  return <span className="font-mono text-[11px] text-[var(--text-100)]">{value}</span>
+  return <span className="text-[11px] text-[var(--text-100)]">{value}</span>
 }
 
 /** Plain text cell. */
@@ -1939,7 +1939,7 @@ export default function DocTidyInvoiceAudit() {
             <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
               target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--accent-200)] hover:underline">
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
               <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
               </svg>
@@ -3392,7 +3392,6 @@ export default function DocTidyInvoiceAudit() {
                                     className={[
                                       'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
-                                      col.mono ? 'font-mono' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
                                     ].join(' ')}>
