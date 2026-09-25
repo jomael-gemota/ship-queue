@@ -1954,7 +1954,20 @@ export default function DocTidyInvoiceAudit() {
           <span className="inline-flex items-center gap-1.5 tabular-nums">
             <span className="text-[var(--text-100)]">{effectiveCost}</span>
             {discounted && (
-              <Tooltip content={inv.itemCost ? `Original: ${inv.itemCost}` : 'Discounted price'}>
+              <Tooltip content={(() => {
+                  const parts: string[] = []
+                  if (inv.itemCost) parts.push(`Original: ${inv.itemCost}`)
+                  if (inv.discountPct) parts.push(`${inv.discountPct}% off`)
+                  else if (inv.itemCost && inv.discountedPrice) {
+                    const orig = parseFloat(inv.itemCost.replace(/[^0-9.-]/g, ''))
+                    const disc = parseFloat(inv.discountedPrice.replace(/[^0-9.-]/g, ''))
+                    if (!isNaN(orig) && !isNaN(disc) && orig > 0) {
+                      const pct = ((1 - disc / orig) * 100).toFixed(1)
+                      parts.push(`${pct}% off`)
+                    }
+                  }
+                  return parts.join('\n') || 'Discounted price'
+                })()}>
                 <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 cursor-default select-none">
                   % OFF
                 </span>
