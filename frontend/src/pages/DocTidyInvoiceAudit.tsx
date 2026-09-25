@@ -905,7 +905,11 @@ function discrepancyCell(
   // Use cached invoice data first; fall back to client-side match.
   const inv = resolveInvoiceFields(order, match)
   if (!inv.hasMatch) {
-    return <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
+    return (
+      <Tooltip content="No invoice was matched for this order.&#10;Parse an invoice PDF that contains this PO # to enable checks.">
+        <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
+      </Tooltip>
+    )
   }
 
   const invoiceSku    = inv.invoiceSku
@@ -930,6 +934,23 @@ function discrepancyCell(
     // COGS not yet fetched — show pending state
     cogsMatch = null
   }
+
+  // ── Build the hover tooltip (shows all 3 checks with values) ──
+  const dash = '—'
+  const check = (ok: boolean | null) => ok === true ? '✓' : ok === false ? '✗' : '?'
+
+  const skuLine  = `SKU   Order: ${order.orderSku || dash}  →  Invoice: ${invoiceSku || dash}  ${invoiceSku ? check(skuMatch) : dash}`
+  const qtyLine  = `Qty   Order: ${order.orderQty || dash}  →  Invoice: ${invoiceQtyRaw || dash}  ${invoiceQtyRaw ? check(qtyMatch) : dash}`
+  const cogsLine =
+    order.dcCogs == null
+      ? 'COGS  DC: (pending…)'
+      : !dcCogs
+        ? `COGS  DC: ${dash}  (no DC COGS on file)`
+        : !effectiveCostRaw
+          ? `COGS  DC: ${dcCogs}  →  Invoice: ${dash}`
+          : `COGS  DC: ${dcCogs}  →  Invoice: ${effectiveCostRaw}  ${check(cogsMatch)}`
+
+  const tooltipContent = [skuLine, qtyLine, cogsLine].join('\n')
 
   // Collect only the badges that need attention (mismatches, pending, or unknown).
   // Matches are intentionally omitted — if nothing is collected the row is clean.
@@ -964,12 +985,18 @@ function discrepancyCell(
 
   if (badges.length === 0)
     return (
-      <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-        All good
-      </span>
+      <Tooltip content={tooltipContent}>
+        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+          All good
+        </span>
+      </Tooltip>
     )
 
-  return <span className="flex flex-wrap gap-1">{badges}</span>
+  return (
+    <Tooltip content={tooltipContent}>
+      <span className="flex flex-wrap gap-1">{badges}</span>
+    </Tooltip>
+  )
 }
 
 /** Return the plain-string value for a column (used by Excel export). */
