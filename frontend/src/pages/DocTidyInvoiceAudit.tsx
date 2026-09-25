@@ -906,7 +906,7 @@ function discrepancyCell(
   const inv = resolveInvoiceFields(order, match)
   if (!inv.hasMatch) {
     return (
-      <Tooltip richContent={
+      <Tooltip trigger="click" richContent={
         <div className="px-3.5 py-3 space-y-1.5">
           <div className="flex items-center gap-2 mb-2">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
@@ -917,7 +917,9 @@ function discrepancyCell(
           </p>
         </div>
       }>
-        <span className="text-[11px] text-[var(--text-200)] italic">No match</span>
+        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-200)] italic underline decoration-dotted underline-offset-2">
+          No match
+        </span>
       </Tooltip>
     )
   }
@@ -990,68 +992,101 @@ function discrepancyCell(
     cogsRow,
   ]
 
+  const hasAnyMismatch = checkRows.some((r) => r.status === false)
+
   const discrepancyTooltip = (
-    <div>
+    <div style={{ minWidth: 300 }}>
       {/* Header */}
-      <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          Discrepancy Checks
-        </p>
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          {hasAnyMismatch ? (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-500/20 text-[10px] font-bold text-rose-400">!</span>
+          ) : (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400">✓</span>
+          )}
+          <p className="text-[11px] font-semibold text-slate-200">
+            {hasAnyMismatch ? 'Discrepancies found' : 'All checks passed'}
+          </p>
+        </div>
+        <span className="text-[10px] text-slate-600">Click away to close</span>
       </div>
-      {/* Rows */}
-      <div className="divide-y divide-white/5 px-1 py-1">
+
+      {/* Column labels */}
+      <div className="flex items-center gap-2.5 border-b border-white/5 px-3.5 py-1.5">
+        <span className="w-5 shrink-0" />
+        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600">Check</span>
+        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+          <span className="flex-1">Order</span>
+          <span className="text-slate-700">→</span>
+          <span className="flex-1">Invoice</span>
+        </div>
+      </div>
+
+      {/* Check rows */}
+      <div className="divide-y divide-white/5">
         {checkRows.map((row) => {
           const isPending  = row.pending
           const isNoData   = row.noData
           const isMatch    = row.status === true
           const isMismatch = row.status === false
 
-          const iconBg  = isPending  ? 'bg-amber-500/15 text-amber-400'
-                        : isNoData   ? 'bg-slate-700 text-slate-500'
-                        : isMatch    ? 'bg-emerald-500/15 text-emerald-400'
-                        : isMismatch ? 'bg-rose-500/15 text-rose-400'
-                        :              'bg-slate-700 text-slate-500'
-          const icon    = isPending  ? '…'
-                        : isNoData   ? '–'
-                        : isMatch    ? '✓'
-                        : isMismatch ? '✗'
-                        :              '–'
+          const iconBg = isPending  ? 'bg-amber-500/15 text-amber-400'
+                       : isNoData   ? 'bg-slate-700/60 text-slate-500'
+                       : isMatch    ? 'bg-emerald-500/15 text-emerald-400'
+                       : isMismatch ? 'bg-rose-500/20 text-rose-400'
+                       :              'bg-slate-700/60 text-slate-500'
+          const icon   = isPending  ? '…'
+                       : isNoData   ? '–'
+                       : isMatch    ? '✓'
+                       : isMismatch ? '✗'
+                       :              '–'
+
+          /* Row background tint for mismatches */
+          const rowBg  = isMismatch ? 'bg-rose-500/5' : ''
 
           return (
-            <div key={row.key} className="flex items-center gap-2.5 px-2.5 py-2.5">
+            <div key={row.key} className={`flex items-center gap-2.5 px-3.5 py-2.5 ${rowBg}`}>
               {/* Status icon */}
               <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${iconBg}`}>
                 {icon}
               </span>
 
               {/* Label */}
-              <span className="w-8 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 {row.label}
               </span>
 
               {/* Values */}
               {isPending ? (
-                <span className="italic text-amber-400 text-[11px]">Pending DC COGS…</span>
+                <span className="italic text-[11px] text-amber-400">Pending DC COGS…</span>
               ) : isNoData ? (
-                <span className="flex items-center gap-1 text-[11px] text-slate-500 italic">
+                <span className="italic text-[11px] text-slate-600">
                   {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 text-[11px] font-mono min-w-0">
-                  <span className="text-slate-300 truncate">{row.orderVal}</span>
-                  <span className="text-slate-600 shrink-0">→</span>
-                  <span className={`truncate ${isMismatch ? 'text-rose-400 font-semibold' : 'text-slate-300'}`}>
+                <div className="flex flex-1 items-center gap-1.5 font-mono text-[11px] min-w-0">
+                  {/* Order value */}
+                  <span className="flex-1 truncate text-slate-300">{row.orderVal}</span>
+                  {/* Arrow */}
+                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-slate-600'}`}>→</span>
+                  {/* Invoice value */}
+                  <span className={`flex-1 truncate font-semibold ${isMismatch ? 'text-rose-400' : 'text-emerald-400'}`}>
                     {row.invoiceVal}
                   </span>
-                </span>
+                </div>
               )}
             </div>
           )
         })}
       </div>
-      {/* Footer hint */}
-      <div className="border-t border-white/10 px-3.5 py-2">
-        <p className="text-[10px] text-slate-600">Order → Invoice</p>
+
+      {/* Footer */}
+      <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
+        <p className="text-[10px] text-slate-600">
+          {hasAnyMismatch
+            ? 'Review highlighted values — invoice differs from order.'
+            : 'Order data matches the matched invoice.'}
+        </p>
       </div>
     </div>
   )
@@ -1089,16 +1124,24 @@ function discrepancyCell(
 
   if (badges.length === 0)
     return (
-      <Tooltip richContent={discrepancyTooltip}>
-        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+      <Tooltip trigger="click" richContent={discrepancyTooltip}>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 underline decoration-dotted underline-offset-2 dark:text-emerald-400">
           All good
+          <svg className="h-2.5 w-2.5 opacity-50" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
         </span>
       </Tooltip>
     )
 
   return (
-    <Tooltip richContent={discrepancyTooltip}>
-      <span className="flex flex-wrap gap-1">{badges}</span>
+    <Tooltip trigger="click" richContent={discrepancyTooltip}>
+      <span className="inline-flex flex-wrap items-center gap-1">
+        {badges}
+        <svg className="h-2.5 w-2.5 shrink-0 text-slate-400 dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+      </span>
     </Tooltip>
   )
 }
