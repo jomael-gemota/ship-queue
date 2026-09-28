@@ -5,6 +5,7 @@ import {
   DocumentTypeBadge,
   LiveReasoningSnippet,
   PaginationArrows,
+  ParseStatusChip,
   Spinner,
   Th,
   avatarColour,
@@ -33,6 +34,7 @@ import {
   extractJsonArray,
   documentTypeOf,
   DOCUMENT_TYPE_LABELS,
+  PARSE_STATUS_LABELS,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
@@ -1242,18 +1244,34 @@ function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string
     case 'documentType': return DOCUMENT_TYPE_LABELS[documentTypeOf(msg.documentType)]
     case 'rule':         return msg.ruleName ?? ''
     case 'attachments':  return msg.attachments?.map((a) => a.filename).join(', ') ?? ''
+    case 'parseStatus':  return deriveEmailParseStatusLabel(msg)
     default:             return ''
   }
+}
+
+/**
+ * Derives a single human-readable Tidy Agent status label for an email
+ * message by collapsing its (possibly multiple) parse jobs into one value.
+ * Priority: processing > pending > failed > completed > "Not sent".
+ */
+function deriveEmailParseStatusLabel(msg: DocTidyMessage): string {
+  const jobs = msg.parseJobs
+  if (!jobs || jobs.length === 0) return 'Not sent'
+  if (jobs.some((j) => j.status === 'processing')) return PARSE_STATUS_LABELS.processing
+  if (jobs.some((j) => j.status === 'pending'))    return PARSE_STATUS_LABELS.pending
+  if (jobs.some((j) => j.status === 'failed'))     return PARSE_STATUS_LABELS.failed
+  return PARSE_STATUS_LABELS.completed
 }
 
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
 function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
   switch (colId) {
-    case 'imported':   return formatDate(imp.createdAt)
-    case 'importedBy': return imp.uploadedByName ?? ''
-    case 'size':       return formatBytes(imp.size)
-    case 'filename':   return imp.filename ?? ''
-    default:           return ''
+    case 'imported':     return formatDate(imp.createdAt)
+    case 'importedBy':   return imp.uploadedByName ?? ''
+    case 'size':         return formatBytes(imp.size)
+    case 'filename':     return imp.filename ?? ''
+    case 'parseStatus':  return imp.parseJob ? PARSE_STATUS_LABELS[imp.parseJob.status] : 'Not sent'
+    default:             return ''
   }
 }
 
@@ -2950,7 +2968,7 @@ export default function DocTidyInvoiceAudit() {
                                       <div className="h-2.5 w-32 animate-pulse rounded bg-[var(--bg-300)]" />
                                     </div>
                                   </div>
-                                ) : col.id === 'documentType' || col.id === 'rule' ? (
+                                ) : col.id === 'documentType' || col.id === 'rule' || col.id === 'parseStatus' ? (
                                   <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
                                 ) : (
                                   <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -3161,6 +3179,24 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   default:
                                     return null
+                                  case 'parseStatus': {
+                                    const statusLabel = deriveEmailParseStatusLabel(msg)
+                                    return (
+                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
+                                        {statusLabel === 'Not sent' ? (
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
+                                            Not sent
+                                          </span>
+                                        ) : (
+                                          <ParseStatusChip
+                                            status={(['pending', 'processing', 'completed', 'failed'] as const).find(
+                                              (s) => PARSE_STATUS_LABELS[s] === statusLabel
+                                            ) ?? 'completed'}
+                                          />
+                                        )}
+                                      </td>
+                                    )
+                                  }
                                 }
                               })}
 
@@ -3553,6 +3589,18 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   default:
                                     return null
+                                  case 'parseStatus':
+                                    return (
+                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${cls}`}>
+                                        {imp.parseJob ? (
+                                          <ParseStatusChip status={imp.parseJob.status} />
+                                        ) : (
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
+                                            Not sent
+                                          </span>
+                                        )}
+                                      </td>
+                                    )
                                 }
                               })}
 
