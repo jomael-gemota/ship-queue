@@ -1517,6 +1517,35 @@ export default function DocTidyInvoiceAudit() {
   const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
   const [pdfDeleting, setPdfDeleting] = useState(false)
 
+  /* ── Filtered views (client-side column filters applied to the loaded page) ── */
+  const filteredEmailMessages = useMemo(() => {
+    const activeEntries = Object.entries(emailColFilters).filter(
+      (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return emailMessages
+    return emailMessages.filter((msg) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = emailColStr(colId, msg).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [emailMessages, emailColFilters])
+
+  const filteredPdfImports = useMemo(() => {
+    const activeEntries = Object.entries(pdfColFilters).filter(
+      (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return pdfImports
+    return pdfImports.filter((imp) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = pdfColStr(colId, imp).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [pdfImports, pdfColFilters])
+
   /* Debounce search */
   useEffect(() => {
     const t = setTimeout(() => setPdfDebouncedSearch(pdfSearch.trim()), 350)
@@ -1731,8 +1760,8 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /* Selection helpers */
-  const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
-  const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
+  const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
+  const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
 
   /**
    * True when every selected PDF import already has a completed parse job —
@@ -1795,7 +1824,7 @@ export default function DocTidyInvoiceAudit() {
   const toggleAllPdfOnPage = () => {
     setPdfSelectedIds((prev) => {
       const next = new Set(prev)
-      for (const imp of pdfImports) {
+      for (const imp of filteredPdfImports) {
         if (allPdfOnPageSelected) next.delete(imp._id); else next.add(imp._id)
       }
       return next
@@ -2016,8 +2045,8 @@ export default function DocTidyInvoiceAudit() {
 
   /* Indeterminate state on the select-all checkbox */
   const allEmailsOnPageSelected =
-    emailMessages.length > 0 && emailMessages.every((m) => selectedEmailIds.has(m._id))
-  const someEmailsOnPageSelected = emailMessages.some((m) => selectedEmailIds.has(m._id))
+    filteredEmailMessages.length > 0 && filteredEmailMessages.every((m) => selectedEmailIds.has(m._id))
+  const someEmailsOnPageSelected = filteredEmailMessages.some((m) => selectedEmailIds.has(m._id))
   useEffect(() => {
     if (selectAllEmailRef.current) {
       selectAllEmailRef.current.indeterminate = someEmailsOnPageSelected && !allEmailsOnPageSelected
@@ -2035,7 +2064,7 @@ export default function DocTidyInvoiceAudit() {
   const toggleAllEmailsOnPage = () => {
     setSelectedEmailIds((prev) => {
       const next = new Set(prev)
-      for (const msg of emailMessages) {
+      for (const msg of filteredEmailMessages) {
         if (allEmailsOnPageSelected) next.delete(msg._id)
         else next.add(msg._id)
       }
@@ -2319,20 +2348,6 @@ export default function DocTidyInvoiceAudit() {
     return vals
   }, [emailMessages])
 
-  const filteredEmailMessages = useMemo(() => {
-    const activeEntries = Object.entries(emailColFilters).filter(
-      (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
-    )
-    if (activeEntries.length === 0) return emailMessages
-    return emailMessages.filter((msg) =>
-      activeEntries.every(([colId, allowed]) => {
-        const val = emailColStr(colId, msg).trim()
-        if (!val) return allowed.has(BLANK_SENTINEL)
-        return allowed.has(val)
-      })
-    )
-  }, [emailMessages, emailColFilters])
-
   const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length
 
   /* ── PDF import column filter helpers ── */
@@ -2344,20 +2359,6 @@ export default function DocTidyInvoiceAudit() {
     }
     return vals
   }, [pdfImports])
-
-  const filteredPdfImports = useMemo(() => {
-    const activeEntries = Object.entries(pdfColFilters).filter(
-      (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
-    )
-    if (activeEntries.length === 0) return pdfImports
-    return pdfImports.filter((imp) =>
-      activeEntries.every(([colId, allowed]) => {
-        const val = pdfColStr(colId, imp).trim()
-        if (!val) return allowed.has(BLANK_SENTINEL)
-        return allowed.has(val)
-      })
-    )
-  }, [pdfImports, pdfColFilters])
 
   const pdfActiveFilterCount = Object.values(pdfColFilters).filter((s) => s != null && s.size > 0).length
 
