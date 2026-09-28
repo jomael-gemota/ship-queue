@@ -31,6 +31,8 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
+  documentTypeOf,
+  DOCUMENT_TYPE_LABELS,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
@@ -1230,6 +1232,31 @@ function auditColStr(
   }
 }
 
+/** Maps a `DocTidyMessage` column to a plain string for column-filter comparisons. */
+function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string {
+  switch (colId) {
+    case 'received':     return formatDate(msg.sentAt)
+    case 'from':         return msg.fromName ? msg.fromName : msg.from
+    case 'to':           return msg.to?.join(', ') ?? ''
+    case 'subject':      return msg.subject ?? ''
+    case 'documentType': return DOCUMENT_TYPE_LABELS[documentTypeOf(msg.documentType)]
+    case 'rule':         return msg.ruleName ?? ''
+    case 'attachments':  return msg.attachments?.map((a) => a.filename).join(', ') ?? ''
+    default:             return ''
+  }
+}
+
+/** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
+function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
+  switch (colId) {
+    case 'imported':   return formatDate(imp.createdAt)
+    case 'importedBy': return imp.uploadedByName ?? ''
+    case 'size':       return formatBytes(imp.size)
+    case 'filename':   return imp.filename ?? ''
+    default:           return ''
+  }
+}
+
 /* ─────────────────────────── Week-grouping helpers ── */
 
 /**
@@ -1383,6 +1410,16 @@ export default function DocTidyInvoiceAudit() {
   const [filterOpenColId, setFilterOpenColId] = useState<InvoiceAuditColumnId | null>(null)
   /** Bounding rect of the filter button that was clicked (used to position the dropdown). */
   const [filterAnchorRect, setFilterAnchorRect] = useState<DOMRect | null>(null)
+
+  /* ── Email column filters ── */
+  const [emailColFilters, setEmailColFilters] = useState<Partial<Record<WorkspaceEmailColumnId, Set<string>>>>({})
+  const [emailFilterOpenColId, setEmailFilterOpenColId] = useState<WorkspaceEmailColumnId | null>(null)
+  const [emailFilterAnchorRect, setEmailFilterAnchorRect] = useState<DOMRect | null>(null)
+
+  /* ── PDF import column filters ── */
+  const [pdfColFilters, setPdfColFilters] = useState<Partial<Record<PdfImportColumnId, Set<string>>>>({})
+  const [pdfFilterOpenColId, setPdfFilterOpenColId] = useState<PdfImportColumnId | null>(null)
+  const [pdfFilterAnchorRect, setPdfFilterAnchorRect] = useState<DOMRect | null>(null)
 
   /* ── All parse jobs for matching (fetched silently per workspace open) ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
@@ -1747,7 +1784,7 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || Object.values(pdfColFilters).some((s) => s?.size))
   const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
   const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
   const orderedPdfCols = pdfColOrder
@@ -2254,6 +2291,58 @@ export default function DocTidyInvoiceAudit() {
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
 
+  /* ── Email column filter helpers ── */
+  const getEmailColUniqueValues = useCallback((colId: WorkspaceEmailColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const msg of emailMessages) {
+      const val = emailColStr(colId, msg).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [emailMessages])
+
+  const filteredEmailMessages = useMemo(() => {
+    const activeEntries = Object.entries(emailColFilters).filter(
+      (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return emailMessages
+    return emailMessages.filter((msg) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = emailColStr(colId, msg).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [emailMessages, emailColFilters])
+
+  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length
+
+  /* ── PDF import column filter helpers ── */
+  const getPdfColUniqueValues = useCallback((colId: PdfImportColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const imp of pdfImports) {
+      const val = pdfColStr(colId, imp).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [pdfImports])
+
+  const filteredPdfImports = useMemo(() => {
+    const activeEntries = Object.entries(pdfColFilters).filter(
+      (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return pdfImports
+    return pdfImports.filter((imp) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = pdfColStr(colId, imp).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [pdfImports, pdfColFilters])
+
+  const pdfActiveFilterCount = Object.values(pdfColFilters).filter((s) => s != null && s.size > 0).length
+
   const visibleCols = useMemo<InvoiceAuditColumn[]>(
     () => {
       const colById = new Map(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c]))
@@ -2703,6 +2792,23 @@ export default function DocTidyInvoiceAudit() {
                       Clear filters
                     </button>
                   )}
+                  {/* Active column-filter pill */}
+                  {emailActiveFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setEmailColFilters({})}
+                      title="Clear all column filters"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                      </svg>
+                      {emailActiveFilterCount} column filter{emailActiveFilterCount !== 1 ? 's' : ''} active
+                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {emailLoading && <Spinner className="h-3 w-3" />}
                     {emailPagination.total > 0 && (
@@ -2804,6 +2910,7 @@ export default function DocTidyInvoiceAudit() {
                             iconPath={col.iconPath}
                             isDragging={emailDragSrc === col.id}
                             isDragTarget={emailDragTarget === col.id}
+                            hasActiveFilter={!!(emailColFilters[col.id]?.size)}
                             onDragStart={() => setEmailDragSrc(col.id)}
                             onDragOver={() => setEmailDragTarget(col.id)}
                             onDrop={() => {
@@ -2814,6 +2921,15 @@ export default function DocTidyInvoiceAudit() {
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
+                            onFilterClick={(rect) => {
+                              if (emailFilterOpenColId === col.id) {
+                                setEmailFilterOpenColId(null)
+                                setEmailFilterAnchorRect(null)
+                              } else {
+                                setEmailFilterOpenColId(col.id)
+                                setEmailFilterAnchorRect(rect)
+                              }
+                            }}
                           />
                         ))}
                         <Th label="Actions" align="center" className="min-w-[200px]" />
@@ -2872,8 +2988,27 @@ export default function DocTidyInvoiceAudit() {
                             </div>
                           </td>
                         </tr>
+                      ) : filteredEmailMessages.length === 0 && emailActiveFilterCount > 0 ? (
+                        <tr>
+                          <td colSpan={orderedEmailCols.length + 2} className="py-14 text-center">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                                <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                              </div>
+                              <button onClick={() => setEmailColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                Clear all column filters
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : (
-                        emailMessages.map((msg) => {
+                        filteredEmailMessages.map((msg) => {
                           const isSelected = selectedEmailIds.has(msg._id)
                           const senderSeed = msg.fromName || msg.from
                           return (
@@ -3125,6 +3260,23 @@ export default function DocTidyInvoiceAudit() {
                       Clear filters
                     </button>
                   )}
+                  {/* Active column-filter pill */}
+                  {pdfActiveFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfColFilters({})}
+                      title="Clear all column filters"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                      </svg>
+                      {pdfActiveFilterCount} column filter{pdfActiveFilterCount !== 1 ? 's' : ''} active
+                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Right side: count + spinner + bulk action + Import button */}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
@@ -3253,6 +3405,21 @@ export default function DocTidyInvoiceAudit() {
                         </button>
                       )}
                     </div>
+                  ) : filteredPdfImports.length === 0 && pdfActiveFilterCount > 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-14 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                        <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                      </div>
+                      <button onClick={() => setPdfColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                        Clear all column filters
+                      </button>
+                    </div>
                   ) : (
                     <table className="w-full text-[11px] border-separate border-spacing-0">
                       <thead>
@@ -3278,6 +3445,7 @@ export default function DocTidyInvoiceAudit() {
                               align={col.align}
                               isDragging={pdfDragSrc === col.id}
                               isDragTarget={pdfDragTarget === col.id}
+                              hasActiveFilter={!!(pdfColFilters[col.id]?.size)}
                               onDragStart={() => setPdfDragSrc(col.id)}
                               onDragOver={() => setPdfDragTarget(col.id)}
                               onDrop={() => {
@@ -3288,13 +3456,22 @@ export default function DocTidyInvoiceAudit() {
                                 }
                               }}
                               onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
+                              onFilterClick={(rect) => {
+                                if (pdfFilterOpenColId === col.id) {
+                                  setPdfFilterOpenColId(null)
+                                  setPdfFilterAnchorRect(null)
+                                } else {
+                                  setPdfFilterOpenColId(col.id)
+                                  setPdfFilterAnchorRect(rect)
+                                }
+                              }}
                             />
                           ))}
                           <Th label="Actions" align="center" className="min-w-[200px]" />
                         </tr>
                       </thead>
                       <tbody>
-                        {pdfImports.map((imp) => {
+                        {filteredPdfImports.map((imp) => {
                           const isSending = pdfSendingIds.has(imp._id)
                           const isSelected = pdfSelectedIds.has(imp._id)
                           const job = imp.parseJob
@@ -4003,6 +4180,48 @@ export default function DocTidyInvoiceAudit() {
             })
           }}
           onClose={() => { setFilterOpenColId(null); setFilterAnchorRect(null) }}
+        />
+      )}
+
+      {/* ── Email column filter dropdown ── */}
+      {emailFilterOpenColId && emailFilterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getEmailColUniqueValues(emailFilterOpenColId)}
+          activeFilter={emailColFilters[emailFilterOpenColId]}
+          anchorRect={emailFilterAnchorRect}
+          onApply={(values) => {
+            setEmailColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[emailFilterOpenColId]
+              } else {
+                next[emailFilterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setEmailFilterOpenColId(null); setEmailFilterAnchorRect(null) }}
+        />
+      )}
+
+      {/* ── PDF imports column filter dropdown ── */}
+      {pdfFilterOpenColId && pdfFilterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getPdfColUniqueValues(pdfFilterOpenColId)}
+          activeFilter={pdfColFilters[pdfFilterOpenColId]}
+          anchorRect={pdfFilterAnchorRect}
+          onApply={(values) => {
+            setPdfColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[pdfFilterOpenColId]
+              } else {
+                next[pdfFilterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setPdfFilterOpenColId(null); setPdfFilterAnchorRect(null) }}
         />
       )}
 
