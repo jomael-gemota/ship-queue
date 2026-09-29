@@ -1189,6 +1189,7 @@ function auditColStr(
     case 'poNumber':      return order.poNumber
     case 'orderSku':      return order.orderSku
     case 'orderQty':      return order.orderQty
+    case 'lesd':          return order.lesd ?? ''
     case 'customerName':  return order.customerName ?? ''
     case 'purchasedDate': return order.purchasedDate ?? ''
     case 'status':        return order.status ?? ''
@@ -2472,6 +2473,7 @@ export default function DocTidyInvoiceAudit() {
       case 'poNumber':      return monoCell(order.poNumber)
       case 'orderSku':      return monoCell(order.orderSku)
       case 'orderQty':      return numCell(order.orderQty)
+      case 'lesd':          return textCell(order.lesd ?? '')
       case 'customerName': {
         const name = order.customerName ?? ''
         if (!name) return emDash
@@ -4306,7 +4308,7 @@ export default function DocTidyInvoiceAudit() {
                   <button
                     type="button"
                     onClick={() => {
-                      const header = 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,Status'
+                      const header = 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,LESD,Status'
                       const blob = new Blob([header + '\n'], { type: 'text/csv' })
                       const url = URL.createObjectURL(blob)
                       const a = document.createElement('a')
@@ -4324,7 +4326,7 @@ export default function DocTidyInvoiceAudit() {
                   </button>
                 </div>
                 <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
-                  Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · Status
+                  Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status
                 </p>
               </div>
               <label
