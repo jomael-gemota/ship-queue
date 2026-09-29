@@ -1939,7 +1939,7 @@ function resolveInvoiceFields(
     discountPct:     c?.discountPct  ?? liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
     dropshipFee:     c?.dropshipFee  ?? (liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')),
     miscCharges:     c?.miscCharges  ?? (liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')),
-    totalCost:       c?.totalCost    ?? (liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due')),
+    totalCost:       c?.totalCost    ?? (liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice')),
   }
 }
 

@@ -639,46 +639,62 @@ export function saveCollapsedWeeks(keys: Set<string>): void {
   }
 }
 
+const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+
+const isJsonObject = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+
+/**
+ * The object itself, then its plain-object children (e.g. `totals`), so a
+ * top-level key always outranks a grouped one.
+ */
+function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown>[] {
+  return [json, ...Object.values(json).filter(isJsonObject)]
+}
+
 /**
  * Extract a scalar value from a free-form AI JSON output, trying multiple
- * common field-name variants. Keys are normalised to lowercase with all
- * separators (`_`, `-`, spaces) stripped before comparison.
+ * common field-name variants in priority order. Keys are normalised to
+ * lowercase with all separators (`_`, `-`, spaces) stripped before comparison.
+ *
+ * Must stay identical to `extractField` in `src/services/invoiceMatchCache.service.ts`,
+ * or a row's cached and fallback Invoice Audit values will disagree.
  */
 export function extractJsonField(
   json: Record<string, unknown> | null | undefined,
   ...candidates: string[]
 ): string {
-  if (!json) return ''
-  const norm = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
-  for (const key of candidates) {
-    const target = norm(key)
-    for (const [k, v] of Object.entries(json)) {
-      if (norm(k) !== target) continue
-      if (v === null || v === undefined) continue
-      if (typeof v === 'string') return v.trim()
-      if (typeof v === 'number' || typeof v === 'boolean') return String(v)
-      if (Array.isArray(v)) return '' // arrays handled separately
-      return ''
+  if (!isJsonObject(json)) return ''
+  for (const scope of jsonSearchScopes(json)) {
+    for (const key of candidates) {
+      const target = normJsonKey(key)
+      for (const [k, v] of Object.entries(scope)) {
+        if (normJsonKey(k) !== target) continue
+        if (typeof v === 'string' && v.trim()) return v.trim()
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+      }
     }
   }
   return ''
 }
 
 /**
- * Extract an array value (e.g. line_items) from the JSON output.
- * Returns an empty array if not found or not an array.
+ * Extract an array value (e.g. line_items) from the JSON output, searched the
+ * same way as `extractJsonField`. Returns an empty array if none is found.
  */
 export function extractJsonArray(
   json: Record<string, unknown> | null | undefined,
   ...candidates: string[]
 ): Record<string, unknown>[] {
-  if (!json) return []
-  const norm = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
-  for (const key of candidates) {
-    const target = norm(key)
-    for (const [k, v] of Object.entries(json)) {
-      if (norm(k) !== target) continue
-      if (Array.isArray(v)) return v as Record<string, unknown>[]
+  if (!isJsonObject(json)) return []
+  for (const scope of jsonSearchScopes(json)) {
+    for (const key of candidates) {
+      const target = normJsonKey(key)
+      for (const [k, v] of Object.entries(scope)) {
+        if (normJsonKey(k) === target && Array.isArray(v) && v.length > 0) {
+          return v as Record<string, unknown>[]
+        }
+      }
     }
   }
   return []
