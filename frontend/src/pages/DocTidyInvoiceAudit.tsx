@@ -2298,6 +2298,14 @@ export default function DocTidyInvoiceAudit() {
   const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
   const [pdfDeleting, setPdfDeleting] = useState(false)
 
+  /* ── Bulk delete: emails ── */
+  const [confirmBulkDeleteEmails, setConfirmBulkDeleteEmails] = useState(false)
+  const [emailBulkDeleting, setEmailBulkDeleting] = useState(false)
+
+  /* ── Bulk delete: PDF imports ── */
+  const [confirmBulkDeletePdfs, setConfirmBulkDeletePdfs] = useState(false)
+  const [pdfBulkDeleting, setPdfBulkDeleting] = useState(false)
+
   /* ── Audit table delete ── */
   const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
   const [auditRowDeleting, setAuditRowDeleting] = useState(false)
@@ -2436,6 +2444,42 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeleteEmail(null)
     } finally {
       setEmailDeleting(false)
+    }
+  }
+
+  /* ── Emails: bulk delete selected messages ── */
+  const handleBulkDeleteEmails = async () => {
+    const ids = Array.from(selectedEmailIds)
+    setEmailBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/messages/bulk-delete', { ids })
+      setEmailMessages((prev) => prev.filter((m) => !selectedEmailIds.has(m._id)))
+      setEmailPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setSelectedEmailIds(new Set())
+      setConfirmBulkDeleteEmails(false)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to delete selected messages')
+      setConfirmBulkDeleteEmails(false)
+    } finally {
+      setEmailBulkDeleting(false)
+    }
+  }
+
+  /* ── PDF Imports: bulk delete selected imports ── */
+  const handleBulkDeletePdfs = async () => {
+    const ids = Array.from(pdfSelectedIds)
+    setPdfBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/pdf-imports/bulk-delete', { ids })
+      setPdfImports((prev) => prev.filter((i) => !pdfSelectedIds.has(i._id)))
+      setPdfImportsPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setPdfSelectedIds(new Set())
+      setConfirmBulkDeletePdfs(false)
+    } catch (err) {
+      setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete selected PDF imports')
+      setConfirmBulkDeletePdfs(false)
+    } finally {
+      setPdfBulkDeleting(false)
     }
   }
 
@@ -3962,6 +4006,19 @@ export default function DocTidyInvoiceAudit() {
                           : `Send ${selectedEmailIds.size} to Tidy Agent`}
                       </button>
                     )}
+                    {/* Bulk delete emails */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeleteEmails(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {selectedEmailIds.size} selected
+                      </button>
+                    )}
                   </span>
                 </div>
 
@@ -4448,6 +4505,19 @@ export default function DocTidyInvoiceAudit() {
                         {allSelectedPdfsCompleted
                           ? `Send ${pdfSelectedIds.size} to Tidy Agent for Rerun`
                           : `Send ${pdfSelectedIds.size} to Tidy Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete PDF imports */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeletePdfs(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {pdfSelectedIds.size} selected
                       </button>
                     )}
                   </span>
@@ -5616,6 +5686,36 @@ export default function DocTidyInvoiceAudit() {
           deleting={pdfDeleting}
           onConfirm={() => void confirmAndDeletePdfImport(confirmDeletePdf)}
           onCancel={() => setConfirmDeletePdf(null)}
+        />
+      )}
+
+      {/* ── Confirm bulk delete: emails ── */}
+      {confirmBulkDeleteEmails && (
+        <ConfirmDeleteDialog
+          title={`Delete ${selectedEmailIds.size} selected message${selectedEmailIds.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {selectedEmailIds.size} message{selectedEmailIds.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
+            </span>
+          }
+          deleting={emailBulkDeleting}
+          onConfirm={() => void handleBulkDeleteEmails()}
+          onCancel={() => setConfirmBulkDeleteEmails(false)}
+        />
+      )}
+
+      {/* ── Confirm bulk delete: PDF imports ── */}
+      {confirmBulkDeletePdfs && (
+        <ConfirmDeleteDialog
+          title={`Delete ${pdfSelectedIds.size} selected PDF import${pdfSelectedIds.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {pdfSelectedIds.size} import record{pdfSelectedIds.size !== 1 ? 's' : ''} and any associated Google Drive copies will be permanently removed. This cannot be undone.
+            </span>
+          }
+          deleting={pdfBulkDeleting}
+          onConfirm={() => void handleBulkDeletePdfs()}
+          onCancel={() => setConfirmBulkDeletePdfs(false)}
         />
       )}
 
