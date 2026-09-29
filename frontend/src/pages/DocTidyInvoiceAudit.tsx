@@ -2298,6 +2298,12 @@ export default function DocTidyInvoiceAudit() {
   const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
   const [pdfDeleting, setPdfDeleting] = useState(false)
 
+  /* ── Audit table delete ── */
+  const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
+  const [auditRowDeleting, setAuditRowDeleting] = useState(false)
+  const [confirmBulkDeleteAudit, setConfirmBulkDeleteAudit] = useState(false)
+  const [auditBulkDeleting, setAuditBulkDeleting] = useState(false)
+
   /* ── Filtered views (client-side column filters applied to the loaded page) ── */
   const filteredEmailMessages = useMemo(() => {
     const activeEntries = Object.entries(emailColFilters).filter(
@@ -2430,6 +2436,41 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeleteEmail(null)
     } finally {
       setEmailDeleting(false)
+    }
+  }
+
+  /* ── Audit table: single-row delete ── */
+  const handleDeleteOrderImport = async (order: DocTidyOrderImport) => {
+    setAuditRowDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/order-imports/${order._id}`)
+      setOrderImports((prev) => prev.filter((o) => o._id !== order._id))
+      setSelectedRowKeys((prev) => { const next = new Set(prev); next.delete(order._id); return next })
+      setOrderPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }))
+      setConfirmDeleteAuditRow(null)
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : 'Failed to delete order')
+      setConfirmDeleteAuditRow(null)
+    } finally {
+      setAuditRowDeleting(false)
+    }
+  }
+
+  /* ── Audit table: bulk delete selected rows ── */
+  const handleBulkDeleteOrderImports = async () => {
+    const ids = Array.from(selectedRowKeys)
+    setAuditBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/order-imports/bulk-delete', { ids })
+      setOrderImports((prev) => prev.filter((o) => !selectedRowKeys.has(o._id)))
+      setOrderPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setSelectedRowKeys(new Set())
+      setConfirmBulkDeleteAudit(false)
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : 'Failed to delete selected orders')
+      setConfirmBulkDeleteAudit(false)
+    } finally {
+      setAuditBulkDeleting(false)
     }
   }
 
@@ -4950,6 +4991,17 @@ export default function DocTidyInvoiceAudit() {
                     Export all
                   </button>
                 )}
+
+                {/* Bulk delete — visible only when rows are selected */}
+                {selectedRowKeys.size > 0 && (
+                  <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete {selectedRowKeys.size} selected
+                  </button>
+                )}
               </div>
 
               {/* Top pagination */}
@@ -5058,6 +5110,8 @@ export default function DocTidyInvoiceAudit() {
                           }}
                         />
                       ))}
+                      {/* Fixed actions column header */}
+                      <Th className="w-8" />
                     </tr>
                   </thead>
                   <tbody>
@@ -5074,11 +5128,12 @@ export default function DocTidyInvoiceAudit() {
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
+                          <td className="px-2.5 py-1" />
                         </tr>
                       ))
                     ) : orderImports.length === 0 ? (
                       <tr>
-                        <td colSpan={visibleCols.length + 1} className="py-16 text-center">
+                        <td colSpan={visibleCols.length + 2} className="py-16 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                               <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5114,7 +5169,7 @@ export default function DocTidyInvoiceAudit() {
                     ) : filteredOrderImports.length === 0 && activeFilterCount > 0 ? (
                       /* Column filters eliminated all rows on this page */
                       <tr>
-                        <td colSpan={visibleCols.length + 1} className="py-14 text-center">
+                        <td colSpan={visibleCols.length + 2} className="py-14 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
                               <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
@@ -5146,7 +5201,7 @@ export default function DocTidyInvoiceAudit() {
                           return b.localeCompare(a)
                         })
                         let rowIdx = 0
-                        const totalCols = visibleCols.length + 1
+                        const totalCols = visibleCols.length + 2
                         return sortedKeys.flatMap((weekKey) => {
                           const groupOrders = weekMap.get(weekKey)!
                           const isCollapsed = collapsedWeeks.has(weekKey)
@@ -5206,7 +5261,7 @@ export default function DocTidyInvoiceAudit() {
                             rowIdx++
                             return (
                               <tr key={order._id}
-                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
+                                className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
                                 <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
@@ -5224,6 +5279,19 @@ export default function DocTidyInvoiceAudit() {
                                     {auditCellFor(col.id, order, match)}
                                   </td>
                                 ))}
+                                {/* Per-row delete action */}
+                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteAuditRow(order)}
+                                    title="Delete this order"
+                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </td>
                               </tr>
                             )
                           })
@@ -5548,6 +5616,45 @@ export default function DocTidyInvoiceAudit() {
           deleting={pdfDeleting}
           onConfirm={() => void confirmAndDeletePdfImport(confirmDeletePdf)}
           onCancel={() => setConfirmDeletePdf(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: single audit row ── */}
+      {confirmDeleteAuditRow && (
+        <ConfirmDeleteDialog
+          title="Delete this order?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">
+                {confirmDeleteAuditRow.poNumber
+                  ? `PO #${confirmDeleteAuditRow.poNumber}`
+                  : confirmDeleteAuditRow.orderId || 'This order'}
+              </span>
+              {confirmDeleteAuditRow.customerName && (
+                <> for <span className="font-medium text-[var(--text-100)]">{confirmDeleteAuditRow.customerName}</span></>
+              )}
+              <br />
+              <span className="text-[var(--text-200)]">The row will be permanently removed from the audit table. This cannot be undone.</span>
+            </>
+          }
+          deleting={auditRowDeleting}
+          onConfirm={() => void handleDeleteOrderImport(confirmDeleteAuditRow)}
+          onCancel={() => setConfirmDeleteAuditRow(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: bulk audit rows ── */}
+      {confirmBulkDeleteAudit && (
+        <ConfirmDeleteDialog
+          title={`Delete ${selectedRowKeys.size} selected order${selectedRowKeys.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {selectedRowKeys.size} row{selectedRowKeys.size !== 1 ? 's' : ''} will be permanently removed from the audit table. This cannot be undone.
+            </span>
+          }
+          deleting={auditBulkDeleting}
+          onConfirm={() => void handleBulkDeleteOrderImports()}
+          onCancel={() => setConfirmBulkDeleteAudit(false)}
         />
       )}
     </div>
