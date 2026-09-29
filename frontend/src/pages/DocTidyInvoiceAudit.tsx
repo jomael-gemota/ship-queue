@@ -2147,7 +2147,7 @@ function ConfirmDeleteDialog({
 
 /* ──────────────────────────────────────────────── Page ── */
 
-const AUDIT_PAGE_SIZES = [100, 250, 500, 1000]
+const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
 
 export default function DocTidyInvoiceAudit() {
   const { user: currentUser } = useAuth()
@@ -2189,7 +2189,7 @@ export default function DocTidyInvoiceAudit() {
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [orderPage, setOrderPage] = useState(1)
-  const [orderPageSize, setOrderPageSize] = useState(100)
+  const [orderPageSize, setOrderPageSize] = useState(500)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
