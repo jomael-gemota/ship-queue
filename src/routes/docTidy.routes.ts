@@ -10,6 +10,7 @@ import {
   getMessages,
   getMessageById,
   deleteMessage,
+  bulkDeleteMessages,
   streamEvents,
   getConfig,
   updateConfig,
@@ -55,6 +56,7 @@ import {
   uploadPdfImports,
   sendPdfImportToAgent,
   deletePdfImport,
+  bulkDeletePdfImports,
 } from '../controllers/docTidyPdfImport.controller';
 import {
   orderImportUpload,
@@ -83,6 +85,7 @@ router.post('/run', runAllRules);
 router.get('/messages', getMessages);
 router.get('/messages/:id', getMessageById);
 router.delete('/messages/:id', deleteMessage);
+router.post('/messages/bulk-delete', bulkDeleteMessages);
 
 // Long-lived SSE stream: tells open results tables when to refetch.
 router.get('/stream', streamEvents);
@@ -127,6 +130,7 @@ router.get('/pdf-imports', listPdfImports);
 router.post('/pdf-imports', pdfUpload.array('files'), uploadPdfImports);
 router.post('/pdf-imports/:id/parse', sendPdfImportToAgent);
 router.delete('/pdf-imports/:id', deletePdfImport);
+router.post('/pdf-imports/bulk-delete', bulkDeletePdfImports);
 
 // Order imports (CSV/XLSX) — primary data source for the Invoice Audit table.
 router.get('/order-imports', listOrderImports);

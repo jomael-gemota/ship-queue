@@ -590,6 +590,50 @@ export const deleteMessage = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+/* ── Bulk-delete messages by an explicit list of IDs ── */
+export const bulkDeleteMessages = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return;
+    }
+    if (!ids.every((id) => typeof id === 'string' && isValidObjectId(id))) {
+      res.status(400).json({ message: 'All ids must be valid ObjectIds' });
+      return;
+    }
+
+    // Load the messages so we can collect Drive file IDs and cascade-delete parse jobs.
+    const messages = await DocTidyMessage.find({ _id: { $in: ids } }).lean();
+    const messageObjectIds = messages.map((m) => m._id);
+
+    // Delete associated parse jobs.
+    if (messageObjectIds.length > 0) {
+      await DocTidyParseJob.deleteMany({ messageId: { $in: messageObjectIds } });
+    }
+
+    // Best-effort: delete Drive attachment files.
+    const driveFileIds = messages.flatMap((m) =>
+      (m.attachments ?? []).map((a) => a.driveFileId).filter((fid): fid is string => Boolean(fid))
+    );
+    if (driveFileIds.length > 0) {
+      const config = await getDocTidyConfigDoc(true).catch(() => null);
+      if (config?.gmailRefreshToken) {
+        await Promise.allSettled(
+          driveFileIds.map((fileId) =>
+            deleteDriveFile({ refreshToken: config.gmailRefreshToken }, fileId)
+          )
+        );
+      }
+    }
+
+    const result = await DocTidyMessage.deleteMany({ _id: { $in: ids } });
+    res.json({ data: { deleted: result.deletedCount } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to bulk delete messages', error: (error as Error).message });
+  }
+};
+
 /* -------------------------------------------------------- workspace-scoped UI prefs */
 
 /**
