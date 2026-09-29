@@ -3889,7 +3889,7 @@ export default function DocTidyInvoiceAudit() {
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                  <table className="w-full text-[11px] border-separate border-spacing-0">
+                  <table className="text-[11px] border-separate border-spacing-0">
                     <thead>
                       <tr>
                         <Th className="w-8">
@@ -4438,7 +4438,7 @@ export default function DocTidyInvoiceAudit() {
                       </button>
                     </div>
                   ) : (
-                    <table className="w-full text-[11px] border-separate border-spacing-0">
+                    <table className="text-[11px] border-separate border-spacing-0">
                       <thead>
                         <tr>
                           {/* Checkbox — select all */}
@@ -4955,7 +4955,7 @@ export default function DocTidyInvoiceAudit() {
                     100% { transform: translateX(-100%); }
                   }
                 `}</style>
-                <table className="w-full text-[11px] border-separate border-spacing-0">
+                <table className="text-[11px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <Th className="w-8">
