@@ -4011,9 +4011,9 @@ export default function DocTidyInvoiceAudit() {
                       <button
                         type="button"
                         onClick={() => setConfirmBulkDeleteEmails(true)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
                       >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         Delete {selectedEmailIds.size} selected
@@ -4512,9 +4512,9 @@ export default function DocTidyInvoiceAudit() {
                       <button
                         type="button"
                         onClick={() => setConfirmBulkDeletePdfs(true)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
                       >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         Delete {pdfSelectedIds.size} selected
