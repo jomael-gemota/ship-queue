@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { authApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import {
   Banner,
   DocumentTypeBadge,
@@ -38,6 +39,7 @@ import {
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
+  type DocTidyOrganization,
   type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
   type WorkspaceEmailColumn,
@@ -668,10 +670,13 @@ function WorkspaceEditorDialog({
   initial,
   onSave,
   onClose,
+  initialOrgId,
 }: {
   initial: DocTidyWorkspace | null
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
+  /** When creating a new workspace inside an org, pre-assign this org. */
+  initialOrgId?: string
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [saving, setSaving] = useState(false)
@@ -690,7 +695,8 @@ function WorkspaceEditorDialog({
     setSaving(true)
     setError(null)
     try {
-      const body = { name: name.trim() }
+      const body: Record<string, unknown> = { name: name.trim() }
+      if (!initial && initialOrgId) body.organizationId = initialOrgId
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -783,11 +789,15 @@ function WorkspaceCard({
   onOpen,
   onEdit,
   onDelete,
+  onMove,
+  isAdmin = false,
 }: {
   workspace: DocTidyWorkspace
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
+  onMove?: () => void
+  isAdmin?: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -825,10 +835,440 @@ function WorkspaceCard({
           ) : (
             <>
               <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Edit</button>
+              {isAdmin && onMove && (
+                <button onClick={onMove} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Move</button>
+              )}
               <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400">Delete</button>
               <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity">Open →</button>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────── Organization card ── */
+
+function OrgCard({
+  org,
+  workspaceCount,
+  onOpen,
+  onEdit,
+  onDelete,
+  isAdmin = false,
+}: {
+  org: DocTidyOrganization
+  workspaceCount: number
+  onOpen: () => void
+  onEdit: () => void
+  onDelete: () => void
+  isAdmin?: boolean
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  return (
+    <div
+      onClick={onOpen}
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+    >
+      {/* Body */}
+      <div className="flex-1 px-5 pt-5 pb-4">
+        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        </div>
+        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
+          {org.name}
+        </h3>
+        <div className="mt-2 flex items-center gap-3">
+          <span className="text-[11px] text-[var(--text-200)]">
+            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
+          </span>
+          <span className="text-[11px] text-[var(--text-200)]">·</span>
+          <span className="text-[11px] text-[var(--text-200)]">
+            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div
+        className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="text-[11px] text-[var(--text-200)]">
+          Created {new Date(org.createdAt).toLocaleDateString()}
+        </span>
+        <div className="flex items-center gap-1">
+          {confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-rose-500">Delete?</span>
+              <button
+                onClick={onDelete}
+                className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={onEdit}
+                    className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+              <button
+                onClick={onOpen}
+                className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity"
+              >
+                Open →
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────── Organization editor dialog ── */
+
+/** Slim user record returned by GET /doc-tidy/organizations/users */
+interface OrgUserOption {
+  _id: string
+  name: string
+  email: string
+  avatar?: string
+  role: string
+}
+
+function OrganizationEditorDialog({
+  initial,
+  onSave,
+  onClose,
+}: {
+  initial: DocTidyOrganization | null
+  onSave: (org: DocTidyOrganization) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [memberIds, setMemberIds] = useState<Set<string>>(new Set(initial?.memberUserIds ?? []))
+  const [users, setUsers] = useState<OrgUserOption[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    nameRef.current?.focus()
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  useEffect(() => {
+    authApi
+      .get<{ data: OrgUserOption[] }>('/doc-tidy/organizations/users')
+      .then((res) => setUsers(res.data))
+      .catch(() => setError('Could not load users'))
+      .finally(() => setUsersLoading(false))
+  }, [])
+
+  const toggleMember = (userId: string) => {
+    setMemberIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const submit = async () => {
+    if (!name.trim()) { setError('Please enter an organization name.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const body = { name: name.trim(), memberUserIds: Array.from(memberIds) }
+      let result: { data: DocTidyOrganization }
+      if (initial) {
+        result = await authApi.put<{ data: DocTidyOrganization }>(`/doc-tidy/organizations/${initial._id}`, body)
+      } else {
+        result = await authApi.post<{ data: DocTidyOrganization }>('/doc-tidy/organizations', body)
+      }
+      onSave(result.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save organization')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        style={{ maxHeight: 'min(85vh, 680px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">
+              {initial ? 'Edit organization' : 'New organization'}
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              {initial
+                ? 'Rename and manage who can access workspaces in this organization.'
+                : 'Create a named organization to group workspaces and control access.'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Name */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+              Organization name
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void submit()}
+              placeholder="e.g. Outdoor Equipped, Operations Team…"
+              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+          </div>
+
+          {/* Members */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+              Members
+            </label>
+            <p className="text-[11px] text-[var(--text-200)] mb-2">
+              Checked users can view workspaces inside this organization. Admins always have access.
+            </p>
+            {usersLoading ? (
+              <div className="flex items-center gap-2 py-3 text-xs text-[var(--text-200)]">
+                <Spinner className="h-3.5 w-3.5" /> Loading users…
+              </div>
+            ) : (
+              <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)]" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                {users.map((u) => {
+                  const checked = memberIds.has(u._id)
+                  return (
+                    <label
+                      key={u._id}
+                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleMember(u._id)}
+                        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+                      />
+                      <span
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: avatarColour(u.name) }}
+                      >
+                        {u.name.charAt(0).toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[var(--text-100)] truncate">
+                          {u.name}
+                          {u.role === 'admin' && (
+                            <span className="ml-1.5 text-[10px] text-violet-500 font-semibold">(admin)</span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-[var(--text-200)] truncate">{u.email}</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+          <button type="button" onClick={onClose}
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={saving || usersLoading}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+            {saving ? 'Saving…' : initial ? 'Save changes' : 'Create organization'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────── Move workspace dialog ── */
+
+function MoveWorkspaceDialog({
+  workspace,
+  organizations,
+  onSave,
+  onClose,
+}: {
+  workspace: DocTidyWorkspace
+  organizations: DocTidyOrganization[]
+  onSave: (updated: DocTidyWorkspace) => void
+  onClose: () => void
+}) {
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(workspace.organizationId ?? null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await authApi.put<{ data: DocTidyWorkspace }>(
+        `/doc-tidy/workspaces/${workspace._id}`,
+        { organizationId: selectedOrgId ?? null }
+      )
+      onSave(result.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to move workspace')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        style={{ maxHeight: 'min(80vh, 560px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Move workspace</h2>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              Choose an organization for <span className="font-medium text-[var(--text-100)]">{workspace.name}</span>.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="space-y-2">
+            {/* Unassigned option */}
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--bg-300)] px-4 py-3 cursor-pointer hover:bg-[var(--bg-200)] transition-colors">
+              <input
+                type="radio"
+                name="orgPick"
+                checked={selectedOrgId === null}
+                onChange={() => setSelectedOrgId(null)}
+                className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+              />
+              <div>
+                <p className="text-xs font-medium text-[var(--text-100)]">Unassigned</p>
+                <p className="text-[10px] text-[var(--text-200)]">Visible to all users</p>
+              </div>
+            </label>
+
+            {organizations.map((org) => (
+              <label
+                key={org._id}
+                className="flex items-center gap-3 rounded-lg border border-[var(--bg-300)] px-4 py-3 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
+              >
+                <input
+                  type="radio"
+                  name="orgPick"
+                  checked={selectedOrgId === org._id}
+                  onChange={() => setSelectedOrgId(org._id)}
+                  className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+                />
+                <div>
+                  <p className="text-xs font-medium text-[var(--text-100)]">{org.name}</p>
+                  <p className="text-[10px] text-[var(--text-200)]">
+                    {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </label>
+            ))}
+
+            {organizations.length === 0 && (
+              <p className="text-xs text-[var(--text-200)] py-2">No organizations exist yet. Create one first.</p>
+            )}
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+          <button type="button" onClick={onClose}
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={saving}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+            {saving ? 'Moving…' : 'Move workspace'}
+          </button>
         </div>
       </div>
     </div>
@@ -1387,13 +1827,28 @@ function ConfirmDeleteDialog({
 const AUDIT_PAGE_SIZES = [100, 250, 500, 1000]
 
 export default function DocTidyInvoiceAudit() {
+  const { user: currentUser } = useAuth()
+  const isAdmin = currentUser?.role === 'admin'
+
   /* ── View state ── */
-  type View = 'workspaces' | 'audit'
-  const [view, setView] = useState<View>('workspaces')
+  type View = 'organizations' | 'workspaces' | 'audit'
+  const [view, setView] = useState<View>('organizations')
+  const [activeOrg, setActiveOrg] = useState<DocTidyOrganization | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
   /** Which sub-tab is active inside a workspace detail page. */
   type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
+
+  /* ── Organizations ── */
+  const [organizations, setOrganizations] = useState<DocTidyOrganization[]>([])
+  const [orgLoading, setOrgLoading] = useState(true)
+  const [orgError, setOrgError] = useState<string | null>(null)
+
+  /* ── Organization editor ── */
+  const [editOrgTarget, setEditOrgTarget] = useState<DocTidyOrganization | 'new' | null>(null)
+
+  /* ── Move workspace dialog ── */
+  const [moveTarget, setMoveTarget] = useState<DocTidyWorkspace | null>(null)
 
   /* ── Workspaces ── */
   const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
@@ -1403,8 +1858,7 @@ export default function DocTidyInvoiceAudit() {
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
 
-  /* ── Tidy Agent worker status ── */
-  const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
+  /* ── Tidy Agent worker status ── */const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
 
   /* ── Audit table — Order Imports (primary rows) ── */
   const [orderImports, setOrderImports] = useState<DocTidyOrderImport[]>([])
@@ -1855,6 +2309,22 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
+  /* ── Load organizations on mount ── */
+  const loadOrganizations = useCallback(async () => {
+    setOrgLoading(true)
+    setOrgError(null)
+    try {
+      const res = await authApi.get<{ data: DocTidyOrganization[] }>('/doc-tidy/organizations')
+      setOrganizations(res.data)
+    } catch (err) {
+      setOrgError(err instanceof Error ? err.message : 'Failed to load organizations')
+    } finally {
+      setOrgLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void loadOrganizations() }, [loadOrganizations])
+
   /* ── Load shared column order from server on mount ── */
   useEffect(() => {
     authApi
@@ -2237,7 +2707,12 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const leaveWorkspace = () => {
-    setView('workspaces')
+    // Go back to the org's workspace list if we came from one, else org landing
+    if (activeOrg) {
+      setView('workspaces')
+    } else {
+      setView('organizations')
+    }
     setActiveWorkspace(null)
     setJobs([])
     setOrderImports([])
@@ -2253,8 +2728,23 @@ export default function DocTidyInvoiceAudit() {
     setEmailPagination({ total: 0, pages: 1 })
   }
 
+  /* ── Organization navigation ── */
+  const enterOrg = (org: DocTidyOrganization) => {
+    setActiveOrg(org)
+    setView('workspaces')
+  }
+
+  const leaveOrg = () => {
+    setActiveOrg(null)
+    setView('organizations')
+  }
+
   const openEditor = (target: DocTidyWorkspace | 'new') => {
     setEditTarget(target)
+  }
+
+  const openOrgEditor = (target: DocTidyOrganization | 'new') => {
+    setEditOrgTarget(target)
   }
 
   const handleWorkspaceSaved = (saved: DocTidyWorkspace) => {
@@ -2267,6 +2757,18 @@ export default function DocTidyInvoiceAudit() {
     })
     if (activeWorkspace?._id === saved._id) setActiveWorkspace(saved)
     setEditTarget(null)
+    setMoveTarget(null)
+  }
+
+  const handleOrgSaved = (saved: DocTidyOrganization) => {
+    setOrganizations((prev) => {
+      const idx = prev.findIndex((o) => o._id === saved._id)
+      if (idx === -1) return [...prev, saved]
+      const next = [...prev]
+      next[idx] = saved
+      return next
+    })
+    setEditOrgTarget(null)
   }
 
   const handleDeleteWorkspace = async (ws: DocTidyWorkspace) => {
@@ -2276,6 +2778,20 @@ export default function DocTidyInvoiceAudit() {
       if (activeWorkspace?._id === ws._id) leaveWorkspace()
     } catch (err) {
       setWsError(err instanceof Error ? err.message : 'Failed to delete workspace')
+    }
+  }
+
+  const handleDeleteOrg = async (org: DocTidyOrganization) => {
+    try {
+      await authApi.delete(`/doc-tidy/organizations/${org._id}`)
+      setOrganizations((prev) => prev.filter((o) => o._id !== org._id))
+      // Workspaces in the deleted org become unassigned — clear their organizationId in local state
+      setWorkspaces((prev) =>
+        prev.map((w) => w.organizationId === org._id ? { ...w, organizationId: undefined } : w)
+      )
+      if (activeOrg?._id === org._id) leaveOrg()
+    } catch (err) {
+      setOrgError(err instanceof Error ? err.message : 'Failed to delete organization')
     }
   }
 
@@ -2338,6 +2854,19 @@ export default function DocTidyInvoiceAudit() {
   }, [orderImports, colFilters, invoiceMatchMap])
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
+
+  /* ── Org / workspace grouping ── */
+  /** Workspaces that have no organization assignment (visible to all users). */
+  const unassignedWorkspaces = useMemo(
+    () => workspaces.filter((w) => !w.organizationId),
+    [workspaces]
+  )
+
+  /** Workspaces belonging to the currently active organization. */
+  const orgWorkspaces = useMemo(
+    () => (activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []),
+    [workspaces, activeOrg]
+  )
 
   /* ── Email column filter helpers ── */
   const getEmailColUniqueValues = useCallback((colId: WorkspaceEmailColumnId): Map<string, number> => {
@@ -2621,26 +3150,183 @@ export default function DocTidyInvoiceAudit() {
   /* ── Render ── */
   return (
     <div className="space-y-4">
-      {/* ── Global error banner ── */}
+      {/* ── Global error banners ── */}
       {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
+      {orgError && <Banner kind="error" onDismiss={() => setOrgError(null)}>{orgError}</Banner>}
 
-      {/* ══════════════════════════════ WORKSPACE LIST ══════════════════════════════ */}
-      {view === 'workspaces' && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--text-100)]">Invoice Workspaces</h2>
-              <p className="mt-0.5 text-xs text-[var(--text-200)]">
-                Create a workspace to scope your invoice audit to specific filter rules.
-              </p>
+      {/* ══════════════════════════ ORGANIZATIONS LANDING ══════════════════════════ */}
+      {view === 'organizations' && (
+        <div className="space-y-8">
+
+          {/* ── Organizations section ── */}
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-100)]">Organizations</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                  Group workspaces by team or project and control who can access them.
+                </p>
+              </div>
+              {isAdmin && (
+                <button type="button" onClick={() => openOrgEditor('new')}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New organization
+                </button>
+              )}
             </div>
-            <button type="button" onClick={() => openEditor('new')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+
+            {orgLoading ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
+                    <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                    <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                  </div>
+                ))}
+              </div>
+            ) : organizations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-14 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 mb-4">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-semibold text-[var(--text-100)]">No organizations yet</h3>
+                <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
+                  {isAdmin
+                    ? 'Create an organization to group workspaces and control who can access them.'
+                    : 'You have not been added to any organizations yet. Contact an admin.'}
+                </p>
+                {isAdmin && (
+                  <button type="button" onClick={() => openOrgEditor('new')}
+                    className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create first organization
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {organizations.map((org) => (
+                  <OrgCard
+                    key={org._id}
+                    org={org}
+                    workspaceCount={workspaces.filter((w) => w.organizationId === org._id).length}
+                    onOpen={() => enterOrg(org)}
+                    onEdit={() => openOrgEditor(org)}
+                    onDelete={() => void handleDeleteOrg(org)}
+                    isAdmin={isAdmin}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Unassigned workspaces section ── */}
+          {(wsLoading || unassignedWorkspaces.length > 0) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-100)]">Unassigned Workspaces</h3>
+                  <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                    Workspaces not linked to any organization — visible to all users.
+                    {isAdmin && ' Admins can move them into an organization.'}
+                  </p>
+                </div>
+                <button type="button" onClick={() => openEditor('new')}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New workspace
+                </button>
+              </div>
+
+              {wsLoading ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
+                      <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {unassignedWorkspaces.map((ws) => (
+                    <WorkspaceCard
+                      key={ws._id}
+                      workspace={ws}
+                      onOpen={() => enterWorkspace(ws)}
+                      onEdit={() => openEditor(ws)}
+                      onDelete={() => void handleDeleteWorkspace(ws)}
+                      onMove={() => setMoveTarget(ws)}
+                      isAdmin={isAdmin}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════ WORKSPACES WITHIN ORG ══════════════════════════ */}
+      {view === 'workspaces' && activeOrg && (
+        <div className="space-y-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button type="button" onClick={leaveOrg}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Organizations
+              </button>
+              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              New workspace
-            </button>
+              <span className="text-sm font-semibold text-[var(--text-100)] truncate">{activeOrg.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <button type="button" onClick={() => openOrgEditor(activeOrg)}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-xs text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit organization
+                </button>
+              )}
+              <button type="button" onClick={() => openEditor('new')}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New workspace
+              </button>
+            </div>
+          </div>
+
+          {/* Members badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-[var(--text-200)]">
+              {activeOrg.memberUserIds.length} member{activeOrg.memberUserIds.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[11px] text-[var(--bg-300)]">·</span>
+            <span className="text-[11px] text-[var(--text-200)]">
+              {orgWorkspaces.length} workspace{orgWorkspaces.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
           {wsLoading ? (
@@ -2658,7 +3344,7 @@ export default function DocTidyInvoiceAudit() {
                 </div>
               ))}
             </div>
-          ) : workspaces.length === 0 ? (
+          ) : orgWorkspaces.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
                 <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2666,27 +3352,29 @@ export default function DocTidyInvoiceAudit() {
                     d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                 </svg>
               </div>
-              <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces yet</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces in this organization</h3>
               <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
-                Workspaces let you scope the invoice audit to a named set of filter rules.
+                Create a workspace here or move an existing one into this organization.
               </p>
               <button type="button" onClick={() => openEditor('new')}
                 className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Create your first workspace
+                Create first workspace
               </button>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {workspaces.map((ws) => (
+              {orgWorkspaces.map((ws) => (
                 <WorkspaceCard
                   key={ws._id}
                   workspace={ws}
                   onOpen={() => enterWorkspace(ws)}
                   onEdit={() => openEditor(ws)}
                   onDelete={() => void handleDeleteWorkspace(ws)}
+                  onMove={() => setMoveTarget(ws)}
+                  isAdmin={isAdmin}
                 />
               ))}
             </div>
@@ -2700,13 +3388,13 @@ export default function DocTidyInvoiceAudit() {
 
           {/* Breadcrumb */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
               <button type="button" onClick={leaveWorkspace}
                 className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Workspaces
+                {activeOrg ? activeOrg.name : 'Organizations'}
               </button>
               <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -4405,6 +5093,26 @@ export default function DocTidyInvoiceAudit() {
           initial={editTarget === 'new' ? null : editTarget}
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
+          initialOrgId={editTarget === 'new' ? (activeOrg?._id) : undefined}
+        />
+      )}
+
+      {/* ── Organization editor (admin only) ── */}
+      {editOrgTarget !== null && (
+        <OrganizationEditorDialog
+          initial={editOrgTarget === 'new' ? null : editOrgTarget}
+          onSave={handleOrgSaved}
+          onClose={() => setEditOrgTarget(null)}
+        />
+      )}
+
+      {/* ── Move workspace dialog (admin only) ── */}
+      {moveTarget !== null && (
+        <MoveWorkspaceDialog
+          workspace={moveTarget}
+          organizations={organizations}
+          onSave={handleWorkspaceSaved}
+          onClose={() => setMoveTarget(null)}
         />
       )}
 
