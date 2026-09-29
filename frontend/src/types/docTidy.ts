@@ -542,22 +542,38 @@ function auditColStorageKey(workspaceId: string): string {
 }
 
 /**
- * Columns that are line-item-specific and should be hidden by default in
- * `header-only` workspaces where only PO-level data is available.
+ * Column visibility overrides applied to `header-only` workspaces.
+ * Only PO #, Invoice #, Invoice Date, Terms, and Total Cost are shown;
+ * everything else is hidden.  `terms` receives an explicit `true` because
+ * its `defaultVisible` is `false` in the full-workspace definition.
  */
-const HEADER_ONLY_HIDDEN_COLUMNS: InvoiceAuditColumnId[] = [
-  'invoiceSku',
-  'invoiceQty',
-  'itemCost',
-  'discountedCostPct',
-  'discrepancy',
-]
+const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean>> = {
+  // Order columns — hide all except poNumber
+  orderSku:          false,
+  orderQty:          false,
+  lesd:              false,
+  customerName:      false,
+  purchasedDate:     false,
+  status:            false,
+  // Invoice columns — show only invoiceDate, invoiceNumber, terms, totalCost
+  invoiceSku:        false,
+  itemCost:          false,
+  dcCogs:            false,
+  invoiceQty:        false,
+  discountedCostPct: false,
+  dropshipFee:       false,
+  miscCharges:       false,
+  terms:             true,   // normally hidden — force-show for header-only
+  // Computed
+  discrepancy:       false,
+}
 
 /** Load per-column visibility for a workspace from localStorage, falling back to defaults.
  *
  * @param workspaceId  The workspace whose saved preference to load.
- * @param importMode   When `'header-only'` and no saved preference exists, line-item
- *                     columns are hidden by default so the table is uncluttered for
+ * @param importMode   When `'header-only'`, only the five core header columns
+ *                     (PO #, Invoice #, Invoice Date, Terms, Total Cost) are
+ *                     visible by default so the table is uncluttered for
  *                     teams that only import PO numbers.
  */
 export function loadAuditColumnVisibility(
@@ -570,7 +586,7 @@ export function loadAuditColumnVisibility(
 
   // Apply header-only overrides to the base defaults.
   const modeDefaults: Record<InvoiceAuditColumnId, boolean> = importMode === 'header-only'
-    ? { ...defaults, ...Object.fromEntries(HEADER_ONLY_HIDDEN_COLUMNS.map((id) => [id, false])) }
+    ? { ...defaults, ...HEADER_ONLY_COLUMN_OVERRIDES }
     : defaults
 
   try {
