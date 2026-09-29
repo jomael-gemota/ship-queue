@@ -853,7 +853,6 @@ function WorkspaceCard({
 function OrgCard({
   org,
   workspaceCount,
-  workspaceNames,
   onOpen,
   onEdit,
   onDelete,
@@ -861,8 +860,6 @@ function OrgCard({
 }: {
   org: DocTidyOrganization
   workspaceCount: number
-  /** First few workspace names shown as preview chips inside the row. */
-  workspaceNames: string[]
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
@@ -909,23 +906,7 @@ function OrgCard({
           </span>
         </div>
 
-        {/* Workspace name previews */}
-        {workspaceNames.length > 0 && (
-          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-            {workspaceNames.slice(0, 3).map((wn) => (
-              <span key={wn}
-                className="rounded-md bg-[var(--bg-200)] dark:bg-[var(--bg-300)] border border-[var(--bg-300)] px-2 py-0.5 text-[10px] text-[var(--text-200)] truncate max-w-[160px]"
-              >
-                {wn}
-              </span>
-            ))}
-            {workspaceCount > 3 && (
-              <span className="text-[10px] text-[var(--text-200)]">
-                +{workspaceCount - 3} more
-              </span>
-            )}
-          </div>
-        )}
+        {/* Workspace name previews removed — keeps all rows uniform height */}
       </div>
 
       {/* Actions */}
@@ -3499,25 +3480,18 @@ export default function DocTidyInvoiceAudit() {
                 )}
               </div>
             ) : (
-              /* Full-width row list — visually distinct from the workspace card grid below */
               <div className="space-y-2">
-                {organizations.map((org) => {
-                  const orgWsNames = workspaces
-                    .filter((w) => w.organizationId === org._id)
-                    .map((w) => w.name)
-                  return (
-                    <OrgCard
-                      key={org._id}
-                      org={org}
-                      workspaceCount={orgWsNames.length}
-                      workspaceNames={orgWsNames}
-                      onOpen={() => enterOrg(org)}
-                      onEdit={() => openOrgEditor(org)}
-                      onDelete={() => void handleDeleteOrg(org)}
-                      isAdmin={isAdmin}
-                    />
-                  )
-                })}
+                {organizations.map((org) => (
+                  <OrgCard
+                    key={org._id}
+                    org={org}
+                    workspaceCount={workspaces.filter((w) => w.organizationId === org._id).length}
+                    onOpen={() => enterOrg(org)}
+                    onEdit={() => openOrgEditor(org)}
+                    onDelete={() => void handleDeleteOrg(org)}
+                    isAdmin={isAdmin}
+                  />
+                ))}
               </div>
             )}
           </div>
