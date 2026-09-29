@@ -5087,7 +5087,7 @@ export default function DocTidyInvoiceAudit() {
               </div>
 
               {/* Top pagination */}
-              {!orderLoading && orderPagination.total > 0 && (
+              {orderPagination.total > 0 && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
                   <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     <span>Rows per page:</span>
