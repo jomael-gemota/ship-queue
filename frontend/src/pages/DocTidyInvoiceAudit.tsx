@@ -992,8 +992,10 @@ function OrganizationEditorDialog({
   /* ── Workspaces tab state ── */
   const [wsMoving, setWsMoving] = useState<string | null>(null)     // id of ws being moved
   const [wsError, setWsError] = useState<string | null>(null)
-  /** Which unassigned workspace has its org-picker dropdown open. */
+  /** Which in-org workspace has the "Move to…" org picker expanded. */
   const [wsPickerOpen, setWsPickerOpen] = useState<string | null>(null)
+  /** Which in-org workspace is showing the remove-confirmation panel. */
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeTab === 'settings') nameRef.current?.focus()
@@ -1056,6 +1058,7 @@ function OrganizationEditorDialog({
       )
       onWorkspaceMoved(result.data)
       setWsPickerOpen(null)
+      setConfirmRemoveId(null)
     } catch (err) {
       setWsError(err instanceof Error ? err.message : 'Failed to move workspace')
     } finally {
@@ -1229,51 +1232,103 @@ function OrganizationEditorDialog({
                 ) : (
                   <div className="rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)] overflow-hidden">
                     {inOrgWorkspaces.map((ws) => (
-                      <div key={ws._id} className="flex items-center gap-3 px-4 py-2.5">
-                        <svg className="h-4 w-4 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-                            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-                        </svg>
-                        <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {/* Move to another org — inline picker */}
-                          <div className="relative">
+                      <div key={ws._id}>
+                        {/* ── Main row ── */}
+                        <div className="flex items-center gap-3 px-4 py-2.5">
+                          <svg className="h-4 w-4 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                          </svg>
+                          <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Move to another org — toggles inline picker below */}
                             <button
                               type="button"
-                              onClick={() => setWsPickerOpen(wsPickerOpen === ws._id ? null : ws._id)}
+                              onClick={() => {
+                                setConfirmRemoveId(null)
+                                setWsPickerOpen(wsPickerOpen === ws._id ? null : ws._id)
+                              }}
                               disabled={wsMoving === ws._id}
-                              className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] disabled:opacity-40"
+                              className={[
+                                'cursor-pointer rounded px-2 py-1 text-[11px] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors',
+                                wsPickerOpen === ws._id
+                                  ? 'bg-[var(--bg-300)] text-[var(--text-100)]'
+                                  : 'text-[var(--text-200)] hover:text-[var(--text-100)]',
+                              ].join(' ')}
                             >
                               Move to…
                             </button>
-                            {wsPickerOpen === ws._id && (
-                              <div className="absolute right-0 top-full mt-1 z-10 w-48 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-lg py-1">
-                                {orgsForPicker.map((org) => (
-                                  <button
-                                    key={org._id}
-                                    type="button"
-                                    onClick={() => void moveWorkspace(ws, org._id)}
-                                    className="w-full cursor-pointer text-left px-3 py-2 text-xs text-[var(--text-100)] hover:bg-[var(--bg-200)] truncate"
-                                  >
-                                    {org.name}
-                                  </button>
-                                ))}
-                                {orgsForPicker.length === 0 && (
-                                  <p className="px-3 py-2 text-xs text-[var(--text-200)]">No other organizations</p>
-                                )}
-                              </div>
+                            {/* Remove — toggles inline confirmation below */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWsPickerOpen(null)
+                                setConfirmRemoveId(confirmRemoveId === ws._id ? null : ws._id)
+                              }}
+                              disabled={wsMoving === ws._id}
+                              className={[
+                                'cursor-pointer rounded px-2 py-1 text-[11px] disabled:opacity-40 transition-colors',
+                                confirmRemoveId === ws._id
+                                  ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
+                                  : 'text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400',
+                              ].join(' ')}
+                            >
+                              {wsMoving === ws._id ? '…' : 'Remove'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ── Inline org picker (fixes overflow clipping) ── */}
+                        {wsPickerOpen === ws._id && (
+                          <div className="border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3 space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                              Move to another organization:
+                            </p>
+                            {orgsForPicker.length === 0 ? (
+                              <p className="text-xs text-[var(--text-200)]">No other organizations exist.</p>
+                            ) : (
+                              orgsForPicker.map((org) => (
+                                <button
+                                  key={org._id}
+                                  type="button"
+                                  onClick={() => void moveWorkspace(ws, org._id)}
+                                  disabled={wsMoving === ws._id}
+                                  className="w-full cursor-pointer text-left rounded-lg px-3 py-2 text-xs text-[var(--text-100)] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors"
+                                >
+                                  {org.name}
+                                </button>
+                              ))
                             )}
                           </div>
-                          {/* Remove from org */}
-                          <button
-                            type="button"
-                            onClick={() => void moveWorkspace(ws, null)}
-                            disabled={wsMoving === ws._id}
-                            className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 disabled:opacity-40"
-                          >
-                            {wsMoving === ws._id ? '…' : 'Remove'}
-                          </button>
-                        </div>
+                        )}
+
+                        {/* ── Inline remove confirmation ── */}
+                        {confirmRemoveId === ws._id && (
+                          <div className="border-t border-[var(--bg-300)] bg-rose-50 dark:bg-rose-900/10 px-4 py-3">
+                            <p className="text-xs text-[var(--text-100)] mb-2.5">
+                              Remove <span className="font-semibold">{ws.name}</span> from this organization?
+                              It will become unassigned and visible to all users.
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void moveWorkspace(ws, null)}
+                                disabled={wsMoving === ws._id}
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                              >
+                                {wsMoving === ws._id && <Spinner className="h-3 w-3 text-white" />}
+                                {wsMoving === ws._id ? 'Removing…' : 'Yes, remove'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmRemoveId(null)}
+                                className="cursor-pointer rounded-lg px-3 py-1.5 text-[11px] text-[var(--text-200)] hover:bg-rose-100 dark:hover:bg-rose-900/20"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
