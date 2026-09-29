@@ -30,6 +30,15 @@ export interface IDocTidyWorkspace extends Document {
    */
   pdfImportColOrder?: string[];
 
+  /**
+   * Controls how order imports are matched to parsed invoices for this workspace.
+   *
+   * `full` (default) — all import fields supported; matching requires PO # + SKU.
+   * `header-only`    — only PO # is required; matching by PO # alone; line-item
+   *                    columns are hidden by default in the Invoice Audit table.
+   */
+  importMode?: 'full' | 'header-only';
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +52,11 @@ const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
     auditColumnOrder: { type: [String], default: undefined },
     wsEmailColumnOrder: { type: [String], default: undefined },
     pdfImportColOrder: { type: [String], default: undefined },
+    importMode: {
+      type: String,
+      enum: ['full', 'header-only'],
+      default: 'full',
+    },
   },
   { timestamps: true }
 );

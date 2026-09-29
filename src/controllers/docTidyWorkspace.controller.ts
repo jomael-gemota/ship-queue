@@ -98,7 +98,11 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { name, organizationId } = req.body as { name?: unknown; organizationId?: unknown };
+    const { name, organizationId, importMode } = req.body as {
+      name?: unknown;
+      organizationId?: unknown;
+      importMode?: unknown;
+    };
     const update: Record<string, unknown> = {};
 
     if (name !== undefined) {
@@ -116,6 +120,19 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
         return;
       }
       update.organizationId = organizationId === null ? null : String(organizationId);
+    }
+
+    // importMode: only admins may change the workspace import mode.
+    if (importMode !== undefined) {
+      if (req.user?.role !== 'admin') {
+        res.status(403).json({ message: 'Only admins can change the workspace import mode' });
+        return;
+      }
+      if (importMode !== 'full' && importMode !== 'header-only') {
+        res.status(400).json({ message: 'importMode must be "full" or "header-only"' });
+        return;
+      }
+      update.importMode = importMode;
     }
 
     const workspace = await DocTidyWorkspace.findByIdAndUpdate(
