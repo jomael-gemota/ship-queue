@@ -6,6 +6,7 @@ import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
   hhCartErrorMentionsSku,
   hhExcludedItems,
@@ -234,7 +235,9 @@ export default function HHSportswearItems() {
     rerunCartDraft,
     cartDraftBusyId,
     updateOrderItemExclude,
+    brand,
   } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const match = getOrder(groupId, orderId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -319,12 +322,12 @@ export default function HHSportswearItems() {
             <HHPlacedBadge status={order.cartStatus} error={order.placeError} />
             <HHRedraftButton
               size="sm"
-              title={hhOrderDraftTitle(order)}
+              title={hhOrderDraftTitle(order, orderDetails)}
               disabled={locked || !canDraft}
               busy={cartDraftBusyId === order.id}
               onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
             />
-            {hhOrderCanPlace(order) ? (
+            {!orderDetails && hhOrderCanPlace(order) ? (
               <HHPlaceButton
                 size="sm"
                 title={hhPlaceActionTitle(placeOrderEnabled)}

@@ -12,7 +12,7 @@ Ship Queue is an internal bulk shipping tool that integrates with **ShipStation'
 - **Google OAuth login** — Sign-in via Google, with optional workspace-domain restriction.
 - **Role & permission management** — Admins manage users, label-creation permissions, and sync configuration from the in-app Settings/Admin pages.
 - **Doc Tidy** — Extracts email messages and their attachments from a shared mailbox using named, team-wide rules (sender, subject/body keywords, date range, attachment type), copies the attachments to Google Drive, and lists the results in a searchable, filterable table. Each rule declares the kind of document it collects — Order Confirmation, Invoice or Other — which is stamped on every message it captures.
-- **Dropship B2B (Helly Hansen)** — Import Amazon Order ID + PO batches for HH Sportswear and HH Workwear, fill details from Seller Central, draft/verify Helly Hansen carts, and (when enabled) Place Order.
+- **Dropship B2B** — Import Amazon Order ID + PO batches for HH Sportswear, HH Workwear, and Thorogood. Fill details from Seller Central, draft and verify carts, and (when enabled) Place Order. Thorogood drafts its cart from the synced order details until a supplier API is connected.
 
 ## User Guide
 
@@ -341,12 +341,13 @@ attachment destination are admin-only.
 | PUT    | `/:id` | Update a shipment    |
 | DELETE | `/:id` | Delete a shipment    |
 
-### HH B2B — `/api/hh-sportswear` and `/api/hh-workwear`
+### Dropship B2B — `/api/hh-sportswear`, `/api/hh-workwear`, and `/api/thorogood`
 
 Same route module, scoped by brand. Sportswear uses portal
 `https://b2bsport.hellyhansen.com` (catalog `ASAPSPORT`, account `9014876`).
-Workwear uses `https://b2bwork.hellyhansen.com` (`ASAPWW`, `9062220`). All
-routes require a JWT.
+Workwear uses `https://b2bwork.hellyhansen.com` (`ASAPWW`, `9062220`).
+Thorogood (`/ordering/thorogood`) drafts carts from synced Seller Central
+details and does not call a supplier API. All routes require a JWT.
 
 | Method | Path                         | Description                           |
 | ------ | ---------------------------- | ------------------------------------- |

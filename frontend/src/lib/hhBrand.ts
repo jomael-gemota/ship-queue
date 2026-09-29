@@ -1,9 +1,11 @@
-export const HH_BRAND_IDS = ['sportswear', 'workwear'] as const
+export const HH_BRAND_IDS = ['sportswear', 'workwear', 'thorogood'] as const
 export type HHBrandId = (typeof HH_BRAND_IDS)[number]
+
+export type HHDraftMode = 'b2b' | 'order-details'
 
 export interface HHBrandDefinition {
   id: HHBrandId
-  slug: 'hh-sportswear' | 'hh-workwear'
+  slug: 'hh-sportswear' | 'hh-workwear' | 'thorogood'
   name: string
   supplier: string
   catalog: string
@@ -12,7 +14,9 @@ export interface HHBrandDefinition {
   path: string
   apiPrefix: string
   logo?: string
+  logoFit?: 'cover' | 'contain'
   cookieJarKey: string
+  draftMode: HHDraftMode
 }
 
 export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
@@ -28,6 +32,7 @@ export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
     apiPrefix: '/hh-sportswear',
     logo: '/brands/hh-sportswear.png',
     cookieJarKey: 'helly-hansen-sports-b2b',
+    draftMode: 'b2b',
   },
   workwear: {
     id: 'workwear',
@@ -41,13 +46,33 @@ export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
     apiPrefix: '/hh-workwear',
     logo: '/brands/hh-workwear.png',
     cookieJarKey: 'helly-hansen-work-b2b',
+    draftMode: 'b2b',
+  },
+  thorogood: {
+    id: 'thorogood',
+    slug: 'thorogood',
+    name: 'Thorogood',
+    supplier: 'Thorogood',
+    catalog: 'Order details sync',
+    baseUrl: 'https://order-details.invalid',
+    accountId: 'order-details',
+    path: '/ordering/thorogood',
+    apiPrefix: '/thorogood',
+    logo: '/brands/thorogood.jpg',
+    logoFit: 'contain',
+    cookieJarKey: '',
+    draftMode: 'order-details',
   },
 }
 
 export const HH_DEFAULT_BRAND: HHBrandId = 'sportswear'
 
 export function isHhBrandId(value: unknown): value is HHBrandId {
-  return value === 'sportswear' || value === 'workwear'
+  return typeof value === 'string' && (HH_BRAND_IDS as readonly string[]).includes(value)
+}
+
+export function hhUsesOrderDetailsDraft(brand: HHBrandId | unknown): boolean {
+  return hhBrand(brand).draftMode === 'order-details'
 }
 
 export function hhBrandId(value: unknown): HHBrandId {
@@ -59,8 +84,8 @@ export function hhBrand(brand: HHBrandId | unknown): HHBrandDefinition {
 }
 
 export function hhBrandFromPath(pathname: string): HHBrandId {
-  if (pathname.includes('/hh-workwear')) return 'workwear'
-  return 'sportswear'
+  const match = HH_BRAND_IDS.find((id) => pathname.includes(`/${HH_BRANDS[id].slug}`))
+  return match ?? HH_DEFAULT_BRAND
 }
 
 export function hhBrandPath(brand: HHBrandId, rest = ''): string {

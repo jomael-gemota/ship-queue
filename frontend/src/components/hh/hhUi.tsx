@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState, Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -16,6 +16,8 @@ import {
   hhVerifiedCounts,
   hhBatchProgress,
   type HHBatchProgressStage,
+  type HHProgressActivity,
+  type HHProgressLive,
   type HHProgressTone,
 } from '../../lib/hhSportswear'
 import { BackIcon, Spinner } from '../labels/labelUi'
@@ -23,6 +25,12 @@ import { Tooltip } from '../Tooltip'
 import type { HHPage } from '../../lib/hhNav'
 import { prefersReducedMotion } from '../../lib/hhNav'
 import { DROPSHIP_PATH } from '../../lib/dropship'
+import { hhBrand, hhBrandFromPath } from '../../lib/hhBrand'
+
+function useOrderingBrand() {
+  const { pathname } = useLocation()
+  return hhBrand(hhBrandFromPath(pathname))
+}
 
 export function HHBreadcrumb({
   groupId,
@@ -460,6 +468,7 @@ export function HHBatchHeaderMenu({
   onDelete: () => void
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const orderDetails = useOrderingBrand().draftMode === 'order-details'
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [coords, setCoords] = useState({ top: 0, right: 0 })
@@ -597,9 +606,13 @@ export function HHBatchHeaderMenu({
                     ? 'Regenerate unavailable'
                     : !canRedraft
                       ? 'Needs synced details'
-                      : hasCartDraft
-                        ? 'Regenerate B2B draft'
-                        : 'Draft B2B cart'}
+                      : orderDetails
+                        ? hasCartDraft
+                          ? 'Regenerate order-details cart'
+                          : 'Draft from order details'
+                        : hasCartDraft
+                          ? 'Regenerate B2B draft'
+                          : 'Draft B2B cart'}
                 </button>
                 <div className="my-1 border-t border-[var(--bg-300)]" />
                 <button
@@ -849,6 +862,7 @@ export function HHCartBadge({
   issues?: HHVerifyIssue[]
   error?: string
 }) {
+  const orderDetails = useOrderingBrand().draftMode === 'order-details'
   const message = (error ?? '').trim()
   if (status === 'none' && message) {
     return (
@@ -870,7 +884,9 @@ export function HHCartBadge({
       : column === 'ready'
         ? status === 'placed'
           ? 'Cart matched; order is placed'
-          : 'Matched the live B2B draft'
+          : orderDetails
+            ? 'Matched the order details'
+            : 'Matched the live B2B draft'
         : undefined
   if (!content) return badge
   return <Tooltip content={content}>{badge}</Tooltip>
@@ -1114,10 +1130,44 @@ export function HHBatchProgressLabels() {
   )
 }
 
-function HHProgressStation({ stage, railTone }: { stage: HHBatchProgressStage; railTone?: HHProgressTone }) {
+const HH_PROGRESS_LIVE_VERB: Record<HHBatchProgressStage['key'], Record<HHProgressLive['state'], string>> = {
+  details: { running: 'Syncing', queued: 'Queued' },
+  cart: { running: 'Drafting', queued: 'Queued' },
+  verified: { running: 'Checking', queued: 'Queued' },
+  placed: { running: 'Placing', queued: 'Queued' },
+}
+
+function progressLiveTip(stage: HHBatchProgressStage, live: HHProgressLive): string {
+  const order = live.orderId?.trim()
+  const orderBit = order ? ` · ${order}` : ''
+  if (live.state === 'queued') {
+    if (stage.key === 'details') return 'Queued to sync order details'
+    if (stage.key === 'cart') return 'Queued to draft the cart'
+    if (stage.key === 'verified') return 'Queued to check the cart'
+    return 'Queued to place'
+  }
+  if (stage.key === 'details') return `Syncing order details${orderBit}`
+  if (stage.key === 'cart') return `Drafting the cart${orderBit}`
+  if (stage.key === 'verified') return `Checking the cart${orderBit}`
+  return `Placing the order${orderBit}`
+}
+
+function HHProgressStation({
+  stage,
+  railTone,
+  live,
+}: {
+  stage: HHBatchProgressStage
+  railTone?: HHProgressTone
+  live?: HHProgressLive
+}) {
   const pct = stage.total <= 0 ? 0 : Math.min(100, Math.round((stage.done / stage.total) * 100))
-  return (
-    <span className={`relative inline-flex ${HH_PROGRESS_SLOT} flex-col items-center gap-1`}>
+  const verb = live ? HH_PROGRESS_LIVE_VERB[stage.key][live.state] : null
+  const station = (
+    <span
+      className={`relative inline-flex ${HH_PROGRESS_SLOT} flex-col items-center gap-1`}
+      aria-label={verb ? `${stage.label} ${stage.done} of ${stage.total}, ${verb}` : undefined}
+    >
       {railTone ? (
         <span
           className={`absolute -left-2 top-[3px] h-0.5 w-2 ${HH_PROGRESS_RAIL[railTone]}`}
@@ -1125,7 +1175,9 @@ function HHProgressStation({ stage, railTone }: { stage: HHBatchProgressStage; r
         />
       ) : null}
       <span
-        className={`relative block h-1.5 w-9 overflow-hidden rounded-full ${HH_PROGRESS_TRACK[stage.tone]}`}
+        className={`relative block h-1.5 w-9 overflow-hidden rounded-full ${HH_PROGRESS_TRACK[stage.tone]} ${
+          live?.state === 'running' ? 'motion-safe:animate-pulse outline outline-1 outline-[var(--accent-100)]' : ''
+        }`}
         aria-hidden="true"
       >
         <span
@@ -1136,16 +1188,31 @@ function HHProgressStation({ stage, railTone }: { stage: HHBatchProgressStage; r
       <span className={`font-mono text-[13px] font-medium tabular-nums leading-none ${HH_PROGRESS_TEXT[stage.tone]}`}>
         {stage.done}/{stage.total}
       </span>
+      {verb ? (
+        <span
+          className={`whitespace-nowrap text-[10px] font-medium leading-none tracking-tight ${
+            live?.state === 'running'
+              ? 'text-[var(--accent-100)] dark:text-[var(--accent-200)]'
+              : 'text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          {verb}
+        </span>
+      ) : null}
     </span>
   )
+  if (!live) return station
+  return <Tooltip content={progressLiveTip(stage, live)}>{station}</Tooltip>
 }
 
 export function HHBatchProgress({
   orders,
+  activity,
 }: {
   orders: Array<
     Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'cartError' | 'placeError' | 'verifyIssues' | 'items'>
   >
+  activity?: HHProgressActivity
 }) {
   if (orders.length === 0) return <HHSummaryDash />
   const stages = hhBatchProgress(orders)
@@ -1154,7 +1221,7 @@ export function HHBatchProgress({
       {(index) => {
         const stage = stages[index]
         const prev = index > 0 ? stages[index - 1] : undefined
-        return <HHProgressStation stage={stage} railTone={prev?.tone} />
+        return <HHProgressStation stage={stage} railTone={prev?.tone} live={activity?.[stage.key]} />
       }}
     </HHProgressRail>
   )
@@ -1250,7 +1317,12 @@ function PlaceOrderPlan({
   )
 }
 
-function confirmCopy(pending: HHPendingAction, placeOrderEnabled: boolean) {
+function confirmCopy(
+  pending: HHPendingAction,
+  placeOrderEnabled: boolean,
+  orderDetails: boolean,
+  brandName: string,
+) {
   const isGroup = pending.target === 'group'
   const orderId = pending.target === 'order' ? pending.order.orderId : null
   const createdBy = pending.target === 'group' ? pending.group.createdByName.trim() : null
@@ -1339,12 +1411,46 @@ function confirmCopy(pending: HHPendingAction, placeOrderEnabled: boolean) {
     return {
       title: isGroup
         ? replaceCart
-          ? 'Regenerate B2B drafts?'
-          : 'Draft B2B carts?'
+          ? orderDetails
+            ? 'Regenerate order-details carts?'
+            : 'Regenerate B2B drafts?'
+          : orderDetails
+            ? 'Draft carts from order details?'
+            : 'Draft B2B carts?'
         : replaceCart
-          ? 'Regenerate B2B draft?'
-          : 'Draft B2B cart?',
-      body: isGroup ? (
+          ? orderDetails
+            ? 'Regenerate order-details cart?'
+            : 'Regenerate B2B draft?'
+          : orderDetails
+            ? 'Draft cart from order details?'
+            : 'Draft B2B cart?',
+      body: orderDetails ? (
+        isGroup ? (
+          replaceCart ? (
+            <>
+              This will rebuild carts from synced order details for this batch. Orders still missing details are
+              skipped. Existing drafts will be replaced. Nothing is sent to {brandName}.
+            </>
+          ) : (
+            <>
+              This will build carts from synced order details for this batch. Orders still missing details are
+              skipped. Nothing is sent to {brandName}.
+            </>
+          )
+        ) : replaceCart ? (
+          <>
+            This will rebuild the cart from synced order details for order{' '}
+            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. The existing
+            draft will be replaced. Nothing is sent to {brandName}.
+          </>
+        ) : (
+          <>
+            This will build a cart from synced order details for order{' '}
+            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. Nothing is sent
+            to {brandName}.
+          </>
+        )
+      ) : isGroup ? (
         replaceCart ? (
           <>
             This will create new Helly Hansen B2B drafts for orders in this batch whose details are Synced.
@@ -1451,7 +1557,9 @@ export function HHConfirmModal({
   error?: string | null
   placeOrderEnabled?: boolean
 }) {
-  const copy = confirmCopy(pending, placeOrderEnabled)
+  const orderingBrand = useOrderingBrand()
+  const orderDetails = orderingBrand.draftMode === 'order-details'
+  const copy = confirmCopy(pending, placeOrderEnabled, orderDetails, orderingBrand.name)
   const [draftCart, setDraftCart] = useState(true)
   const isResync = pending.type === 'resync'
   const isPlace = pending.type === 'place'
@@ -1469,12 +1577,24 @@ export function HHConfirmModal({
           <HHConfirmSwitch
             checked={draftCart}
             disabled={busy}
-            label={replaceCart ? 'Also regenerate B2B cart' : 'Also draft B2B cart'}
+            label={
+              orderDetails
+                ? replaceCart
+                  ? 'Also regenerate order-details cart'
+                  : 'Also draft cart from order details'
+                : replaceCart
+                  ? 'Also regenerate B2B cart'
+                  : 'Also draft B2B cart'
+            }
             description={
               draftCart
                 ? replaceCart
-                  ? 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
-                  : 'Creates a Helly Hansen draft after details sync. The order is not placed.'
+                  ? orderDetails
+                    ? 'Builds a new cart from the synced order details. Existing drafts are replaced. The order is not placed.'
+                    : 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
+                  : orderDetails
+                    ? 'Builds a cart from the synced order details. The order is not placed.'
+                    : 'Creates a Helly Hansen draft after details sync. The order is not placed.'
                 : replaceCart
                   ? 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
                   : 'You can draft a cart later after details sync.'

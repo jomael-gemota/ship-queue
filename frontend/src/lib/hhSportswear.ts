@@ -109,22 +109,32 @@ export function hhDraftableOrders(
   return orders.filter(hhOrderCanDraft)
 }
 
-export function hhOrderDraftTitle(order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>): string {
+export function hhOrderDraftTitle(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
+  orderDetails = false,
+): string {
   if (order.cartStatus === 'placed') return 'Placed orders cannot have their cart regenerated'
   if (order.items.length > 0 && hhCartItems(order.items).length === 0) {
     return 'Every line is excluded from the cart'
   }
   if (!hhOrderCanDraft(order)) return 'Cart draft needs synced order details'
+  if (orderDetails) {
+    return order.cartStatus === 'none' ? 'Draft a cart from order details' : 'Regenerate the order-details cart'
+  }
   return order.cartStatus === 'none' ? 'Draft B2B cart for this order' : 'Regenerate B2B draft for this order'
 }
 
 export function hhGroupDraftTitle(
   orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+  orderDetails = false,
 ): string {
   if (orders.length > 0 && orders.every((order) => order.cartStatus === 'placed')) {
     return 'Placed orders cannot have their cart regenerated'
   }
   if (hhDraftableOrders(orders).length === 0) return 'Cart draft needs synced order details'
+  if (orderDetails) {
+    return hhHasCartDraft(orders) ? 'Regenerate order-details carts for this batch' : 'Draft carts from order details'
+  }
   return hhHasCartDraft(orders) ? 'Regenerate B2B draft for this batch' : 'Draft B2B cart for this batch'
 }
 
@@ -625,15 +635,21 @@ export interface HHCartDraftStatus {
   currentGroupId: string | null
   currentOrderId: string | null
   queued: number
+  queuedGroupIds?: string[]
   lastRunAt: string | null
   lastSuccessAt: string | null
   lastError: string | null
   lastRun: { drafted: number; skipped: number; failed: number } | null
   pendingUndrafted: number
   verifying?: boolean
+  verifyCurrentGroupId?: string | null
+  verifyCurrentOrderId?: string | null
+  verifyQueuedGroupIds?: string[]
   placing?: boolean
+  placeCurrentGroupId?: string | null
   placeCurrentOrderId?: string | null
   placeQueued?: number
+  placeQueuedGroupIds?: string[]
 }
 
 export interface HHScSyncStatus {
@@ -641,6 +657,7 @@ export interface HHScSyncStatus {
   currentGroupId: string | null
   currentOrderId: string | null
   queuedGroups: number
+  queuedGroupIds?: string[]
   lastRunAt: string | null
   lastSuccessAt: string | null
   lastError: string | null
@@ -648,6 +665,70 @@ export interface HHScSyncStatus {
   pendingUnsynced: number
   placeOrderEnabled?: boolean
   cart?: HHCartDraftStatus
+}
+
+export type HHProgressLiveState = 'running' | 'queued'
+
+export interface HHProgressLive {
+  state: HHProgressLiveState
+  orderId?: string | null
+}
+
+export type HHProgressActivity = Partial<Record<HHBatchProgressStage['key'], HHProgressLive>>
+
+function progressStageLive(
+  currentId: string | null | undefined,
+  running: boolean | undefined,
+  orderId: string | null | undefined,
+  queuedIds: string[] | undefined,
+  groupId: string,
+): HHProgressLive | undefined {
+  if (running && currentId === groupId) return { state: 'running', orderId }
+  if (queuedIds?.includes(groupId)) return { state: 'queued' }
+  return undefined
+}
+
+/** Which Progress stations are working on this batch right now. */
+export function hhProgressActivity(
+  status: HHScSyncStatus | null | undefined,
+  groupId: string,
+): HHProgressActivity {
+  if (!status) return {}
+  const cart = status.cart
+  const activity: HHProgressActivity = {}
+  const details = progressStageLive(
+    status.currentGroupId,
+    status.running,
+    status.currentOrderId,
+    status.queuedGroupIds,
+    groupId,
+  )
+  if (details) activity.details = details
+  const draft = progressStageLive(
+    cart?.currentGroupId,
+    cart?.running,
+    cart?.currentOrderId,
+    cart?.queuedGroupIds,
+    groupId,
+  )
+  if (draft) activity.cart = draft
+  const verified = progressStageLive(
+    cart?.verifyCurrentGroupId,
+    Boolean(cart?.verifyCurrentGroupId),
+    cart?.verifyCurrentOrderId,
+    cart?.verifyQueuedGroupIds,
+    groupId,
+  )
+  if (verified) activity.verified = verified
+  const placed = progressStageLive(
+    cart?.placeCurrentGroupId,
+    Boolean(cart?.placeCurrentGroupId),
+    cart?.placeCurrentOrderId,
+    cart?.placeQueuedGroupIds,
+    groupId,
+  )
+  if (placed) activity.placed = placed
+  return activity
 }
 
 export function getHHScSyncStatus(brand: HHBrandId) {

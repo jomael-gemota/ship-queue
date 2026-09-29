@@ -1,9 +1,11 @@
-import { hhBrandFromPath, hhBrandPath } from './hhBrand'
+import { HH_BRAND_IDS, HH_BRANDS, hhBrandFromPath, hhBrandPath } from './hhBrand'
 
 function hhSlugIndex(parts: string[]): number {
-  const sports = parts.indexOf('hh-sportswear')
-  if (sports !== -1) return sports
-  return parts.indexOf('hh-workwear')
+  for (const id of HH_BRAND_IDS) {
+    const index = parts.indexOf(HH_BRANDS[id].slug)
+    if (index !== -1) return index
+  }
+  return -1
 }
 
 export function hhDepth(pathname: string): number {

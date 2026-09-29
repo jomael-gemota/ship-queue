@@ -5,7 +5,7 @@ import HHOrderGroup, {
   rollupHhDetailsStatus,
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrandId } from '../lib/hhBrand';
+import { hhBrandId, isOrderDetailsDraftId } from '../lib/hhBrand';
 import { fetchHhB2bDocument, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import {
   compareSnapshots,
@@ -27,6 +27,8 @@ interface HhCartVerifyJob {
 
 const queue: HhCartVerifyJob[] = [];
 let draining = false;
+let verifyCurrentGroupId: string | null = null;
+let verifyCurrentOrderId: string | null = null;
 
 function jobLabel(job: HhCartVerifyJob): string {
   return job.childId ? `${job.groupId} order ${job.childId}` : job.groupId;
@@ -57,6 +59,7 @@ export function childCanVerify(child: IHHChildOrder): boolean {
   if (child.detailsStatus !== 'synced') return false;
   if (child.cartStatus === 'none' || child.cartStatus === 'placed') return false;
   const documentId = (child.b2bDraftId ?? '').trim();
+  if (isOrderDetailsDraftId(documentId)) return true;
   return Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
 }
 
@@ -115,6 +118,20 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
   );
   if (targets.length === 0) return;
 
+  const liveTargets: IHHChildOrder[] = [];
+  for (const child of targets) {
+    verifyCurrentOrderId = child.orderId;
+    if (!isOrderDetailsDraftId(child.b2bDraftId)) {
+      liveTargets.push(child);
+      continue;
+    }
+    const snapshot = snapshotFromChild(child);
+    const rows = compareSnapshots(snapshot, snapshot);
+    await persistVerification(groupId, String(child._id), 'ready', [], rows);
+    console.log(`${LOG} ${child.orderId} → ready (order details)`);
+  }
+  if (liveTargets.length === 0) return;
+
   let config;
   let cookie;
   try {
@@ -128,7 +145,8 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     throw err;
   }
 
-  for (const child of targets) {
+  for (const child of liveTargets) {
+    verifyCurrentOrderId = child.orderId;
     const documentId = (child.b2bDraftId ?? '').trim();
     try {
       const document = await fetchHhB2bDocument(config, cookie, documentId);
@@ -166,6 +184,8 @@ async function drainQueue(): Promise<void> {
     while (queue.length > 0) {
       const job = queue.shift();
       if (!job) break;
+      verifyCurrentGroupId = job.groupId;
+      verifyCurrentOrderId = null;
       try {
         await verifyHhCart(job.groupId, job.childId);
       } catch (err) {
@@ -173,6 +193,8 @@ async function drainQueue(): Promise<void> {
       }
     }
   } finally {
+    verifyCurrentGroupId = null;
+    verifyCurrentOrderId = null;
     draining = false;
     if (queue.length > 0) void drainQueue();
   }
@@ -201,6 +223,20 @@ export function enqueueHhCartVerify(groupId: string, childId?: string): void {
 
 export function getHhCartVerifyQueued(): number {
   return queue.length + (draining ? 1 : 0);
+}
+
+export function getHhCartVerifyRuntime(): {
+  running: boolean;
+  currentGroupId: string | null;
+  currentOrderId: string | null;
+  queuedGroupIds: string[];
+} {
+  return {
+    running: draining,
+    currentGroupId: verifyCurrentGroupId,
+    currentOrderId: verifyCurrentOrderId,
+    queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
+  };
 }
 
 export interface HhLiveCompareOrder {
@@ -254,6 +290,7 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
   let cookie;
   const needsLive = targets.some((child) => {
     const documentId = (child.b2bDraftId ?? '').trim();
+    if (isOrderDetailsDraftId(documentId)) return false;
     return Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
   });
   if (needsLive) {
@@ -265,6 +302,30 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
   for (const child of targets) {
     const details = snapshotFromChild(child);
     const documentId = (child.b2bDraftId ?? '').trim();
+    if (isOrderDetailsDraftId(documentId)) {
+      const rows = compareSnapshots(details, details);
+      const issues = issuesFromCompareRows(rows);
+      let cartStatus = child.cartStatus;
+      let verifiedAt = isoDate(child.verifiedAt);
+      if (childCanVerify(child)) {
+        const saved = await persistVerification(groupId, String(child._id), 'ready', issues, rows);
+        if (saved) {
+          cartStatus = saved.cartStatus;
+          verifiedAt = isoDate(saved.verifiedAt);
+        }
+      }
+      results.push({
+        id: String(child._id),
+        orderId: child.orderId,
+        cartStatus,
+        rows,
+        details,
+        cart: details,
+        canPlace: false,
+        verifiedAt,
+      });
+      continue;
+    }
     const hasLiveId = Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
 
     if (!hasLiveId) {

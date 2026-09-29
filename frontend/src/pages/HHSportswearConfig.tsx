@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
-import { hhBrand } from '../lib/hhBrand'
+import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -114,6 +114,10 @@ export default function HHSportswearConfig() {
   }
 
   useEffect(() => {
+    if (hhUsesOrderDetailsDraft(brand)) {
+      setLoadState('ready')
+      return
+    }
     let cancelled = false
     setLoadState('loading')
     getHHB2bConfig(brand)
@@ -227,6 +231,19 @@ export default function HHSportswearConfig() {
 
   if (loadState === 'error') {
     return <p className="px-5 py-8 text-sm text-red-600 dark:text-red-400">{loadError}</p>
+  }
+
+  if (hhUsesOrderDetailsDraft(brand)) {
+    return (
+      <div className="space-y-3 px-5 py-5">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Order details sync</h2>
+        <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
+          {brandDef.name} does not have a supplier API yet. After Seller Central fills an order, Ship Queue drafts a
+          cart from those details and checks the cart against them. Reference Number is the PO. Place Order stays off
+          until the API is connected. Seller Central still uses the shared Outdoor Equipped US cookie.
+        </p>
+      </div>
+    )
   }
 
   const brandLabel = brand === 'workwear' ? 'Work' : 'Sports'

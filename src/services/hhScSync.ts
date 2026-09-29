@@ -33,6 +33,7 @@ export interface HhScSyncRuntime {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queuedGroups: number;
+  queuedGroupIds: string[];
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -87,12 +88,17 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+function queuedGroupIds(jobs: Array<{ groupId: string }>): string[] {
+  return [...new Set(jobs.map((job) => job.groupId))];
+}
+
 export function getHhScSyncRuntime(): HhScSyncRuntime {
   return {
     running: draining,
     currentGroupId,
     currentOrderId,
     queuedGroups: queue.length,
+    queuedGroupIds: queuedGroupIds(queue),
     lastRunAt: iso(lastRunAt),
     lastSuccessAt: iso(lastSuccessAt),
     lastError,

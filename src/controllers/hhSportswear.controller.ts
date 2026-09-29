@@ -33,13 +33,14 @@ import {
   clearHhCartVerification,
   enqueueHhCartVerify,
   getHhCartVerifyQueued,
+  getHhCartVerifyRuntime,
   invalidateHhCartVerification,
   liveCompareHhCarts,
 } from '../services/hhCartVerify';
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrand, hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
+import { hhBrand, hhBrandFromRequest, hhBrandId, hhDraftMode, type HHBrandId } from '../lib/hhBrand';
 import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
 import { hhCartItems } from '../lib/hhLineItems';
 import { withHhGroupLock } from '../lib/hhGroupLock';
@@ -367,6 +368,15 @@ function requestBrand(req: Request): HHBrandId {
   return hhBrandFromRequest(req);
 }
 
+function rejectOrderDetailsPlace(req: Request, res: Response): boolean {
+  if (hhDraftMode(requestBrand(req)) !== 'order-details') return false;
+  const name = hhBrand(requestBrand(req)).name;
+  res.status(400).json({
+    message: `${name} carts are drafted from order details. Place Order waits until a supplier API is connected.`,
+  });
+  return true;
+}
+
 function isBrandGroup(group: { brand?: string } | null | undefined, req: Request): group is NonNullable<typeof group> {
   return Boolean(group) && hhBrandId(group?.brand) === requestBrand(req);
 }
@@ -380,6 +390,7 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
       getOrCreateHhB2bConfig(brand, false),
     ]);
     const place = getHhCartPlaceRuntime();
+    const verify = getHhCartVerifyRuntime();
     res.json({
       data: {
         ...getHhScSyncRuntime(),
@@ -388,10 +399,15 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
         cart: {
           ...getHhCartDraftRuntime(),
           pendingUndrafted,
-          verifying: getHhCartVerifyQueued() > 0,
+          verifying: verify.running || verify.queuedGroupIds.length > 0 || getHhCartVerifyQueued() > 0,
+          verifyCurrentGroupId: verify.currentGroupId,
+          verifyCurrentOrderId: verify.currentOrderId,
+          verifyQueuedGroupIds: verify.queuedGroupIds,
           placing: place.running || place.queued > 0,
+          placeCurrentGroupId: place.currentGroupId,
           placeCurrentOrderId: place.currentOrderId,
           placeQueued: place.queued,
+          placeQueuedGroupIds: place.queuedGroupIds,
         },
       },
     });
@@ -626,7 +642,10 @@ export const rerunGroupCartVerify = async (req: Request, res: Response): Promise
     }
     if (!group.children.some(childCanVerify)) {
       res.status(400).json({
-        message: 'No B2B drafts to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+        message:
+          hhDraftMode(requestBrand(req)) === 'order-details'
+            ? 'No carts to check. Sync order details first so a cart can be drafted.'
+            : 'No B2B drafts to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
       });
       return;
     }
@@ -663,7 +682,10 @@ export const rerunOrderCartVerify = async (req: Request, res: Response): Promise
     }
     if (!childCanVerify(order)) {
       res.status(400).json({
-        message: 'This order has no B2B draft to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+        message:
+          hhDraftMode(requestBrand(req)) === 'order-details'
+            ? 'This order has no cart to check. Sync order details first.'
+            : 'This order has no B2B draft to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
       });
       return;
     }
@@ -760,6 +782,7 @@ export const placeGroupCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Group not found' });
       return;
     }
+    if (rejectOrderDetailsPlace(req, res)) return;
     if (!group.children.some(childCanPlace)) {
       res.status(400).json({
         message: 'No Ready orders to place. Cart must match the live Helly Hansen draft.',
@@ -797,6 +820,7 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Order not found' });
       return;
     }
+    if (rejectOrderDetailsPlace(req, res)) return;
     if (isHhPlaced(order)) {
       res.status(409).json({ message: 'This order is already placed.' });
       return;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { useHHList } from '../../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../../lib/hhBrand'
 import {
   downloadHHImportTemplate,
   importHHSpreadsheet,
@@ -88,6 +89,7 @@ function formatFileSize(bytes: number): string {
 
 export function HHImportButton() {
   const { brand, setGroups, handleClearFilters, setPage } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<ImportTab>('paste')
   const [paste, setPaste] = useState('')
@@ -558,10 +560,12 @@ export function HHImportButton() {
               <ImportSwitch
                 checked={fetchDetails && draftCart}
                 disabled={importBusy || !fetchDetails}
-                label="Draft B2B cart"
+                label={orderDetails ? 'Draft cart from order details' : 'Draft B2B cart'}
                 description={
                   fetchDetails
-                    ? 'Create a Helly Hansen draft after details sync. The order is not placed.'
+                    ? orderDetails
+                      ? 'Build a cart from the synced order details. The order is not placed.'
+                      : 'Create a Helly Hansen draft after details sync. The order is not placed.'
                     : 'Turn on Fetch order details first. Carts need synced items.'
                 }
                 onChange={setDraftCart}

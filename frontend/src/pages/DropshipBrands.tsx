@@ -28,11 +28,19 @@ function BagIcon({ className = '' }: { className?: string }) {
 }
 
 function BrandMark({ brand, framed = false }: { brand: DropshipBrand; framed?: boolean }) {
+  const contain = brand.logoFit === 'contain'
   if (framed) {
     if (!brand.logo) {
       return (
         <span className="flex h-40 w-full items-center justify-center bg-[var(--bg-200)] text-[var(--accent-200)]">
           <BagIcon className="h-8 w-8" />
+        </span>
+      )
+    }
+    if (contain) {
+      return (
+        <span className="relative block aspect-[5/4] w-full overflow-hidden bg-white">
+          <img src={brand.logo} alt="" className="absolute inset-0 h-full w-full object-contain p-3" />
         </span>
       )
     }
@@ -44,6 +52,13 @@ function BrandMark({ brand, framed = false }: { brand: DropshipBrand; framed?: b
   }
 
   if (brand.logo) {
+    if (contain) {
+      return (
+        <span className="inline-flex h-28 w-36 shrink-0 items-center justify-center bg-white p-2 sm:h-32 sm:w-40">
+          <img src={brand.logo} alt="" className="max-h-full max-w-full object-contain" />
+        </span>
+      )
+    }
     if (brand.id === 'hh-workwear') {
       return (
         <span className="inline-flex h-28 w-36 shrink-0 items-center justify-center bg-black sm:h-32 sm:w-40">
@@ -141,7 +156,7 @@ export default function DropshipBrands() {
         <div>
           <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Brands</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-            Open a supplier to import Amazon orders, fill details, and draft B2B carts.
+            Open a supplier to import Amazon orders, fill details, and draft carts.
           </p>
         </div>
         <button

@@ -6,6 +6,7 @@ import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifyCompare, HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhExcludedItems, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   AmazonIcon,
@@ -58,6 +59,7 @@ export default function HHSportswearOrders() {
   const navigate = useNavigate()
   const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId, rerunCartDraft, cartDraftBusyId, placeOrders, placeBusyId, placeOrderEnabled, brand, brandPath } =
     useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const group = getGroup(groupId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -190,7 +192,7 @@ export default function HHSportswearOrders() {
               orders={group.children}
             />
           ) : null}
-          {hhPlaceableOrders(group.children).length > 0 ? (
+          {!orderDetails && hhPlaceableOrders(group.children).length > 0 ? (
             <HHPlaceButton
               size="md"
               title={hhPlaceActionTitle(placeOrderEnabled)}
@@ -348,12 +350,12 @@ export default function HHSportswearOrders() {
                       />
                       <HHRedraftButton
                         size="sm"
-                        title={hhOrderDraftTitle(order)}
+                        title={hhOrderDraftTitle(order, orderDetails)}
                         disabled={locked || !canDraft}
                         busy={cartDraftBusyId === order.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
                       />
-                      {hhOrderCanPlace(order) ? (
+                      {!orderDetails && hhOrderCanPlace(order) ? (
                         <HHPlaceButton
                           size="sm"
                           title={hhPlaceActionTitle(placeOrderEnabled)}

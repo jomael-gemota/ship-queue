@@ -22,5 +22,6 @@ router.use('/dropbox', dropboxRoutes);
 router.use('/doc-tidy', docTidyRoutes);
 router.use('/hh-sportswear', attachHhBrand('sportswear'), hhSportswearRoutes);
 router.use('/hh-workwear', attachHhBrand('workwear'), hhSportswearRoutes);
+router.use('/thorogood', attachHhBrand('thorogood'), hhSportswearRoutes);
 
 export default router;

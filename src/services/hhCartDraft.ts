@@ -6,7 +6,7 @@ import HHOrderGroup, {
 } from '../models/HHOrderGroup';
 import { createHhB2bDraft, HhB2bDraftError, HhB2bDraftRequest } from '../lib/hhB2b';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrandId } from '../lib/hhBrand';
+import { hhBrandId, hhDraftMode, ORDER_DETAILS_DRAFT_PREFIX } from '../lib/hhBrand';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
@@ -26,6 +26,7 @@ export interface HhCartDraftRuntime {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queued: number;
+  queuedGroupIds: string[];
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -71,6 +72,7 @@ export function getHhCartDraftRuntime(): HhCartDraftRuntime {
     currentGroupId,
     currentOrderId,
     queued: queue.length,
+    queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
     lastRunAt: iso(lastRunAt),
     lastSuccessAt: iso(lastSuccessAt),
     lastError,
@@ -149,6 +151,32 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
   };
 }
 
+async function persistOrderDetailsDraft(
+  groupId: string,
+  childId: string,
+  referenceNumber: string
+): Promise<IHHChildOrder | null> {
+  return withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return null;
+    const child = group.children.id(childId);
+    if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
+    if (child.detailsStatus !== 'synced') return child;
+    if (child.cartStatus !== 'none' && !isLocalB2bDraft(child)) return child;
+    child.cartStatus = 'draft';
+    child.b2bDraftId = `${ORDER_DETAILS_DRAFT_PREFIX}${childId}`;
+    child.referenceNumber = referenceNumber;
+    child.placeError = '';
+    child.cartError = '';
+    clearHhCartVerification(child);
+    applyGroupRollup(group);
+    group.markModified('children');
+    await group.save();
+    return child;
+  });
+}
+
 async function persistDraft(
   groupId: string,
   childId: string,
@@ -207,6 +235,20 @@ function pickNextChild(
 async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCartDraftRunResult): Promise<void> {
   currentOrderId = child.orderId;
   const childId = String(child._id);
+  if (hhDraftMode(group.brand) === 'order-details') {
+    const reference = (child.po || '').trim() || child.orderId;
+    const saved = await persistOrderDetailsDraft(String(group._id), childId, reference);
+    if (!saved || saved.cartStatus !== 'draft') {
+      run.skipped += 1;
+      console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+      return;
+    }
+    run.drafted += 1;
+    lastSuccessAt = new Date();
+    console.log(`${LOG} Drafted ${child.orderId} from order details · Ref ${reference}`);
+    enqueueHhCartVerify(String(group._id), childId);
+    return;
+  }
   const result = await createHhB2bDraft(toDraftRequest(child), group.brand);
   const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
   if (!saved || saved.cartStatus !== 'draft') {

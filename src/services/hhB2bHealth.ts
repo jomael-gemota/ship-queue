@@ -1,6 +1,6 @@
 import { Cron } from 'croner';
 import HHB2bConfig, { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
-import { hhBrand, HH_BRAND_IDS, type HHBrandId } from '../lib/hhBrand';
+import { hhBrand, hhDraftMode, HH_BRAND_IDS, type HHBrandId } from '../lib/hhBrand';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { probeHhB2bSession } from '../lib/hhB2bHellyHansen';
 
@@ -155,6 +155,13 @@ async function postAlert(url: string, payload: HhB2bAlertPayload): Promise<strin
 }
 
 async function classifyProbe(brand: HHBrandId): Promise<{ status: HhB2bHealthStatus; message: string; latencyMs: number }> {
+  if (hhDraftMode(brand) === 'order-details') {
+    return {
+      status: 'ok',
+      message: 'Order details sync. Carts are drafted from Seller Central details.',
+      latencyMs: 0,
+    };
+  }
   const started = Date.now();
   try {
     const config = await loadHhB2bConfig(brand);
@@ -286,6 +293,7 @@ export async function reconcileHhB2bHealthSchedule(): Promise<void> {
 
   const desired = new Map<string, { brand: HHBrandId; cron: string; time: string }>();
   for (const brand of HH_BRAND_IDS) {
+    if (hhDraftMode(brand) === 'order-details') continue;
     const doc = await getOrCreateHhB2bConfig(brand, false);
     const times = resolveSessionCheckTimes(doc.sessionCheckTimes, Boolean(doc.sessionCheckTimesSet));
     if (times.length === 0) console.log(`${LOG} ${brand} has no daily check`);
