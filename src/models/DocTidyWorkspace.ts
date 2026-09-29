@@ -9,6 +9,8 @@ import { Schema, model, Document } from 'mongoose';
  */
 export interface IDocTidyWorkspace extends Document {
   name: string;
+  /** The organization this workspace belongs to, if any. */
+  organizationId?: string;
   createdByUserId?: string;
   createdByName?: string;
   createdAt: Date;
@@ -18,6 +20,7 @@ export interface IDocTidyWorkspace extends Document {
 const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
   {
     name: { type: String, required: true, trim: true },
+    organizationId: { type: String, default: undefined },
     createdByUserId: { type: String },
     createdByName: { type: String },
   },
@@ -26,5 +29,7 @@ const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
 
 // Listing is alphabetical by name.
 DocTidyWorkspaceSchema.index({ name: 1 });
+// Fast lookup by organization for access control queries.
+DocTidyWorkspaceSchema.index({ organizationId: 1 });
 
 export default model<IDocTidyWorkspace>('DocTidyWorkspace', DocTidyWorkspaceSchema);
