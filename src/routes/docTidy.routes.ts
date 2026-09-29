@@ -43,6 +43,13 @@ import {
   deleteWorkspace,
 } from '../controllers/docTidyWorkspace.controller';
 import {
+  listOrganizations,
+  createOrganization,
+  updateOrganization,
+  deleteOrganization,
+  listUsersForOrg,
+} from '../controllers/docTidyOrganization.controller';
+import {
   pdfUpload,
   listPdfImports,
   uploadPdfImports,
@@ -106,6 +113,13 @@ router.get('/workspaces', listWorkspaces);
 router.post('/workspaces', createWorkspace);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
+
+// Organizations — any auth user may list; only admins may create/modify/delete.
+router.get('/organizations', listOrganizations);
+router.get('/organizations/users', requireAdmin, listUsersForOrg);
+router.post('/organizations', requireAdmin, createOrganization);
+router.put('/organizations/:id', requireAdmin, updateOrganization);
+router.delete('/organizations/:id', requireAdmin, deleteOrganization);
 
 // Direct PDF uploads — any authenticated user may upload/manage their imports.
 router.get('/pdf-imports', listPdfImports);
