@@ -131,6 +131,8 @@ export interface DocTidyMessagesResponse {
     pageSize: number
     total: number
     pages: number
+    /** Messages in the workspace that have at least one completed parse job. */
+    parsedCount: number
   }
 }
 

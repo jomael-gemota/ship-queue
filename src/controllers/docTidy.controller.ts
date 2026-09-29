@@ -375,6 +375,20 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
       data = messages;
     }
 
+    // Parsed count: messages in this workspace that have at least one completed parse job.
+    // Only computed when a workspaceId is present (workspace Emails tab).
+    let parsedCount = 0;
+    if (includeParseJobs && total > 0) {
+      const allMsgIds = await DocTidyMessage.distinct('_id', filter);
+      if (allMsgIds.length > 0) {
+        const parsedMsgIds = await DocTidyParseJob.distinct('messageId', {
+          messageId: { $in: allMsgIds },
+          status: 'completed',
+        });
+        parsedCount = parsedMsgIds.length;
+      }
+    }
+
     res.json({
       data,
       pagination: {
@@ -382,6 +396,7 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
         pageSize: size,
         total,
         pages: Math.ceil(total / size),
+        parsedCount,
       },
     });
   } catch (error) {

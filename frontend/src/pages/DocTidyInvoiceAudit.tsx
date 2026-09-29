@@ -2244,7 +2244,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Workspace Emails tab ── */
   const [emailMessages, setEmailMessages] = useState<DocTidyMessage[]>([])
-  const [emailPagination, setEmailPagination] = useState({ total: 0, pages: 1 })
+  const [emailPagination, setEmailPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
   const [emailPage, setEmailPage] = useState(1)
@@ -2265,7 +2265,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
-  const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1 })
+  const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
   const [pdfImportsLoading, setPdfImportsLoading] = useState(false)
   const [pdfImportsError, setPdfImportsError] = useState<string | null>(null)
   const [pdfPage, setPdfPage] = useState(1)
@@ -2363,11 +2363,11 @@ export default function DocTidyInvoiceAudit() {
       if (pdfDebouncedSearch) params.set('search', pdfDebouncedSearch)
       if (pdfDateFrom) params.set('dateFrom', pdfDateFrom)
       if (pdfDateTo) params.set('dateTo', pdfDateTo)
-      const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number } }>(
+      const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number; parsedCount: number } }>(
         `/doc-tidy/pdf-imports?${params.toString()}`
       )
       setPdfImports(res.data)
-      setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+      setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to load PDF imports')
     } finally {
@@ -2786,7 +2786,7 @@ export default function DocTidyInvoiceAudit() {
       if (emailDateTo) params.set('dateTo', emailDateTo)
       const res = await authApi.get<DocTidyMessagesResponse>(`/doc-tidy/messages?${params.toString()}`)
       setEmailMessages(res.data)
-      setEmailPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
+      setEmailPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : 'Failed to load messages')
     } finally {
@@ -3142,7 +3142,7 @@ export default function DocTidyInvoiceAudit() {
     setFilterOpenColId(null)
     setFilterAnchorRect(null)
     setEmailMessages([])
-    setEmailPagination({ total: 0, pages: 1 })
+    setEmailPagination({ total: 0, pages: 1, parsedCount: 0 })
     // Reset column orders so no stale workspace layout bleeds into the next open.
     setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
     setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
@@ -3956,7 +3956,13 @@ export default function DocTidyInvoiceAudit() {
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {emailLoading && <Spinner className="h-3 w-3" />}
                     {emailPagination.total > 0 && (
-                      <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
+                        <span className="text-[var(--text-300)]">·</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{emailPagination.parsedCount.toLocaleString()} parsed</span>
+                        <span className="text-[var(--text-300)]">·</span>
+                        <span className="text-amber-600 dark:text-amber-400">{(emailPagination.total - emailPagination.parsedCount).toLocaleString()} pending</span>
+                      </span>
                     )}
                     {anySelectedEmailRunning && (
                       <button
@@ -4457,7 +4463,13 @@ export default function DocTidyInvoiceAudit() {
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {pdfImportsLoading && <Spinner className="h-3 w-3" />}
                     {pdfImportsPagination.total > 0 && (
-                      <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                        <span className="text-[var(--text-300)]">·</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
+                        <span className="text-[var(--text-300)]">·</span>
+                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
+                      </span>
                     )}
                     {anySelectedPdfRunning && (
                       <button
@@ -5111,22 +5123,12 @@ export default function DocTidyInvoiceAudit() {
 
               {/* Table */}
               <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                {/* Resync overlay — appears while fetchAllJobs is in-flight */}
+                {/* Resync overlay — thin progress bar only; no text banner to avoid table layout shift */}
                 {loading && (
                   <div className="sticky top-0 left-0 z-30 w-full">
-                    {/* Animated indeterminate progress bar */}
                     <div className="h-0.5 w-full overflow-hidden bg-violet-200 dark:bg-violet-800/40">
                       <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
                         style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
-                    </div>
-                    <div className="flex items-center gap-2.5 border-b border-violet-200 dark:border-violet-700/40 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-900/30 dark:to-indigo-900/30 px-4 py-2.5">
-                      <Spinner className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
-                      <span className="text-[11px] font-semibold tracking-wide text-violet-700 dark:text-violet-300">
-                        Syncing invoice data
-                      </span>
-                      <span className="text-[11px] text-violet-500 dark:text-violet-400">
-                        — matching parsed PDFs against your orders…
-                      </span>
                     </div>
                   </div>
                 )}

@@ -93,9 +93,24 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
       parseJob: imp.parseJobId ? (parseJobMap.get(String(imp.parseJobId)) ?? null) : null,
     }));
 
+    // Parsed count: imports in this workspace that have a completed parse job.
+    let parsedCount = 0;
+    if (total > 0) {
+      const allParseJobIds = await DocTidyPdfImport.distinct('parseJobId', {
+        ...filter,
+        parseJobId: { $ne: null },
+      });
+      if (allParseJobIds.length > 0) {
+        parsedCount = await DocTidyParseJob.countDocuments({
+          _id: { $in: allParseJobIds },
+          status: 'completed',
+        });
+      }
+    }
+
     res.json({
       data,
-      pagination: { page: pg, pageSize: size, total, pages: Math.max(1, Math.ceil(total / size)) },
+      pagination: { page: pg, pageSize: size, total, pages: Math.max(1, Math.ceil(total / size)), parsedCount },
     });
   } catch (error) {
     fail(res, error, 'Failed to list PDF imports');
