@@ -270,6 +270,8 @@ export interface DocTidyCorrection {
   correctedOutput: Record<string, unknown>
   mode?: CorrectionMode
   correctedTables?: AgentTable[]
+  /** The agent's tables at correction time. Absent on corrections saved before it was recorded. */
+  originalTables?: AgentTable[]
   note?: string
   createdByName?: string
   createdAt: string
