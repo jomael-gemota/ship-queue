@@ -966,11 +966,21 @@ function OrganizationEditorDialog({
   initial,
   onSave,
   onClose,
+  workspaces,
+  onWorkspaceMoved,
 }: {
   initial: DocTidyOrganization | null
   onSave: (org: DocTidyOrganization) => void
   onClose: () => void
+  /** All workspaces — used in the Workspaces tab for in-org and unassigned lists. */
+  workspaces: DocTidyWorkspace[]
+  /** Called after a workspace's organizationId is changed from within the dialog. */
+  onWorkspaceMoved: (updated: DocTidyWorkspace) => void
 }) {
+  type Tab = 'settings' | 'workspaces'
+  const [activeTab, setActiveTab] = useState<Tab>('settings')
+
+  /* ── Settings tab state ── */
   const [name, setName] = useState(initial?.name ?? '')
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set(initial?.memberUserIds ?? []))
   const [users, setUsers] = useState<OrgUserOption[]>([])
@@ -979,12 +989,18 @@ function OrganizationEditorDialog({
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
+  /* ── Workspaces tab state ── */
+  const [wsMoving, setWsMoving] = useState<string | null>(null)     // id of ws being moved
+  const [wsError, setWsError] = useState<string | null>(null)
+  /** Which unassigned workspace has its org-picker dropdown open. */
+  const [wsPickerOpen, setWsPickerOpen] = useState<string | null>(null)
+
   useEffect(() => {
-    nameRef.current?.focus()
+    if (activeTab === 'settings') nameRef.current?.focus()
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [onClose, activeTab])
 
   useEffect(() => {
     authApi
@@ -993,6 +1009,12 @@ function OrganizationEditorDialog({
       .catch(() => setError('Could not load users'))
       .finally(() => setUsersLoading(false))
   }, [])
+
+  /* ── Derived workspace lists (only relevant when editing an existing org) ── */
+  const inOrgWorkspaces = initial
+    ? workspaces.filter((w) => w.organizationId === initial._id)
+    : []
+  const unassignedWorkspaces = workspaces.filter((w) => !w.organizationId)
 
   const toggleMember = (userId: string) => {
     setMemberIds((prev) => {
@@ -1023,6 +1045,38 @@ function OrganizationEditorDialog({
     }
   }
 
+  /** Move a workspace to a new org (or unassign it). */
+  const moveWorkspace = async (ws: DocTidyWorkspace, targetOrgId: string | null) => {
+    setWsMoving(ws._id)
+    setWsError(null)
+    try {
+      const result = await authApi.put<{ data: DocTidyWorkspace }>(
+        `/doc-tidy/workspaces/${ws._id}`,
+        { organizationId: targetOrgId }
+      )
+      onWorkspaceMoved(result.data)
+      setWsPickerOpen(null)
+    } catch (err) {
+      setWsError(err instanceof Error ? err.message : 'Failed to move workspace')
+    } finally {
+      setWsMoving(null)
+    }
+  }
+
+  const allOrganizations = useRef<DocTidyOrganization[]>([])
+  // We load orgs for the "move to another org" picker
+  const [orgsForPicker, setOrgsForPicker] = useState<DocTidyOrganization[]>([])
+  useEffect(() => {
+    if (!initial) return
+    authApi
+      .get<{ data: DocTidyOrganization[] }>('/doc-tidy/organizations')
+      .then((res) => {
+        allOrganizations.current = res.data
+        setOrgsForPicker(res.data.filter((o) => o._id !== initial._id))
+      })
+      .catch(() => {/* silently ignore */})
+  }, [initial])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
@@ -1030,7 +1084,7 @@ function OrganizationEditorDialog({
         role="dialog"
         aria-modal="true"
         className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
-        style={{ maxHeight: 'min(85vh, 680px)' }}
+        style={{ maxHeight: 'min(88vh, 720px)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
@@ -1040,7 +1094,7 @@ function OrganizationEditorDialog({
             </h2>
             <p className="mt-0.5 text-xs text-[var(--text-200)]">
               {initial
-                ? 'Rename and manage who can access workspaces in this organization.'
+                ? 'Manage settings, members, and workspaces.'
                 : 'Create a named organization to group workspaces and control access.'}
             </p>
           </div>
@@ -1052,92 +1106,237 @@ function OrganizationEditorDialog({
           </button>
         </div>
 
+        {/* Tab bar — only shown when editing an existing org */}
+        {initial && (
+          <div className="flex border-b border-[var(--bg-300)] px-6">
+            {(['settings', 'workspaces'] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={[
+                  'cursor-pointer py-3 px-1 mr-5 text-xs font-semibold border-b-2 -mb-px transition-colors capitalize',
+                  activeTab === tab
+                    ? 'border-violet-600 text-violet-600 dark:text-violet-400'
+                    : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)]',
+                ].join(' ')}
+              >
+                {tab === 'workspaces'
+                  ? `Workspaces (${inOrgWorkspaces.length})`
+                  : 'Settings'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* Name */}
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
-              Organization name
-            </label>
-            <input
-              ref={nameRef}
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void submit()}
-              placeholder="e.g. Outdoor Equipped, Operations Team…"
-              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
 
-          {/* Members */}
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
-              Members
-            </label>
-            <p className="text-[11px] text-[var(--text-200)] mb-2">
-              Checked users can view workspaces inside this organization. Admins always have access.
-            </p>
-            {usersLoading ? (
-              <div className="flex items-center gap-2 py-3 text-xs text-[var(--text-200)]">
-                <Spinner className="h-3.5 w-3.5" /> Loading users…
+          {/* ── Settings tab ── */}
+          {activeTab === 'settings' && (
+            <div className="space-y-5">
+              {/* Name */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                  Organization name
+                </label>
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void submit()}
+                  placeholder="e.g. Outdoor Equipped, Operations Team…"
+                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
               </div>
-            ) : (
-              <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)]" style={{ maxHeight: '240px', overflowY: 'auto' }}>
-                {users.map((u) => {
-                  const checked = memberIds.has(u._id)
-                  return (
-                    <label
-                      key={u._id}
-                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleMember(u._id)}
-                        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
-                      />
-                      <span
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                        style={{ backgroundColor: avatarColour(u.name) }}
-                      >
-                        {u.name.charAt(0).toUpperCase()}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-[var(--text-100)] truncate">
-                          {u.name}
-                          {u.role === 'admin' && (
-                            <span className="ml-1.5 text-[10px] text-violet-500 font-semibold">(admin)</span>
-                          )}
-                        </p>
-                        <p className="text-[10px] text-[var(--text-200)] truncate">{u.email}</p>
+
+              {/* Members */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                  Members
+                </label>
+                <p className="text-[11px] text-[var(--text-200)] mb-2">
+                  Checked users can view workspaces inside this organization. Admins always have access.
+                </p>
+                {usersLoading ? (
+                  <div className="flex items-center gap-2 py-3 text-xs text-[var(--text-200)]">
+                    <Spinner className="h-3.5 w-3.5" /> Loading users…
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)]" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                    {users.map((u) => {
+                      const checked = memberIds.has(u._id)
+                      return (
+                        <label
+                          key={u._id}
+                          className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleMember(u._id)}
+                            className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+                          />
+                          <span
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                            style={{ backgroundColor: avatarColour(u.name) }}
+                          >
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-[var(--text-100)] truncate">
+                              {u.name}
+                              {u.role === 'admin' && (
+                                <span className="ml-1.5 text-[10px] text-violet-500 font-semibold">(admin)</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-200)] truncate">{u.email}</p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {error && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Workspaces tab (edit mode only) ── */}
+          {activeTab === 'workspaces' && initial && (
+            <div className="space-y-6">
+              {wsError && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+                  {wsError}
+                </p>
+              )}
+
+              {/* Workspaces currently in this org */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                  In this organization ({inOrgWorkspaces.length})
+                </p>
+                {inOrgWorkspaces.length === 0 ? (
+                  <p className="text-xs text-[var(--text-200)] py-2">
+                    No workspaces assigned to this organization yet. Add one from the unassigned list below.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)] overflow-hidden">
+                    {inOrgWorkspaces.map((ws) => (
+                      <div key={ws._id} className="flex items-center gap-3 px-4 py-2.5">
+                        <svg className="h-4 w-4 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        </svg>
+                        <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Move to another org — inline picker */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setWsPickerOpen(wsPickerOpen === ws._id ? null : ws._id)}
+                              disabled={wsMoving === ws._id}
+                              className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] disabled:opacity-40"
+                            >
+                              Move to…
+                            </button>
+                            {wsPickerOpen === ws._id && (
+                              <div className="absolute right-0 top-full mt-1 z-10 w-48 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-lg py-1">
+                                {orgsForPicker.map((org) => (
+                                  <button
+                                    key={org._id}
+                                    type="button"
+                                    onClick={() => void moveWorkspace(ws, org._id)}
+                                    className="w-full cursor-pointer text-left px-3 py-2 text-xs text-[var(--text-100)] hover:bg-[var(--bg-200)] truncate"
+                                  >
+                                    {org.name}
+                                  </button>
+                                ))}
+                                {orgsForPicker.length === 0 && (
+                                  <p className="px-3 py-2 text-xs text-[var(--text-200)]">No other organizations</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {/* Remove from org */}
+                          <button
+                            type="button"
+                            onClick={() => void moveWorkspace(ws, null)}
+                            disabled={wsMoving === ws._id}
+                            className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 disabled:opacity-40"
+                          >
+                            {wsMoving === ws._id ? '…' : 'Remove'}
+                          </button>
+                        </div>
                       </div>
-                    </label>
-                  )
-                })}
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {error && (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
-              {error}
-            </p>
+              {/* Unassigned workspaces — can be added to this org */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                  Unassigned workspaces ({unassignedWorkspaces.length})
+                </p>
+                {unassignedWorkspaces.length === 0 ? (
+                  <p className="text-xs text-[var(--text-200)] py-2">
+                    All workspaces are already assigned to an organization.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)] overflow-hidden">
+                    {unassignedWorkspaces.map((ws) => (
+                      <div key={ws._id} className="flex items-center gap-3 px-4 py-2.5">
+                        <svg className="h-4 w-4 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        </svg>
+                        <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => void moveWorkspace(ws, initial._id)}
+                          disabled={wsMoving === ws._id}
+                          className="shrink-0 cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-40"
+                        >
+                          {wsMoving === ws._id ? '…' : 'Add to this org'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
-          <button type="button" onClick={onClose}
-            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
-            Cancel
-          </button>
-          <button type="button" onClick={() => void submit()} disabled={saving || usersLoading}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
-            {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
-            {saving ? 'Saving…' : initial ? 'Save changes' : 'Create organization'}
-          </button>
-        </div>
+        {/* Footer — only show Save when on settings tab */}
+        {activeTab === 'settings' && (
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+            <button type="button" onClick={onClose}
+              className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void submit()} disabled={saving || usersLoading}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+              {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+              {saving ? 'Saving…' : initial ? 'Save changes' : 'Create organization'}
+            </button>
+          </div>
+        )}
+        {activeTab === 'workspaces' && (
+          <div className="flex items-center justify-end border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+            <button type="button" onClick={onClose}
+              className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+              Done
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -5103,6 +5302,8 @@ export default function DocTidyInvoiceAudit() {
           initial={editOrgTarget === 'new' ? null : editOrgTarget}
           onSave={handleOrgSaved}
           onClose={() => setEditOrgTarget(null)}
+          workspaces={workspaces}
+          onWorkspaceMoved={handleWorkspaceSaved}
         />
       )}
 
