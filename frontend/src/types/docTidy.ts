@@ -321,6 +321,25 @@ export function normalizeVendorName(name: string): string {
 export interface DocTidyWorkspace {
   _id: string
   name: string
+  /** The organization this workspace belongs to, if any. */
+  organizationId?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/* ──────────────────────────────────── Doc Tidy Organizations ── */
+
+/**
+ * A named container for workspaces with an explicit member list.
+ * Only members (and all admins) can view the workspaces inside an organization.
+ * Workspaces with no organizationId are "unassigned" and visible to all users.
+ */
+export interface DocTidyOrganization {
+  _id: string
+  name: string
+  /** IDs of users who can view workspaces inside this organization. */
+  memberUserIds: string[]
   createdByName?: string
   createdAt: string
   updatedAt: string
