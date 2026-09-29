@@ -25,6 +25,8 @@ export interface IDocTidyOrderImport extends Document {
   orderSku: string;
   /** Stored as a string; the import file may contain non-numeric values (e.g. "10 EA"). */
   orderQty: string;
+  /** Latest Expected Ship Date — sourced from the imported order file. */
+  lesd: string;
   status: string;
 
   importedByUserId?: string;
@@ -95,6 +97,7 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
     orderId:       { type: String, default: '' },
     orderSku:      { type: String, default: '' },
     orderQty:      { type: String, default: '' },
+    lesd:          { type: String, default: '' },
     status:        { type: String, default: '' },
 
     importedByUserId: { type: String },
