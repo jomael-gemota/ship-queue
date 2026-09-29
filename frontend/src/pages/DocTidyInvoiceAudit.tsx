@@ -106,10 +106,13 @@ interface InvoiceMatch {
 /**
  * Find the best matching parse job + line item for a given order import.
  *
- * Matching strategy (both conditions must hold):
+ * Matching strategy:
  *  1. PO # from the job's `jsonOutput` normalises equal to `order.poNumber`.
- *  2. The line-item SKU normalises equal to `order.orderSku`.
+ *  2. If `order.orderSku` is non-empty, the line-item SKU must also match.
  *     — If the job has no line items the PO match alone is accepted.
+ *  3. If `order.orderSku` is blank (PO-only import), a PO match alone is
+ *     sufficient even when the invoice has line items. Document-level fields
+ *     are used; line-item fields will be empty.
  */
 function findInvoiceMatch(
   order: DocTidyOrderImport,
@@ -148,6 +151,10 @@ function findInvoiceMatch(
       )
       if (normSku && itemSku === normSku) return { job, item }
     }
+
+    // If the order has no SKU (PO-only import), a PO match alone is sufficient
+    // regardless of whether the invoice has line items. Use document-level fields.
+    if (!normSku) return { job, item: null }
   }
 
   return null
@@ -671,14 +678,20 @@ function WorkspaceEditorDialog({
   onSave,
   onClose,
   initialOrgId,
+  isAdmin = false,
 }: {
   initial: DocTidyWorkspace | null
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
   /** When creating a new workspace inside an org, pre-assign this org. */
   initialOrgId?: string
+  /** When true the Import Mode toggle is shown (admin-only field). */
+  isAdmin?: boolean
 }) {
   const [name, setName] = useState(initial?.name ?? '')
+  const [importMode, setImportMode] = useState<'full' | 'header-only'>(
+    initial?.importMode ?? 'full'
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -697,6 +710,8 @@ function WorkspaceEditorDialog({
     try {
       const body: Record<string, unknown> = { name: name.trim() }
       if (!initial && initialOrgId) body.organizationId = initialOrgId
+      // importMode is an admin-only field; only send it when editing an existing workspace.
+      if (initial && isAdmin) body.importMode = importMode
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -757,6 +772,50 @@ function WorkspaceEditorDialog({
               className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
           </div>
+
+          {/* Import mode — admin only, visible when editing an existing workspace */}
+          {initial && isAdmin && (
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                Import mode
+              </label>
+              <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
+                <button
+                  type="button"
+                  onClick={() => setImportMode('full')}
+                  className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
+                    importMode === 'full'
+                      ? 'bg-[var(--accent-200)] text-white font-medium'
+                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className="block font-medium">Full import</span>
+                  <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                    All fields; PO # + SKU matching
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMode('header-only')}
+                  className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
+                    importMode === 'header-only'
+                      ? 'bg-[var(--accent-200)] text-white font-medium'
+                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className="block font-medium">Header only</span>
+                  <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                    PO # only required; PO-level matching
+                  </span>
+                </button>
+              </div>
+              {importMode === 'header-only' && (
+                <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                  Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
@@ -2944,7 +3003,8 @@ export default function DocTidyInvoiceAudit() {
     setSelectedEmailIds(new Set())
 
     // Reload workspace-scoped column visibility from localStorage.
-    setColVisibility(loadAuditColumnVisibility(ws._id))
+    // Pass importMode so header-only workspaces start with line-item columns hidden.
+    setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
 
     // Reset column orders to defaults, then fetch this workspace's saved orders.
     setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
@@ -5280,33 +5340,56 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const header = 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,LESD,Status'
-                      const blob = new Blob([header + '\n'], { type: 'text/csv' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = 'order-import-template.csv'
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
-                  >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download template
-                  </button>
-                </div>
-                <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
-                  Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status
-                </p>
-              </div>
+              {(() => {
+                const isHeaderOnly = activeWorkspace?.importMode === 'header-only'
+                const templateHeader = isHeaderOnly
+                  ? 'PO #'
+                  : 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,LESD,Status'
+                const templateFilename = isHeaderOnly
+                  ? 'order-import-template-po-only.csv'
+                  : 'order-import-template.csv'
+                return (
+                  <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const blob = new Blob([templateHeader + '\n'], { type: 'text/csv' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = templateFilename
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download template
+                      </button>
+                    </div>
+                    {isHeaderOnly ? (
+                      <>
+                        <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                          <span className="font-semibold text-[var(--text-100)]">PO #</span>
+                          {' · '}
+                          <span className="opacity-60">Processed Date · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status</span>
+                        </p>
+                        <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                          Only <strong>PO #</strong> is required — all other columns are optional. Rows will be matched to invoices by PO # alone.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                        Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
               <label
                 onDragOver={(e) => { e.preventDefault(); setImportDragOver(true) }}
                 onDragLeave={() => setImportDragOver(false)}
@@ -5384,6 +5467,7 @@ export default function DocTidyInvoiceAudit() {
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
           initialOrgId={editTarget === 'new' ? (activeOrg?._id) : undefined}
+          isAdmin={isAdmin}
         />
       )}
 

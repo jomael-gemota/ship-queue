@@ -189,6 +189,11 @@ export interface DocTidyEvent {
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean
   /**
+   * For `ui_prefs`: the workspace whose preferences were updated.
+   * Clients filter events to the currently active workspace.
+   */
+  workspaceId?: string
+  /**
    * For `ui_prefs`: updated column orders broadcast to all open clients so
    * every tab reflects the change immediately.
    */
@@ -324,6 +329,12 @@ export interface DocTidyWorkspace {
   /** The organization this workspace belongs to, if any. */
   organizationId?: string
   createdByName?: string
+  /**
+   * Controls how order imports are matched and which columns are shown by default.
+   * `full` (default) — all import fields, PO + SKU matching.
+   * `header-only`    — only PO # is required; PO-level matching; line-item columns hidden.
+   */
+  importMode?: 'full' | 'header-only'
   createdAt: string
   updatedAt: string
 }
@@ -530,19 +541,46 @@ function auditColStorageKey(workspaceId: string): string {
   return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`
 }
 
-/** Load per-column visibility for a workspace from localStorage, falling back to defaults. */
-export function loadAuditColumnVisibility(workspaceId: string): Record<InvoiceAuditColumnId, boolean> {
+/**
+ * Columns that are line-item-specific and should be hidden by default in
+ * `header-only` workspaces where only PO-level data is available.
+ */
+const HEADER_ONLY_HIDDEN_COLUMNS: InvoiceAuditColumnId[] = [
+  'invoiceSku',
+  'invoiceQty',
+  'itemCost',
+  'discountedCostPct',
+  'discrepancy',
+]
+
+/** Load per-column visibility for a workspace from localStorage, falling back to defaults.
+ *
+ * @param workspaceId  The workspace whose saved preference to load.
+ * @param importMode   When `'header-only'` and no saved preference exists, line-item
+ *                     columns are hidden by default so the table is uncluttered for
+ *                     teams that only import PO numbers.
+ */
+export function loadAuditColumnVisibility(
+  workspaceId: string,
+  importMode?: 'full' | 'header-only',
+): Record<InvoiceAuditColumnId, boolean> {
   const defaults = Object.fromEntries(
     INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
   ) as Record<InvoiceAuditColumnId, boolean>
 
+  // Apply header-only overrides to the base defaults.
+  const modeDefaults: Record<InvoiceAuditColumnId, boolean> = importMode === 'header-only'
+    ? { ...defaults, ...Object.fromEntries(HEADER_ONLY_HIDDEN_COLUMNS.map((id) => [id, false])) }
+    : defaults
+
   try {
     const raw = localStorage.getItem(auditColStorageKey(workspaceId))
-    if (!raw) return defaults
+    if (!raw) return modeDefaults
     const stored = JSON.parse(raw) as Partial<Record<InvoiceAuditColumnId, boolean>>
-    return { ...defaults, ...stored }
+    // Merge stored preferences on top of mode-aware defaults.
+    return { ...modeDefaults, ...stored }
   } catch {
-    return defaults
+    return modeDefaults
   }
 }
 
