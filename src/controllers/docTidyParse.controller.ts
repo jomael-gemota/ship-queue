@@ -422,6 +422,8 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
     );
     const embedding = documentTextSample ? await embedText(documentTextSample) : null;
 
+    const jobTables = (job.tableOutput as { tables?: unknown } | null | undefined)?.tables;
+
     const correction = await DocTidyCorrection.create({
       parseJobId: job._id,
       filename: job.filename,
@@ -432,6 +434,8 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
       correctedOutput: correctedOutput as Record<string, unknown>,
       mode: mode as CorrectionMode | undefined,
       correctedTables: Array.isArray(correctedTables) ? correctedTables : undefined,
+      originalTables:
+        mode === 'tabular' && Array.isArray(jobTables) ? jobTables : undefined,
       note: normalizedNote,
       createdByName: req.user?.name,
     });

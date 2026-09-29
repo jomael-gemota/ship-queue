@@ -30,6 +30,11 @@ export interface IDocTidyCorrection extends Document {
   /** Which view the edit was made from, so the diff re-renders faithfully. */
   mode?: CorrectionMode;
   correctedTables?: unknown;
+  /**
+   * The job's tables at correction time — the only faithful baseline for a
+   * tabular diff, since a re-run overwrites the job's `tableOutput`.
+   */
+  originalTables?: unknown;
   note?: string;
   createdByName?: string;
   createdAt: Date;
@@ -47,6 +52,7 @@ const DocTidyCorrectionSchema = new Schema<IDocTidyCorrection>(
     correctedOutput: { type: Schema.Types.Mixed, required: true },
     mode: { type: String, enum: CORRECTION_MODES },
     correctedTables: { type: Schema.Types.Mixed },
+    originalTables: { type: Schema.Types.Mixed },
     note: { type: String },
     createdByName: { type: String },
   },
