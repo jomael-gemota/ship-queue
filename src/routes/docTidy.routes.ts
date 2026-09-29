@@ -62,6 +62,7 @@ import {
   uploadOrderImports,
   deleteOrderImport,
   deleteOrderImportBatch,
+  bulkDeleteOrderImports,
   refreshCogsForWorkspace,
   rebuildMatchCache,
 } from '../controllers/docTidyOrderImport.controller';
@@ -135,6 +136,7 @@ router.post('/order-imports/workspace/:workspaceId/refresh-cogs', refreshCogsFor
 // Rebuild the inline invoice match cache for all uncached rows in a workspace.
 router.post('/order-imports/workspace/:workspaceId/rebuild-match-cache', rebuildMatchCache);
 router.delete('/order-imports/batch/:batchId', deleteOrderImportBatch);
+router.post('/order-imports/bulk-delete', bulkDeleteOrderImports);
 router.delete('/order-imports/:id', deleteOrderImport);
 
 // The mailbox connection and attachment destination are admin-managed.

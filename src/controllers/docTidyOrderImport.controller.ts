@@ -349,3 +349,23 @@ export const deleteOrderImportBatch = async (req: Request, res: Response): Promi
     fail(res, error, 'Failed to delete order import batch');
   }
 };
+
+/* ── Bulk delete by an explicit list of IDs ── */
+export const bulkDeleteOrderImports = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return;
+    }
+    if (!ids.every((id) => typeof id === 'string' && isValidObjectId(id))) {
+      res.status(400).json({ message: 'All ids must be valid ObjectIds' });
+      return;
+    }
+
+    const result = await DocTidyOrderImport.deleteMany({ _id: { $in: ids } });
+    res.json({ data: { deleted: result.deletedCount } });
+  } catch (error) {
+    fail(res, error, 'Failed to bulk delete order imports');
+  }
+};
