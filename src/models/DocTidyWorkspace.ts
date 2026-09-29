@@ -13,6 +13,23 @@ export interface IDocTidyWorkspace extends Document {
   organizationId?: string;
   createdByUserId?: string;
   createdByName?: string;
+
+  /**
+   * Per-workspace column order for the Invoice Audit table.
+   * Absent or empty → fall back to DEFAULT_AUDIT_COL_ORDER.
+   */
+  auditColumnOrder?: string[];
+  /**
+   * Per-workspace column order for the Workspace Emails table.
+   * Absent or empty → fall back to DEFAULT_EMAIL_COL_ORDER.
+   */
+  wsEmailColumnOrder?: string[];
+  /**
+   * Per-workspace column order for the PDF Imports table.
+   * Absent or empty → fall back to DEFAULT_PDF_IMPORT_COL_ORDER.
+   */
+  pdfImportColOrder?: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +40,9 @@ const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
     organizationId: { type: String, default: undefined },
     createdByUserId: { type: String },
     createdByName: { type: String },
+    auditColumnOrder: { type: [String], default: undefined },
+    wsEmailColumnOrder: { type: [String], default: undefined },
+    pdfImportColOrder: { type: [String], default: undefined },
   },
   { timestamps: true }
 );

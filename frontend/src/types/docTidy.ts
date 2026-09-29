@@ -520,17 +520,24 @@ export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL
  * v4 key — bumped from v3 when LESD was added (2026-09-30).
  * Old v3 preferences are ignored so LESD appears in its correct position
  * (after Order Qty) rather than being appended at the far right.
+ *
+ * The key is now workspace-scoped: `<base>.<workspaceId>` so changing
+ * visibility in Workspace A never touches Workspace B's preferences.
  */
-const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v4'
+const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v4'
 
-/** Load per-column visibility from localStorage, falling back to defaults. */
-export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {
+function auditColStorageKey(workspaceId: string): string {
+  return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`
+}
+
+/** Load per-column visibility for a workspace from localStorage, falling back to defaults. */
+export function loadAuditColumnVisibility(workspaceId: string): Record<InvoiceAuditColumnId, boolean> {
   const defaults = Object.fromEntries(
     INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
   ) as Record<InvoiceAuditColumnId, boolean>
 
   try {
-    const raw = localStorage.getItem(AUDIT_COL_STORAGE_KEY)
+    const raw = localStorage.getItem(auditColStorageKey(workspaceId))
     if (!raw) return defaults
     const stored = JSON.parse(raw) as Partial<Record<InvoiceAuditColumnId, boolean>>
     return { ...defaults, ...stored }
@@ -539,10 +546,13 @@ export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolea
   }
 }
 
-/** Persist column visibility to localStorage. */
-export function saveAuditColumnVisibility(visibility: Record<InvoiceAuditColumnId, boolean>): void {
+/** Persist column visibility for a workspace to localStorage. */
+export function saveAuditColumnVisibility(
+  visibility: Record<InvoiceAuditColumnId, boolean>,
+  workspaceId: string,
+): void {
   try {
-    localStorage.setItem(AUDIT_COL_STORAGE_KEY, JSON.stringify(visibility))
+    localStorage.setItem(auditColStorageKey(workspaceId), JSON.stringify(visibility))
   } catch {
     // localStorage can be blocked in some environments — silently ignore.
   }

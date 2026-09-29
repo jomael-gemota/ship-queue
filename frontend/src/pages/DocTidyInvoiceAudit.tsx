@@ -2137,7 +2137,10 @@ export default function DocTidyInvoiceAudit() {
   const [exporting, setExporting] = useState(false)
   /** Week keys (YYYY-MM-DD of Sunday) whose rows are currently collapsed. Persisted to localStorage. */
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
-  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
+  // Initialized to defaults; reloaded from workspace-scoped localStorage on enterWorkspace().
+  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(
+    () => Object.fromEntries(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])) as Record<InvoiceAuditColumnId, boolean>
+  )
   const [showColSettings, setShowColSettings] = useState(false)
 
   /* ── Column filters (Excel-style per-column value filters) ── */
@@ -2589,43 +2592,14 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadOrganizations() }, [loadOrganizations])
 
-  /* ── Load shared column order from server on mount ── */
-  useEffect(() => {
-    authApi
-      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>('/doc-tidy/ui-prefs')
-      .then((res) => {
-        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
+  // Column orders are now loaded per-workspace inside enterWorkspace().
+  // The old global-singleton fetch on mount has been removed.
 
-        if (auditColumnOrder && auditColumnOrder.length > 0) {
-          const valid = auditColumnOrder.filter(
-            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
-          )
-          setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
-        }
-
-        if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
-          const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-            WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-          )
-          const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
-          setEmailColOrder(merged)
-        }
-
-        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
-          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
-            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
-          )
-          const merged = [...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))]
-          setPdfColOrder(merged)
-        }
-      })
-      .catch(() => { /* Non-critical — silently fall back to defaults. */ })
-  }, [])
-
-  /** Persist column orders to the server (non-blocking, fire-and-forget). */
+  /** Persist column orders to the server scoped to the active workspace (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
+    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[], workspaceId: string) => {
       void authApi.put('/doc-tidy/ui-prefs', {
+        workspaceId,
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
         pdfImportColOrder: pdfOrder,
@@ -2701,7 +2675,7 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
         }
-        if (event.type === 'ui_prefs') {
+        if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
@@ -2734,7 +2708,7 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
         }
-        if (event.type === 'ui_prefs') {
+        if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
@@ -2968,6 +2942,40 @@ export default function DocTidyInvoiceAudit() {
     setEmailError(null)
     setEmailMessages([])
     setSelectedEmailIds(new Set())
+
+    // Reload workspace-scoped column visibility from localStorage.
+    setColVisibility(loadAuditColumnVisibility(ws._id))
+
+    // Reset column orders to defaults, then fetch this workspace's saved orders.
+    setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+    setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+    setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
+    authApi
+      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>(
+        `/doc-tidy/ui-prefs?workspaceId=${ws._id}`
+      )
+      .then((res) => {
+        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
+        if (auditColumnOrder && auditColumnOrder.length > 0) {
+          const valid = auditColumnOrder.filter(
+            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+          )
+          setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
+        }
+        if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
+          const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+            WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+          )
+          setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
+        }
+        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
+          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+          )
+          setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
+        }
+      })
+      .catch(() => { /* Non-critical — silently fall back to defaults. */ })
   }
 
   const leaveWorkspace = () => {
@@ -2990,6 +2998,10 @@ export default function DocTidyInvoiceAudit() {
     setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
+    // Reset column orders so no stale workspace layout bleeds into the next open.
+    setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+    setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+    setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
   }
 
   /* ── Organization navigation ── */
@@ -3062,7 +3074,7 @@ export default function DocTidyInvoiceAudit() {
   /* ── Column helpers ── */
   const handleColVisChange = (next: Record<InvoiceAuditColumnId, boolean>) => {
     setColVisibility(next)
-    saveAuditColumnVisibility(next)
+    if (activeWorkspace) saveAuditColumnVisibility(next, activeWorkspace._id)
   }
 
   /** Persist collapsed weeks to localStorage whenever the set changes. */
@@ -3904,7 +3916,7 @@ export default function DocTidyInvoiceAudit() {
                               if (emailDragSrc && emailDragSrc !== col.id) {
                                 const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
                                 setEmailColOrder(newOrder)
-                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current)
+                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current, activeWorkspace?._id ?? '')
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
@@ -4457,7 +4469,7 @@ export default function DocTidyInvoiceAudit() {
                                 if (pdfDragSrc && pdfDragSrc !== col.id) {
                                   const newOrder = reorderCols(pdfColOrderRef.current, pdfDragSrc, col.id)
                                   setPdfColOrder(newOrder)
-                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder)
+                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder, activeWorkspace?._id ?? '')
                                 }
                               }}
                               onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
@@ -4971,7 +4983,7 @@ export default function DocTidyInvoiceAudit() {
                             if (auditDragSrc && auditDragSrc !== col.id) {
                               const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
                               setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current, activeWorkspace?._id ?? '')
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}

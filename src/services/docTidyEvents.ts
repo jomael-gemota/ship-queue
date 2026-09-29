@@ -41,9 +41,10 @@ export interface DocTidyEvent {
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean;
   /**
-   * For `ui_prefs`: updated shared column orders so all connected clients
-   * immediately reflect the new layout without a page reload.
+   * For `ui_prefs`: updated column orders for the given workspace.
+   * Clients only apply the update when their active workspace matches.
    */
+  workspaceId?: string;
   auditColumnOrder?: string[];
   wsEmailColumnOrder?: string[];
   pdfImportColOrder?: string[];
