@@ -853,6 +853,7 @@ function WorkspaceCard({
 function OrgCard({
   org,
   workspaceCount,
+  workspaceNames,
   onOpen,
   onEdit,
   onDelete,
@@ -860,6 +861,8 @@ function OrgCard({
 }: {
   org: DocTidyOrganization
   workspaceCount: number
+  /** First few workspace names shown as preview chips inside the row. */
+  workspaceNames: string[]
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
@@ -870,82 +873,108 @@ function OrgCard({
   return (
     <div
       onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+      className="group relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-hidden"
     >
-      {/* Body */}
-      <div className="flex-1 px-5 pt-5 pb-4">
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-        </div>
-        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
-          {org.name}
-        </h3>
-        <div className="mt-2 flex items-center gap-3">
-          <span className="text-[11px] text-[var(--text-200)]">
-            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
-          </span>
-          <span className="text-[11px] text-[var(--text-200)]">·</span>
-          <span className="text-[11px] text-[var(--text-200)]">
-            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+      {/* Violet left accent stripe */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500 dark:bg-violet-600 rounded-l-xl" />
+
+      {/* Icon */}
+      <div className="ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
       </div>
 
-      {/* Footer */}
+      {/* Main content */}
+      <div className="flex-1 min-w-0 py-4 pr-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+            {org.name}
+          </h3>
+          {/* Badge pills */}
+          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            </svg>
+            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Workspace name previews */}
+        {workspaceNames.length > 0 && (
+          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+            {workspaceNames.slice(0, 3).map((wn) => (
+              <span key={wn}
+                className="rounded-md bg-[var(--bg-200)] dark:bg-[var(--bg-300)] border border-[var(--bg-300)] px-2 py-0.5 text-[10px] text-[var(--text-200)] truncate max-w-[160px]"
+              >
+                {wn}
+              </span>
+            ))}
+            {workspaceCount > 3 && (
+              <span className="text-[10px] text-[var(--text-200)]">
+                +{workspaceCount - 3} more
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
       <div
-        className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3"
+        className="flex items-center gap-1 pr-4 shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-[11px] text-[var(--text-200)]">
-          Created {new Date(org.createdAt).toLocaleDateString()}
-        </span>
-        <div className="flex items-center gap-1">
-          {confirmDelete ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-rose-500">Delete?</span>
-              <button
-                onClick={onDelete}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
-              >
-                Yes
-              </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <>
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={onEdit}
-                    className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete(true)}
-                    className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-              <button
-                onClick={onOpen}
-                className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity"
-              >
-                Open →
-              </button>
-            </>
-          )}
-        </div>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-rose-500">Delete?</span>
+            <button
+              onClick={onDelete}
+              className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={onEdit}
+                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
+                >
+                  Delete
+                </button>
+              </>
+            )}
+            <button
+              onClick={onOpen}
+              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
+            >
+              Open →
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -3433,12 +3462,15 @@ export default function DocTidyInvoiceAudit() {
             </div>
 
             {orgLoading ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
-                    <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
-                    <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
-                    <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                  <div key={i} className="relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] overflow-hidden h-16">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--bg-300)]" />
+                    <div className="ml-5 h-11 w-11 shrink-0 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 w-1/3 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-2.5 w-1/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3467,21 +3499,39 @@ export default function DocTidyInvoiceAudit() {
                 )}
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {organizations.map((org) => (
-                  <OrgCard
-                    key={org._id}
-                    org={org}
-                    workspaceCount={workspaces.filter((w) => w.organizationId === org._id).length}
-                    onOpen={() => enterOrg(org)}
-                    onEdit={() => openOrgEditor(org)}
-                    onDelete={() => void handleDeleteOrg(org)}
-                    isAdmin={isAdmin}
-                  />
-                ))}
+              /* Full-width row list — visually distinct from the workspace card grid below */
+              <div className="space-y-2">
+                {organizations.map((org) => {
+                  const orgWsNames = workspaces
+                    .filter((w) => w.organizationId === org._id)
+                    .map((w) => w.name)
+                  return (
+                    <OrgCard
+                      key={org._id}
+                      org={org}
+                      workspaceCount={orgWsNames.length}
+                      workspaceNames={orgWsNames}
+                      onOpen={() => enterOrg(org)}
+                      onEdit={() => openOrgEditor(org)}
+                      onDelete={() => void handleDeleteOrg(org)}
+                      isAdmin={isAdmin}
+                    />
+                  )
+                })}
               </div>
             )}
           </div>
+
+          {/* ── Divider between organizations and unassigned workspaces ── */}
+          {!orgLoading && organizations.length > 0 && (wsLoading || unassignedWorkspaces.length > 0) && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-[var(--bg-300)]" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-200)] px-1">
+                Unassigned
+              </span>
+              <div className="flex-1 h-px bg-[var(--bg-300)]" />
+            </div>
+          )}
 
           {/* ── Unassigned workspaces section ── */}
           {(wsLoading || unassignedWorkspaces.length > 0) && (
@@ -3490,8 +3540,8 @@ export default function DocTidyInvoiceAudit() {
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--text-100)]">Unassigned Workspaces</h3>
                   <p className="mt-0.5 text-xs text-[var(--text-200)]">
-                    Workspaces not linked to any organization — visible to all users.
-                    {isAdmin && ' Admins can move them into an organization.'}
+                    Not linked to any organization — visible to all users.
+                    {isAdmin && ' Use Edit on an organization to assign them.'}
                   </p>
                 </div>
                 <button type="button" onClick={() => openEditor('new')}
