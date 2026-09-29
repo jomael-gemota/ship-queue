@@ -9,6 +9,7 @@ import DocTidyRule, {
 import DocTidyMessage from '../models/DocTidyMessage';
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
+import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
 import { deleteDriveFile, getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
@@ -589,14 +590,73 @@ export const deleteMessage = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-/* -------------------------------------------------------- shared UI prefs */
+/* ── Bulk-delete messages by an explicit list of IDs ── */
+export const bulkDeleteMessages = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return;
+    }
+    if (!ids.every((id) => typeof id === 'string' && isValidObjectId(id))) {
+      res.status(400).json({ message: 'All ids must be valid ObjectIds' });
+      return;
+    }
+
+    // Load the messages so we can collect Drive file IDs and cascade-delete parse jobs.
+    const messages = await DocTidyMessage.find({ _id: { $in: ids } }).lean();
+    const messageObjectIds = messages.map((m) => m._id);
+
+    // Delete associated parse jobs.
+    if (messageObjectIds.length > 0) {
+      await DocTidyParseJob.deleteMany({ messageId: { $in: messageObjectIds } });
+    }
+
+    // Best-effort: delete Drive attachment files.
+    const driveFileIds = messages.flatMap((m) =>
+      (m.attachments ?? []).map((a) => a.driveFileId).filter((fid): fid is string => Boolean(fid))
+    );
+    if (driveFileIds.length > 0) {
+      const config = await getDocTidyConfigDoc(true).catch(() => null);
+      if (config?.gmailRefreshToken) {
+        await Promise.allSettled(
+          driveFileIds.map((fileId) =>
+            deleteDriveFile({ refreshToken: config.gmailRefreshToken }, fileId)
+          )
+        );
+      }
+    }
+
+    const result = await DocTidyMessage.deleteMany({ _id: { $in: ids } });
+    res.json({ data: { deleted: result.deletedCount } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to bulk delete messages', error: (error as Error).message });
+  }
+};
+
+/* -------------------------------------------------------- workspace-scoped UI prefs */
 
 /**
- * Returns the team-wide shared UI preferences (column orders).
- * Any authenticated user may call this.
+ * Returns per-workspace column order preferences.
+ * Requires a `workspaceId` query param. Any authenticated user may call this.
  */
-export const getUiPrefs = async (_req: Request, res: Response): Promise<void> => {
+export const getUiPrefs = async (req: Request, res: Response): Promise<void> => {
   try {
+    const { workspaceId } = req.query as { workspaceId?: string };
+
+    if (workspaceId && isValidObjectId(workspaceId)) {
+      const ws = await DocTidyWorkspace.findById(workspaceId).lean();
+      res.json({
+        data: {
+          auditColumnOrder: ws?.auditColumnOrder ?? [],
+          wsEmailColumnOrder: ws?.wsEmailColumnOrder ?? [],
+          pdfImportColOrder: ws?.pdfImportColOrder ?? [],
+        },
+      });
+      return;
+    }
+
+    // Fallback: legacy global prefs (no workspaceId supplied).
     const config = await getDocTidyConfigDoc();
     res.json({
       data: {
@@ -611,27 +671,56 @@ export const getUiPrefs = async (_req: Request, res: Response): Promise<void> =>
 };
 
 /**
- * Saves the team-wide shared UI preferences (column orders) and broadcasts
- * the new values to all connected SSE clients so every open tab updates
- * immediately without a page reload.
+ * Saves per-workspace column order preferences and broadcasts the new values
+ * to SSE clients watching that workspace.
  * Any authenticated user may call this.
  */
 export const putUiPrefs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = req.body as {
+    const { workspaceId, auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = req.body as {
+      workspaceId?: string;
       auditColumnOrder?: string[];
       wsEmailColumnOrder?: string[];
       pdfImportColOrder?: string[];
     };
 
-    const config = await getDocTidyConfigDoc();
+    if (workspaceId && isValidObjectId(workspaceId)) {
+      const ws = await DocTidyWorkspace.findById(workspaceId);
+      if (!ws) {
+        res.status(404).json({ message: 'Workspace not found' });
+        return;
+      }
 
+      if (Array.isArray(auditColumnOrder)) ws.auditColumnOrder = auditColumnOrder;
+      if (Array.isArray(wsEmailColumnOrder)) ws.wsEmailColumnOrder = wsEmailColumnOrder;
+      if (Array.isArray(pdfImportColOrder)) ws.pdfImportColOrder = pdfImportColOrder;
+      await ws.save();
+
+      broadcast({
+        type: 'ui_prefs',
+        workspaceId,
+        auditColumnOrder: ws.auditColumnOrder,
+        wsEmailColumnOrder: ws.wsEmailColumnOrder,
+        pdfImportColOrder: ws.pdfImportColOrder,
+      });
+
+      res.json({
+        data: {
+          auditColumnOrder: ws.auditColumnOrder ?? [],
+          wsEmailColumnOrder: ws.wsEmailColumnOrder ?? [],
+          pdfImportColOrder: ws.pdfImportColOrder ?? [],
+        },
+      });
+      return;
+    }
+
+    // Fallback: legacy global write (no workspaceId supplied).
+    const config = await getDocTidyConfigDoc();
     if (Array.isArray(auditColumnOrder)) config.auditColumnOrder = auditColumnOrder;
     if (Array.isArray(wsEmailColumnOrder)) config.wsEmailColumnOrder = wsEmailColumnOrder;
     if (Array.isArray(pdfImportColOrder)) config.pdfImportColOrder = pdfImportColOrder;
     await config.save();
 
-    // Broadcast to all connected clients so they reflect the change live.
     broadcast({
       type: 'ui_prefs',
       auditColumnOrder: config.auditColumnOrder,

@@ -113,7 +113,7 @@ export function Tooltip({
           onKeyDown: (e: React.KeyboardEvent) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
-              open ? close() : setOpen(true)
+              if (open) { close() } else { setOpen(true) }
             }
           },
         }

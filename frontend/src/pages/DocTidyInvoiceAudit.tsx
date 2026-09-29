@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { authApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import {
   Banner,
   DocumentTypeBadge,
   LiveReasoningSnippet,
   PaginationArrows,
+  ParseStatusChip,
   Spinner,
   Th,
   avatarColour,
@@ -31,9 +33,13 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
+  documentTypeOf,
+  DOCUMENT_TYPE_LABELS,
+  PARSE_STATUS_LABELS,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
+  type DocTidyOrganization,
   type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
   type WorkspaceEmailColumn,
@@ -100,10 +106,13 @@ interface InvoiceMatch {
 /**
  * Find the best matching parse job + line item for a given order import.
  *
- * Matching strategy (both conditions must hold):
+ * Matching strategy:
  *  1. PO # from the job's `jsonOutput` normalises equal to `order.poNumber`.
- *  2. The line-item SKU normalises equal to `order.orderSku`.
+ *  2. If `order.orderSku` is non-empty, the line-item SKU must also match.
  *     — If the job has no line items the PO match alone is accepted.
+ *  3. If `order.orderSku` is blank (PO-only import), a PO match alone is
+ *     sufficient even when the invoice has line items. Document-level fields
+ *     are used; line-item fields will be empty.
  */
 function findInvoiceMatch(
   order: DocTidyOrderImport,
@@ -142,6 +151,10 @@ function findInvoiceMatch(
       )
       if (normSku && itemSku === normSku) return { job, item }
     }
+
+    // If the order has no SKU (PO-only import), a PO match alone is sufficient
+    // regardless of whether the invoice has line items. Use document-level fields.
+    if (!normSku) return { job, item: null }
   }
 
   return null
@@ -664,12 +677,21 @@ function WorkspaceEditorDialog({
   initial,
   onSave,
   onClose,
+  initialOrgId,
+  isAdmin = false,
 }: {
   initial: DocTidyWorkspace | null
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
+  /** When creating a new workspace inside an org, pre-assign this org. */
+  initialOrgId?: string
+  /** When true the Import Mode toggle is shown (admin-only field). */
+  isAdmin?: boolean
 }) {
   const [name, setName] = useState(initial?.name ?? '')
+  const [importMode, setImportMode] = useState<'full' | 'header-only'>(
+    initial?.importMode ?? 'full'
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -686,7 +708,10 @@ function WorkspaceEditorDialog({
     setSaving(true)
     setError(null)
     try {
-      const body = { name: name.trim() }
+      const body: Record<string, unknown> = { name: name.trim() }
+      if (!initial && initialOrgId) body.organizationId = initialOrgId
+      // importMode is an admin-only field; only send it when editing an existing workspace.
+      if (initial && isAdmin) body.importMode = importMode
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -748,6 +773,50 @@ function WorkspaceEditorDialog({
             />
           </div>
 
+          {/* Import mode — admin only, visible when editing an existing workspace */}
+          {initial && isAdmin && (
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                Import mode
+              </label>
+              <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
+                <button
+                  type="button"
+                  onClick={() => setImportMode('full')}
+                  className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
+                    importMode === 'full'
+                      ? 'bg-[var(--accent-200)] text-white font-medium'
+                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className="block font-medium">Full import</span>
+                  <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                    All fields; PO # + SKU matching
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMode('header-only')}
+                  className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
+                    importMode === 'header-only'
+                      ? 'bg-[var(--accent-200)] text-white font-medium'
+                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className="block font-medium">Header only</span>
+                  <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                    PO # only required; PO-level matching
+                  </span>
+                </button>
+              </div>
+              {importMode === 'header-only' && (
+                <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                  Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
+                </p>
+              )}
+            </div>
+          )}
+
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
               {error}
@@ -779,11 +848,15 @@ function WorkspaceCard({
   onOpen,
   onEdit,
   onDelete,
+  onMove,
+  isAdmin = false,
 }: {
   workspace: DocTidyWorkspace
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
+  onMove?: () => void
+  isAdmin?: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -821,10 +894,704 @@ function WorkspaceCard({
           ) : (
             <>
               <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Edit</button>
+              {isAdmin && onMove && (
+                <button onClick={onMove} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Move</button>
+              )}
               <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400">Delete</button>
               <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity">Open →</button>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────── Organization card ── */
+
+function OrgCard({
+  org,
+  workspaceCount,
+  onOpen,
+  onEdit,
+  onDelete,
+  isAdmin = false,
+}: {
+  org: DocTidyOrganization
+  workspaceCount: number
+  onOpen: () => void
+  onEdit: () => void
+  onDelete: () => void
+  isAdmin?: boolean
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  return (
+    <div
+      onClick={onOpen}
+      className="group relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-hidden"
+    >
+      {/* Violet left accent stripe */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500 dark:bg-violet-600 rounded-l-xl" />
+
+      {/* Icon */}
+      <div className="ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0 py-4 pr-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+            {org.name}
+          </h3>
+          {/* Badge pills */}
+          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            </svg>
+            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Workspace name previews removed — keeps all rows uniform height */}
+      </div>
+
+      {/* Actions */}
+      <div
+        className="flex items-center gap-1 pr-4 shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-rose-500">Delete?</span>
+            <button
+              onClick={onDelete}
+              className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={onEdit}
+                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
+                >
+                  Delete
+                </button>
+              </>
+            )}
+            <button
+              onClick={onOpen}
+              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
+            >
+              Open →
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────────────────── Organization editor dialog ── */
+
+/** Slim user record returned by GET /doc-tidy/organizations/users */
+interface OrgUserOption {
+  _id: string
+  name: string
+  email: string
+  avatar?: string
+  role: string
+}
+
+function OrganizationEditorDialog({
+  initial,
+  onSave,
+  onClose,
+  workspaces,
+  onWorkspaceMoved,
+}: {
+  initial: DocTidyOrganization | null
+  onSave: (org: DocTidyOrganization) => void
+  onClose: () => void
+  /** All workspaces — used in the Workspaces tab for in-org and unassigned lists. */
+  workspaces: DocTidyWorkspace[]
+  /** Called after a workspace's organizationId is changed from within the dialog. */
+  onWorkspaceMoved: (updated: DocTidyWorkspace) => void
+}) {
+  type Tab = 'settings' | 'workspaces'
+  const [activeTab, setActiveTab] = useState<Tab>('settings')
+
+  /* ── Settings tab state ── */
+  const [name, setName] = useState(initial?.name ?? '')
+  const [memberIds, setMemberIds] = useState<Set<string>>(new Set(initial?.memberUserIds ?? []))
+  const [users, setUsers] = useState<OrgUserOption[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  /* ── Workspaces tab state ── */
+  const [wsMoving, setWsMoving] = useState<string | null>(null)     // id of ws being moved
+  const [wsError, setWsError] = useState<string | null>(null)
+  /** Which in-org workspace has the "Move to…" org picker expanded. */
+  const [wsPickerOpen, setWsPickerOpen] = useState<string | null>(null)
+  /** Which in-org workspace is showing the remove-confirmation panel. */
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (activeTab === 'settings') nameRef.current?.focus()
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose, activeTab])
+
+  useEffect(() => {
+    authApi
+      .get<{ data: OrgUserOption[] }>('/doc-tidy/organizations/users')
+      .then((res) => setUsers(res.data))
+      .catch(() => setError('Could not load users'))
+      .finally(() => setUsersLoading(false))
+  }, [])
+
+  /* ── Derived workspace lists (only relevant when editing an existing org) ── */
+  const inOrgWorkspaces = initial
+    ? workspaces.filter((w) => w.organizationId === initial._id)
+    : []
+  const unassignedWorkspaces = workspaces.filter((w) => !w.organizationId)
+
+  const toggleMember = (userId: string) => {
+    setMemberIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const submit = async () => {
+    if (!name.trim()) { setError('Please enter an organization name.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const body = { name: name.trim(), memberUserIds: Array.from(memberIds) }
+      let result: { data: DocTidyOrganization }
+      if (initial) {
+        result = await authApi.put<{ data: DocTidyOrganization }>(`/doc-tidy/organizations/${initial._id}`, body)
+      } else {
+        result = await authApi.post<{ data: DocTidyOrganization }>('/doc-tidy/organizations', body)
+      }
+      onSave(result.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save organization')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Move a workspace to a new org (or unassign it). */
+  const moveWorkspace = async (ws: DocTidyWorkspace, targetOrgId: string | null) => {
+    setWsMoving(ws._id)
+    setWsError(null)
+    try {
+      const result = await authApi.put<{ data: DocTidyWorkspace }>(
+        `/doc-tidy/workspaces/${ws._id}`,
+        { organizationId: targetOrgId }
+      )
+      onWorkspaceMoved(result.data)
+      setWsPickerOpen(null)
+      setConfirmRemoveId(null)
+    } catch (err) {
+      setWsError(err instanceof Error ? err.message : 'Failed to move workspace')
+    } finally {
+      setWsMoving(null)
+    }
+  }
+
+  const allOrganizations = useRef<DocTidyOrganization[]>([])
+  // We load orgs for the "move to another org" picker
+  const [orgsForPicker, setOrgsForPicker] = useState<DocTidyOrganization[]>([])
+  useEffect(() => {
+    if (!initial) return
+    authApi
+      .get<{ data: DocTidyOrganization[] }>('/doc-tidy/organizations')
+      .then((res) => {
+        allOrganizations.current = res.data
+        setOrgsForPicker(res.data.filter((o) => o._id !== initial._id))
+      })
+      .catch(() => {/* silently ignore */})
+  }, [initial])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        style={{ maxHeight: 'min(88vh, 720px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">
+              {initial ? 'Edit organization' : 'New organization'}
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              {initial
+                ? 'Manage settings, members, and workspaces.'
+                : 'Create a named organization to group workspaces and control access.'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tab bar — only shown when editing an existing org */}
+        {initial && (
+          <div className="flex border-b border-[var(--bg-300)] px-6">
+            {(['settings', 'workspaces'] as Tab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={[
+                  'cursor-pointer py-3 px-1 mr-5 text-xs font-semibold border-b-2 -mb-px transition-colors capitalize',
+                  activeTab === tab
+                    ? 'border-violet-600 text-violet-600 dark:text-violet-400'
+                    : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)]',
+                ].join(' ')}
+              >
+                {tab === 'workspaces'
+                  ? `Workspaces (${inOrgWorkspaces.length})`
+                  : 'Settings'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* ── Settings tab ── */}
+          {activeTab === 'settings' && (
+            <div className="space-y-5">
+              {/* Name */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                  Organization name
+                </label>
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void submit()}
+                  placeholder="e.g. Outdoor Equipped, Operations Team…"
+                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              {/* Members */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                  Members
+                </label>
+                <p className="text-[11px] text-[var(--text-200)] mb-2">
+                  Checked users can view workspaces inside this organization. Admins always have access.
+                </p>
+                {usersLoading ? (
+                  <div className="flex items-center gap-2 py-3 text-xs text-[var(--text-200)]">
+                    <Spinner className="h-3.5 w-3.5" /> Loading users…
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)]" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                    {users.map((u) => {
+                      const checked = memberIds.has(u._id)
+                      return (
+                        <label
+                          key={u._id}
+                          className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleMember(u._id)}
+                            className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+                          />
+                          <span
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                            style={{ backgroundColor: avatarColour(u.name) }}
+                          >
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-[var(--text-100)] truncate">
+                              {u.name}
+                              {u.role === 'admin' && (
+                                <span className="ml-1.5 text-[10px] text-violet-500 font-semibold">(admin)</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-200)] truncate">{u.email}</p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {error && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Workspaces tab (edit mode only) ── */}
+          {activeTab === 'workspaces' && initial && (
+            <div className="space-y-6">
+              {wsError && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+                  {wsError}
+                </p>
+              )}
+
+              {/* Workspaces currently in this org */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                  In this organization ({inOrgWorkspaces.length})
+                </p>
+                {inOrgWorkspaces.length === 0 ? (
+                  <p className="text-xs text-[var(--text-200)] py-2">
+                    No workspaces assigned to this organization yet. Add one from the unassigned list below.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)] overflow-hidden">
+                    {inOrgWorkspaces.map((ws) => (
+                      <div key={ws._id}>
+                        {/* ── Main row ── */}
+                        <div className="flex items-center gap-3 px-4 py-2.5">
+                          <svg className="h-4 w-4 shrink-0 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                          </svg>
+                          <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Move to another org — toggles inline picker below */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmRemoveId(null)
+                                setWsPickerOpen(wsPickerOpen === ws._id ? null : ws._id)
+                              }}
+                              disabled={wsMoving === ws._id}
+                              className={[
+                                'cursor-pointer rounded px-2 py-1 text-[11px] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors',
+                                wsPickerOpen === ws._id
+                                  ? 'bg-[var(--bg-300)] text-[var(--text-100)]'
+                                  : 'text-[var(--text-200)] hover:text-[var(--text-100)]',
+                              ].join(' ')}
+                            >
+                              Move to…
+                            </button>
+                            {/* Remove — toggles inline confirmation below */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWsPickerOpen(null)
+                                setConfirmRemoveId(confirmRemoveId === ws._id ? null : ws._id)
+                              }}
+                              disabled={wsMoving === ws._id}
+                              className={[
+                                'cursor-pointer rounded px-2 py-1 text-[11px] disabled:opacity-40 transition-colors',
+                                confirmRemoveId === ws._id
+                                  ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
+                                  : 'text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400',
+                              ].join(' ')}
+                            >
+                              {wsMoving === ws._id ? '…' : 'Remove'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ── Inline org picker (fixes overflow clipping) ── */}
+                        {wsPickerOpen === ws._id && (
+                          <div className="border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3 space-y-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                              Move to another organization:
+                            </p>
+                            {orgsForPicker.length === 0 ? (
+                              <p className="text-xs text-[var(--text-200)]">No other organizations exist.</p>
+                            ) : (
+                              orgsForPicker.map((org) => (
+                                <button
+                                  key={org._id}
+                                  type="button"
+                                  onClick={() => void moveWorkspace(ws, org._id)}
+                                  disabled={wsMoving === ws._id}
+                                  className="w-full cursor-pointer text-left rounded-lg px-3 py-2 text-xs text-[var(--text-100)] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors"
+                                >
+                                  {org.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        {/* ── Inline remove confirmation ── */}
+                        {confirmRemoveId === ws._id && (
+                          <div className="border-t border-[var(--bg-300)] bg-rose-50 dark:bg-rose-900/10 px-4 py-3">
+                            <p className="text-xs text-[var(--text-100)] mb-2.5">
+                              Remove <span className="font-semibold">{ws.name}</span> from this organization?
+                              It will become unassigned and visible to all users.
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void moveWorkspace(ws, null)}
+                                disabled={wsMoving === ws._id}
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                              >
+                                {wsMoving === ws._id && <Spinner className="h-3 w-3 text-white" />}
+                                {wsMoving === ws._id ? 'Removing…' : 'Yes, remove'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmRemoveId(null)}
+                                className="cursor-pointer rounded-lg px-3 py-1.5 text-[11px] text-[var(--text-200)] hover:bg-rose-100 dark:hover:bg-rose-900/20"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Unassigned workspaces — can be added to this org */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                  Unassigned workspaces ({unassignedWorkspaces.length})
+                </p>
+                {unassignedWorkspaces.length === 0 ? (
+                  <p className="text-xs text-[var(--text-200)] py-2">
+                    All workspaces are already assigned to an organization.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)] overflow-hidden">
+                    {unassignedWorkspaces.map((ws) => (
+                      <div key={ws._id} className="flex items-center gap-3 px-4 py-2.5">
+                        <svg className="h-4 w-4 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                        </svg>
+                        <span className="flex-1 min-w-0 text-xs font-medium text-[var(--text-100)] truncate">{ws.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => void moveWorkspace(ws, initial._id)}
+                          disabled={wsMoving === ws._id}
+                          className="shrink-0 cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-40"
+                        >
+                          {wsMoving === ws._id ? '…' : 'Add to this org'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer — only show Save when on settings tab */}
+        {activeTab === 'settings' && (
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+            <button type="button" onClick={onClose}
+              className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void submit()} disabled={saving || usersLoading}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+              {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+              {saving ? 'Saving…' : initial ? 'Save changes' : 'Create organization'}
+            </button>
+          </div>
+        )}
+        {activeTab === 'workspaces' && (
+          <div className="flex items-center justify-end border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+            <button type="button" onClick={onClose}
+              className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────── Move workspace dialog ── */
+
+function MoveWorkspaceDialog({
+  workspace,
+  organizations,
+  onSave,
+  onClose,
+}: {
+  workspace: DocTidyWorkspace
+  organizations: DocTidyOrganization[]
+  onSave: (updated: DocTidyWorkspace) => void
+  onClose: () => void
+}) {
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(workspace.organizationId ?? null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await authApi.put<{ data: DocTidyWorkspace }>(
+        `/doc-tidy/workspaces/${workspace._id}`,
+        { organizationId: selectedOrgId ?? null }
+      )
+      onSave(result.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to move workspace')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        style={{ maxHeight: 'min(80vh, 560px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Move workspace</h2>
+            <p className="mt-0.5 text-xs text-[var(--text-200)]">
+              Choose an organization for <span className="font-medium text-[var(--text-100)]">{workspace.name}</span>.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="space-y-2">
+            {/* Unassigned option */}
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--bg-300)] px-4 py-3 cursor-pointer hover:bg-[var(--bg-200)] transition-colors">
+              <input
+                type="radio"
+                name="orgPick"
+                checked={selectedOrgId === null}
+                onChange={() => setSelectedOrgId(null)}
+                className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+              />
+              <div>
+                <p className="text-xs font-medium text-[var(--text-100)]">Unassigned</p>
+                <p className="text-[10px] text-[var(--text-200)]">Visible to all users</p>
+              </div>
+            </label>
+
+            {organizations.map((org) => (
+              <label
+                key={org._id}
+                className="flex items-center gap-3 rounded-lg border border-[var(--bg-300)] px-4 py-3 cursor-pointer hover:bg-[var(--bg-200)] transition-colors"
+              >
+                <input
+                  type="radio"
+                  name="orgPick"
+                  checked={selectedOrgId === org._id}
+                  onChange={() => setSelectedOrgId(org._id)}
+                  className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-violet-600"
+                />
+                <div>
+                  <p className="text-xs font-medium text-[var(--text-100)]">{org.name}</p>
+                  <p className="text-[10px] text-[var(--text-200)]">
+                    {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </label>
+            ))}
+
+            {organizations.length === 0 && (
+              <p className="text-xs text-[var(--text-200)] py-2">No organizations exist yet. Create one first.</p>
+            )}
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--bg-300)] bg-[var(--bg-200)] px-6 py-4">
+          <button type="button" onClick={onClose}
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-[var(--text-200)] hover:text-[var(--text-100)] hover:bg-[var(--bg-300)]">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={saving}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
+            {saving ? 'Moving…' : 'Move workspace'}
+          </button>
         </div>
       </div>
     </div>
@@ -1185,6 +1952,7 @@ function auditColStr(
     case 'poNumber':      return order.poNumber
     case 'orderSku':      return order.orderSku
     case 'orderQty':      return order.orderQty
+    case 'lesd':          return order.lesd ?? ''
     case 'customerName':  return order.customerName ?? ''
     case 'purchasedDate': return order.purchasedDate ?? ''
     case 'status':        return order.status ?? ''
@@ -1227,6 +1995,47 @@ function auditColStr(
       return issues.length === 0 ? 'All good' : issues.join(', ')
     }
     default: return ''
+  }
+}
+
+/** Maps a `DocTidyMessage` column to a plain string for column-filter comparisons. */
+function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string {
+  switch (colId) {
+    case 'received':     return formatDate(msg.sentAt)
+    case 'from':         return msg.fromName ? msg.fromName : msg.from
+    case 'to':           return msg.to?.join(', ') ?? ''
+    case 'subject':      return msg.subject ?? ''
+    case 'documentType': return DOCUMENT_TYPE_LABELS[documentTypeOf(msg.documentType)]
+    case 'rule':         return msg.ruleName ?? ''
+    case 'attachments':  return msg.attachments?.map((a) => a.filename).join(', ') ?? ''
+    case 'parseStatus':  return deriveEmailParseStatusLabel(msg)
+    default:             return ''
+  }
+}
+
+/**
+ * Derives a single human-readable Tidy Agent status label for an email
+ * message by collapsing its (possibly multiple) parse jobs into one value.
+ * Priority: processing > pending > failed > completed > "Not sent".
+ */
+function deriveEmailParseStatusLabel(msg: DocTidyMessage): string {
+  const jobs = msg.parseJobs
+  if (!jobs || jobs.length === 0) return 'Not sent'
+  if (jobs.some((j) => j.status === 'processing')) return PARSE_STATUS_LABELS.processing
+  if (jobs.some((j) => j.status === 'pending'))    return PARSE_STATUS_LABELS.pending
+  if (jobs.some((j) => j.status === 'failed'))     return PARSE_STATUS_LABELS.failed
+  return PARSE_STATUS_LABELS.completed
+}
+
+/** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
+function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
+  switch (colId) {
+    case 'imported':     return formatDate(imp.createdAt)
+    case 'importedBy':   return imp.uploadedByName ?? ''
+    case 'size':         return formatBytes(imp.size)
+    case 'filename':     return imp.filename ?? ''
+    case 'parseStatus':  return imp.parseJob ? PARSE_STATUS_LABELS[imp.parseJob.status] : 'Not sent'
+    default:             return ''
   }
 }
 
@@ -1338,16 +2147,31 @@ function ConfirmDeleteDialog({
 
 /* ──────────────────────────────────────────────── Page ── */
 
-const AUDIT_PAGE_SIZES = [100, 250, 500, 1000]
+const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
 
 export default function DocTidyInvoiceAudit() {
+  const { user: currentUser } = useAuth()
+  const isAdmin = currentUser?.role === 'admin'
+
   /* ── View state ── */
-  type View = 'workspaces' | 'audit'
-  const [view, setView] = useState<View>('workspaces')
+  type View = 'organizations' | 'workspaces' | 'audit'
+  const [view, setView] = useState<View>('organizations')
+  const [activeOrg, setActiveOrg] = useState<DocTidyOrganization | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
   /** Which sub-tab is active inside a workspace detail page. */
   type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
+
+  /* ── Organizations ── */
+  const [organizations, setOrganizations] = useState<DocTidyOrganization[]>([])
+  const [orgLoading, setOrgLoading] = useState(true)
+  const [orgError, setOrgError] = useState<string | null>(null)
+
+  /* ── Organization editor ── */
+  const [editOrgTarget, setEditOrgTarget] = useState<DocTidyOrganization | 'new' | null>(null)
+
+  /* ── Move workspace dialog ── */
+  const [moveTarget, setMoveTarget] = useState<DocTidyWorkspace | null>(null)
 
   /* ── Workspaces ── */
   const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
@@ -1357,8 +2181,7 @@ export default function DocTidyInvoiceAudit() {
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
 
-  /* ── Tidy Agent worker status ── */
-  const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
+  /* ── Tidy Agent worker status ── */const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
 
   /* ── Audit table — Order Imports (primary rows) ── */
   const [orderImports, setOrderImports] = useState<DocTidyOrderImport[]>([])
@@ -1366,14 +2189,17 @@ export default function DocTidyInvoiceAudit() {
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [orderPage, setOrderPage] = useState(1)
-  const [orderPageSize, setOrderPageSize] = useState(100)
+  const [orderPageSize, setOrderPageSize] = useState(500)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   /** Week keys (YYYY-MM-DD of Sunday) whose rows are currently collapsed. Persisted to localStorage. */
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
-  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(loadAuditColumnVisibility)
+  // Initialized to defaults; reloaded from workspace-scoped localStorage on enterWorkspace().
+  const [colVisibility, setColVisibility] = useState<Record<InvoiceAuditColumnId, boolean>>(
+    () => Object.fromEntries(INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])) as Record<InvoiceAuditColumnId, boolean>
+  )
   const [showColSettings, setShowColSettings] = useState(false)
 
   /* ── Column filters (Excel-style per-column value filters) ── */
@@ -1383,6 +2209,16 @@ export default function DocTidyInvoiceAudit() {
   const [filterOpenColId, setFilterOpenColId] = useState<InvoiceAuditColumnId | null>(null)
   /** Bounding rect of the filter button that was clicked (used to position the dropdown). */
   const [filterAnchorRect, setFilterAnchorRect] = useState<DOMRect | null>(null)
+
+  /* ── Email column filters ── */
+  const [emailColFilters, setEmailColFilters] = useState<Partial<Record<WorkspaceEmailColumnId, Set<string>>>>({})
+  const [emailFilterOpenColId, setEmailFilterOpenColId] = useState<WorkspaceEmailColumnId | null>(null)
+  const [emailFilterAnchorRect, setEmailFilterAnchorRect] = useState<DOMRect | null>(null)
+
+  /* ── PDF import column filters ── */
+  const [pdfColFilters, setPdfColFilters] = useState<Partial<Record<PdfImportColumnId, Set<string>>>>({})
+  const [pdfFilterOpenColId, setPdfFilterOpenColId] = useState<PdfImportColumnId | null>(null)
+  const [pdfFilterAnchorRect, setPdfFilterAnchorRect] = useState<DOMRect | null>(null)
 
   /* ── All parse jobs for matching (fetched silently per workspace open) ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
@@ -1461,6 +2297,49 @@ export default function DocTidyInvoiceAudit() {
   const [emailDeleting, setEmailDeleting] = useState(false)
   const [confirmDeletePdf, setConfirmDeletePdf] = useState<PdfImport | null>(null)
   const [pdfDeleting, setPdfDeleting] = useState(false)
+
+  /* ── Bulk delete: emails ── */
+  const [confirmBulkDeleteEmails, setConfirmBulkDeleteEmails] = useState(false)
+  const [emailBulkDeleting, setEmailBulkDeleting] = useState(false)
+
+  /* ── Bulk delete: PDF imports ── */
+  const [confirmBulkDeletePdfs, setConfirmBulkDeletePdfs] = useState(false)
+  const [pdfBulkDeleting, setPdfBulkDeleting] = useState(false)
+
+  /* ── Audit table delete ── */
+  const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
+  const [auditRowDeleting, setAuditRowDeleting] = useState(false)
+  const [confirmBulkDeleteAudit, setConfirmBulkDeleteAudit] = useState(false)
+  const [auditBulkDeleting, setAuditBulkDeleting] = useState(false)
+
+  /* ── Filtered views (client-side column filters applied to the loaded page) ── */
+  const filteredEmailMessages = useMemo(() => {
+    const activeEntries = Object.entries(emailColFilters).filter(
+      (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return emailMessages
+    return emailMessages.filter((msg) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = emailColStr(colId, msg).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [emailMessages, emailColFilters])
+
+  const filteredPdfImports = useMemo(() => {
+    const activeEntries = Object.entries(pdfColFilters).filter(
+      (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    if (activeEntries.length === 0) return pdfImports
+    return pdfImports.filter((imp) =>
+      activeEntries.every(([colId, allowed]) => {
+        const val = pdfColStr(colId, imp).trim()
+        if (!val) return allowed.has(BLANK_SENTINEL)
+        return allowed.has(val)
+      })
+    )
+  }, [pdfImports, pdfColFilters])
 
   /* Debounce search */
   useEffect(() => {
@@ -1565,6 +2444,77 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeleteEmail(null)
     } finally {
       setEmailDeleting(false)
+    }
+  }
+
+  /* ── Emails: bulk delete selected messages ── */
+  const handleBulkDeleteEmails = async () => {
+    const ids = Array.from(selectedEmailIds)
+    setEmailBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/messages/bulk-delete', { ids })
+      setEmailMessages((prev) => prev.filter((m) => !selectedEmailIds.has(m._id)))
+      setEmailPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setSelectedEmailIds(new Set())
+      setConfirmBulkDeleteEmails(false)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to delete selected messages')
+      setConfirmBulkDeleteEmails(false)
+    } finally {
+      setEmailBulkDeleting(false)
+    }
+  }
+
+  /* ── PDF Imports: bulk delete selected imports ── */
+  const handleBulkDeletePdfs = async () => {
+    const ids = Array.from(pdfSelectedIds)
+    setPdfBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/pdf-imports/bulk-delete', { ids })
+      setPdfImports((prev) => prev.filter((i) => !pdfSelectedIds.has(i._id)))
+      setPdfImportsPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setPdfSelectedIds(new Set())
+      setConfirmBulkDeletePdfs(false)
+    } catch (err) {
+      setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete selected PDF imports')
+      setConfirmBulkDeletePdfs(false)
+    } finally {
+      setPdfBulkDeleting(false)
+    }
+  }
+
+  /* ── Audit table: single-row delete ── */
+  const handleDeleteOrderImport = async (order: DocTidyOrderImport) => {
+    setAuditRowDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/order-imports/${order._id}`)
+      setOrderImports((prev) => prev.filter((o) => o._id !== order._id))
+      setSelectedRowKeys((prev) => { const next = new Set(prev); next.delete(order._id); return next })
+      setOrderPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }))
+      setConfirmDeleteAuditRow(null)
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : 'Failed to delete order')
+      setConfirmDeleteAuditRow(null)
+    } finally {
+      setAuditRowDeleting(false)
+    }
+  }
+
+  /* ── Audit table: bulk delete selected rows ── */
+  const handleBulkDeleteOrderImports = async () => {
+    const ids = Array.from(selectedRowKeys)
+    setAuditBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/order-imports/bulk-delete', { ids })
+      setOrderImports((prev) => prev.filter((o) => !selectedRowKeys.has(o._id)))
+      setOrderPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
+      setSelectedRowKeys(new Set())
+      setConfirmBulkDeleteAudit(false)
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : 'Failed to delete selected orders')
+      setConfirmBulkDeleteAudit(false)
+    } finally {
+      setAuditBulkDeleting(false)
     }
   }
 
@@ -1676,8 +2626,8 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /* Selection helpers */
-  const allPdfOnPageSelected = pdfImports.length > 0 && pdfImports.every((i) => pdfSelectedIds.has(i._id))
-  const somePdfOnPageSelected = pdfImports.some((i) => pdfSelectedIds.has(i._id))
+  const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
+  const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
 
   /**
    * True when every selected PDF import already has a completed parse job —
@@ -1740,14 +2690,14 @@ export default function DocTidyInvoiceAudit() {
   const toggleAllPdfOnPage = () => {
     setPdfSelectedIds((prev) => {
       const next = new Set(prev)
-      for (const imp of pdfImports) {
+      for (const imp of filteredPdfImports) {
         if (allPdfOnPageSelected) next.delete(imp._id); else next.add(imp._id)
       }
       return next
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo)
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || Object.values(pdfColFilters).some((s) => s?.size))
   const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
   const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
   const orderedPdfCols = pdfColOrder
@@ -1770,43 +2720,30 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
-  /* ── Load shared column order from server on mount ── */
-  useEffect(() => {
-    authApi
-      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>('/doc-tidy/ui-prefs')
-      .then((res) => {
-        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
-
-        if (auditColumnOrder && auditColumnOrder.length > 0) {
-          const valid = auditColumnOrder.filter(
-            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
-          )
-          setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
-        }
-
-        if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
-          const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
-            WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
-          )
-          const merged = [...valid, ...DEFAULT_EMAIL_COL_ORDER.filter((id) => !valid.includes(id))]
-          setEmailColOrder(merged)
-        }
-
-        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
-          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
-            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
-          )
-          const merged = [...valid, ...DEFAULT_PDF_IMPORT_COL_ORDER.filter((id) => !valid.includes(id))]
-          setPdfColOrder(merged)
-        }
-      })
-      .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+  /* ── Load organizations on mount ── */
+  const loadOrganizations = useCallback(async () => {
+    setOrgLoading(true)
+    setOrgError(null)
+    try {
+      const res = await authApi.get<{ data: DocTidyOrganization[] }>('/doc-tidy/organizations')
+      setOrganizations(res.data)
+    } catch (err) {
+      setOrgError(err instanceof Error ? err.message : 'Failed to load organizations')
+    } finally {
+      setOrgLoading(false)
+    }
   }, [])
 
-  /** Persist column orders to the server (non-blocking, fire-and-forget). */
+  useEffect(() => { void loadOrganizations() }, [loadOrganizations])
+
+  // Column orders are now loaded per-workspace inside enterWorkspace().
+  // The old global-singleton fetch on mount has been removed.
+
+  /** Persist column orders to the server scoped to the active workspace (non-blocking, fire-and-forget). */
   const saveColOrders = useCallback(
-    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[]) => {
+    (auditOrder: string[], emailOrder: WorkspaceEmailColumnId[], pdfOrder: PdfImportColumnId[], workspaceId: string) => {
       void authApi.put('/doc-tidy/ui-prefs', {
+        workspaceId,
         auditColumnOrder: auditOrder,
         wsEmailColumnOrder: emailOrder,
         pdfImportColOrder: pdfOrder,
@@ -1882,7 +2819,7 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
         }
-        if (event.type === 'ui_prefs') {
+        if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
@@ -1915,7 +2852,7 @@ export default function DocTidyInvoiceAudit() {
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
         }
-        if (event.type === 'ui_prefs') {
+        if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
             const valid = event.auditColumnOrder.filter(
               (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
@@ -1961,8 +2898,8 @@ export default function DocTidyInvoiceAudit() {
 
   /* Indeterminate state on the select-all checkbox */
   const allEmailsOnPageSelected =
-    emailMessages.length > 0 && emailMessages.every((m) => selectedEmailIds.has(m._id))
-  const someEmailsOnPageSelected = emailMessages.some((m) => selectedEmailIds.has(m._id))
+    filteredEmailMessages.length > 0 && filteredEmailMessages.every((m) => selectedEmailIds.has(m._id))
+  const someEmailsOnPageSelected = filteredEmailMessages.some((m) => selectedEmailIds.has(m._id))
   useEffect(() => {
     if (selectAllEmailRef.current) {
       selectAllEmailRef.current.indeterminate = someEmailsOnPageSelected && !allEmailsOnPageSelected
@@ -1980,7 +2917,7 @@ export default function DocTidyInvoiceAudit() {
   const toggleAllEmailsOnPage = () => {
     setSelectedEmailIds((prev) => {
       const next = new Set(prev)
-      for (const msg of emailMessages) {
+      for (const msg of filteredEmailMessages) {
         if (allEmailsOnPageSelected) next.delete(msg._id)
         else next.add(msg._id)
       }
@@ -2149,10 +3086,50 @@ export default function DocTidyInvoiceAudit() {
     setEmailError(null)
     setEmailMessages([])
     setSelectedEmailIds(new Set())
+
+    // Reload workspace-scoped column visibility from localStorage.
+    // Pass importMode so header-only workspaces start with line-item columns hidden.
+    setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
+
+    // Reset column orders to defaults, then fetch this workspace's saved orders.
+    setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+    setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+    setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
+    authApi
+      .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>(
+        `/doc-tidy/ui-prefs?workspaceId=${ws._id}`
+      )
+      .then((res) => {
+        const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
+        if (auditColumnOrder && auditColumnOrder.length > 0) {
+          const valid = auditColumnOrder.filter(
+            (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+          )
+          setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
+        }
+        if (wsEmailColumnOrder && wsEmailColumnOrder.length > 0) {
+          const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+            WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+          )
+          setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
+        }
+        if (pdfImportColOrder && pdfImportColOrder.length > 0) {
+          const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+            PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+          )
+          setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
+        }
+      })
+      .catch(() => { /* Non-critical — silently fall back to defaults. */ })
   }
 
   const leaveWorkspace = () => {
-    setView('workspaces')
+    // Go back to the org's workspace list if we came from one, else org landing
+    if (activeOrg) {
+      setView('workspaces')
+    } else {
+      setView('organizations')
+    }
     setActiveWorkspace(null)
     setJobs([])
     setOrderImports([])
@@ -2166,10 +3143,29 @@ export default function DocTidyInvoiceAudit() {
     setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1 })
+    // Reset column orders so no stale workspace layout bleeds into the next open.
+    setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+    setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+    setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
+  }
+
+  /* ── Organization navigation ── */
+  const enterOrg = (org: DocTidyOrganization) => {
+    setActiveOrg(org)
+    setView('workspaces')
+  }
+
+  const leaveOrg = () => {
+    setActiveOrg(null)
+    setView('organizations')
   }
 
   const openEditor = (target: DocTidyWorkspace | 'new') => {
     setEditTarget(target)
+  }
+
+  const openOrgEditor = (target: DocTidyOrganization | 'new') => {
+    setEditOrgTarget(target)
   }
 
   const handleWorkspaceSaved = (saved: DocTidyWorkspace) => {
@@ -2182,6 +3178,18 @@ export default function DocTidyInvoiceAudit() {
     })
     if (activeWorkspace?._id === saved._id) setActiveWorkspace(saved)
     setEditTarget(null)
+    setMoveTarget(null)
+  }
+
+  const handleOrgSaved = (saved: DocTidyOrganization) => {
+    setOrganizations((prev) => {
+      const idx = prev.findIndex((o) => o._id === saved._id)
+      if (idx === -1) return [...prev, saved]
+      const next = [...prev]
+      next[idx] = saved
+      return next
+    })
+    setEditOrgTarget(null)
   }
 
   const handleDeleteWorkspace = async (ws: DocTidyWorkspace) => {
@@ -2194,10 +3202,24 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
+  const handleDeleteOrg = async (org: DocTidyOrganization) => {
+    try {
+      await authApi.delete(`/doc-tidy/organizations/${org._id}`)
+      setOrganizations((prev) => prev.filter((o) => o._id !== org._id))
+      // Workspaces in the deleted org become unassigned — clear their organizationId in local state
+      setWorkspaces((prev) =>
+        prev.map((w) => w.organizationId === org._id ? { ...w, organizationId: undefined } : w)
+      )
+      if (activeOrg?._id === org._id) leaveOrg()
+    } catch (err) {
+      setOrgError(err instanceof Error ? err.message : 'Failed to delete organization')
+    }
+  }
+
   /* ── Column helpers ── */
   const handleColVisChange = (next: Record<InvoiceAuditColumnId, boolean>) => {
     setColVisibility(next)
-    saveAuditColumnVisibility(next)
+    if (activeWorkspace) saveAuditColumnVisibility(next, activeWorkspace._id)
   }
 
   /** Persist collapsed weeks to localStorage whenever the set changes. */
@@ -2253,6 +3275,43 @@ export default function DocTidyInvoiceAudit() {
   }, [orderImports, colFilters, invoiceMatchMap])
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
+
+  /* ── Org / workspace grouping ── */
+  /** Workspaces that have no organization assignment (visible to all users). */
+  const unassignedWorkspaces = useMemo(
+    () => workspaces.filter((w) => !w.organizationId),
+    [workspaces]
+  )
+
+  /** Workspaces belonging to the currently active organization. */
+  const orgWorkspaces = useMemo(
+    () => (activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []),
+    [workspaces, activeOrg]
+  )
+
+  /* ── Email column filter helpers ── */
+  const getEmailColUniqueValues = useCallback((colId: WorkspaceEmailColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const msg of emailMessages) {
+      const val = emailColStr(colId, msg).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [emailMessages])
+
+  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length
+
+  /* ── PDF import column filter helpers ── */
+  const getPdfColUniqueValues = useCallback((colId: PdfImportColumnId): Map<string, number> => {
+    const vals = new Map<string, number>()
+    for (const imp of pdfImports) {
+      const val = pdfColStr(colId, imp).trim()
+      vals.set(val, (vals.get(val) ?? 0) + 1)
+    }
+    return vals
+  }, [pdfImports])
+
+  const pdfActiveFilterCount = Object.values(pdfColFilters).filter((s) => s != null && s.size > 0).length
 
   const visibleCols = useMemo<InvoiceAuditColumn[]>(
     () => {
@@ -2364,6 +3423,7 @@ export default function DocTidyInvoiceAudit() {
       case 'poNumber':      return monoCell(order.poNumber)
       case 'orderSku':      return monoCell(order.orderSku)
       case 'orderQty':      return numCell(order.orderQty)
+      case 'lesd':          return textCell(order.lesd ?? '')
       case 'customerName': {
         const name = order.customerName ?? ''
         if (!name) return emDash
@@ -2511,26 +3571,197 @@ export default function DocTidyInvoiceAudit() {
   /* ── Render ── */
   return (
     <div className="space-y-4">
-      {/* ── Global error banner ── */}
+      {/* ── Global error banners ── */}
       {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
+      {orgError && <Banner kind="error" onDismiss={() => setOrgError(null)}>{orgError}</Banner>}
 
-      {/* ══════════════════════════════ WORKSPACE LIST ══════════════════════════════ */}
-      {view === 'workspaces' && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--text-100)]">Invoice Workspaces</h2>
-              <p className="mt-0.5 text-xs text-[var(--text-200)]">
-                Create a workspace to scope your invoice audit to specific filter rules.
-              </p>
+      {/* ══════════════════════════ ORGANIZATIONS LANDING ══════════════════════════ */}
+      {view === 'organizations' && (
+        <div className="space-y-8">
+
+          {/* ── Organizations section ── */}
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-100)]">Organizations</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                  Group workspaces by team or project and control who can access them.
+                </p>
+              </div>
+              {isAdmin && (
+                <button type="button" onClick={() => openOrgEditor('new')}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New organization
+                </button>
+              )}
             </div>
-            <button type="button" onClick={() => openEditor('new')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+
+            {orgLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] overflow-hidden h-16">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--bg-300)]" />
+                    <div className="ml-5 h-11 w-11 shrink-0 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 w-1/3 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-2.5 w-1/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : organizations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-14 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 mb-4">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-semibold text-[var(--text-100)]">No organizations yet</h3>
+                <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
+                  {isAdmin
+                    ? 'Create an organization to group workspaces and control who can access them.'
+                    : 'You have not been added to any organizations yet. Contact an admin.'}
+                </p>
+                {isAdmin && (
+                  <button type="button" onClick={() => openOrgEditor('new')}
+                    className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 dark:bg-violet-700 px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create first organization
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {organizations.map((org) => (
+                  <OrgCard
+                    key={org._id}
+                    org={org}
+                    workspaceCount={workspaces.filter((w) => w.organizationId === org._id).length}
+                    onOpen={() => enterOrg(org)}
+                    onEdit={() => openOrgEditor(org)}
+                    onDelete={() => void handleDeleteOrg(org)}
+                    isAdmin={isAdmin}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Divider between organizations and unassigned workspaces ── */}
+          {!orgLoading && organizations.length > 0 && (wsLoading || unassignedWorkspaces.length > 0) && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-[var(--bg-300)]" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-200)] px-1">
+                Unassigned
+              </span>
+              <div className="flex-1 h-px bg-[var(--bg-300)]" />
+            </div>
+          )}
+
+          {/* ── Unassigned workspaces section ── */}
+          {(wsLoading || unassignedWorkspaces.length > 0) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-100)]">Unassigned Workspaces</h3>
+                  <p className="mt-0.5 text-xs text-[var(--text-200)]">
+                    Not linked to any organization — visible to all users.
+                    {isAdmin && ' Use Edit on an organization to assign them.'}
+                  </p>
+                </div>
+                <button type="button" onClick={() => openEditor('new')}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New workspace
+                </button>
+              </div>
+
+              {wsLoading ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
+                      <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {unassignedWorkspaces.map((ws) => (
+                    <WorkspaceCard
+                      key={ws._id}
+                      workspace={ws}
+                      onOpen={() => enterWorkspace(ws)}
+                      onEdit={() => openEditor(ws)}
+                      onDelete={() => void handleDeleteWorkspace(ws)}
+                      onMove={() => setMoveTarget(ws)}
+                      isAdmin={isAdmin}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════ WORKSPACES WITHIN ORG ══════════════════════════ */}
+      {view === 'workspaces' && activeOrg && (
+        <div className="space-y-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button type="button" onClick={leaveOrg}
+                className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Organizations
+              </button>
+              <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              New workspace
-            </button>
+              <span className="text-sm font-semibold text-[var(--text-100)] truncate">{activeOrg.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <button type="button" onClick={() => openOrgEditor(activeOrg)}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-3 py-1.5 text-xs text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit organization
+                </button>
+              )}
+              <button type="button" onClick={() => openEditor('new')}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-1.5 text-sm font-medium text-white hover:opacity-90">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New workspace
+              </button>
+            </div>
+          </div>
+
+          {/* Members badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-[var(--text-200)]">
+              {activeOrg.memberUserIds.length} member{activeOrg.memberUserIds.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-[11px] text-[var(--bg-300)]">·</span>
+            <span className="text-[11px] text-[var(--text-200)]">
+              {orgWorkspaces.length} workspace{orgWorkspaces.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
           {wsLoading ? (
@@ -2548,7 +3779,7 @@ export default function DocTidyInvoiceAudit() {
                 </div>
               ))}
             </div>
-          ) : workspaces.length === 0 ? (
+          ) : orgWorkspaces.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
                 <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2556,27 +3787,29 @@ export default function DocTidyInvoiceAudit() {
                     d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                 </svg>
               </div>
-              <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces yet</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-100)]">No workspaces in this organization</h3>
               <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
-                Workspaces let you scope the invoice audit to a named set of filter rules.
+                Create a workspace here or move an existing one into this organization.
               </p>
               <button type="button" onClick={() => openEditor('new')}
                 className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Create your first workspace
+                Create first workspace
               </button>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {workspaces.map((ws) => (
+              {orgWorkspaces.map((ws) => (
                 <WorkspaceCard
                   key={ws._id}
                   workspace={ws}
                   onOpen={() => enterWorkspace(ws)}
                   onEdit={() => openEditor(ws)}
                   onDelete={() => void handleDeleteWorkspace(ws)}
+                  onMove={() => setMoveTarget(ws)}
+                  isAdmin={isAdmin}
                 />
               ))}
             </div>
@@ -2590,13 +3823,13 @@ export default function DocTidyInvoiceAudit() {
 
           {/* Breadcrumb */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
               <button type="button" onClick={leaveWorkspace}
                 className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--accent-200)] transition-colors">
                 <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Workspaces
+                {activeOrg ? activeOrg.name : 'Organizations'}
               </button>
               <svg className="h-3.5 w-3.5 shrink-0 text-[var(--bg-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -2703,6 +3936,23 @@ export default function DocTidyInvoiceAudit() {
                       Clear filters
                     </button>
                   )}
+                  {/* Active column-filter pill */}
+                  {emailActiveFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setEmailColFilters({})}
+                      title="Clear all column filters"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                      </svg>
+                      {emailActiveFilterCount} column filter{emailActiveFilterCount !== 1 ? 's' : ''} active
+                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {emailLoading && <Spinner className="h-3 w-3" />}
                     {emailPagination.total > 0 && (
@@ -2756,6 +4006,19 @@ export default function DocTidyInvoiceAudit() {
                           : `Send ${selectedEmailIds.size} to Tidy Agent`}
                       </button>
                     )}
+                    {/* Bulk delete emails */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeleteEmails(true)}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {selectedEmailIds.size} selected
+                      </button>
+                    )}
                   </span>
                 </div>
 
@@ -2784,7 +4047,7 @@ export default function DocTidyInvoiceAudit() {
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                  <table className="w-full text-[11px] border-separate border-spacing-0">
+                  <table className="text-[11px] border-separate border-spacing-0">
                     <thead>
                       <tr>
                         <Th className="w-8">
@@ -2804,16 +4067,26 @@ export default function DocTidyInvoiceAudit() {
                             iconPath={col.iconPath}
                             isDragging={emailDragSrc === col.id}
                             isDragTarget={emailDragTarget === col.id}
+                            hasActiveFilter={!!(emailColFilters[col.id]?.size)}
                             onDragStart={() => setEmailDragSrc(col.id)}
                             onDragOver={() => setEmailDragTarget(col.id)}
                             onDrop={() => {
                               if (emailDragSrc && emailDragSrc !== col.id) {
                                 const newOrder = reorderCols(emailColOrderRef.current, emailDragSrc, col.id)
                                 setEmailColOrder(newOrder)
-                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current)
+                                saveColOrdersRef.current(auditColOrderRef.current, newOrder, pdfColOrderRef.current, activeWorkspace?._id ?? '')
                               }
                             }}
                             onDragEnd={() => { setEmailDragSrc(null); setEmailDragTarget(null) }}
+                            onFilterClick={(rect) => {
+                              if (emailFilterOpenColId === col.id) {
+                                setEmailFilterOpenColId(null)
+                                setEmailFilterAnchorRect(null)
+                              } else {
+                                setEmailFilterOpenColId(col.id)
+                                setEmailFilterAnchorRect(rect)
+                              }
+                            }}
                           />
                         ))}
                         <Th label="Actions" align="center" className="min-w-[200px]" />
@@ -2834,7 +4107,7 @@ export default function DocTidyInvoiceAudit() {
                                       <div className="h-2.5 w-32 animate-pulse rounded bg-[var(--bg-300)]" />
                                     </div>
                                   </div>
-                                ) : col.id === 'documentType' || col.id === 'rule' ? (
+                                ) : col.id === 'documentType' || col.id === 'rule' || col.id === 'parseStatus' ? (
                                   <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
                                 ) : (
                                   <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -2872,8 +4145,27 @@ export default function DocTidyInvoiceAudit() {
                             </div>
                           </td>
                         </tr>
+                      ) : filteredEmailMessages.length === 0 && emailActiveFilterCount > 0 ? (
+                        <tr>
+                          <td colSpan={orderedEmailCols.length + 2} className="py-14 text-center">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                                <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                              </div>
+                              <button onClick={() => setEmailColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                Clear all column filters
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : (
-                        emailMessages.map((msg) => {
+                        filteredEmailMessages.map((msg) => {
                           const isSelected = selectedEmailIds.has(msg._id)
                           const senderSeed = msg.fromName || msg.from
                           return (
@@ -3026,6 +4318,24 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   default:
                                     return null
+                                  case 'parseStatus': {
+                                    const statusLabel = deriveEmailParseStatusLabel(msg)
+                                    return (
+                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
+                                        {statusLabel === 'Not sent' ? (
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
+                                            Not sent
+                                          </span>
+                                        ) : (
+                                          <ParseStatusChip
+                                            status={(['pending', 'processing', 'completed', 'failed'] as const).find(
+                                              (s) => PARSE_STATUS_LABELS[s] === statusLabel
+                                            ) ?? 'completed'}
+                                          />
+                                        )}
+                                      </td>
+                                    )
+                                  }
                                 }
                               })}
 
@@ -3125,6 +4435,23 @@ export default function DocTidyInvoiceAudit() {
                       Clear filters
                     </button>
                   )}
+                  {/* Active column-filter pill */}
+                  {pdfActiveFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfColFilters({})}
+                      title="Clear all column filters"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                      </svg>
+                      {pdfActiveFilterCount} column filter{pdfActiveFilterCount !== 1 ? 's' : ''} active
+                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Right side: count + spinner + bulk action + Import button */}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
@@ -3178,6 +4505,19 @@ export default function DocTidyInvoiceAudit() {
                         {allSelectedPdfsCompleted
                           ? `Send ${pdfSelectedIds.size} to Tidy Agent for Rerun`
                           : `Send ${pdfSelectedIds.size} to Tidy Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete PDF imports */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeletePdfs(true)}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {pdfSelectedIds.size} selected
                       </button>
                     )}
                   </span>
@@ -3253,8 +4593,23 @@ export default function DocTidyInvoiceAudit() {
                         </button>
                       )}
                     </div>
+                  ) : filteredPdfImports.length === 0 && pdfActiveFilterCount > 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-14 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
+                        <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                      </div>
+                      <button onClick={() => setPdfColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                        Clear all column filters
+                      </button>
+                    </div>
                   ) : (
-                    <table className="w-full text-[11px] border-separate border-spacing-0">
+                    <table className="text-[11px] border-separate border-spacing-0">
                       <thead>
                         <tr>
                           {/* Checkbox — select all */}
@@ -3278,23 +4633,33 @@ export default function DocTidyInvoiceAudit() {
                               align={col.align}
                               isDragging={pdfDragSrc === col.id}
                               isDragTarget={pdfDragTarget === col.id}
+                              hasActiveFilter={!!(pdfColFilters[col.id]?.size)}
                               onDragStart={() => setPdfDragSrc(col.id)}
                               onDragOver={() => setPdfDragTarget(col.id)}
                               onDrop={() => {
                                 if (pdfDragSrc && pdfDragSrc !== col.id) {
                                   const newOrder = reorderCols(pdfColOrderRef.current, pdfDragSrc, col.id)
                                   setPdfColOrder(newOrder)
-                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder)
+                                  saveColOrdersRef.current(auditColOrderRef.current, emailColOrderRef.current, newOrder, activeWorkspace?._id ?? '')
                                 }
                               }}
                               onDragEnd={() => { setPdfDragSrc(null); setPdfDragTarget(null) }}
+                              onFilterClick={(rect) => {
+                                if (pdfFilterOpenColId === col.id) {
+                                  setPdfFilterOpenColId(null)
+                                  setPdfFilterAnchorRect(null)
+                                } else {
+                                  setPdfFilterOpenColId(col.id)
+                                  setPdfFilterAnchorRect(rect)
+                                }
+                              }}
                             />
                           ))}
                           <Th label="Actions" align="center" className="min-w-[200px]" />
                         </tr>
                       </thead>
                       <tbody>
-                        {pdfImports.map((imp) => {
+                        {filteredPdfImports.map((imp) => {
                           const isSending = pdfSendingIds.has(imp._id)
                           const isSelected = pdfSelectedIds.has(imp._id)
                           const job = imp.parseJob
@@ -3376,6 +4741,18 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   default:
                                     return null
+                                  case 'parseStatus':
+                                    return (
+                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${cls}`}>
+                                        {imp.parseJob ? (
+                                          <ParseStatusChip status={imp.parseJob.status} />
+                                        ) : (
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
+                                            Not sent
+                                          </span>
+                                        )}
+                                      </td>
+                                    )
                                 }
                               })}
 
@@ -3684,6 +5061,17 @@ export default function DocTidyInvoiceAudit() {
                     Export all
                   </button>
                 )}
+
+                {/* Bulk delete — visible only when rows are selected */}
+                {selectedRowKeys.size > 0 && (
+                  <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete {selectedRowKeys.size} selected
+                  </button>
+                )}
               </div>
 
               {/* Top pagination */}
@@ -3749,7 +5137,7 @@ export default function DocTidyInvoiceAudit() {
                     100% { transform: translateX(-100%); }
                   }
                 `}</style>
-                <table className="w-full text-[11px] border-separate border-spacing-0">
+                <table className="text-[11px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <Th className="w-8">
@@ -3777,7 +5165,7 @@ export default function DocTidyInvoiceAudit() {
                             if (auditDragSrc && auditDragSrc !== col.id) {
                               const newOrder = reorderCols(auditColOrderRef.current, auditDragSrc, col.id)
                               setAuditColOrder(newOrder)
-                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current)
+                              saveColOrdersRef.current(newOrder, emailColOrderRef.current, pdfColOrderRef.current, activeWorkspace?._id ?? '')
                             }
                           }}
                           onDragEnd={() => { setAuditDragSrc(null); setAuditDragTarget(null) }}
@@ -3792,6 +5180,8 @@ export default function DocTidyInvoiceAudit() {
                           }}
                         />
                       ))}
+                      {/* Fixed actions column header */}
+                      <Th className="w-8" />
                     </tr>
                   </thead>
                   <tbody>
@@ -3808,11 +5198,12 @@ export default function DocTidyInvoiceAudit() {
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
+                          <td className="px-2.5 py-1" />
                         </tr>
                       ))
                     ) : orderImports.length === 0 ? (
                       <tr>
-                        <td colSpan={visibleCols.length + 1} className="py-16 text-center">
+                        <td colSpan={visibleCols.length + 2} className="py-16 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                               <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3848,7 +5239,7 @@ export default function DocTidyInvoiceAudit() {
                     ) : filteredOrderImports.length === 0 && activeFilterCount > 0 ? (
                       /* Column filters eliminated all rows on this page */
                       <tr>
-                        <td colSpan={visibleCols.length + 1} className="py-14 text-center">
+                        <td colSpan={visibleCols.length + 2} className="py-14 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-100)]">
                               <svg className="h-6 w-6 text-[var(--accent-200)]" viewBox="0 0 20 20" fill="currentColor">
@@ -3880,7 +5271,7 @@ export default function DocTidyInvoiceAudit() {
                           return b.localeCompare(a)
                         })
                         let rowIdx = 0
-                        const totalCols = visibleCols.length + 1
+                        const totalCols = visibleCols.length + 2
                         return sortedKeys.flatMap((weekKey) => {
                           const groupOrders = weekMap.get(weekKey)!
                           const isCollapsed = collapsedWeeks.has(weekKey)
@@ -3940,7 +5331,7 @@ export default function DocTidyInvoiceAudit() {
                             rowIdx++
                             return (
                               <tr key={order._id}
-                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
+                                className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
                                 <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
@@ -3958,6 +5349,19 @@ export default function DocTidyInvoiceAudit() {
                                     {auditCellFor(col.id, order, match)}
                                   </td>
                                 ))}
+                                {/* Per-row delete action */}
+                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteAuditRow(order)}
+                                    title="Delete this order"
+                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </td>
                               </tr>
                             )
                           })
@@ -4006,6 +5410,48 @@ export default function DocTidyInvoiceAudit() {
         />
       )}
 
+      {/* ── Email column filter dropdown ── */}
+      {emailFilterOpenColId && emailFilterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getEmailColUniqueValues(emailFilterOpenColId)}
+          activeFilter={emailColFilters[emailFilterOpenColId]}
+          anchorRect={emailFilterAnchorRect}
+          onApply={(values) => {
+            setEmailColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[emailFilterOpenColId]
+              } else {
+                next[emailFilterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setEmailFilterOpenColId(null); setEmailFilterAnchorRect(null) }}
+        />
+      )}
+
+      {/* ── PDF imports column filter dropdown ── */}
+      {pdfFilterOpenColId && pdfFilterAnchorRect && (
+        <ColumnFilterDropdown
+          allValues={getPdfColUniqueValues(pdfFilterOpenColId)}
+          activeFilter={pdfColFilters[pdfFilterOpenColId]}
+          anchorRect={pdfFilterAnchorRect}
+          onApply={(values) => {
+            setPdfColFilters((prev) => {
+              const next = { ...prev }
+              if (values == null || values.size === 0) {
+                delete next[pdfFilterOpenColId]
+              } else {
+                next[pdfFilterOpenColId] = values
+              }
+              return next
+            })
+          }}
+          onClose={() => { setPdfFilterOpenColId(null); setPdfFilterAnchorRect(null) }}
+        />
+      )}
+
       {/* ── Order Import modal ── */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -4032,33 +5478,56 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const header = 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,Status'
-                      const blob = new Blob([header + '\n'], { type: 'text/csv' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = 'order-import-template.csv'
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
-                  >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download template
-                  </button>
-                </div>
-                <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
-                  Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · Status
-                </p>
-              </div>
+              {(() => {
+                const isHeaderOnly = activeWorkspace?.importMode === 'header-only'
+                const templateHeader = isHeaderOnly
+                  ? 'PO #'
+                  : 'Processed Date,PO #,Purchased Date,Customer Name,Order ID,Order SKU,Order Qty,LESD,Status'
+                const templateFilename = isHeaderOnly
+                  ? 'order-import-template-po-only.csv'
+                  : 'order-import-template.csv'
+                return (
+                  <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const blob = new Blob([templateHeader + '\n'], { type: 'text/csv' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = templateFilename
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download template
+                      </button>
+                    </div>
+                    {isHeaderOnly ? (
+                      <>
+                        <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                          <span className="font-semibold text-[var(--text-100)]">PO #</span>
+                          {' · '}
+                          <span className="opacity-60">Processed Date · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status</span>
+                        </p>
+                        <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                          Only <strong>PO #</strong> is required — all other columns are optional. Rows will be matched to invoices by PO # alone.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                        Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
               <label
                 onDragOver={(e) => { e.preventDefault(); setImportDragOver(true) }}
                 onDragLeave={() => setImportDragOver(false)}
@@ -4135,6 +5604,29 @@ export default function DocTidyInvoiceAudit() {
           initial={editTarget === 'new' ? null : editTarget}
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
+          initialOrgId={editTarget === 'new' ? (activeOrg?._id) : undefined}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {/* ── Organization editor (admin only) ── */}
+      {editOrgTarget !== null && (
+        <OrganizationEditorDialog
+          initial={editOrgTarget === 'new' ? null : editOrgTarget}
+          onSave={handleOrgSaved}
+          onClose={() => setEditOrgTarget(null)}
+          workspaces={workspaces}
+          onWorkspaceMoved={handleWorkspaceSaved}
+        />
+      )}
+
+      {/* ── Move workspace dialog (admin only) ── */}
+      {moveTarget !== null && (
+        <MoveWorkspaceDialog
+          workspace={moveTarget}
+          organizations={organizations}
+          onSave={handleWorkspaceSaved}
+          onClose={() => setMoveTarget(null)}
         />
       )}
 
@@ -4194,6 +5686,75 @@ export default function DocTidyInvoiceAudit() {
           deleting={pdfDeleting}
           onConfirm={() => void confirmAndDeletePdfImport(confirmDeletePdf)}
           onCancel={() => setConfirmDeletePdf(null)}
+        />
+      )}
+
+      {/* ── Confirm bulk delete: emails ── */}
+      {confirmBulkDeleteEmails && (
+        <ConfirmDeleteDialog
+          title={`Delete ${selectedEmailIds.size} selected message${selectedEmailIds.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {selectedEmailIds.size} message{selectedEmailIds.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
+            </span>
+          }
+          deleting={emailBulkDeleting}
+          onConfirm={() => void handleBulkDeleteEmails()}
+          onCancel={() => setConfirmBulkDeleteEmails(false)}
+        />
+      )}
+
+      {/* ── Confirm bulk delete: PDF imports ── */}
+      {confirmBulkDeletePdfs && (
+        <ConfirmDeleteDialog
+          title={`Delete ${pdfSelectedIds.size} selected PDF import${pdfSelectedIds.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {pdfSelectedIds.size} import record{pdfSelectedIds.size !== 1 ? 's' : ''} and any associated Google Drive copies will be permanently removed. This cannot be undone.
+            </span>
+          }
+          deleting={pdfBulkDeleting}
+          onConfirm={() => void handleBulkDeletePdfs()}
+          onCancel={() => setConfirmBulkDeletePdfs(false)}
+        />
+      )}
+
+      {/* ── Confirm delete: single audit row ── */}
+      {confirmDeleteAuditRow && (
+        <ConfirmDeleteDialog
+          title="Delete this order?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">
+                {confirmDeleteAuditRow.poNumber
+                  ? `PO #${confirmDeleteAuditRow.poNumber}`
+                  : confirmDeleteAuditRow.orderId || 'This order'}
+              </span>
+              {confirmDeleteAuditRow.customerName && (
+                <> for <span className="font-medium text-[var(--text-100)]">{confirmDeleteAuditRow.customerName}</span></>
+              )}
+              <br />
+              <span className="text-[var(--text-200)]">The row will be permanently removed from the audit table. This cannot be undone.</span>
+            </>
+          }
+          deleting={auditRowDeleting}
+          onConfirm={() => void handleDeleteOrderImport(confirmDeleteAuditRow)}
+          onCancel={() => setConfirmDeleteAuditRow(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: bulk audit rows ── */}
+      {confirmBulkDeleteAudit && (
+        <ConfirmDeleteDialog
+          title={`Delete ${selectedRowKeys.size} selected order${selectedRowKeys.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {selectedRowKeys.size} row{selectedRowKeys.size !== 1 ? 's' : ''} will be permanently removed from the audit table. This cannot be undone.
+            </span>
+          }
+          deleting={auditBulkDeleting}
+          onConfirm={() => void handleBulkDeleteOrderImports()}
+          onCancel={() => setConfirmBulkDeleteAudit(false)}
         />
       )}
     </div>

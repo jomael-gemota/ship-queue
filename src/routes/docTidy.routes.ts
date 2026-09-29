@@ -10,6 +10,7 @@ import {
   getMessages,
   getMessageById,
   deleteMessage,
+  bulkDeleteMessages,
   streamEvents,
   getConfig,
   updateConfig,
@@ -43,11 +44,19 @@ import {
   deleteWorkspace,
 } from '../controllers/docTidyWorkspace.controller';
 import {
+  listOrganizations,
+  createOrganization,
+  updateOrganization,
+  deleteOrganization,
+  listUsersForOrg,
+} from '../controllers/docTidyOrganization.controller';
+import {
   pdfUpload,
   listPdfImports,
   uploadPdfImports,
   sendPdfImportToAgent,
   deletePdfImport,
+  bulkDeletePdfImports,
 } from '../controllers/docTidyPdfImport.controller';
 import {
   orderImportUpload,
@@ -55,6 +64,7 @@ import {
   uploadOrderImports,
   deleteOrderImport,
   deleteOrderImportBatch,
+  bulkDeleteOrderImports,
   refreshCogsForWorkspace,
   rebuildMatchCache,
 } from '../controllers/docTidyOrderImport.controller';
@@ -75,6 +85,7 @@ router.post('/run', runAllRules);
 router.get('/messages', getMessages);
 router.get('/messages/:id', getMessageById);
 router.delete('/messages/:id', deleteMessage);
+router.post('/messages/bulk-delete', bulkDeleteMessages);
 
 // Long-lived SSE stream: tells open results tables when to refetch.
 router.get('/stream', streamEvents);
@@ -107,11 +118,19 @@ router.post('/workspaces', createWorkspace);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
 
+// Organizations — any auth user may list; only admins may create/modify/delete.
+router.get('/organizations', listOrganizations);
+router.get('/organizations/users', requireAdmin, listUsersForOrg);
+router.post('/organizations', requireAdmin, createOrganization);
+router.put('/organizations/:id', requireAdmin, updateOrganization);
+router.delete('/organizations/:id', requireAdmin, deleteOrganization);
+
 // Direct PDF uploads — any authenticated user may upload/manage their imports.
 router.get('/pdf-imports', listPdfImports);
 router.post('/pdf-imports', pdfUpload.array('files'), uploadPdfImports);
 router.post('/pdf-imports/:id/parse', sendPdfImportToAgent);
 router.delete('/pdf-imports/:id', deletePdfImport);
+router.post('/pdf-imports/bulk-delete', bulkDeletePdfImports);
 
 // Order imports (CSV/XLSX) — primary data source for the Invoice Audit table.
 router.get('/order-imports', listOrderImports);
@@ -121,6 +140,7 @@ router.post('/order-imports/workspace/:workspaceId/refresh-cogs', refreshCogsFor
 // Rebuild the inline invoice match cache for all uncached rows in a workspace.
 router.post('/order-imports/workspace/:workspaceId/rebuild-match-cache', rebuildMatchCache);
 router.delete('/order-imports/batch/:batchId', deleteOrderImportBatch);
+router.post('/order-imports/bulk-delete', bulkDeleteOrderImports);
 router.delete('/order-imports/:id', deleteOrderImport);
 
 // The mailbox connection and attachment destination are admin-managed.

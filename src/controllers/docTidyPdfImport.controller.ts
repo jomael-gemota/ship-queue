@@ -230,3 +230,44 @@ export const deletePdfImport = async (req: Request, res: Response): Promise<void
     fail(res, error, 'Failed to delete PDF import');
   }
 };
+
+/* ── Bulk-delete PDF imports by an explicit list of IDs ── */
+export const bulkDeletePdfImports = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return;
+    }
+    if (!ids.every((id) => typeof id === 'string' && isValidObjectId(id))) {
+      res.status(400).json({ message: 'All ids must be valid ObjectIds' });
+      return;
+    }
+
+    // Load the imports so we can collect Drive file IDs.
+    const imports = await DocTidyPdfImport.find({ _id: { $in: ids } }).lean();
+    const importObjectIds = imports.map((i) => i._id);
+
+    // Best-effort: delete Drive files.
+    const driveFileIds = imports.map((i) => i.driveFileId).filter((fid): fid is string => Boolean(fid));
+    if (driveFileIds.length > 0) {
+      const config = await getDocTidyConfigDoc(true).catch(() => null);
+      if (config?.gmailRefreshToken) {
+        await Promise.allSettled(
+          driveFileIds.map((fileId) =>
+            deleteDriveFile({ refreshToken: config.gmailRefreshToken }, fileId)
+          )
+        );
+      }
+    }
+
+    // Delete associated parse jobs, then the import records.
+    if (importObjectIds.length > 0) {
+      await DocTidyParseJob.deleteMany({ pdfImportId: { $in: importObjectIds } });
+    }
+    const result = await DocTidyPdfImport.deleteMany({ _id: { $in: ids } });
+    res.json({ data: { deleted: result.deletedCount } });
+  } catch (error) {
+    fail(res, error, 'Failed to bulk delete PDF imports');
+  }
+};

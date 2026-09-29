@@ -189,6 +189,11 @@ export interface DocTidyEvent {
   /** For `worker_status`: whether the Python worker is currently connected. */
   workerOnline?: boolean
   /**
+   * For `ui_prefs`: the workspace whose preferences were updated.
+   * Clients filter events to the currently active workspace.
+   */
+  workspaceId?: string
+  /**
    * For `ui_prefs`: updated column orders broadcast to all open clients so
    * every tab reflects the change immediately.
    */
@@ -321,6 +326,31 @@ export function normalizeVendorName(name: string): string {
 export interface DocTidyWorkspace {
   _id: string
   name: string
+  /** The organization this workspace belongs to, if any. */
+  organizationId?: string
+  createdByName?: string
+  /**
+   * Controls how order imports are matched and which columns are shown by default.
+   * `full` (default) — all import fields, PO + SKU matching.
+   * `header-only`    — only PO # is required; PO-level matching; line-item columns hidden.
+   */
+  importMode?: 'full' | 'header-only'
+  createdAt: string
+  updatedAt: string
+}
+
+/* ──────────────────────────────────── Doc Tidy Organizations ── */
+
+/**
+ * A named container for workspaces with an explicit member list.
+ * Only members (and all admins) can view the workspaces inside an organization.
+ * Workspaces with no organizationId are "unassigned" and visible to all users.
+ */
+export interface DocTidyOrganization {
+  _id: string
+  name: string
+  /** IDs of users who can view workspaces inside this organization. */
+  memberUserIds: string[]
   createdByName?: string
   createdAt: string
   updatedAt: string
@@ -340,6 +370,7 @@ export type WorkspaceEmailColumnId =
   | 'documentType'
   | 'rule'
   | 'attachments'
+  | 'parseStatus'
 
 export interface WorkspaceEmailColumn {
   id: WorkspaceEmailColumnId
@@ -383,6 +414,11 @@ export const WORKSPACE_EMAIL_COLUMNS: WorkspaceEmailColumn[] = [
     label: 'Attachments',
     iconPath: 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13',
   },
+  {
+    id: 'parseStatus',
+    label: 'Tidy Agent',
+    iconPath: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z',
+  },
 ]
 
 /* ─────────────────────────────────────────────── Invoice Audit ── */
@@ -424,6 +460,7 @@ export type InvoiceAuditColumnId =
   | 'poNumber'
   | 'orderSku'
   | 'orderQty'
+  | 'lesd'
   | 'customerName'
   | 'purchasedDate'
   | 'status'
@@ -464,6 +501,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true    },
   { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true    },
   { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true, center: true },
+  { id: 'lesd',               section: 'order',    label: 'LESD',            description: 'Latest Expected Ship Date from the imported order file',            defaultVisible: true,                center: true },
   { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true                               },
   { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true,                center: true },
   { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true,                center: true },
@@ -490,32 +528,85 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v3 key — bumped from v2 when Customer Name, Purchased Date and Status were
- * added (2026-09-25).  Old v2 preferences are ignored so new columns appear in
- * their correct positions rather than being appended at the far right.
+ * v4 key — bumped from v3 when LESD was added (2026-09-30).
+ * Old v3 preferences are ignored so LESD appears in its correct position
+ * (after Order Qty) rather than being appended at the far right.
+ *
+ * The key is now workspace-scoped: `<base>.<workspaceId>` so changing
+ * visibility in Workspace A never touches Workspace B's preferences.
  */
-const AUDIT_COL_STORAGE_KEY = 'docTidy.invoiceAudit.columns.v3'
+const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v4'
 
-/** Load per-column visibility from localStorage, falling back to defaults. */
-export function loadAuditColumnVisibility(): Record<InvoiceAuditColumnId, boolean> {
+function auditColStorageKey(workspaceId: string): string {
+  return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`
+}
+
+/**
+ * Column visibility overrides applied to `header-only` workspaces.
+ * Only PO #, Invoice #, Invoice Date, Terms, and Total Cost are shown;
+ * everything else is hidden.  `terms` receives an explicit `true` because
+ * its `defaultVisible` is `false` in the full-workspace definition.
+ */
+const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean>> = {
+  // Order columns — hide all except poNumber
+  orderSku:          false,
+  orderQty:          false,
+  lesd:              false,
+  customerName:      false,
+  purchasedDate:     false,
+  status:            false,
+  // Invoice columns — show only invoiceDate, invoiceNumber, terms, totalCost
+  invoiceSku:        false,
+  itemCost:          false,
+  dcCogs:            false,
+  invoiceQty:        false,
+  discountedCostPct: false,
+  dropshipFee:       false,
+  miscCharges:       false,
+  terms:             true,   // normally hidden — force-show for header-only
+  // Computed
+  discrepancy:       false,
+}
+
+/** Load per-column visibility for a workspace from localStorage, falling back to defaults.
+ *
+ * @param workspaceId  The workspace whose saved preference to load.
+ * @param importMode   When `'header-only'`, only the five core header columns
+ *                     (PO #, Invoice #, Invoice Date, Terms, Total Cost) are
+ *                     visible by default so the table is uncluttered for
+ *                     teams that only import PO numbers.
+ */
+export function loadAuditColumnVisibility(
+  workspaceId: string,
+  importMode?: 'full' | 'header-only',
+): Record<InvoiceAuditColumnId, boolean> {
   const defaults = Object.fromEntries(
     INVOICE_AUDIT_COLUMNS.map((c) => [c.id, c.defaultVisible])
   ) as Record<InvoiceAuditColumnId, boolean>
 
+  // Apply header-only overrides to the base defaults.
+  const modeDefaults: Record<InvoiceAuditColumnId, boolean> = importMode === 'header-only'
+    ? { ...defaults, ...HEADER_ONLY_COLUMN_OVERRIDES }
+    : defaults
+
   try {
-    const raw = localStorage.getItem(AUDIT_COL_STORAGE_KEY)
-    if (!raw) return defaults
+    const raw = localStorage.getItem(auditColStorageKey(workspaceId))
+    if (!raw) return modeDefaults
     const stored = JSON.parse(raw) as Partial<Record<InvoiceAuditColumnId, boolean>>
-    return { ...defaults, ...stored }
+    // Merge stored preferences on top of mode-aware defaults.
+    return { ...modeDefaults, ...stored }
   } catch {
-    return defaults
+    return modeDefaults
   }
 }
 
-/** Persist column visibility to localStorage. */
-export function saveAuditColumnVisibility(visibility: Record<InvoiceAuditColumnId, boolean>): void {
+/** Persist column visibility for a workspace to localStorage. */
+export function saveAuditColumnVisibility(
+  visibility: Record<InvoiceAuditColumnId, boolean>,
+  workspaceId: string,
+): void {
   try {
-    localStorage.setItem(AUDIT_COL_STORAGE_KEY, JSON.stringify(visibility))
+    localStorage.setItem(auditColStorageKey(workspaceId), JSON.stringify(visibility))
   } catch {
     // localStorage can be blocked in some environments — silently ignore.
   }
@@ -612,6 +703,7 @@ export interface DocTidyOrderImport {
   orderId: string
   orderSku: string
   orderQty: string
+  lesd: string
   status: string
   importedByUserId?: string
   importedByName?: string
@@ -670,7 +762,7 @@ export interface OrderImportsResponse {
  */
 /* ────────────────────────────────── PDF Import columns ── */
 
-export type PdfImportColumnId = 'imported' | 'importedBy' | 'size' | 'filename'
+export type PdfImportColumnId = 'imported' | 'importedBy' | 'size' | 'filename' | 'parseStatus'
 
 export interface PdfImportColumn {
   id: PdfImportColumnId
@@ -700,6 +792,11 @@ export const PDF_IMPORT_COLUMNS: PdfImportColumn[] = [
     id: 'filename',
     label: 'Filename',
     iconPath: 'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  },
+  {
+    id: 'parseStatus',
+    label: 'Tidy Agent',
+    iconPath: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z',
   },
 ]
 
