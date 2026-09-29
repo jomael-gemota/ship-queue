@@ -25,28 +25,56 @@ function norm(s: unknown): string {
   return String(s ?? '').trim().toLowerCase().replace(/[\s#_-]+/g, '');
 }
 
-/** Pull the first non-empty value from a JSON object by candidate keys. */
+const normKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '');
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * The object itself, then its plain-object children (e.g. `totals`), so a
+ * top-level key always outranks a grouped one.
+ */
+function searchScopes(obj: Record<string, unknown>): Record<string, unknown>[] {
+  return [obj, ...Object.values(obj).filter(isObject)];
+}
+
+/**
+ * Pull the first non-empty scalar from a JSON object by candidate keys, in
+ * priority order. Keys match after lowercasing and stripping `_`, `-` and
+ * spaces, so camelCase and snake_case agent output are equivalent.
+ *
+ * Must stay identical to `extractJsonField` in `frontend/src/types/docTidy.ts`,
+ * or a row's cached and fallback Invoice Audit values will disagree.
+ */
 function extractField(obj: Record<string, unknown> | null | undefined, ...keys: string[]): string {
-  if (!obj || typeof obj !== 'object') return '';
-  for (const key of keys) {
-    const val = obj[key];
-    if (val !== null && val !== undefined && String(val).trim() !== '') {
-      return String(val).trim();
+  if (!isObject(obj)) return '';
+  for (const scope of searchScopes(obj)) {
+    for (const key of keys) {
+      const target = normKey(key);
+      for (const [k, v] of Object.entries(scope)) {
+        if (normKey(k) !== target) continue;
+        if (typeof v === 'string' && v.trim()) return v.trim();
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      }
     }
   }
   return '';
 }
 
-/** Pull a line-items array from a JSON object by candidate keys. */
+/** Pull a non-empty array from a JSON object, searched the same way as `extractField`. */
 function extractArray(
   obj: Record<string, unknown> | null | undefined,
   ...keys: string[]
 ): Record<string, unknown>[] {
-  if (!obj || typeof obj !== 'object') return [];
-  for (const key of keys) {
-    const val = obj[key];
-    if (Array.isArray(val) && val.length > 0) {
-      return val as Record<string, unknown>[];
+  if (!isObject(obj)) return [];
+  for (const scope of searchScopes(obj)) {
+    for (const key of keys) {
+      const target = normKey(key);
+      for (const [k, v] of Object.entries(scope)) {
+        if (normKey(k) === target && Array.isArray(v) && v.length > 0) {
+          return v as Record<string, unknown>[];
+        }
+      }
     }
   }
   return [];
@@ -115,7 +143,7 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
   const terms         = extractField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms');
   const docDropship   = extractField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship');
   const docMisc       = extractField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous');
-  const docTotal      = extractField(json, 'total', 'grand_total', 'total_amount', 'total_cost', 'total_value', 'invoice_total', 'amount_due', 'balance_due');
+  const docTotal      = extractField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice');
 
   const lineItems = extractArray(json,
     'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
