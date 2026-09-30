@@ -592,6 +592,7 @@ export function HHImportButton() {
                       ? `Create ${includedCount} ${includedCount === 1 ? 'order' : 'orders'}`
                       : 'Create batch'}
               </button>
+              {tab === 'file' && (
               <button
                 type="button"
                 disabled={importBusy}
@@ -608,6 +609,7 @@ export function HHImportButton() {
                 </svg>
                 Download template
               </button>
+              )}
             </div>
           </div>
         </div>
