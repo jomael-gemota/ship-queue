@@ -2041,10 +2041,29 @@ function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
  * calendar week (Sun → Sat) containing `dateStr`.
  * Returns `null` if `dateStr` is not parseable.
  */
-function getWeekStartKey(dateStr: string): string | null {
+/**
+ * Parse a date string that may be in ISO, MM/DD/YYYY, or MM/DD/YY format.
+ * `new Date()` alone rejects the common AI-produced MM/DD/YY (2-digit year)
+ * format, so we handle it explicitly before falling back to native parsing.
+ */
+function parseFlexDate(dateStr: string): Date | null {
   if (!dateStr) return null
+  // MM/DD/YY — 2-digit year; treat 00–49 as 2000–2049, 50–99 as 1950–1999.
+  const m2 = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (m2) {
+    const yy = parseInt(m2[3], 10)
+    const year = yy < 50 ? 2000 + yy : 1900 + yy
+    const d = new Date(year, parseInt(m2[1], 10) - 1, parseInt(m2[2], 10))
+    if (!isNaN(d.getTime())) return d
+  }
+  // Everything else: ISO, MM/DD/YYYY, "Month DD YYYY", etc.
   const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return null
+  return isNaN(d.getTime()) ? null : d
+}
+
+function getWeekStartKey(dateStr: string): string | null {
+  const d = parseFlexDate(dateStr)
+  if (!d) return null
   const day = d.getDay() // 0=Sun … 6=Sat
   const diffToSunday = -day  // 0 → stay; 1..6 → go back by that many days
   const sunday = new Date(d)
@@ -5258,7 +5277,13 @@ export default function DocTidyInvoiceAudit() {
                         const weekMap = new Map<string, DocTidyOrderImport[]>()
                         const UNKNOWN_KEY = '__unknown__'
                         for (const order of filteredOrderImports) {
-                          const key = getWeekStartKey(order.processedDate) ?? UNKNOWN_KEY
+                          // processedDate is '' when the imported CSV had no matching column
+                          // (common in header-only workspaces). Fall back to the matched
+                          // invoice date so rows aren't silently bucketed as "Unknown date".
+                          const key =
+                            getWeekStartKey(order.processedDate) ??
+                            getWeekStartKey(order.matchedInvoice?.invoiceDate ?? '') ??
+                            UNKNOWN_KEY
                           if (!weekMap.has(key)) weekMap.set(key, [])
                           weekMap.get(key)!.push(order)
                         }
