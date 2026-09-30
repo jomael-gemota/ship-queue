@@ -9,12 +9,6 @@ import { hhBrandId } from '../lib/hhBrand';
 import { looksLikeMongoObjectId, submitHellyHansenSportsOrder } from '../lib/hhB2bHellyHansen';
 import { childCanPlace, liveCompareHhCarts } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
-import {
-  composeSellerNoteWithPo,
-  fetchScOrder,
-  loadSellerCentralCookie,
-  updateScSellerNotes,
-} from '../lib/hhSellerCentral';
 
 const LOG = '[hh-cart-place]';
 const MAX_ERROR_LEN = 1000;
@@ -173,29 +167,6 @@ async function placeChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   lastSuccessAt = new Date();
   lastError = null;
   console.log(`${LOG} Placed ${child.orderId}`);
-  try {
-    await stampSellerNotePo(child.orderId, child.po);
-  } catch (err) {
-    const message = truncateError(err instanceof Error ? err.message : String(err));
-    console.warn(`${LOG} ${child.orderId} placed, Seller Notes were not updated: ${message}`);
-  }
-}
-
-async function stampSellerNotePo(orderId: string, po: string): Promise<void> {
-  const purchaseOrder = po.trim();
-  if (!purchaseOrder) {
-    console.warn(`${LOG} ${orderId} placed without a PO — skipped Seller Notes`);
-    return;
-  }
-  const cookie = await loadSellerCentralCookie();
-  const scOrder = await fetchScOrder(orderId, cookie);
-  const noteText = composeSellerNoteWithPo(scOrder.sellerNotes, purchaseOrder);
-  if (noteText == null) {
-    console.log(`${LOG} ${orderId} Seller Notes already include PO ${purchaseOrder}`);
-    return;
-  }
-  await updateScSellerNotes(orderId, noteText, cookie);
-  console.log(`${LOG} ${orderId} Seller Notes updated with PO ${purchaseOrder}`);
 }
 
 async function placeGroup(job: HhCartPlaceJob): Promise<void> {

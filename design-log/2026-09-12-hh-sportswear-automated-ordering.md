@@ -34,11 +34,10 @@ Place Order on go-ahead.
 Operators download Order ID / PO / B2B order # from a **batch export**
 (`.xlsx` from the orders-page ⋯ menu).
 
-After Place Order succeeds, the PO is written into Amazon **Seller Notes**.
-The current note is read from `GET /orders-api/order/:orderId`
-(`order.sellerNotes`). If that text is empty, the note becomes the PO. If it
-already has text, the PO is appended after a blank line. A note that already
-ends with that PO is left unchanged.
+The first time order details sync, the PO is written into Amazon **Seller Notes**.
+The note text comes from that same Get Order response (`order.sellerNotes`).
+If it is empty, the note becomes the PO. If it already has text, the PO is
+appended after a blank line. A later re-sync does not write Seller Notes again.
 
 Place Order is gated by Configurations (`placeOrderEnabled`, default off).
 Submit is `PUT /api/documents/:id` with the create-shaped cart and
@@ -153,8 +152,8 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
   `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
   **Reference Number** for every order in that batch. Empty references stay
   blank. Available from the orders-page ⋯ menu.
-- **Built:** after Place Order, stamp the PO into Amazon Seller Notes
+- **Built:** on the first details sync, stamp the PO into Amazon Seller Notes
   (`POST /orders-api/order/:orderId/seller-notes`), keeping any existing note
-  text and skipping a second write when the note already ends with that PO.
+  text. A re-sync of an order that was already synced does not write again.
 - Cookie Jar is the SC session source for fetches/cross-checks that need SC.
 - Small leftovers: notes-field blur race; cancelled Amazon orders still fill.

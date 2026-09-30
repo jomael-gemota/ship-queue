@@ -74,6 +74,8 @@ export interface IHHChildOrder {
   shipViaReason: string;
   /** `default` or `usps` when an operator overrode the automatic choice. */
   shipViaOverride: '' | 'default' | 'usps';
+  /** PO was already written to Amazon Seller Notes for this order. */
+  sellerNotesStamped: boolean;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
@@ -132,6 +134,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
     shipVia: { type: String, default: '' },
     shipViaReason: { type: String, default: '' },
     shipViaOverride: { type: String, default: '' },
+    sellerNotesStamped: { type: Boolean, default: false },
     detailsStatus: {
       type: String,
       enum: HH_DETAILS_STATUSES,

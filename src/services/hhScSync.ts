@@ -9,9 +9,11 @@ import {
   HhScAuthError,
   HhScNotFoundError,
   HhScRateLimitError,
+  composeSellerNoteWithPo,
   fetchScBuyerInfo,
   fetchScOrder,
   loadSellerCentralCookie,
+  updateScSellerNotes,
 } from '../lib/hhSellerCentral';
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
 import { mergeHhItemExclusions } from '../lib/hhLineItems';
@@ -188,6 +190,7 @@ async function fillChild(
   currentOrderId = child.orderId;
   const groupId = String(group._id);
   const childId = String(child._id);
+  const stampNotes = child.detailsStatus !== 'synced' && !child.sellerNotesStamped;
   const scOrder = await fetchScOrder(child.orderId, cookie);
   if (scOrder.sellerNotes && scOrder.sellerNotes !== child.po) {
     console.warn(
@@ -215,11 +218,42 @@ async function fillChild(
   lastError = null;
   const itemCount = saved?.items.length ?? child.items.length;
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
+  if (saved && saved.detailsStatus === 'synced' && stampNotes) {
+    try {
+      await stampSellerNotePo(child.orderId, child.po, scOrder.sellerNotes, cookie);
+      await persistChild(groupId, childId, (row) => {
+        row.sellerNotesStamped = true;
+      });
+    } catch (err) {
+      const message = truncateError(err instanceof Error ? err.message : String(err));
+      console.warn(`${LOG} ${child.orderId} synced, Seller Notes were not updated: ${message}`);
+    }
+  }
   if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
     enqueueHhCartDraft(groupId, childId);
   } else if (saved && childCanVerify(saved)) {
     enqueueHhCartVerify(groupId, childId);
   }
+}
+
+async function stampSellerNotePo(
+  orderId: string,
+  po: string,
+  existingNotes: string,
+  cookie: string
+): Promise<void> {
+  const purchaseOrder = po.trim();
+  if (!purchaseOrder) {
+    console.warn(`${LOG} ${orderId} synced without a PO — skipped Seller Notes`);
+    return;
+  }
+  const noteText = composeSellerNoteWithPo(existingNotes, purchaseOrder);
+  if (noteText == null) {
+    console.log(`${LOG} ${orderId} Seller Notes already include PO ${purchaseOrder}`);
+    return;
+  }
+  await updateScSellerNotes(orderId, noteText, cookie);
+  console.log(`${LOG} ${orderId} Seller Notes updated with PO ${purchaseOrder}`);
 }
 
 function pickNextChild(group: IHHOrderGroup, job: HhScSyncJob, attempted: Set<string>): IHHChildOrder | undefined {

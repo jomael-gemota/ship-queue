@@ -507,6 +507,7 @@ function markChildrenPending(group: IHHOrderGroup, childId?: string, options?: {
   let marked = 0;
   for (const child of targets) {
     if (isHhPlaced(child)) continue;
+    if (child.detailsStatus === 'synced') child.sellerNotesStamped = true;
     child.detailsStatus = HH_DEFAULT_DETAILS_STATUS;
     if (resetCart) resetCartForResync(child);
     else invalidateHhCartVerification(child);
