@@ -2189,6 +2189,8 @@ export default function DocTidyInvoiceAudit() {
   const [view, setView] = useState<View>('organizations')
   const [activeOrg, setActiveOrg] = useState<DocTidyOrganization | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
+  /** True while a header-only mode workspace is active. Drives several UI branches. */
+  const isHeaderOnly = activeWorkspace?.importMode === 'header-only'
   /** Which sub-tab is active inside a workspace detail page. */
   type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
@@ -3052,15 +3054,17 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => {
     if (workspaceTab !== 'audit') return
-    // Skip the expensive parse-jobs fetch if every loaded row already has a
-    // server-written matchedInvoice cache — nothing to fall back to.
-    if (orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
+    // Header-only workspaces use jobs as the primary display data source —
+    // always fetch them regardless of the orderImports cache state.
+    // For full-mode workspaces, skip the fetch if every row already has a
+    // server-written matchedInvoice cache so the table stays fast.
+    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
       setJobs([])   // clear any stale jobs from a previous workspace
       setLoading(false)
       return
     }
     void fetchAllJobs()
-  }, [workspaceTab, fetchAllJobs, orderImports])
+  }, [workspaceTab, fetchAllJobs, orderImports, isHeaderOnly])
 
   /* Keep stable refs for SSE-triggered refetches */
   const fetchOrderImportsRef = useRef(fetchOrderImports)
@@ -3370,6 +3374,24 @@ export default function DocTidyInvoiceAudit() {
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
 
+  /**
+   * For header-only workspaces: completed parse jobs filtered by the active
+   * date range (using invoice date extracted from the job's JSON output).
+   */
+  const filteredHeaderOnlyJobs = useMemo(() => {
+    if (!isHeaderOnly) return jobs
+    if (!auditDateFrom && !auditDateTo) return jobs
+    return jobs.filter((job) => {
+      const raw = extractJsonField(job.jsonOutput ?? null,
+        'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+      const ds = toISODateStr(raw)
+      if (!ds) return false
+      if (auditDateFrom && ds < auditDateFrom) return false
+      if (auditDateTo   && ds > auditDateTo)   return false
+      return true
+    })
+  }, [isHeaderOnly, jobs, auditDateFrom, auditDateTo])
+
   /* ── Org / workspace grouping ── */
   /** Workspaces that have no organization assignment (visible to all users). */
   const unassignedWorkspaces = useMemo(
@@ -3669,6 +3691,48 @@ export default function DocTidyInvoiceAudit() {
       case 'discrepancy': return discrepancyCell(order, match)
 
       default: return null
+    }
+  }
+
+  /**
+   * Cell renderer for header-only workspaces where parse jobs are the primary
+   * data source.  Extracts all values directly from `job.jsonOutput`.
+   */
+  const headerOnlyCellFor = (colId: InvoiceAuditColumnId, job: ParseJobListItem): React.ReactNode => {
+    const json = job.jsonOutput ?? null
+    switch (colId) {
+      case 'poNumber':
+        return monoCell(extractJsonField(json,
+          'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+      case 'invoiceDate':
+        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+      case 'invoiceNumber': {
+        const num = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
+        if (!num) return emDash
+        const fileId = job.driveFileId
+        if (fileId) {
+          return (
+            <a href={`https://drive.google.com/file/d/${fileId}/view`}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
+              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+              </svg>
+              {num}
+            </a>
+          )
+        }
+        return monoCell(num)
+      }
+      case 'terms':
+        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+      case 'totalCost':
+        return numCell(extractJsonField(json,
+          'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
+          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+      default:
+        return emDash
     }
   }
 
@@ -5127,9 +5191,12 @@ export default function DocTidyInvoiceAudit() {
                   </button>
                 )}
 
-                {/* Import Orders button */}
-                <button type="button" onClick={() => { setShowImportModal(true); setImportSuccess(null); setImportError(null) }}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)]">
+                {/* Import Orders button — disabled in header-only mode */}
+                <button type="button"
+                  onClick={() => { if (!isHeaderOnly) { setShowImportModal(true); setImportSuccess(null); setImportError(null) } }}
+                  disabled={isHeaderOnly}
+                  title={isHeaderOnly ? 'Header-only workspaces display invoice data directly from parsed PDFs — no order import needed' : undefined}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-40">
                   <svg className="h-3.5 w-3.5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
@@ -5323,11 +5390,12 @@ export default function DocTidyInvoiceAudit() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Show skeleton while orders are loading OR while jobs haven't arrived yet
+                    {/* ── Loading skeleton ──
+                        Show skeleton while orders are loading OR while jobs haven't arrived yet
                         on the first load (jobs.length === 0 + loading). This prevents a flash
                         where orderImports populate before fetchAllJobs returns, causing every
                         invoice-matched cell to briefly render as "—" against an empty jobs array. */}
-                    {(orderLoading || (loading && jobs.length === 0)) ? (
+                    {(isHeaderOnly ? loading : (orderLoading || (loading && jobs.length === 0))) ? (
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                           <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
@@ -5339,6 +5407,69 @@ export default function DocTidyInvoiceAudit() {
                           <td className="px-2.5 py-1" />
                         </tr>
                       ))
+                    /* ── Header-only: flat list of completed parse jobs ── */
+                    ) : isHeaderOnly ? (
+                      filteredHeaderOnlyJobs.length === 0 ? (
+                        <tr>
+                          <td colSpan={visibleCols.length + 2} className="py-16 text-center">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
+                                <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                    d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-medium text-[var(--text-100)]">
+                                  {(auditDateFrom || auditDateTo) ? 'No invoices match the date range' : 'No parsed invoices yet'}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                                  {(auditDateFrom || auditDateTo)
+                                    ? 'Try adjusting or clearing the date filter.'
+                                    : 'Upload PDFs in the PDF Imports tab and send them to Tidy Agent — parsed invoices appear here automatically.'}
+                                </p>
+                              </div>
+                              {(auditDateFrom || auditDateTo) && (
+                                <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
+                                  className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                  Clear date filter
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {filteredHeaderOnlyJobs.map((job, rowIdx) => {
+                            const isEven = rowIdx % 2 === 0
+                            return (
+                              <tr key={job._id}
+                                className={['transition-colors align-middle', isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'].join(' ')}>
+                                <td className="px-2.5 py-1.5">
+                                  {/* No row selection for header-only job rows */}
+                                </td>
+                                {visibleCols.map((col) => (
+                                  <td key={col.id}
+                                    className={[
+                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
+                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
+                                    ].join(' ')}>
+                                    {headerOnlyCellFor(col.id, job)}
+                                  </td>
+                                ))}
+                                <td className="px-1.5 py-1.5 text-center">
+                                  <span title={job.filename}
+                                    className="inline-block max-w-[80px] truncate text-[10px] text-[var(--text-200)] cursor-default">
+                                    {job.filename}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </>
+                      )
+
+                    /* ── Full mode: existing empty state ── */
                     ) : orderImports.length === 0 ? (
                       <tr>
                         <td colSpan={visibleCols.length + 2} className="py-16 text-center">
