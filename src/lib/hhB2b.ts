@@ -2,7 +2,7 @@
  * B2B ASAP / Builder Cart client (Helly Hansen Sports / Scramble).
  *
  * Cart drafts go through HTTP calls that imitate the B2B site — not Puppeteer.
- * Place Order (`do_submit: true`) is a separate path in hhCartPlace, gated by brand config.
+ * Place Order (`PUT /api/documents/:id` with `do_submit: true`) is a separate path in hhCartPlace, gated by brand config.
  */
 
 import { hhBrandId, type HHBrandId } from './hhBrand';

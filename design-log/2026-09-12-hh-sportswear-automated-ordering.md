@@ -37,9 +37,9 @@ Operators download Order ID / PO / B2B order # from a **batch export**
 Stamping the PO into Amazon **Seller Notes** is still an open question — confirm
 whether that manual step is still needed before automating it.
 
-Place Order is gated by Configurations (`placeOrderEnabled`, default off). The
-submit path is wired (`POST` the document with `do_submit: true`) but has not
-been proven against a live Helly Hansen order.
+Place Order is gated by Configurations (`placeOrderEnabled`, default off).
+Submit is `PUT /api/documents/:id` with the create-shaped cart and
+`do_submit: true`. Posting the raw draft document back returns an empty 404.
 
 ### User / system flow
 
@@ -144,8 +144,8 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
 - **Built:** live cross-check of the Helly Hansen document vs Seller Central
   details. Cart becomes **Ready** or **Review**. Place Order only includes
   Ready orders and live-rechecks first.
-- **Wired, not live-tested:** Place Order (`do_submit: true`) when
-  Configurations has Place Order on. Held until a real order can be used.
+- **Built:** Place Order when Configurations has Place Order on. The live
+  draft is saved with `PUT /api/documents/:id` and `do_submit: true`.
 - **Built:** batch export (`GET /api/hh-sportswear/:groupId/export` or
   `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
   **Reference Number** for every order in that batch. Empty references stay
