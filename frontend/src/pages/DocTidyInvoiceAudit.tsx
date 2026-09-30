@@ -5457,12 +5457,7 @@ export default function DocTidyInvoiceAudit() {
                                     {headerOnlyCellFor(col.id, job)}
                                   </td>
                                 ))}
-                                <td className="px-1.5 py-1.5 text-center">
-                                  <span title={job.filename}
-                                    className="inline-block max-w-[80px] truncate text-[10px] text-[var(--text-200)] cursor-default">
-                                    {job.filename}
-                                  </span>
-                                </td>
+                                <td className="px-1.5 py-1.5" />
                               </tr>
                             )
                           })}
