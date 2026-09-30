@@ -678,15 +678,12 @@ function WorkspaceEditorDialog({
   onSave,
   onClose,
   initialOrgId,
-  isAdmin = false,
 }: {
   initial: DocTidyWorkspace | null
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
   /** When creating a new workspace inside an org, pre-assign this org. */
   initialOrgId?: string
-  /** When true the Import Mode toggle is shown (admin-only field). */
-  isAdmin?: boolean
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [importMode, setImportMode] = useState<'full' | 'header-only'>(
@@ -710,8 +707,8 @@ function WorkspaceEditorDialog({
     try {
       const body: Record<string, unknown> = { name: name.trim() }
       if (!initial && initialOrgId) body.organizationId = initialOrgId
-      // importMode is an admin-only field; only send it when editing an existing workspace.
-      if (initial && isAdmin) body.importMode = importMode
+      // importMode is editable by all users, both when creating and editing a workspace.
+      body.importMode = importMode
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -773,49 +770,47 @@ function WorkspaceEditorDialog({
             />
           </div>
 
-          {/* Import mode — admin only, visible when editing an existing workspace */}
-          {initial && isAdmin && (
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
-                Import mode
-              </label>
-              <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
-                <button
-                  type="button"
-                  onClick={() => setImportMode('full')}
-                  className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
-                    importMode === 'full'
-                      ? 'bg-[var(--accent-200)] text-white font-medium'
-                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
-                  }`}
-                >
-                  <span className="block font-medium">Full import</span>
-                  <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
-                    All fields; PO # + SKU matching
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setImportMode('header-only')}
-                  className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
-                    importMode === 'header-only'
-                      ? 'bg-[var(--accent-200)] text-white font-medium'
-                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
-                  }`}
-                >
-                  <span className="block font-medium">Header only</span>
-                  <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
-                    PO # only required; PO-level matching
-                  </span>
-                </button>
-              </div>
-              {importMode === 'header-only' && (
-                <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
-                  Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
-                </p>
-              )}
+          {/* Import mode — visible for all users, both when creating and editing */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+              Import mode
+            </label>
+            <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setImportMode('full')}
+                className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
+                  importMode === 'full'
+                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                }`}
+              >
+                <span className="block font-medium">Full import</span>
+                <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                  All fields; PO # + SKU matching
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode('header-only')}
+                className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
+                  importMode === 'header-only'
+                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                }`}
+              >
+                <span className="block font-medium">Header only</span>
+                <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                  PO # only required; PO-level matching
+                </span>
+              </button>
             </div>
-          )}
+            {importMode === 'header-only' && (
+              <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
+              </p>
+            )}
+          </div>
 
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
@@ -5607,7 +5602,6 @@ export default function DocTidyInvoiceAudit() {
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
           initialOrgId={editTarget === 'new' ? (activeOrg?._id) : undefined}
-          isAdmin={isAdmin}
         />
       )}
 
