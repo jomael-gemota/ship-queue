@@ -16,6 +16,7 @@ import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
+import VendorSetup from '../components/docTidy/VendorSetup'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
@@ -54,6 +55,7 @@ import {
   isParseRunning,
   type DocTidyOrderImport,
   type OrderImportsResponse,
+  type RunAllResult,
 } from '../types/docTidy'
 
 /**
@@ -678,15 +680,12 @@ function WorkspaceEditorDialog({
   onSave,
   onClose,
   initialOrgId,
-  isAdmin = false,
 }: {
   initial: DocTidyWorkspace | null
   onSave: (workspace: DocTidyWorkspace) => void
   onClose: () => void
   /** When creating a new workspace inside an org, pre-assign this org. */
   initialOrgId?: string
-  /** When true the Import Mode toggle is shown (admin-only field). */
-  isAdmin?: boolean
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [importMode, setImportMode] = useState<'full' | 'header-only'>(
@@ -710,8 +709,8 @@ function WorkspaceEditorDialog({
     try {
       const body: Record<string, unknown> = { name: name.trim() }
       if (!initial && initialOrgId) body.organizationId = initialOrgId
-      // importMode is an admin-only field; only send it when editing an existing workspace.
-      if (initial && isAdmin) body.importMode = importMode
+      // importMode is editable by all users, both when creating and editing a workspace.
+      body.importMode = importMode
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
@@ -773,49 +772,47 @@ function WorkspaceEditorDialog({
             />
           </div>
 
-          {/* Import mode — admin only, visible when editing an existing workspace */}
-          {initial && isAdmin && (
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
-                Import mode
-              </label>
-              <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
-                <button
-                  type="button"
-                  onClick={() => setImportMode('full')}
-                  className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
-                    importMode === 'full'
-                      ? 'bg-[var(--accent-200)] text-white font-medium'
-                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
-                  }`}
-                >
-                  <span className="block font-medium">Full import</span>
-                  <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
-                    All fields; PO # + SKU matching
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setImportMode('header-only')}
-                  className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
-                    importMode === 'header-only'
-                      ? 'bg-[var(--accent-200)] text-white font-medium'
-                      : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
-                  }`}
-                >
-                  <span className="block font-medium">Header only</span>
-                  <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
-                    PO # only required; PO-level matching
-                  </span>
-                </button>
-              </div>
-              {importMode === 'header-only' && (
-                <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
-                  Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
-                </p>
-              )}
+          {/* Import mode — visible for all users, both when creating and editing */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+              Import mode
+            </label>
+            <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setImportMode('full')}
+                className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
+                  importMode === 'full'
+                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                }`}
+              >
+                <span className="block font-medium">Full import</span>
+                <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                  All fields; PO # + SKU matching
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode('header-only')}
+                className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
+                  importMode === 'header-only'
+                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
+                }`}
+              >
+                <span className="block font-medium">Header only</span>
+                <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                  PO # only required; PO-level matching
+                </span>
+              </button>
             </div>
-          )}
+            {importMode === 'header-only' && (
+              <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
+              </p>
+            )}
+          </div>
 
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
@@ -2046,10 +2043,44 @@ function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
  * calendar week (Sun → Sat) containing `dateStr`.
  * Returns `null` if `dateStr` is not parseable.
  */
-function getWeekStartKey(dateStr: string): string | null {
+/**
+ * Parse a date string that may be in ISO, MM/DD/YYYY, or MM/DD/YY format.
+ * `new Date()` alone rejects the common AI-produced MM/DD/YY (2-digit year)
+ * format, so we handle it explicitly before falling back to native parsing.
+ */
+function parseFlexDate(dateStr: string): Date | null {
   if (!dateStr) return null
+  // MM/DD/YY — 2-digit year; treat 00–49 as 2000–2049, 50–99 as 1950–1999.
+  const m2 = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (m2) {
+    const yy = parseInt(m2[3], 10)
+    const year = yy < 50 ? 2000 + yy : 1900 + yy
+    const d = new Date(year, parseInt(m2[1], 10) - 1, parseInt(m2[2], 10))
+    if (!isNaN(d.getTime())) return d
+  }
+  // Everything else: ISO, MM/DD/YYYY, "Month DD YYYY", etc.
   const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return null
+  return isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * Normalise any supported date string to "YYYY-MM-DD" using **local** date
+ * parts so string comparisons against `<input type="date">` values work
+ * regardless of server/client timezone.  Returns null when the string cannot
+ * be parsed.
+ */
+function toISODateStr(dateStr: string): string | null {
+  const d = parseFlexDate(dateStr)
+  if (!d) return null
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function getWeekStartKey(dateStr: string): string | null {
+  const d = parseFlexDate(dateStr)
+  if (!d) return null
   const day = d.getDay() // 0=Sun … 6=Sat
   const diffToSunday = -day  // 0 → stay; 1..6 → go back by that many days
   const sunday = new Date(d)
@@ -2158,6 +2189,8 @@ export default function DocTidyInvoiceAudit() {
   const [view, setView] = useState<View>('organizations')
   const [activeOrg, setActiveOrg] = useState<DocTidyOrganization | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<DocTidyWorkspace | null>(null)
+  /** True while a header-only mode workspace is active. Drives several UI branches. */
+  const isHeaderOnly = activeWorkspace?.importMode === 'header-only'
   /** Which sub-tab is active inside a workspace detail page. */
   type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
@@ -2192,8 +2225,12 @@ export default function DocTidyInvoiceAudit() {
   const [orderPageSize, setOrderPageSize] = useState(500)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
+  const [auditDateFrom, setAuditDateFrom] = useState('')
+  const [auditDateTo, setAuditDateTo] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
+  /** Vendor setup overlay — set when a row's matched job has vendorNeedsSetup=true. */
+  const [addVendorTarget, setAddVendorTarget] = useState<{ jobId: string; suggestedName?: string | null } | null>(null)
   /** Week keys (YYYY-MM-DD of Sunday) whose rows are currently collapsed. Persisted to localStorage. */
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   // Initialized to defaults; reloaded from workspace-scoped localStorage on enterWorkspace().
@@ -2262,6 +2299,10 @@ export default function DocTidyInvoiceAudit() {
 
   const emailCheckboxClass =
     'h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]'
+
+  /* Fetch Emails button state */
+  const [emailFetching, setEmailFetching] = useState(false)
+  const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
 
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
@@ -2770,6 +2811,32 @@ export default function DocTidyInvoiceAudit() {
   /* Reset email page when filters change */
   useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize])
 
+  /* ── Manually trigger all enabled rules and refresh the email list ── */
+  const handleFetchEmails = async () => {
+    setEmailFetching(true)
+    setEmailFetchNotice(null)
+    setEmailError(null)
+    try {
+      const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
+      const totalImported = res.data.results.reduce((sum, r) => sum + (r.imported ?? 0), 0)
+      const totalMatched = res.data.results.reduce((sum, r) => sum + (r.matched ?? 0), 0)
+      const errors = res.data.results.filter((r) => r.error)
+      if (errors.length > 0) {
+        setEmailError(`${errors.length} rule${errors.length === 1 ? '' : 's'} failed: ${errors.map((e) => e.error).join('; ')}`)
+      } else if (totalImported > 0) {
+        setEmailFetchNotice(`Fetched ${totalImported} new email${totalImported === 1 ? '' : 's'} (${totalMatched} matched).`)
+      } else {
+        setEmailFetchNotice(`No new emails — ${totalMatched} message${totalMatched === 1 ? '' : 's'} matched, none were new.`)
+      }
+      // Refresh the table so newly imported emails appear immediately.
+      void fetchEmails(true)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to fetch emails')
+    } finally {
+      setEmailFetching(false)
+    }
+  }
+
   /* ── Fetch workspace emails (with parse jobs) ── */
   const fetchEmails = useCallback(async (silent = false) => {
     if (!activeWorkspace) return
@@ -2931,7 +2998,7 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [auditSearch])
 
-  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, orderPageSize])
+  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, auditDateFrom, auditDateTo, orderPageSize])
 
   /* ── Fetch order imports (primary table rows) ── */
   const fetchOrderImports = useCallback(async () => {
@@ -2987,15 +3054,17 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => {
     if (workspaceTab !== 'audit') return
-    // Skip the expensive parse-jobs fetch if every loaded row already has a
-    // server-written matchedInvoice cache — nothing to fall back to.
-    if (orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
+    // Header-only workspaces use jobs as the primary display data source —
+    // always fetch them regardless of the orderImports cache state.
+    // For full-mode workspaces, skip the fetch if every row already has a
+    // server-written matchedInvoice cache so the table stays fast.
+    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
       setJobs([])   // clear any stale jobs from a previous workspace
       setLoading(false)
       return
     }
     void fetchAllJobs()
-  }, [workspaceTab, fetchAllJobs, orderImports])
+  }, [workspaceTab, fetchAllJobs, orderImports, isHeaderOnly])
 
   /* Keep stable refs for SSE-triggered refetches */
   const fetchOrderImportsRef = useRef(fetchOrderImports)
@@ -3239,6 +3308,13 @@ export default function DocTidyInvoiceAudit() {
     return map
   }, [orderImports, jobs])
 
+  /** Fast lookup of parse jobs by id — used to check vendorNeedsSetup in table rows. */
+  const jobsById = useMemo(() => {
+    const map = new Map<string, ParseJobListItem>()
+    for (const job of jobs) map.set(job._id, job)
+    return map
+  }, [jobs])
+
   /**
    * Collect unique string values for a given column across all currently loaded
    * order import rows. Used to populate the column filter dropdown.
@@ -3256,25 +3332,65 @@ export default function DocTidyInvoiceAudit() {
 
   /**
    * Client-side filter applied on top of the server-fetched `orderImports`.
-   * Each active column filter is AND-ed together.
-   * A row passes when its cell value is in the allowed set (or BLANK_SENTINEL matches an empty cell).
+   *
+   * - Column filters (AND-ed together): exact value matching per visible column.
+   * - Date range filter: matched against the resolved invoice date, falling back
+   *   to processedDate then purchasedDate — same priority used by the week dividers.
+   *   Input values come from `<input type="date">` so they are already YYYY-MM-DD.
    */
   const filteredOrderImports = useMemo(() => {
     const activeEntries = Object.entries(colFilters).filter(
       (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return orderImports
+    const hasDateFilter = Boolean(auditDateFrom || auditDateTo)
+
+    if (activeEntries.length === 0 && !hasDateFilter) return orderImports
+
     return orderImports.filter((order) => {
-      const match = invoiceMatchMap.get(order._id) ?? null
-      return activeEntries.every(([colId, allowed]) => {
-        const val = auditColStr(colId, order, match).trim()
-        if (!val) return allowed.has(BLANK_SENTINEL)
-        return allowed.has(val)
-      })
+      // ── Column filters ──
+      if (activeEntries.length > 0) {
+        const match = invoiceMatchMap.get(order._id) ?? null
+        const passesCol = activeEntries.every(([colId, allowed]) => {
+          const val = auditColStr(colId, order, match).trim()
+          if (!val) return allowed.has(BLANK_SENTINEL)
+          return allowed.has(val)
+        })
+        if (!passesCol) return false
+      }
+
+      // ── Date range filter ──
+      // Priority: matchedInvoice.invoiceDate → processedDate → purchasedDate
+      if (hasDateFilter) {
+        const raw = order.matchedInvoice?.invoiceDate ?? order.processedDate ?? order.purchasedDate ?? ''
+        const ds = toISODateStr(raw)
+        if (!ds) return false                              // no parseable date → hide
+        if (auditDateFrom && ds < auditDateFrom) return false
+        if (auditDateTo   && ds > auditDateTo)   return false
+      }
+
+      return true
     })
-  }, [orderImports, colFilters, invoiceMatchMap])
+  }, [orderImports, colFilters, invoiceMatchMap, auditDateFrom, auditDateTo])
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
+
+  /**
+   * For header-only workspaces: completed parse jobs filtered by the active
+   * date range (using invoice date extracted from the job's JSON output).
+   */
+  const filteredHeaderOnlyJobs = useMemo(() => {
+    if (!isHeaderOnly) return jobs
+    if (!auditDateFrom && !auditDateTo) return jobs
+    return jobs.filter((job) => {
+      const raw = extractJsonField(job.jsonOutput ?? null,
+        'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+      const ds = toISODateStr(raw)
+      if (!ds) return false
+      if (auditDateFrom && ds < auditDateFrom) return false
+      if (auditDateTo   && ds > auditDateTo)   return false
+      return true
+    })
+  }, [isHeaderOnly, jobs, auditDateFrom, auditDateTo])
 
   /* ── Org / workspace grouping ── */
   /** Workspaces that have no organization assignment (visible to all users). */
@@ -3374,7 +3490,7 @@ export default function DocTidyInvoiceAudit() {
       if (mode === 'selection') {
         exportOrders = orderImports.filter((o) => selectedRowKeys.has(o._id))
       } else {
-        // Fetch all order imports (regardless of current pagination)
+        // Fetch all order imports (search is server-side; date filter is client-side below)
         const params = new URLSearchParams({
           workspaceId: activeWorkspace._id,
           page: '1',
@@ -3383,6 +3499,16 @@ export default function DocTidyInvoiceAudit() {
         if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
         const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
         exportOrders = res.data
+        // Apply the same client-side date filter used by the table.
+        if (auditDateFrom || auditDateTo) {
+          exportOrders = exportOrders.filter((o) => {
+            const ds = toISODateStr(o.matchedInvoice?.invoiceDate ?? o.processedDate ?? o.purchasedDate ?? '')
+            if (!ds) return false
+            if (auditDateFrom && ds < auditDateFrom) return false
+            if (auditDateTo && ds > auditDateTo) return false
+            return true
+          })
+        }
       }
 
       const rows: Record<string, string>[] = []
@@ -3565,6 +3691,48 @@ export default function DocTidyInvoiceAudit() {
       case 'discrepancy': return discrepancyCell(order, match)
 
       default: return null
+    }
+  }
+
+  /**
+   * Cell renderer for header-only workspaces where parse jobs are the primary
+   * data source.  Extracts all values directly from `job.jsonOutput`.
+   */
+  const headerOnlyCellFor = (colId: InvoiceAuditColumnId, job: ParseJobListItem): React.ReactNode => {
+    const json = job.jsonOutput ?? null
+    switch (colId) {
+      case 'poNumber':
+        return monoCell(extractJsonField(json,
+          'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+      case 'invoiceDate':
+        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+      case 'invoiceNumber': {
+        const num = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
+        if (!num) return emDash
+        const fileId = job.driveFileId
+        if (fileId) {
+          return (
+            <a href={`https://drive.google.com/file/d/${fileId}/view`}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
+              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+              </svg>
+              {num}
+            </a>
+          )
+        }
+        return monoCell(num)
+      }
+      case 'terms':
+        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+      case 'totalCost':
+        return numCell(extractJsonField(json,
+          'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
+          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+      default:
+        return emDash
     }
   }
 
@@ -3900,6 +4068,7 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'emails' && (
             <div className="space-y-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
+              {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
               <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
                 {/* Filter bar */}
@@ -3930,6 +4099,23 @@ export default function DocTidyInvoiceAudit() {
                     <span className="text-[11px] text-[var(--text-200)]">to</span>
                     <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
                   </div>
+                  {/* Fetch Emails — manually runs all enabled rules */}
+                  <button
+                    type="button"
+                    onClick={() => void handleFetchEmails()}
+                    disabled={emailFetching}
+                    title="Run all enabled rules and import matching emails"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:border-[var(--accent-200)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {emailFetching ? (
+                      <Spinner className="h-3 w-3" />
+                    ) : (
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    )}
+                    {emailFetching ? 'Fetching…' : 'Fetch Emails'}
+                  </button>
                   {(emailSearch || emailDateFrom || emailDateTo) && (
                     <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
                       className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
@@ -4991,9 +5177,26 @@ export default function DocTidyInvoiceAudit() {
                   )}
                 </div>
 
-                {/* Import Orders button */}
-                <button type="button" onClick={() => { setShowImportModal(true); setImportSuccess(null); setImportError(null) }}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)]">
+                {/* Date range filter */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-[var(--text-200)]">From</span>
+                  <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} className={inputClass} />
+                  <span className="text-[11px] text-[var(--text-200)]">to</span>
+                  <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} className={inputClass} />
+                </div>
+                {(auditDateFrom || auditDateTo) && (
+                  <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
+                    className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
+                    Clear dates
+                  </button>
+                )}
+
+                {/* Import Orders button — disabled in header-only mode */}
+                <button type="button"
+                  onClick={() => { if (!isHeaderOnly) { setShowImportModal(true); setImportSuccess(null); setImportError(null) } }}
+                  disabled={isHeaderOnly}
+                  title={isHeaderOnly ? 'Header-only workspaces display invoice data directly from parsed PDFs — no order import needed' : undefined}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-40">
                   <svg className="h-3.5 w-3.5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
@@ -5187,11 +5390,12 @@ export default function DocTidyInvoiceAudit() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Show skeleton while orders are loading OR while jobs haven't arrived yet
+                    {/* ── Loading skeleton ──
+                        Show skeleton while orders are loading OR while jobs haven't arrived yet
                         on the first load (jobs.length === 0 + loading). This prevents a flash
                         where orderImports populate before fetchAllJobs returns, causing every
                         invoice-matched cell to briefly render as "—" against an empty jobs array. */}
-                    {(orderLoading || (loading && jobs.length === 0)) ? (
+                    {(isHeaderOnly ? loading : (orderLoading || (loading && jobs.length === 0))) ? (
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                           <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
@@ -5203,6 +5407,69 @@ export default function DocTidyInvoiceAudit() {
                           <td className="px-2.5 py-1" />
                         </tr>
                       ))
+                    /* ── Header-only: flat list of completed parse jobs ── */
+                    ) : isHeaderOnly ? (
+                      filteredHeaderOnlyJobs.length === 0 ? (
+                        <tr>
+                          <td colSpan={visibleCols.length + 2} className="py-16 text-center">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
+                                <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                    d="M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-medium text-[var(--text-100)]">
+                                  {(auditDateFrom || auditDateTo) ? 'No invoices match the date range' : 'No parsed invoices yet'}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                                  {(auditDateFrom || auditDateTo)
+                                    ? 'Try adjusting or clearing the date filter.'
+                                    : 'Upload PDFs in the PDF Imports tab and send them to Tidy Agent — parsed invoices appear here automatically.'}
+                                </p>
+                              </div>
+                              {(auditDateFrom || auditDateTo) && (
+                                <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
+                                  className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                  Clear date filter
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {filteredHeaderOnlyJobs.map((job, rowIdx) => {
+                            const isEven = rowIdx % 2 === 0
+                            return (
+                              <tr key={job._id}
+                                className={['transition-colors align-middle', isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'].join(' ')}>
+                                <td className="px-2.5 py-1.5">
+                                  {/* No row selection for header-only job rows */}
+                                </td>
+                                {visibleCols.map((col) => (
+                                  <td key={col.id}
+                                    className={[
+                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
+                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
+                                    ].join(' ')}>
+                                    {headerOnlyCellFor(col.id, job)}
+                                  </td>
+                                ))}
+                                <td className="px-1.5 py-1.5 text-center">
+                                  <span title={job.filename}
+                                    className="inline-block max-w-[80px] truncate text-[10px] text-[var(--text-200)] cursor-default">
+                                    {job.filename}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </>
+                      )
+
+                    /* ── Full mode: existing empty state ── */
                     ) : orderImports.length === 0 ? (
                       <tr>
                         <td colSpan={visibleCols.length + 2} className="py-16 text-center">
@@ -5263,7 +5530,13 @@ export default function DocTidyInvoiceAudit() {
                         const weekMap = new Map<string, DocTidyOrderImport[]>()
                         const UNKNOWN_KEY = '__unknown__'
                         for (const order of filteredOrderImports) {
-                          const key = getWeekStartKey(order.processedDate) ?? UNKNOWN_KEY
+                          // processedDate is '' when the imported CSV had no matching column
+                          // (common in header-only workspaces). Fall back to the matched
+                          // invoice date so rows aren't silently bucketed as "Unknown date".
+                          const key =
+                            getWeekStartKey(order.processedDate) ??
+                            getWeekStartKey(order.matchedInvoice?.invoiceDate ?? '') ??
+                            UNKNOWN_KEY
                           if (!weekMap.has(key)) weekMap.set(key, [])
                           weekMap.get(key)!.push(order)
                         }
@@ -5328,6 +5601,10 @@ export default function DocTidyInvoiceAudit() {
                           if (isCollapsed) return [groupHeader]
                           const dataRows = groupOrders.map((order) => {
                             const match = invoiceMatchMap.get(order._id) ?? null
+                            // Resolve the matched parse job for vendorNeedsSetup detection.
+                            const matchedJob = match?.job
+                              ?? (order.matchedInvoice?.jobId ? jobsById.get(order.matchedInvoice.jobId) : undefined)
+                            const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
                             rowIdx++
@@ -5351,18 +5628,30 @@ export default function DocTidyInvoiceAudit() {
                                     {auditCellFor(col.id, order, match)}
                                   </td>
                                 ))}
-                                {/* Per-row delete action */}
+                                {/* Per-row actions: Add Vendor (when needed) + delete */}
                                 <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteAuditRow(order)}
-                                    title="Delete this order"
-                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1">
+                                    {vendorNeedsSetup && matchedJob && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setAddVendorTarget({ jobId: matchedJob._id, suggestedName: matchedJob.vendorName })}
+                                        title="Register the vendor for this invoice"
+                                        className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30 transition-colors whitespace-nowrap"
+                                      >
+                                        + Add Vendor
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteAuditRow(order)}
+                                      title="Delete this order"
+                                      className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -5607,7 +5896,6 @@ export default function DocTidyInvoiceAudit() {
           onSave={handleWorkspaceSaved}
           onClose={() => setEditTarget(null)}
           initialOrgId={editTarget === 'new' ? (activeOrg?._id) : undefined}
-          isAdmin={isAdmin}
         />
       )}
 
@@ -5632,11 +5920,41 @@ export default function DocTidyInvoiceAudit() {
         />
       )}
 
+      {/* ── Add Vendor overlay (Invoice Audit tab) ── */}
+      {addVendorTarget && activeWorkspace && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => setAddVendorTarget(null)} />
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-100)]">Register vendor</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-200)]">Add this supplier so Tidy Agent scopes its corrections correctly.</p>
+              </div>
+              <button type="button" onClick={() => setAddVendorTarget(null)} aria-label="Close"
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <VendorSetup
+              jobId={addVendorTarget.jobId}
+              workspaceId={activeWorkspace._id}
+              suggestedName={addVendorTarget.suggestedName}
+              onRegistered={() => {
+                setAddVendorTarget(null)
+                void fetchAllJobsRef.current()
+                void fetchOrderImportsRef.current()
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Parse job reasoning panel (workspace emails tab) ── */}
       {openJobId && (
         <ParseJobPanel
           jobId={openJobId}
-          workspaceId={activeWorkspace?._id}
           onClose={() => setOpenJobId(null)}
           onChanged={() => void fetchEmails(true)}
         />
