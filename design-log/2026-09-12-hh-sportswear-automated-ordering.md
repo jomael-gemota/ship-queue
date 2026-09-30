@@ -1,7 +1,7 @@
 # HH Sportswear / Workwear automated ordering
 
 **Date:** 2026-09-12
-**Updated:** 2026-09-21
+**Updated:** 2026-10-01
 **Status:** accepted
 **Author:** collaborative
 
@@ -34,8 +34,11 @@ Place Order on go-ahead.
 Operators download Order ID / PO / B2B order # from a **batch export**
 (`.xlsx` from the orders-page ⋯ menu).
 
-Stamping the PO into Amazon **Seller Notes** is still an open question — confirm
-whether that manual step is still needed before automating it.
+After Place Order succeeds, the PO is written into Amazon **Seller Notes**.
+The current note is read from `GET /orders-api/order/:orderId`
+(`order.sellerNotes`). If that text is empty, the note becomes the PO. If it
+already has text, the PO is appended after a blank line. A note that already
+ends with that PO is left unchanged.
 
 Place Order is gated by Configurations (`placeOrderEnabled`, default off).
 Submit is `PUT /api/documents/:id` with the create-shaped cart and
@@ -150,6 +153,8 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
   `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
   **Reference Number** for every order in that batch. Empty references stay
   blank. Available from the orders-page ⋯ menu.
-- **Open:** whether PO still needs to be stamped into Amazon Seller Notes.
+- **Built:** after Place Order, stamp the PO into Amazon Seller Notes
+  (`POST /orders-api/order/:orderId/seller-notes`), keeping any existing note
+  text and skipping a second write when the note already ends with that PO.
 - Cookie Jar is the SC session source for fetches/cross-checks that need SC.
 - Small leftovers: notes-field blur race; cancelled Amazon orders still fill.

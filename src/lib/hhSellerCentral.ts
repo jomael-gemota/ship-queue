@@ -125,6 +125,24 @@ async function scRequest(path: string, cookie: string, init: RequestInit = {}): 
   }
 }
 
+/** Existing note plus a blank line and the PO. Null when there is nothing to write. */
+export function composeSellerNoteWithPo(existing: string, po: string): string | null {
+  const note = existing.trim();
+  const purchaseOrder = po.trim();
+  if (!purchaseOrder) return null;
+
+  const lines = note.split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (line === purchaseOrder) return null;
+    break;
+  }
+
+  if (!note) return purchaseOrder;
+  return `${note}\n\n${purchaseOrder}`;
+}
+
 export async function fetchScOrder(orderId: string, cookie: string): Promise<ScOrderPayload> {
   const body = await scRequest(`/orders-api/order/${encodeURIComponent(orderId)}`, cookie);
   const root = asRecord(body);
@@ -144,6 +162,17 @@ export async function fetchScOrder(orderId: string, cookie: string): Promise<ScO
     sellerNotes: asString(order.sellerNotes),
     orderItems: items,
   };
+}
+
+export async function updateScSellerNotes(orderId: string, noteText: string, cookie: string): Promise<void> {
+  await scRequest(`/orders-api/order/${encodeURIComponent(orderId)}/seller-notes`, cookie, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Referer: `${SC_ORIGIN}/orders-v3/order/${encodeURIComponent(orderId)}`,
+    },
+    body: JSON.stringify({ orderId, noteText }),
+  });
 }
 
 export async function fetchScBuyerInfo(orderId: string, blob: string, cookie: string): Promise<unknown> {
