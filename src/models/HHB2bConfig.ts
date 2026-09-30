@@ -14,6 +14,10 @@ export interface IHHB2bConfig extends Document {
   skuInitials?: string[];
   /** False until Configurations saves the prefix list. Until then the defaults apply. */
   skuInitialsSet: boolean;
+  /** Substrings that keep a Helly Hansen Sports or Work SKU off the cart. */
+  skuExcludes?: string[];
+  /** False until Configurations saves the exclusion list. Until then DUP_ applies. */
+  skuExcludesSet: boolean;
   /** When false, Place Order is visible but does not submit to Helly Hansen. */
   placeOrderEnabled: boolean;
   /** POST target when a session check starts failing or recovers. Empty skips the call. */
@@ -47,6 +51,8 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
     cookieUpdatedAt: { type: Date, default: null },
     skuInitials: { type: [String], default: undefined },
     skuInitialsSet: { type: Boolean, default: false },
+    skuExcludes: { type: [String], default: undefined },
+    skuExcludesSet: { type: Boolean, default: false },
     placeOrderEnabled: { type: Boolean, default: false },
     alertWebhookUrl: { type: String, default: '' },
     sessionCheckTimes: { type: [String] },

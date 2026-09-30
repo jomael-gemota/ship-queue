@@ -38,6 +38,8 @@ import {
   liveCompareHhCarts,
 } from '../services/hhCartVerify';
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
+import { loadHhB2bConfig } from '../lib/hhB2bConfig';
+import { matchingSkuExclude } from '../lib/hhSkuExclude';
 import { hhShipViaForDraft, HH_SHIP_VIA_UI_PREVIEW_SOURCE, type HhShipViaOverride } from '../lib/hhShipVia';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, HhB2bDraftError, loadHhB2bCookie } from '../lib/hhB2bConfig';
@@ -1249,6 +1251,7 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       return;
     }
 
+    let ruleMessage = '';
     const group = await withHhGroupLock(groupId, async () => {
       const found = await HHOrderGroup.findById(groupId);
       if (!isBrandGroup(found, req)) return null;
@@ -1257,6 +1260,15 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       if (isHhPlaced(order)) return 'placed';
       const item = order.items.find((row) => String(row._id) === itemId);
       if (!item) return 'item';
+
+      if (!excluded) {
+        const tokens = (await loadHhB2bConfig(hhBrandId(found.brand))).skuExcludes;
+        const hit = matchingSkuExclude(item.sku, tokens);
+        if (hit) {
+          ruleMessage = `SKU ${item.sku} contains ${hit} and stays off the cart.`;
+          return 'rule';
+        }
+      }
 
       item.excluded = excluded;
       item.excludeNote = excluded ? asString(body.excludeNote, 500) : '';
@@ -1287,6 +1299,10 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
     }
     if (group === 'item') {
       res.status(404).json({ message: 'Item not found' });
+      return;
+    }
+    if (group === 'rule') {
+      res.status(409).json({ message: ruleMessage || 'This SKU stays off the cart.' });
       return;
     }
 

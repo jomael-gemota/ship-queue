@@ -759,6 +759,7 @@ export interface HHB2bConfig {
   catalog: string
   accountId: string
   skuInitials: string[]
+  skuExcludes: string[]
   hasCookie: boolean
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
@@ -775,6 +776,7 @@ export type HHB2bConfigPatch = Partial<{
   catalog: string
   accountId: string
   skuInitials: string[]
+  skuExcludes: string[]
   cookie: string
   placeOrderEnabled: boolean
   alertWebhookUrl: string

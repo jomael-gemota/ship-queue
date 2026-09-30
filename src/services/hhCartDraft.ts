@@ -12,6 +12,7 @@ import { createThorogoodDraft } from '../lib/hhB2bThorogood';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { hhCartItems } from '../lib/hhLineItems';
+import { applyHhSkuExcludes } from '../lib/hhSkuExclude';
 import { hhShipViaForDraft, type HhShipViaOverride } from '../lib/hhShipVia';
 
 const LOG = '[hh-cart-draft]';
@@ -217,6 +218,25 @@ async function persistDraft(
   });
 }
 
+async function persistSkuExclusions(
+  groupId: string,
+  childId: string,
+  skuExcludes: readonly string[]
+): Promise<IHHChildOrder | null> {
+  return withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return null;
+    const child = group.children.id(childId);
+    if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
+    if (applyHhSkuExcludes(child.items, skuExcludes)) {
+      group.markModified('children');
+      await group.save();
+    }
+    return child;
+  });
+}
+
 async function persistDraftError(groupId: string, childId: string, message: string): Promise<void> {
   await withHhGroupLock(groupId, async () => {
     const group = await HHOrderGroup.findById(groupId);
@@ -274,7 +294,20 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
     enqueueHhCartVerify(String(group._id), childId);
     return;
   }
-  const request = toDraftRequest(child);
+  const brandId = hhBrandId(group.brand);
+  const skuExcludes = (await loadHhB2bConfig(brandId)).skuExcludes;
+  const stamped = await persistSkuExclusions(String(group._id), childId, skuExcludes);
+  if (!stamped || stamped.cartStatus === 'placed' || stamped.detailsStatus !== 'synced') {
+    run.skipped += 1;
+    console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+    return;
+  }
+  if (hhCartItems(stamped.items).length === 0) {
+    run.skipped += 1;
+    console.log(`${LOG} Skipped ${child.orderId} — every line matches a cart exclusion`);
+    return;
+  }
+  const request = toDraftRequest(stamped);
   const shipVia = hhShipViaForDraft(request.address, shipViaOverride(child));
   request.shipVia = shipVia.code;
   const result = await createHhB2bDraft(request, group.brand);

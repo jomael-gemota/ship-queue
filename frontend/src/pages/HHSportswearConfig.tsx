@@ -9,6 +9,7 @@ import {
   normalizeThorogoodSkuInitials,
   thorogoodPortalSku,
 } from '../lib/hhThorogoodSku'
+import { normalizeHhSkuExcludes } from '../lib/hhSkuExclude'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -54,6 +55,17 @@ function sessionLabel(status: HHSessionCheck['status']): string {
 
 function initialsFromText(text: string): { initials: string[] } | { error: string } {
   return normalizeThorogoodSkuInitials(text.split(/\r?\n/))
+}
+
+function excludesFromText(text: string): { excludes: string[] } | { error: string } {
+  return normalizeHhSkuExcludes(text.split(/\r?\n/))
+}
+
+function sameExcludes(text: string, saved: string[]): boolean {
+  const parsed = excludesFromText(text)
+  if ('error' in parsed) return false
+  if (parsed.excludes.length !== saved.length) return false
+  return parsed.excludes.every((token, index) => token === saved[index])
 }
 
 function sameInitials(text: string, saved: string[]): boolean {
@@ -106,6 +118,7 @@ export default function HHSportswearConfig() {
   const [accountId, setAccountId] = useState('')
   const [cookie, setCookie] = useState('')
   const [skuInitialsText, setSkuInitialsText] = useState('')
+  const [skuExcludesText, setSkuExcludesText] = useState('')
   const [clearCookie, setClearCookie] = useState(false)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [alertWebhookUrl, setAlertWebhookUrl] = useState('')
@@ -125,6 +138,7 @@ export default function HHSportswearConfig() {
     setCatalog(data.catalog)
     setAccountId(data.accountId)
     setSkuInitialsText((data.skuInitials ?? []).join('\n'))
+    setSkuExcludesText((data.skuExcludes ?? []).join('\n'))
     setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
     setAlertWebhookUrl(data.alertWebhookUrl || '')
     setCheckTimes(data.sessionCheckTimes?.length ? data.sessionCheckTimes : [])
@@ -201,7 +215,8 @@ export default function HHSportswearConfig() {
           accountId !== saved.accountId ||
           placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
           alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
-          !sameCheckTimes(checkTimes, savedTimes))) ||
+          !sameCheckTimes(checkTimes, savedTimes) ||
+          !sameExcludes(skuExcludesText, saved.skuExcludes ?? []))) ||
       cookie.trim().length > 0 ||
       clearCookie ||
       (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
@@ -220,6 +235,12 @@ export default function HHSportswearConfig() {
         setBusy(false)
         return
       }
+      const parsedExcludes = orderDetails ? null : excludesFromText(skuExcludesText)
+      if (parsedExcludes && 'error' in parsedExcludes) {
+        setSaveError(parsedExcludes.error)
+        setBusy(false)
+        return
+      }
       const patch: HHB2bConfigPatch = orderDetails
         ? { baseUrl, skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [] }
         : {
@@ -229,6 +250,7 @@ export default function HHSportswearConfig() {
             placeOrderEnabled,
             alertWebhookUrl,
             sessionCheckTimes: checkTimes,
+            skuExcludes: parsedExcludes && 'excludes' in parsedExcludes ? parsedExcludes.excludes : [],
           }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
@@ -440,6 +462,7 @@ export default function HHSportswearConfig() {
 
   const brandLabel = brand === 'workwear' ? 'Work' : 'Sports'
   const sessionHost = brandDef.baseUrl.replace(/^https?:\/\//, '')
+  const parsedSkuExcludes = excludesFromText(skuExcludesText)
 
   return (
     <form
@@ -538,6 +561,31 @@ export default function HHSportswearConfig() {
               }`}
             />
           </button>
+        </div>
+      </ConfigSection>
+
+      <ConfigSection
+        title="SKU exclusions"
+        description="A line stays off the cart when its Seller Central SKU contains one of these."
+      >
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-b2b-sku-excludes">
+            Exclusions
+          </label>
+          <p className={hintClass}>One value per line. DUP_12345 matches DUP_.</p>
+          <textarea
+            id="hh-b2b-sku-excludes"
+            className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+            value={skuExcludesText}
+            onChange={(event) => setSkuExcludesText(event.target.value)}
+            placeholder="DUP_"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+          {'error' in parsedSkuExcludes ? (
+            <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuExcludes.error}</p>
+          ) : null}
         </div>
       </ConfigSection>
 

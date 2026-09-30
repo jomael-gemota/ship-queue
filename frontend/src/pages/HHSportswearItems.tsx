@@ -7,6 +7,7 @@ import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
 import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import { hhSkuExcludedByRule } from '../lib/hhSkuExclude'
 import {
   hhCartErrorMentionsSku,
   hhExcludedItems,
@@ -151,7 +152,7 @@ function HHItemExcludeControls({
             {item.excludeNote}
           </p>
         ) : null}
-        {locked ? null : (
+        {locked || hhSkuExcludedByRule(item.excludeNote) ? null : (
           <button
             type="button"
             disabled={busy}
