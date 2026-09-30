@@ -3976,6 +3976,23 @@ export default function DocTidyInvoiceAudit() {
                     <span className="text-[11px] text-[var(--text-200)]">to</span>
                     <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
                   </div>
+                  {/* Fetch Emails — manually runs all enabled rules */}
+                  <button
+                    type="button"
+                    onClick={() => void handleFetchEmails()}
+                    disabled={emailFetching}
+                    title="Run all enabled rules and import matching emails"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:border-[var(--accent-200)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {emailFetching ? (
+                      <Spinner className="h-3 w-3" />
+                    ) : (
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    )}
+                    {emailFetching ? 'Fetching…' : 'Fetch Emails'}
+                  </button>
                   {(emailSearch || emailDateFrom || emailDateTo) && (
                     <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
                       className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
@@ -4001,23 +4018,6 @@ export default function DocTidyInvoiceAudit() {
                   )}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {emailLoading && <Spinner className="h-3 w-3" />}
-                    {/* Fetch Emails — manually runs all enabled rules */}
-                    <button
-                      type="button"
-                      onClick={() => void handleFetchEmails()}
-                      disabled={emailFetching}
-                      title="Run all enabled rules and import matching emails"
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:border-[var(--accent-200)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {emailFetching ? (
-                        <Spinner className="h-3 w-3" />
-                      ) : (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      )}
-                      {emailFetching ? 'Fetching…' : 'Fetch Emails'}
-                    </button>
                     {emailPagination.total > 0 && (
                       <span className="flex items-center gap-1.5">
                         <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
