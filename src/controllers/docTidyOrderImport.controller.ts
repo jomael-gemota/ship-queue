@@ -146,6 +146,8 @@ export const listOrderImports = async (req: Request, res: Response): Promise<voi
     const {
       workspaceId,
       search,
+      dateFrom,
+      dateTo,
       page = '1',
       pageSize = '500',
     } = req.query as Record<string, string | undefined>;
@@ -166,6 +168,18 @@ export const listOrderImports = async (req: Request, res: Response): Promise<voi
         { orderId: re },
         { status: re },
       ];
+    }
+
+    // Date-range filter on createdAt (i.e. when the row was imported).
+    if (dateFrom || dateTo) {
+      const range: Record<string, Date> = {};
+      if (dateFrom) range.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+      }
+      filter.createdAt = range;
     }
 
     const pg   = Math.max(1, parseInt(page, 10));

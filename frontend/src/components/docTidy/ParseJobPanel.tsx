@@ -4,7 +4,6 @@ import { useParseJobStream } from '../../hooks/useParseJobStream'
 import { ParseStatusChip, Spinner } from './docTidyUi'
 import ReasoningStepper from './ReasoningStepper'
 import CorrectionEditor, { CorrectionHistory } from './CorrectionEditor'
-import VendorSetup from './VendorSetup'
 import {
   isParseRunning,
   type DocTidyCorrection,
@@ -29,12 +28,10 @@ const TABS: { id: Tab; label: string }[] = [
  */
 export default function ParseJobPanel({
   jobId,
-  workspaceId,
   onClose,
   onChanged,
 }: {
   jobId: string
-  workspaceId?: string
   onClose: () => void
   onChanged: () => void
 }) {
@@ -232,18 +229,6 @@ export default function ParseJobPanel({
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/15 dark:text-rose-300">
               {errorMessage}
             </div>
-          )}
-
-          {job?.vendorNeedsSetup && (
-            <VendorSetup
-              jobId={jobId}
-              workspaceId={workspaceId ?? ''}
-              suggestedName={job.vendorName}
-              onRegistered={() => {
-                void loadJob()
-                onChanged()
-              }}
-            />
           )}
 
           {tab === 'reasoning' && (

@@ -16,6 +16,7 @@ import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
+import VendorSetup from '../components/docTidy/VendorSetup'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import { formatDate, formatDateTime } from '../lib/format'
@@ -2207,8 +2208,12 @@ export default function DocTidyInvoiceAudit() {
   const [orderPageSize, setOrderPageSize] = useState(500)
   const [auditSearch, setAuditSearch] = useState('')
   const [debouncedAuditSearch, setDebouncedAuditSearch] = useState('')
+  const [auditDateFrom, setAuditDateFrom] = useState('')
+  const [auditDateTo, setAuditDateTo] = useState('')
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
+  /** Vendor setup overlay — set when a row's matched job has vendorNeedsSetup=true. */
+  const [addVendorTarget, setAddVendorTarget] = useState<{ jobId: string; suggestedName?: string | null } | null>(null)
   /** Week keys (YYYY-MM-DD of Sunday) whose rows are currently collapsed. Persisted to localStorage. */
   const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(loadCollapsedWeeks)
   // Initialized to defaults; reloaded from workspace-scoped localStorage on enterWorkspace().
@@ -2976,7 +2981,7 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [auditSearch])
 
-  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, orderPageSize])
+  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, auditDateFrom, auditDateTo, orderPageSize])
 
   /* ── Fetch order imports (primary table rows) ── */
   const fetchOrderImports = useCallback(async () => {
@@ -2990,6 +2995,8 @@ export default function DocTidyInvoiceAudit() {
         pageSize: String(orderPageSize),
       })
       if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
+      if (auditDateFrom) params.set('dateFrom', auditDateFrom)
+      if (auditDateTo) params.set('dateTo', auditDateTo)
       const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
       setOrderImports(res.data)
       setOrderPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
@@ -2998,7 +3005,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       setOrderLoading(false)
     }
-  }, [activeWorkspace, orderPage, orderPageSize, debouncedAuditSearch])
+  }, [activeWorkspace, orderPage, orderPageSize, debouncedAuditSearch, auditDateFrom, auditDateTo])
 
   useEffect(() => {
     if (workspaceTab === 'audit') void fetchOrderImports()
@@ -3284,6 +3291,13 @@ export default function DocTidyInvoiceAudit() {
     return map
   }, [orderImports, jobs])
 
+  /** Fast lookup of parse jobs by id — used to check vendorNeedsSetup in table rows. */
+  const jobsById = useMemo(() => {
+    const map = new Map<string, ParseJobListItem>()
+    for (const job of jobs) map.set(job._id, job)
+    return map
+  }, [jobs])
+
   /**
    * Collect unique string values for a given column across all currently loaded
    * order import rows. Used to populate the column filter dropdown.
@@ -3419,13 +3433,15 @@ export default function DocTidyInvoiceAudit() {
       if (mode === 'selection') {
         exportOrders = orderImports.filter((o) => selectedRowKeys.has(o._id))
       } else {
-        // Fetch all order imports (regardless of current pagination)
+        // Fetch all order imports (respects active search + date filters)
         const params = new URLSearchParams({
           workspaceId: activeWorkspace._id,
           page: '1',
           pageSize: '5000',
         })
         if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
+        if (auditDateFrom) params.set('dateFrom', auditDateFrom)
+        if (auditDateTo) params.set('dateTo', auditDateTo)
         const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
         exportOrders = res.data
       }
@@ -5054,6 +5070,20 @@ export default function DocTidyInvoiceAudit() {
                   )}
                 </div>
 
+                {/* Date range filter */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-[var(--text-200)]">From</span>
+                  <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} className={inputClass} />
+                  <span className="text-[11px] text-[var(--text-200)]">to</span>
+                  <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} className={inputClass} />
+                </div>
+                {(auditDateFrom || auditDateTo) && (
+                  <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
+                    className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
+                    Clear dates
+                  </button>
+                )}
+
                 {/* Import Orders button */}
                 <button type="button" onClick={() => { setShowImportModal(true); setImportSuccess(null); setImportError(null) }}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)]">
@@ -5397,6 +5427,10 @@ export default function DocTidyInvoiceAudit() {
                           if (isCollapsed) return [groupHeader]
                           const dataRows = groupOrders.map((order) => {
                             const match = invoiceMatchMap.get(order._id) ?? null
+                            // Resolve the matched parse job for vendorNeedsSetup detection.
+                            const matchedJob = match?.job
+                              ?? (order.matchedInvoice?.jobId ? jobsById.get(order.matchedInvoice.jobId) : undefined)
+                            const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
                             rowIdx++
@@ -5420,18 +5454,30 @@ export default function DocTidyInvoiceAudit() {
                                     {auditCellFor(col.id, order, match)}
                                   </td>
                                 ))}
-                                {/* Per-row delete action */}
+                                {/* Per-row actions: Add Vendor (when needed) + delete */}
                                 <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteAuditRow(order)}
-                                    title="Delete this order"
-                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1">
+                                    {vendorNeedsSetup && matchedJob && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setAddVendorTarget({ jobId: matchedJob._id, suggestedName: matchedJob.vendorName })}
+                                        title="Register the vendor for this invoice"
+                                        className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30 transition-colors whitespace-nowrap"
+                                      >
+                                        + Add Vendor
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteAuditRow(order)}
+                                      title="Delete this order"
+                                      className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                    >
+                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             )
@@ -5700,11 +5746,41 @@ export default function DocTidyInvoiceAudit() {
         />
       )}
 
+      {/* ── Add Vendor overlay (Invoice Audit tab) ── */}
+      {addVendorTarget && activeWorkspace && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => setAddVendorTarget(null)} />
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-[var(--text-100)]">Register vendor</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-200)]">Add this supplier so Tidy Agent scopes its corrections correctly.</p>
+              </div>
+              <button type="button" onClick={() => setAddVendorTarget(null)} aria-label="Close"
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <VendorSetup
+              jobId={addVendorTarget.jobId}
+              workspaceId={activeWorkspace._id}
+              suggestedName={addVendorTarget.suggestedName}
+              onRegistered={() => {
+                setAddVendorTarget(null)
+                void fetchAllJobsRef.current()
+                void fetchOrderImportsRef.current()
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Parse job reasoning panel (workspace emails tab) ── */}
       {openJobId && (
         <ParseJobPanel
           jobId={openJobId}
-          workspaceId={activeWorkspace?._id}
           onClose={() => setOpenJobId(null)}
           onChanged={() => void fetchEmails(true)}
         />
