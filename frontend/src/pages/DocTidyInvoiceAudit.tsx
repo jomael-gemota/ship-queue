@@ -54,6 +54,7 @@ import {
   isParseRunning,
   type DocTidyOrderImport,
   type OrderImportsResponse,
+  type RunAllResult,
 } from '../types/docTidy'
 
 /**
@@ -2277,6 +2278,10 @@ export default function DocTidyInvoiceAudit() {
   const emailCheckboxClass =
     'h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)]'
 
+  /* Fetch Emails button state */
+  const [emailFetching, setEmailFetching] = useState(false)
+  const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
+
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
   const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
@@ -2783,6 +2788,32 @@ export default function DocTidyInvoiceAudit() {
 
   /* Reset email page when filters change */
   useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize])
+
+  /* ── Manually trigger all enabled rules and refresh the email list ── */
+  const handleFetchEmails = async () => {
+    setEmailFetching(true)
+    setEmailFetchNotice(null)
+    setEmailError(null)
+    try {
+      const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
+      const totalImported = res.data.results.reduce((sum, r) => sum + (r.imported ?? 0), 0)
+      const totalMatched = res.data.results.reduce((sum, r) => sum + (r.matched ?? 0), 0)
+      const errors = res.data.results.filter((r) => r.error)
+      if (errors.length > 0) {
+        setEmailError(`${errors.length} rule${errors.length === 1 ? '' : 's'} failed: ${errors.map((e) => e.error).join('; ')}`)
+      } else if (totalImported > 0) {
+        setEmailFetchNotice(`Fetched ${totalImported} new email${totalImported === 1 ? '' : 's'} (${totalMatched} matched).`)
+      } else {
+        setEmailFetchNotice(`No new emails — ${totalMatched} message${totalMatched === 1 ? '' : 's'} matched, none were new.`)
+      }
+      // Refresh the table so newly imported emails appear immediately.
+      void fetchEmails(true)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to fetch emails')
+    } finally {
+      setEmailFetching(false)
+    }
+  }
 
   /* ── Fetch workspace emails (with parse jobs) ── */
   const fetchEmails = useCallback(async (silent = false) => {
@@ -3914,6 +3945,7 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'emails' && (
             <div className="space-y-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
+              {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
               <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
                 {/* Filter bar */}
@@ -3969,6 +4001,23 @@ export default function DocTidyInvoiceAudit() {
                   )}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
                     {emailLoading && <Spinner className="h-3 w-3" />}
+                    {/* Fetch Emails — manually runs all enabled rules */}
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchEmails()}
+                      disabled={emailFetching}
+                      title="Run all enabled rules and import matching emails"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:border-[var(--accent-200)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {emailFetching ? (
+                        <Spinner className="h-3 w-3" />
+                      ) : (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                      {emailFetching ? 'Fetching…' : 'Fetch Emails'}
+                    </button>
                     {emailPagination.total > 0 && (
                       <span className="flex items-center gap-1.5">
                         <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
