@@ -2063,6 +2063,21 @@ function parseFlexDate(dateStr: string): Date | null {
   return isNaN(d.getTime()) ? null : d
 }
 
+/**
+ * Normalise any supported date string to "YYYY-MM-DD" using **local** date
+ * parts so string comparisons against `<input type="date">` values work
+ * regardless of server/client timezone.  Returns null when the string cannot
+ * be parsed.
+ */
+function toISODateStr(dateStr: string): string | null {
+  const d = parseFlexDate(dateStr)
+  if (!d) return null
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function getWeekStartKey(dateStr: string): string | null {
   const d = parseFlexDate(dateStr)
   if (!d) return null
@@ -2995,8 +3010,6 @@ export default function DocTidyInvoiceAudit() {
         pageSize: String(orderPageSize),
       })
       if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
-      if (auditDateFrom) params.set('dateFrom', auditDateFrom)
-      if (auditDateTo) params.set('dateTo', auditDateTo)
       const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
       setOrderImports(res.data)
       setOrderPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
@@ -3005,7 +3018,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       setOrderLoading(false)
     }
-  }, [activeWorkspace, orderPage, orderPageSize, debouncedAuditSearch, auditDateFrom, auditDateTo])
+  }, [activeWorkspace, orderPage, orderPageSize, debouncedAuditSearch])
 
   useEffect(() => {
     if (workspaceTab === 'audit') void fetchOrderImports()
@@ -3315,23 +3328,45 @@ export default function DocTidyInvoiceAudit() {
 
   /**
    * Client-side filter applied on top of the server-fetched `orderImports`.
-   * Each active column filter is AND-ed together.
-   * A row passes when its cell value is in the allowed set (or BLANK_SENTINEL matches an empty cell).
+   *
+   * - Column filters (AND-ed together): exact value matching per visible column.
+   * - Date range filter: matched against the resolved invoice date, falling back
+   *   to processedDate then purchasedDate — same priority used by the week dividers.
+   *   Input values come from `<input type="date">` so they are already YYYY-MM-DD.
    */
   const filteredOrderImports = useMemo(() => {
     const activeEntries = Object.entries(colFilters).filter(
       (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return orderImports
+    const hasDateFilter = Boolean(auditDateFrom || auditDateTo)
+
+    if (activeEntries.length === 0 && !hasDateFilter) return orderImports
+
     return orderImports.filter((order) => {
-      const match = invoiceMatchMap.get(order._id) ?? null
-      return activeEntries.every(([colId, allowed]) => {
-        const val = auditColStr(colId, order, match).trim()
-        if (!val) return allowed.has(BLANK_SENTINEL)
-        return allowed.has(val)
-      })
+      // ── Column filters ──
+      if (activeEntries.length > 0) {
+        const match = invoiceMatchMap.get(order._id) ?? null
+        const passesCol = activeEntries.every(([colId, allowed]) => {
+          const val = auditColStr(colId, order, match).trim()
+          if (!val) return allowed.has(BLANK_SENTINEL)
+          return allowed.has(val)
+        })
+        if (!passesCol) return false
+      }
+
+      // ── Date range filter ──
+      // Priority: matchedInvoice.invoiceDate → processedDate → purchasedDate
+      if (hasDateFilter) {
+        const raw = order.matchedInvoice?.invoiceDate ?? order.processedDate ?? order.purchasedDate ?? ''
+        const ds = toISODateStr(raw)
+        if (!ds) return false                              // no parseable date → hide
+        if (auditDateFrom && ds < auditDateFrom) return false
+        if (auditDateTo   && ds > auditDateTo)   return false
+      }
+
+      return true
     })
-  }, [orderImports, colFilters, invoiceMatchMap])
+  }, [orderImports, colFilters, invoiceMatchMap, auditDateFrom, auditDateTo])
 
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
 
@@ -3433,17 +3468,25 @@ export default function DocTidyInvoiceAudit() {
       if (mode === 'selection') {
         exportOrders = orderImports.filter((o) => selectedRowKeys.has(o._id))
       } else {
-        // Fetch all order imports (respects active search + date filters)
+        // Fetch all order imports (search is server-side; date filter is client-side below)
         const params = new URLSearchParams({
           workspaceId: activeWorkspace._id,
           page: '1',
           pageSize: '5000',
         })
         if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
-        if (auditDateFrom) params.set('dateFrom', auditDateFrom)
-        if (auditDateTo) params.set('dateTo', auditDateTo)
         const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
         exportOrders = res.data
+        // Apply the same client-side date filter used by the table.
+        if (auditDateFrom || auditDateTo) {
+          exportOrders = exportOrders.filter((o) => {
+            const ds = toISODateStr(o.matchedInvoice?.invoiceDate ?? o.processedDate ?? o.purchasedDate ?? '')
+            if (!ds) return false
+            if (auditDateFrom && ds < auditDateFrom) return false
+            if (auditDateTo && ds > auditDateTo) return false
+            return true
+          })
+        }
       }
 
       const rows: Record<string, string>[] = []
