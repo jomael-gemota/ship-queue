@@ -12,6 +12,7 @@ export type DropshipBrand = {
   path: string
   logo?: string
   logoFit?: 'cover' | 'contain'
+  logoScale?: number
 }
 
 export const DROPSHIP_BRANDS: DropshipBrand[] = HH_BRAND_IDS.map((id) => {
@@ -24,5 +25,6 @@ export const DROPSHIP_BRANDS: DropshipBrand[] = HH_BRAND_IDS.map((id) => {
     path: brand.path,
     logo: brand.logo,
     logoFit: brand.logoFit,
+    logoScale: brand.logoScale,
   }
 })

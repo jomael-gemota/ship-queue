@@ -29,6 +29,7 @@ function BagIcon({ className = '' }: { className?: string }) {
 
 function BrandMark({ brand, framed = false }: { brand: DropshipBrand; framed?: boolean }) {
   const contain = brand.logoFit === 'contain'
+  const zoom = brand.logoScale && brand.logoScale > 1 ? brand.logoScale : undefined
   if (framed) {
     if (!brand.logo) {
       return (
@@ -40,7 +41,12 @@ function BrandMark({ brand, framed = false }: { brand: DropshipBrand; framed?: b
     if (contain) {
       return (
         <span className="relative block aspect-[5/4] w-full overflow-hidden bg-white">
-          <img src={brand.logo} alt="" className="absolute inset-0 h-full w-full object-contain p-3" />
+          <img
+            src={brand.logo}
+            alt=""
+            className={`absolute inset-0 h-full w-full object-contain ${zoom ? '' : 'p-3'}`}
+            style={zoom ? { transform: `scale(${zoom})` } : undefined}
+          />
         </span>
       )
     }
@@ -54,8 +60,15 @@ function BrandMark({ brand, framed = false }: { brand: DropshipBrand; framed?: b
   if (brand.logo) {
     if (contain) {
       return (
-        <span className="inline-flex h-28 w-36 shrink-0 items-center justify-center bg-white p-2 sm:h-32 sm:w-40">
-          <img src={brand.logo} alt="" className="max-h-full max-w-full object-contain" />
+        <span
+          className={`relative inline-flex h-28 w-36 shrink-0 overflow-hidden bg-white sm:h-32 sm:w-40 ${zoom ? '' : 'items-center justify-center p-2'}`}
+        >
+          <img
+            src={brand.logo}
+            alt=""
+            className={zoom ? 'absolute inset-0 h-full w-full object-contain' : 'max-h-full max-w-full object-contain'}
+            style={zoom ? { transform: `scale(${zoom})` } : undefined}
+          />
         </span>
       )
     }

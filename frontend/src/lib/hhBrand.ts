@@ -15,6 +15,8 @@ export interface HHBrandDefinition {
   apiPrefix: string
   logo?: string
   logoFit?: 'cover' | 'contain'
+  /** Scales a contain logo inside its tile. Used when the source art has empty margin. */
+  logoScale?: number
   cookieJarKey: string
   draftMode: HHDraftMode
 }
@@ -60,6 +62,7 @@ export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
     apiPrefix: '/thorogood',
     logo: '/brands/thorogood.jpg',
     logoFit: 'contain',
+    logoScale: 1.42,
     cookieJarKey: '',
     draftMode: 'order-details',
   },
