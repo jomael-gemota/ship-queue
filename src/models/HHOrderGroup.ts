@@ -68,6 +68,12 @@ export interface IHHChildOrder {
   postalCode: string;
   country: string;
   notes: string;
+  /** Helly Hansen Ship Via on the current draft. `-` is Default, `MSB` is USPS Priority. */
+  shipVia: string;
+  /** Why this address would use USPS Priority. Empty when Default is automatic. */
+  shipViaReason: string;
+  /** `default` or `usps` when an operator overrode the automatic choice. */
+  shipViaOverride: '' | 'default' | 'usps';
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
@@ -123,6 +129,9 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
     postalCode: { type: String, default: '', trim: true },
     country: { type: String, default: 'US', trim: true },
     notes: { type: String, default: '', trim: true },
+    shipVia: { type: String, default: '' },
+    shipViaReason: { type: String, default: '' },
+    shipViaOverride: { type: String, default: '' },
     detailsStatus: {
       type: String,
       enum: HH_DETAILS_STATUSES,

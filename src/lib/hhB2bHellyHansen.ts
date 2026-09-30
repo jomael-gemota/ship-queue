@@ -232,7 +232,7 @@ function addToCartPayload(
         purchase_order: asString(request.po) || null,
         customer_number: config.accountId,
         location_number: null,
-        client_fields: { ship_via: HH_B2B_DEFAULT_SHIP_VIA },
+        client_fields: { ship_via: request.shipVia === 'MSB' ? 'MSB' : HH_B2B_DEFAULT_SHIP_VIA },
         programs: [],
         page_products: pageProducts,
         drop_ship_address: toDropShipAddress(request.address),
@@ -394,6 +394,54 @@ function assertOrderSubmitted(record: Record<string, unknown> | null): void {
   }
   if (asString(record?.state) === 'draft') {
     throw new HhB2bDraftError('B2B place did not submit the draft');
+  }
+}
+
+function pageShipVia(document: Record<string, unknown>): string {
+  const pages = Array.isArray(document.pages) ? document.pages : [];
+  const page = asRecord(pages[0]);
+  const fields = asRecord(page?.client_fields);
+  return asString(fields?.ship_via);
+}
+
+/** Change Ship Via on the existing draft. The document id and order number stay. */
+export async function updateHellyHansenSportsShipVia(
+  config: HhB2bConfig,
+  cookie: string,
+  documentId: string,
+  shipVia: string
+): Promise<void> {
+  const id = documentId.trim();
+  if (!id || !looksLikeMongoObjectId(id)) {
+    throw new HhB2bDraftError('Cannot change Ship Via without a live Helly Hansen document id');
+  }
+  const code = shipVia === 'MSB' ? 'MSB' : HH_B2B_DEFAULT_SHIP_VIA;
+  const document = await fetchHhB2bDocument(config, cookie, id);
+  const payload = placeOrderPayload(document, id);
+  payload.do_submit = false;
+  const pages = Array.isArray(payload.pages) ? payload.pages : [];
+  for (const pageRaw of pages) {
+    const page = asRecord(pageRaw);
+    if (!page) continue;
+    const fields = asRecord(page.client_fields) ?? {};
+    page.client_fields = { ...fields, ship_via: code };
+  }
+  const updated = await b2bRequest(config, cookie, `/api/documents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  const record = asRecord(updated);
+  const error = record?.error;
+  if (error) {
+    throw new HhB2bDraftError(`B2B Ship Via update failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
+  }
+  if (asString(record?.type) === 'error') {
+    throw new HhB2bDraftError(asString(record?.content) || 'B2B Ship Via update failed');
+  }
+  const fresh = await fetchHhB2bDocument(config, cookie, id);
+  const actual = pageShipVia(fresh);
+  if (actual !== code) {
+    throw new HhB2bDraftError(`B2B kept Ship Via "${actual || 'blank'}" instead of "${code}"`);
   }
 }
 

@@ -12,6 +12,7 @@ import { createThorogoodDraft } from '../lib/hhB2bThorogood';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { hhCartItems } from '../lib/hhLineItems';
+import { hhShipViaForDraft, type HhShipViaOverride } from '../lib/hhShipVia';
 
 const LOG = '[hh-cart-draft]';
 const MAX_ERROR_LEN = 1000;
@@ -152,6 +153,10 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
   };
 }
 
+function shipViaOverride(child: IHHChildOrder): HhShipViaOverride {
+  return child.shipViaOverride === 'default' || child.shipViaOverride === 'usps' ? child.shipViaOverride : '';
+}
+
 async function persistOrderDetailsDraft(
   groupId: string,
   childId: string,
@@ -182,7 +187,8 @@ async function persistDraft(
   groupId: string,
   childId: string,
   draftId: string,
-  orderNumber: string
+  orderNumber: string,
+  shipVia?: { code: string; reason: string }
 ): Promise<IHHChildOrder | null> {
   return withHhGroupLock(groupId, async () => {
     const group = await HHOrderGroup.findById(groupId);
@@ -199,6 +205,10 @@ async function persistDraft(
     child.referenceNumber = orderNumber;
     child.placeError = '';
     child.cartError = '';
+    if (shipVia) {
+      child.shipVia = shipVia.code;
+      child.shipViaReason = shipVia.reason;
+    }
     clearHhCartVerification(child);
     applyGroupRollup(group);
     group.markModified('children');
@@ -264,8 +274,11 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
     enqueueHhCartVerify(String(group._id), childId);
     return;
   }
-  const result = await createHhB2bDraft(toDraftRequest(child), group.brand);
-  const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
+  const request = toDraftRequest(child);
+  const shipVia = hhShipViaForDraft(request.address, shipViaOverride(child));
+  request.shipVia = shipVia.code;
+  const result = await createHhB2bDraft(request, group.brand);
+  const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber, shipVia);
   if (!saved || saved.cartStatus !== 'draft') {
     run.skipped += 1;
     console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
@@ -274,7 +287,9 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   run.drafted += 1;
   lastSuccessAt = new Date();
   console.log(
-    `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}`
+    `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}${
+      shipVia.code === 'MSB' ? ` · Ship Via USPS Priority (${shipVia.reason || 'override'})` : ''
+    }`
   );
   enqueueHhCartVerify(String(group._id), childId);
 }

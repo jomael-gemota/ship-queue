@@ -38,8 +38,11 @@ import {
   liveCompareHhCarts,
 } from '../services/hhCartVerify';
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
+import { hhShipViaForDraft, HH_SHIP_VIA_UI_PREVIEW_SOURCE, type HhShipViaOverride } from '../lib/hhShipVia';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
-import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { HhB2bAuthError, HhB2bDraftError, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { updateHhB2bShipVia } from '../lib/hhB2b';
+import { looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import { hhBrand, hhBrandFromRequest, hhBrandId, hhDraftMode, type HHBrandId } from '../lib/hhBrand';
 import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
 import { hhCartItems } from '../lib/hhLineItems';
@@ -75,8 +78,11 @@ export interface HHChildOrderDto {
   notes: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
-  placeError: string;
-  cartError: string;
+    placeError: string;
+    cartError: string;
+    shipVia: string;
+    shipViaReason: string;
+    shipViaOverride: '' | 'default' | 'usps';
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -177,6 +183,10 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
       : mapLegacyHhStatus((order as { status?: string }).status).cartStatus,
     placeError: order.placeError ?? '',
     cartError: order.cartError ?? '',
+    shipVia: order.shipVia ?? '',
+    shipViaReason: order.shipViaReason ?? '',
+    shipViaOverride:
+      order.shipViaOverride === 'default' || order.shipViaOverride === 'usps' ? order.shipViaOverride : '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -238,6 +248,9 @@ function emptyImportedOrder(orderId: string, po: string) {
     b2bDraftId: '',
     cartError: '',
     placeError: '',
+    shipVia: '',
+    shipViaReason: '',
+    shipViaOverride: '',
     verifyIssues: [],
     verifyRows: [],
     verifiedAt: null,
@@ -416,6 +429,26 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
   }
 };
 
+function isShipViaPreview(group: { sourceFileName?: string }): boolean {
+  return group.sourceFileName === HH_SHIP_VIA_UI_PREVIEW_SOURCE;
+}
+
+function paintPreviewShipVia(child: IHHChildOrder): void {
+  const override: HhShipViaOverride =
+    child.shipViaOverride === 'default' || child.shipViaOverride === 'usps' ? child.shipViaOverride : '';
+  const choice = hhShipViaForDraft(
+    {
+      line1: child.addressLine1,
+      line2: child.addressLine2,
+      city: child.city,
+      state: child.state,
+    },
+    override,
+  );
+  child.shipVia = choice.code;
+  child.shipViaReason = choice.reason;
+}
+
 function resetCartForResync(child: IHHChildOrder): void {
   if (child.cartStatus === 'placed') return;
   child.cartStatus = HH_DEFAULT_CART_STATUS;
@@ -423,6 +456,8 @@ function resetCartForResync(child: IHHChildOrder): void {
   child.referenceNumber = '';
   child.placeError = '';
   child.cartError = '';
+  child.shipVia = '';
+  child.shipViaReason = '';
   clearHhCartVerification(child);
 }
 
@@ -451,6 +486,8 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
     child.referenceNumber = '';
     child.placeError = '';
     child.cartError = '';
+    child.shipVia = '';
+    child.shipViaReason = '';
     clearHhCartVerification(child);
     prepared += 1;
   }
@@ -496,6 +533,10 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
       res.status(400).json({ message: 'This batch has no orders to re-sync.' });
       return;
     }
+    if (isShipViaPreview(group)) {
+      res.status(400).json({ message: 'This preview batch is sample data. It is not synced from SellerCloud.' });
+      return;
+    }
     if (group.children.every(isHhPlaced)) {
       res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
       return;
@@ -538,6 +579,10 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
       res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
       return;
     }
+    if (isShipViaPreview(group)) {
+      res.status(400).json({ message: 'This preview batch is sample data. It is not synced from SellerCloud.' });
+      return;
+    }
 
     const draftCart = parseBoolFlag(req.body?.draftCart, true);
     markChildrenPending(group, String(order._id), { resetCart: draftCart });
@@ -565,6 +610,17 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
 
     if (group.children.length > 0 && group.children.every(isHhPlaced)) {
       res.status(409).json({ message: 'Placed orders cannot have their cart regenerated.' });
+      return;
+    }
+
+    if (isShipViaPreview(group)) {
+      for (const child of group.children) {
+        if (isHhPlaced(child)) continue;
+        paintPreviewShipVia(child);
+      }
+      group.markModified('children');
+      await group.save();
+      res.json({ data: serializeGroup(group) });
       return;
     }
 
@@ -618,11 +674,70 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
       return;
     }
 
+    const requestedShipVia = req.body?.shipVia;
+    if (requestedShipVia !== undefined) {
+      if (requestedShipVia !== 'default' && requestedShipVia !== 'usps' && requestedShipVia !== 'auto') {
+        res.status(400).json({ message: 'shipVia must be default, usps, or auto.' });
+        return;
+      }
+      if (hhDraftMode(requestBrand(req)) !== 'b2b') {
+        res.status(400).json({ message: 'Ship Via is only set for Helly Hansen carts.' });
+        return;
+      }
+      const nextOverride: HhShipViaOverride = requestedShipVia === 'auto' ? '' : requestedShipVia;
+      if (isShipViaPreview(group)) {
+        order.shipViaOverride = nextOverride;
+        paintPreviewShipVia(order);
+        group.markModified('children');
+        await group.save();
+        res.json({ data: serializeGroup(group) });
+        return;
+      }
+      const documentId = (order.b2bDraftId ?? '').trim();
+      if (!looksLikeMongoObjectId(documentId)) {
+        res.status(400).json({ message: 'Draft a cart before changing Ship Via.' });
+        return;
+      }
+      const choice = hhShipViaForDraft(
+        {
+          line1: order.addressLine1,
+          line2: order.addressLine2,
+          city: order.city,
+          state: order.state,
+        },
+        nextOverride,
+      );
+      await updateHhB2bShipVia(documentId, choice.code, requestBrand(req));
+      const saved = await withHhGroupLock(String(group._id), async () => {
+        const fresh = await HHOrderGroup.findById(group._id);
+        if (!fresh) return null;
+        const child = fresh.children.id(String(order._id));
+        if (!child || child.cartStatus === 'placed') return fresh;
+        if ((child.b2bDraftId ?? '').trim() !== documentId) return fresh;
+        child.shipViaOverride = nextOverride;
+        child.shipVia = choice.code;
+        child.shipViaReason = choice.reason;
+        fresh.markModified('children');
+        await fresh.save();
+        return fresh;
+      });
+      res.json({ data: serializeGroup(saved ?? group) });
+      return;
+    }
+
     prepareCartRedraft(group, String(order._id));
     await group.save();
     enqueueHhCartDraft(String(group._id), String(order._id));
     res.json({ data: serializeGroup(group) });
   } catch (error) {
+    if (error instanceof HhB2bAuthError) {
+      res.status(401).json({ message: error.message });
+      return;
+    }
+    if (error instanceof HhB2bDraftError) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     res.status(500).json({ message: 'Failed to regenerate HH Sportswear cart draft', error: (error as Error).message });
   }
 };
