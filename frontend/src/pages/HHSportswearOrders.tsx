@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHShipViaChip, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
@@ -243,6 +243,11 @@ export default function HHSportswearOrders() {
               <Th>
                 <HeaderLabel icon={<UserIcon className="h-3.5 w-3.5" />} text="Buyer Info" />
               </Th>
+              {!orderDetails ? (
+                <Th>
+                  <HeaderLabel icon={<StatusIcon className="h-3.5 w-3.5" />} text="Ship Via" />
+                </Th>
+              ) : null}
               <Th>
                 <HeaderLabel icon={<NotesIcon className="h-3.5 w-3.5" />} text="Notes" />
               </Th>
@@ -267,7 +272,7 @@ export default function HHSportswearOrders() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {filteredOrders.length === 0 ? (
               <tr>
-                <Td colSpan={11} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={orderDetails ? 11 : 12} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {group.children.length === 0
                     ? 'No orders in this group.'
                     : selectedDetailsStatus || selectedCartStatus
@@ -307,6 +312,16 @@ export default function HHSportswearOrders() {
                     <Td compact className="max-w-[320px]">
                       <HHBuyerInfo order={order} />
                     </Td>
+                    {!orderDetails ? (
+                      <Td compact className="whitespace-nowrap">
+                        <HHShipViaChip
+                          order={order}
+                          busy={cartDraftBusyId === order.id}
+                          placeholder
+                          onChange={locked ? undefined : (next) => rerunCartDraft(group.id, order.id, next)}
+                        />
+                      </Td>
+                    ) : null}
                     <Td compact className="max-w-xs">
                       <HHNotesField
                         groupId={group.id}

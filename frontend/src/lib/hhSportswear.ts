@@ -257,6 +257,12 @@ export interface HHChildOrder {
   cartStatus: HHCartStatus
   placeError: string
   cartError: string
+  /** `-` is Default, `MSB` is USPS Priority. Empty until a Helly Hansen cart is drafted. */
+  shipVia: string
+  /** Why this address would use USPS Priority. Empty when Default is automatic. */
+  shipViaReason: string
+  /** `default` or `usps` when an operator overrode the automatic choice. */
+  shipViaOverride: '' | 'default' | 'usps'
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null
@@ -846,8 +852,29 @@ export function rerunHHGroupCartDraft(brand: HHBrandId, groupId: string) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/cart-draft`))
 }
 
-export function rerunHHOrderCartDraft(brand: HHBrandId, groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/cart-draft`))
+export type HHShipViaRequest = 'default' | 'usps' | 'auto'
+
+export function hhShipViaChip(
+  order: Pick<HHChildOrder, 'cartStatus' | 'shipVia' | 'shipViaReason' | 'shipViaOverride'>,
+): { kind: 'usps' | 'default'; reason: string; next: 'default' | 'usps' } | null {
+  const shipVia = order.shipVia ?? ''
+  const reason = (order.shipViaReason ?? '').trim()
+  if (order.cartStatus === 'none' || !shipVia) return null
+  if (shipVia === 'MSB') return { kind: 'usps', reason, next: 'default' }
+  if (shipVia === '-') return { kind: 'default', reason, next: 'usps' }
+  return null
+}
+
+export function rerunHHOrderCartDraft(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  shipVia?: HHShipViaRequest,
+) {
+  return authApi.post<{ data: HHOrderGroup }>(
+    hhPath(brand, `/${groupId}/orders/${orderId}/cart-draft`),
+    shipVia ? { shipVia } : {},
+  )
 }
 
 export function rerunHHGroupCartVerify(brand: HHBrandId, groupId: string) {

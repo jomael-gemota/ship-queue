@@ -10,6 +10,7 @@ import {
   hhCartColumnStatus,
   hhCartCounts,
   hhDetailsCounts,
+  hhShipViaChip,
   hhHasCartDraft,
   hhHasSyncedDetails,
   hhPlacePlan,
@@ -890,6 +891,143 @@ export function HHCartBadge({
         : undefined
   if (!content) return badge
   return <Tooltip content={content}>{badge}</Tooltip>
+}
+
+export function HHShipViaChip({
+  order,
+  busy = false,
+  placeholder = false,
+  onChange,
+}: {
+  order: Pick<HHChildOrder, 'cartStatus' | 'shipVia' | 'shipViaReason' | 'shipViaOverride'>
+  busy?: boolean
+  /** Show an em dash when this order has no saved Ship Via yet. */
+  placeholder?: boolean
+  onChange?: (next: 'default' | 'usps') => void | Promise<void>
+}) {
+  const choice = hhShipViaChip(order)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState({ top: 0, left: 0 })
+  const [error, setError] = useState<string | null>(null)
+  const locked = order.cartStatus === 'placed' || !onChange
+
+  const close = () => setOpen(false)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    setCoords({
+      top: rect.bottom + 6,
+      left: Math.min(rect.left, window.innerWidth - 360),
+    })
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  if (!choice) {
+    if (!placeholder) return null
+    return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+  }
+
+  const label = choice.kind === 'usps' ? 'USPS' : 'Default'
+  const detail =
+    choice.kind === 'usps'
+      ? choice.reason
+        ? `USPS Priority Post Billable · ${choice.reason}`
+        : 'USPS Priority Post Billable'
+      : choice.reason
+        ? `${choice.reason} would use USPS Priority Post Billable. This draft uses Default.`
+        : 'This draft uses Default.'
+  const action = choice.next === 'default' ? 'Use Default' : 'Use USPS Priority Post Billable'
+  const tone =
+    choice.kind === 'usps'
+      ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+      : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
+
+  if (locked) {
+    return (
+      <Tooltip content={detail}>
+        <span className={`inline-flex rounded-full px-2 py-0.5 text-[13px] font-medium ${tone}`}>{label}</span>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <>
+      <Tooltip content={detail}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (busy) return
+          setOpen((current) => !current)
+        }}
+        className={`inline-flex cursor-pointer items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[13px] font-medium disabled:cursor-wait disabled:opacity-60 ${tone}`}
+      >
+        {busy ? <Spinner className="mr-1 h-3 w-3" /> : null}
+        {label}
+      </button>
+      </Tooltip>
+      {open
+        ? createPortal(
+            <>
+              <div className="fixed inset-0 z-40" onClick={close} />
+              <div
+                role="dialog"
+                aria-label="Ship Via"
+                className="fixed z-[60] w-[22rem] rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-3 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+                style={{ top: coords.top, left: Math.max(8, coords.left) }}
+              >
+                <p className="text-xs leading-5 text-slate-600 dark:text-[var(--text-200)]">{detail}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">
+                  This updates Ship Via on the current cart. The reference number stays the same.
+                </p>
+                {error ? <p className="mt-2 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="mt-3 inline-flex cursor-pointer items-center rounded-lg bg-[var(--accent-100)] px-2.5 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60 dark:bg-[var(--accent-200)] dark:text-slate-950"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setError(null)
+                    Promise.resolve(onChange?.(choice.next))
+                      .then(() => close())
+                      .catch((caught: unknown) => {
+                        setError(caught instanceof Error ? caught.message : 'Failed to regenerate the cart')
+                      })
+                  }}
+                >
+                  {action}
+                </button>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </>
+  )
 }
 
 export function HHPlacedBadge({

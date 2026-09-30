@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton } from '../components/hh/hhUi'
+import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton, HHShipViaChip } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
@@ -318,6 +318,13 @@ export default function HHSportswearItems() {
             </span>
             <HHDetailsBadge status={order.detailsStatus} />
             <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
+            <HHShipViaChip
+              order={order}
+              busy={cartDraftBusyId === order.id}
+              onChange={
+                locked ? undefined : (next) => rerunCartDraft(groupId, order.id, next)
+              }
+            />
             <HHVerifiedCell groupId={groupId} order={order} />
             <HHPlacedBadge status={order.cartStatus} error={order.placeError} />
             <HHRedraftButton

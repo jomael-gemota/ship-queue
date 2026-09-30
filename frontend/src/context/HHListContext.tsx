@@ -68,7 +68,7 @@ interface HHListContextValue {
   setSyncStatus: Dispatch<SetStateAction<HHScSyncStatus | null>>
   rerunDetails: (groupId: string, orderId?: string, options?: { draftCart?: boolean }) => Promise<void>
   resyncBusyId: string | null
-  rerunCartDraft: (groupId: string, orderId?: string) => Promise<void>
+  rerunCartDraft: (groupId: string, orderId?: string, shipVia?: 'default' | 'usps' | 'auto') => Promise<void>
   cartDraftBusyId: string | null
   rerunCartVerify: (groupId: string, orderId?: string) => Promise<void>
   cartVerifyBusyId: string | null
@@ -356,12 +356,12 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       }
     },
     resyncBusyId,
-    rerunCartDraft: async (groupId, orderId) => {
+    rerunCartDraft: async (groupId, orderId, shipVia) => {
       const busyId = orderId ?? groupId
       setCartDraftBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderCartDraft(brand, groupId, orderId)
+          ? await rerunHHOrderCartDraft(brand, groupId, orderId, shipVia)
           : await rerunHHGroupCartDraft(brand, groupId)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
