@@ -119,7 +119,7 @@ export function hhOrderDraftTitle(
   }
   if (!hhOrderCanDraft(order)) return 'Cart draft needs synced order details'
   if (orderDetails) {
-    return order.cartStatus === 'none' ? 'Draft a cart from order details' : 'Regenerate the order-details cart'
+    return order.cartStatus === 'none' ? 'Draft a cart on the portal' : 'Regenerate the portal draft'
   }
   return order.cartStatus === 'none' ? 'Draft B2B cart for this order' : 'Regenerate B2B draft for this order'
 }
@@ -133,7 +133,7 @@ export function hhGroupDraftTitle(
   }
   if (hhDraftableOrders(orders).length === 0) return 'Cart draft needs synced order details'
   if (orderDetails) {
-    return hhHasCartDraft(orders) ? 'Regenerate order-details carts for this batch' : 'Draft carts from order details'
+    return hhHasCartDraft(orders) ? 'Regenerate portal drafts for this batch' : 'Draft carts on the portal'
   }
   return hhHasCartDraft(orders) ? 'Regenerate B2B draft for this batch' : 'Draft B2B cart for this batch'
 }
@@ -752,6 +752,7 @@ export interface HHB2bConfig {
   baseUrl: string
   catalog: string
   accountId: string
+  skuInitials: string[]
   hasCookie: boolean
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
@@ -767,6 +768,7 @@ export type HHB2bConfigPatch = Partial<{
   baseUrl: string
   catalog: string
   accountId: string
+  skuInitials: string[]
   cookie: string
   placeOrderEnabled: boolean
   alertWebhookUrl: string

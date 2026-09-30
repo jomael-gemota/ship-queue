@@ -2,6 +2,7 @@ import CookieJar from '../models/CookieJar';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { normalizeCookieHeader } from './hhSellerCentral';
 import { hhBrand, HH_DEFAULT_BRAND, type HHBrandId } from './hhBrand';
+import { effectiveThorogoodSkuInitials } from './hhThorogoodSku';
 
 export {
   HH_B2B_DEFAULT_ACCOUNT_ID,
@@ -27,6 +28,7 @@ export interface HhB2bConfig {
   baseUrl: string;
   catalog: string;
   accountId: string;
+  skuInitials: string[];
 }
 
 export function stripTrailingSlash(value: string): string {
@@ -75,7 +77,11 @@ export async function loadHhB2bConfig(brand: HHBrandId = HH_DEFAULT_BRAND): Prom
   const catalog = firstNonEmpty(env.catalog, stored.catalog, def.catalog) || def.catalog;
   const accountId =
     normalizeHhB2bAccountId(firstNonEmpty(env.accountId, stored.accountId, def.accountId)) || def.accountId;
-  return { baseUrl, catalog, accountId };
+  const skuInitials =
+    brand === 'thorogood'
+      ? effectiveThorogoodSkuInitials(stored.skuInitials, Boolean(stored.skuInitialsSet))
+      : [];
+  return { baseUrl, catalog, accountId, skuInitials };
 }
 
 export async function isHhPlaceOrderEnabled(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<boolean> {
@@ -92,6 +98,12 @@ export async function loadHhB2bCookie(brand: HHBrandId = HH_DEFAULT_BRAND): Prom
   const stored = await getOrCreateHhB2bConfig(brand, true);
   const fromConfig = normalizeCookieHeader(stored.cookie ?? '');
   if (fromConfig) return fromConfig;
+
+  if (!def.cookieJarKey) {
+    throw new HhB2bAuthError(
+      `${def.cookieJarName} cookie is empty — paste a session on Dropship (B2B) → ${def.name} → Configurations`
+    );
+  }
 
   const jar = await CookieJar.findOne({ key: def.cookieJarKey }).select('+cookie');
   if (jar?.enabled) {

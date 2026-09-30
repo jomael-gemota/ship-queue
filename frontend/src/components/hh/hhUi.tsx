@@ -608,8 +608,8 @@ export function HHBatchHeaderMenu({
                       ? 'Needs synced details'
                       : orderDetails
                         ? hasCartDraft
-                          ? 'Regenerate order-details cart'
-                          : 'Draft from order details'
+                          ? 'Regenerate portal draft'
+                          : 'Draft on the portal'
                         : hasCartDraft
                           ? 'Regenerate B2B draft'
                           : 'Draft B2B cart'}
@@ -885,7 +885,7 @@ export function HHCartBadge({
         ? status === 'placed'
           ? 'Cart matched; order is placed'
           : orderDetails
-            ? 'Matched the order details'
+            ? 'Matched the portal draft'
             : 'Matched the live B2B draft'
         : undefined
   if (!content) return badge
@@ -1412,42 +1412,42 @@ function confirmCopy(
       title: isGroup
         ? replaceCart
           ? orderDetails
-            ? 'Regenerate order-details carts?'
+            ? `Regenerate ${brandName} drafts?`
             : 'Regenerate B2B drafts?'
           : orderDetails
-            ? 'Draft carts from order details?'
+            ? `Draft ${brandName} carts?`
             : 'Draft B2B carts?'
         : replaceCart
           ? orderDetails
-            ? 'Regenerate order-details cart?'
+            ? `Regenerate ${brandName} draft?`
             : 'Regenerate B2B draft?'
           : orderDetails
-            ? 'Draft cart from order details?'
+            ? `Draft ${brandName} cart?`
             : 'Draft B2B cart?',
       body: orderDetails ? (
         isGroup ? (
           replaceCart ? (
             <>
-              This will rebuild carts from synced order details for this batch. Orders still missing details are
-              skipped. Existing drafts will be replaced. Nothing is sent to {brandName}.
+              This will create new {brandName} drafts from synced order details. Orders still missing details are
+              skipped. Ship Queue replaces the saved draft. The previous draft stays on the portal and is not submitted.
             </>
           ) : (
             <>
-              This will build carts from synced order details for this batch. Orders still missing details are
-              skipped. Nothing is sent to {brandName}.
+              This will create {brandName} drafts from synced order details. Orders still missing details are skipped.
+              The drafts are not submitted.
             </>
           )
         ) : replaceCart ? (
           <>
-            This will rebuild the cart from synced order details for order{' '}
-            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. The existing
-            draft will be replaced. Nothing is sent to {brandName}.
+            This will create a new {brandName} draft from synced order details for order{' '}
+            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. Ship Queue
+            replaces the saved draft. The previous draft stays on the portal and is not submitted.
           </>
         ) : (
           <>
-            This will build a cart from synced order details for order{' '}
-            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. Nothing is sent
-            to {brandName}.
+            This will create a {brandName} draft from synced order details for order{' '}
+            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. The draft is not
+            submitted.
           </>
         )
       ) : isGroup ? (
@@ -1580,8 +1580,8 @@ export function HHConfirmModal({
             label={
               orderDetails
                 ? replaceCart
-                  ? 'Also regenerate order-details cart'
-                  : 'Also draft cart from order details'
+                  ? 'Also regenerate portal draft'
+                  : 'Also draft on the portal'
                 : replaceCart
                   ? 'Also regenerate B2B cart'
                   : 'Also draft B2B cart'

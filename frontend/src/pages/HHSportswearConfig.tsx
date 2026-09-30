@@ -4,6 +4,11 @@ import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, u
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
 import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import {
+  THOROGOOD_SKU_SAMPLES,
+  normalizeThorogoodSkuInitials,
+  thorogoodPortalSku,
+} from '../lib/hhThorogoodSku'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -47,6 +52,17 @@ function sessionLabel(status: HHSessionCheck['status']): string {
   return 'Not checked yet'
 }
 
+function initialsFromText(text: string): { initials: string[] } | { error: string } {
+  return normalizeThorogoodSkuInitials(text.split(/\r?\n/))
+}
+
+function sameInitials(text: string, saved: string[]): boolean {
+  const parsed = initialsFromText(text)
+  if ('error' in parsed) return false
+  if (parsed.initials.length !== saved.length) return false
+  return parsed.initials.every((initial, index) => initial === saved[index])
+}
+
 function sameCheckTimes(current: string[], saved: string[]): boolean {
   if (current.length !== saved.length) return false
   return current.every((time, index) => time === saved[index])
@@ -81,6 +97,7 @@ function sessionPillClass(status: HHSessionCheck['status']): string {
 export default function HHSportswearConfig() {
   const { brand, setPlaceOrderEnabled: setPlaceOrderEnabledContext } = useHHList()
   const brandDef = hhBrand(brand)
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saved, setSaved] = useState<HHB2bConfig | null>(null)
@@ -88,6 +105,7 @@ export default function HHSportswearConfig() {
   const [catalog, setCatalog] = useState('')
   const [accountId, setAccountId] = useState('')
   const [cookie, setCookie] = useState('')
+  const [skuInitialsText, setSkuInitialsText] = useState('')
   const [clearCookie, setClearCookie] = useState(false)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [alertWebhookUrl, setAlertWebhookUrl] = useState('')
@@ -106,6 +124,7 @@ export default function HHSportswearConfig() {
     setBaseUrl(data.baseUrl)
     setCatalog(data.catalog)
     setAccountId(data.accountId)
+    setSkuInitialsText((data.skuInitials ?? []).join('\n'))
     setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
     setAlertWebhookUrl(data.alertWebhookUrl || '')
     setCheckTimes(data.sessionCheckTimes?.length ? data.sessionCheckTimes : [])
@@ -114,10 +133,6 @@ export default function HHSportswearConfig() {
   }
 
   useEffect(() => {
-    if (hhUsesOrderDetailsDraft(brand)) {
-      setLoadState('ready')
-      return
-    }
     let cancelled = false
     setLoadState('loading')
     getHHB2bConfig(brand)
@@ -181,13 +196,15 @@ export default function HHSportswearConfig() {
   const dirty =
     saved != null &&
     (baseUrl !== saved.baseUrl ||
-      catalog !== saved.catalog ||
-      accountId !== saved.accountId ||
-      placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
-      alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
-      !sameCheckTimes(checkTimes, savedTimes) ||
+      (!orderDetails &&
+        (catalog !== saved.catalog ||
+          accountId !== saved.accountId ||
+          placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
+          alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
+          !sameCheckTimes(checkTimes, savedTimes))) ||
       cookie.trim().length > 0 ||
-      clearCookie)
+      clearCookie ||
+      (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
 
   const save = async () => {
     if (busy || !dirty) return
@@ -197,19 +214,27 @@ export default function HHSportswearConfig() {
     setTestError(null)
     setTestNotice(null)
     try {
-      const patch: HHB2bConfigPatch = {
-        baseUrl,
-        catalog,
-        accountId,
-        placeOrderEnabled,
-        alertWebhookUrl,
-        sessionCheckTimes: checkTimes,
+      const parsedInitials = orderDetails ? initialsFromText(skuInitialsText) : null
+      if (parsedInitials && 'error' in parsedInitials) {
+        setSaveError(parsedInitials.error)
+        setBusy(false)
+        return
       }
+      const patch: HHB2bConfigPatch = orderDetails
+        ? { baseUrl, skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [] }
+        : {
+            baseUrl,
+            catalog,
+            accountId,
+            placeOrderEnabled,
+            alertWebhookUrl,
+            sessionCheckTimes: checkTimes,
+          }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
       const res = await updateHHB2bConfig(brand, patch)
       applySaved(res.data)
-      setPlaceOrderEnabledContext(Boolean(res.data.placeOrderEnabled))
+      setPlaceOrderEnabledContext(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
       setSaveNotice('Saved.')
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configurations')
@@ -233,16 +258,183 @@ export default function HHSportswearConfig() {
     return <p className="px-5 py-8 text-sm text-red-600 dark:text-red-400">{loadError}</p>
   }
 
-  if (hhUsesOrderDetailsDraft(brand)) {
+  if (orderDetails) {
+    const sessionHost = brandDef.baseUrl.replace(/^https?:\/\//, '')
+    const parsedSkuInitials = initialsFromText(skuInitialsText)
+    const skuPreviewInitials = 'initials' in parsedSkuInitials ? parsedSkuInitials.initials : []
     return (
-      <div className="space-y-3 px-5 py-5">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Order details sync</h2>
-        <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
-          {brandDef.name} does not have a supplier API yet. After Seller Central fills an order, Ship Queue drafts a
-          cart from those details and checks the cart against them. Reference Number is the PO. Place Order stays off
-          until the API is connected. Seller Central still uses the shared Outdoor Equipped US cookie.
-        </p>
-      </div>
+      <form
+        className="space-y-5 px-5 py-5"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            {brandDef.name} B2B
+          </h2>
+          <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
+            Save the portal address and a session cookie from a logged-in browser. Cart drafts are created on
+            Thorogood and are not submitted. Place Order stays off.
+          </p>
+        </div>
+
+        <ConfigSection
+          title="Portal"
+          description="The signed-in site Ship Queue calls when it drafts a cart."
+        >
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-base-url">
+              Base URL
+            </label>
+            <input
+              id="hh-b2b-base-url"
+              className={inputClass}
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            <p className={hintClass}>Envoy portal, e.g. {brandDef.baseUrl}</p>
+          </div>
+        </ConfigSection>
+
+        <ConfigSection
+          title="SKU initials"
+          description="Prefixes removed from Seller Central SKUs before the portal search. Footwear is then written as the width, then the size in tenths."
+        >
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-sku-initials">
+              Initials
+            </label>
+            <p className={hintClass}>One prefix per line. The longest match is removed, including a dash after it.</p>
+            <textarea
+              id="hh-b2b-sku-initials"
+              className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+              value={skuInitialsText}
+              onChange={(event) => setSkuInitialsText(event.target.value)}
+              placeholder={'DUP_TG\nDUP-TG\nTG-'}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            {'error' in parsedSkuInitials ? (
+              <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuInitials.error}</p>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <div className="hidden font-mono text-[11px] uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
+              <span>Seller Central</span>
+              <span>Portal code</span>
+            </div>
+            <ul className="space-y-1.5">
+              {THOROGOOD_SKU_SAMPLES.map((sample) => {
+                const portal = thorogoodPortalSku(sample, skuPreviewInitials)
+                return (
+                  <li
+                    key={sample}
+                    className="grid grid-cols-1 gap-0.5 font-mono text-xs sm:grid-cols-2 sm:gap-3"
+                  >
+                    <span className="truncate text-slate-500 dark:text-[var(--text-200)]">{sample}</span>
+                    <span className="text-slate-800 dark:text-[var(--text-100)]">{portal || '—'}</span>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className={hintClass}>10.5 becomes 105. A whole size 10 becomes 100.</p>
+          </div>
+        </ConfigSection>
+
+        <ConfigSection
+          title="Session"
+          description="Paste the cookie from a logged-in browser. It is stored for this brand only."
+        >
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+              saved?.hasCookie
+                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
+            }`}
+          >
+            {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
+          </span>
+          {saved?.hasCookie && saved.cookieUpdatedAt ? (
+            <p className={hintClass}>Cookie updated {formatCreatedAt(saved.cookieUpdatedAt)}.</p>
+          ) : null}
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-cookie">
+              Session cookie
+            </label>
+            <p className={hintClass}>
+              Paste the Cookie header from a logged-in {sessionHost} tab, including{' '}
+              <span className="font-mono">thorogood-prod-na-cf_SESSION</span>. Add{' '}
+              <span className="font-mono">XSRF-TOKEN</span> when the browser shows it. The value is not shown again
+              after you save.
+            </p>
+          </div>
+          <textarea
+            id="hh-b2b-cookie"
+            className={`${inputClass} min-h-[7rem] font-mono text-xs`}
+            value={cookie}
+            onChange={(event) => {
+              setCookie(event.target.value)
+              if (event.target.value.trim()) setClearCookie(false)
+            }}
+            placeholder={saved?.hasCookie ? 'Leave blank to keep the stored session' : 'thorogood-prod-na-cf_SESSION=…'}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={clearCookie || busy}
+            aria-label="Session cookie"
+          />
+          {saved?.hasCookie ? (
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)]">
+              <input
+                type="checkbox"
+                checked={clearCookie}
+                onChange={(event) => {
+                  setClearCookie(event.target.checked)
+                  if (event.target.checked) setCookie('')
+                }}
+                disabled={busy}
+              />
+              Clear the stored session
+            </label>
+          ) : null}
+        </ConfigSection>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
+          <p
+            className={
+              saveError
+                ? 'text-sm text-red-600 dark:text-red-400'
+                : dirty
+                  ? 'text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
+                  : saveNotice
+                    ? 'text-sm text-emerald-700 dark:text-emerald-300'
+                    : hintClass
+            }
+          >
+            {saveError
+              ? saveError
+              : dirty
+                ? 'Unsaved changes'
+                : saveNotice
+                  ? saveNotice
+                  : saved?.updatedAt
+                    ? `Saved ${formatCreatedAt(saved.updatedAt)}${saved.updatedByName ? ` by ${saved.updatedByName}` : ''}`
+                    : 'No unsaved changes'}
+          </p>
+          <button
+            type="submit"
+            disabled={!dirty || busy}
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
     )
   }
 

@@ -8,6 +8,7 @@ import { createHhB2bDraft, HhB2bDraftError, HhB2bDraftRequest } from '../lib/hhB
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { hhBrandId, hhDraftMode, ORDER_DETAILS_DRAFT_PREFIX } from '../lib/hhBrand';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { createThorogoodDraft } from '../lib/hhB2bThorogood';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { hhCartItems } from '../lib/hhLineItems';
@@ -235,6 +236,20 @@ function pickNextChild(
 async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCartDraftRunResult): Promise<void> {
   currentOrderId = child.orderId;
   const childId = String(child._id);
+  if (hhBrandId(group.brand) === 'thorogood') {
+    const result = await createThorogoodDraft(toDraftRequest(child));
+    const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
+    if (!saved || saved.cartStatus !== 'draft') {
+      run.skipped += 1;
+      console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+      return;
+    }
+    run.drafted += 1;
+    lastSuccessAt = new Date();
+    console.log(`${LOG} Drafted ${child.orderId} on Thorogood · Ref ${result.orderNumber}`);
+    enqueueHhCartVerify(String(group._id), childId);
+    return;
+  }
   if (hhDraftMode(group.brand) === 'order-details') {
     const reference = (child.po || '').trim() || child.orderId;
     const saved = await persistOrderDetailsDraft(String(group._id), childId, reference);

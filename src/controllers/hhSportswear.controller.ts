@@ -372,7 +372,7 @@ function rejectOrderDetailsPlace(req: Request, res: Response): boolean {
   if (hhDraftMode(requestBrand(req)) !== 'order-details') return false;
   const name = hhBrand(requestBrand(req)).name;
   res.status(400).json({
-    message: `${name} carts are drafted from order details. Place Order waits until a supplier API is connected.`,
+    message: `${name} drafts are saved on the portal and are not submitted.`,
   });
   return true;
 }

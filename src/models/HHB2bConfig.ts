@@ -10,6 +10,10 @@ export interface IHHB2bConfig extends Document {
   accountId: string;
   cookie?: string;
   cookieUpdatedAt?: Date | null;
+  /** Seller Central prefixes stripped before a Thorogood portal search. */
+  skuInitials?: string[];
+  /** False until Configurations saves the prefix list. Until then the defaults apply. */
+  skuInitialsSet: boolean;
   /** When false, Place Order is visible but does not submit to Helly Hansen. */
   placeOrderEnabled: boolean;
   /** POST target when a session check starts failing or recovers. Empty skips the call. */
@@ -41,6 +45,8 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
     accountId: { type: String, required: true },
     cookie: { type: String, select: false, default: '' },
     cookieUpdatedAt: { type: Date, default: null },
+    skuInitials: { type: [String], default: undefined },
+    skuInitialsSet: { type: Boolean, default: false },
     placeOrderEnabled: { type: Boolean, default: false },
     alertWebhookUrl: { type: String, default: '' },
     sessionCheckTimes: { type: [String] },
@@ -65,7 +71,21 @@ export async function getOrCreateHhB2bConfig(brand: HHBrandId, withCookie = fals
   const query = HHB2bConfig.findOne({ key: def.configKey });
   if (withCookie) query.select('+cookie');
   const existing = await query;
-  if (existing) return existing;
+  if (existing) {
+    const patch: { baseUrl?: string; accountId?: string } = {};
+    if (existing.baseUrl === 'https://order-details.invalid' && def.baseUrl !== existing.baseUrl) {
+      existing.baseUrl = def.baseUrl;
+      patch.baseUrl = def.baseUrl;
+    }
+    if (existing.accountId === 'order-details' && def.accountId !== existing.accountId) {
+      existing.accountId = def.accountId;
+      patch.accountId = def.accountId;
+    }
+    if (patch.baseUrl || patch.accountId) {
+      await HHB2bConfig.updateOne({ _id: existing._id }, { $set: patch });
+    }
+    return existing;
+  }
 
   try {
     const created = await HHB2bConfig.create({

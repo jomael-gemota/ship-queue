@@ -264,7 +264,7 @@ function DetailBody({
             <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
               {matchedCount} matched
               {orderDetails
-                ? ' · Place Order waits on a supplier API'
+                ? ' · Place Order stays off'
                 : mismatchCount > 0
                   ? ' · Place Order blocked until this matches'
                   : ' · Place Order will re-check first'}
@@ -380,7 +380,7 @@ function CompareModal({
 }
 
 function lastCheckedSubtitle(orders: HHChildOrder[], live: boolean, orderDetails: boolean): string {
-  if (orderDetails) return 'Drafted from order details · Refresh to check again'
+  if (orderDetails) return 'Portal draft · Refresh to check again'
   if (live) return 'Live Helly Hansen cart · Refresh to check again'
   const times = orders.map((order) => order.verifiedAt).filter((value): value is string => Boolean(value))
   if (times.length === 0) return 'Last saved result · Refresh to check the live cart'

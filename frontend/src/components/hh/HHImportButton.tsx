@@ -560,11 +560,11 @@ export function HHImportButton() {
               <ImportSwitch
                 checked={fetchDetails && draftCart}
                 disabled={importBusy || !fetchDetails}
-                label={orderDetails ? 'Draft cart from order details' : 'Draft B2B cart'}
+                label={orderDetails ? 'Draft portal cart' : 'Draft B2B cart'}
                 description={
                   fetchDetails
                     ? orderDetails
-                      ? 'Build a cart from the synced order details. The order is not placed.'
+                      ? 'Create a portal draft after details sync. The order is not submitted.'
                       : 'Create a Helly Hansen draft after details sync. The order is not placed.'
                     : 'Turn on Fetch order details first. Carts need synced items.'
                 }
