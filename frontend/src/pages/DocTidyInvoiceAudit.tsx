@@ -5385,8 +5385,8 @@ export default function DocTidyInvoiceAudit() {
                           }}
                         />
                       ))}
-                      {/* Fixed actions column header */}
-                      <Th className="w-8" />
+                      {/* Fixed actions column header — hidden for header-only workspaces (no row actions) */}
+                      {!isHeaderOnly && <Th className="w-8" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -5404,14 +5404,14 @@ export default function DocTidyInvoiceAudit() {
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
-                          <td className="px-2.5 py-1" />
+                          {!isHeaderOnly && <td className="px-2.5 py-1" />}
                         </tr>
                       ))
                     /* ── Header-only: flat list of completed parse jobs ── */
                     ) : isHeaderOnly ? (
                       filteredHeaderOnlyJobs.length === 0 ? (
                         <tr>
-                          <td colSpan={visibleCols.length + 2} className="py-16 text-center">
+                          <td colSpan={visibleCols.length + 1} className="py-16 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                                 <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5457,12 +5457,7 @@ export default function DocTidyInvoiceAudit() {
                                     {headerOnlyCellFor(col.id, job)}
                                   </td>
                                 ))}
-                                <td className="px-1.5 py-1.5 text-center">
-                                  <span title={job.filename}
-                                    className="inline-block max-w-[80px] truncate text-[10px] text-[var(--text-200)] cursor-default">
-                                    {job.filename}
-                                  </span>
-                                </td>
+                                {/* No actions column in header-only mode */}
                               </tr>
                             )
                           })}
