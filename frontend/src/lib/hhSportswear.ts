@@ -7,6 +7,7 @@ function hhPath(brand: HHBrandId, rest = '') {
 
 export type HHDetailsStatus = 'pending' | 'synced' | 'failed'
 export type HHCartStatus = 'none' | 'draft' | 'ready' | 'review' | 'placed'
+export type HHSellerNotesResult = '' | 'updated' | 'already' | 'failed'
 
 export const HH_DETAILS_STATUSES: HHDetailsStatus[] = ['pending', 'synced', 'failed']
 export const HH_CART_STATUSES: HHCartStatus[] = ['none', 'draft', 'ready', 'review', 'placed']
@@ -27,6 +28,19 @@ export const HH_CART_STATUS_LABELS: Record<HHCartStatus, string> = {
 
 export function hhDetailsStatusLabel(status: string): string {
   return HH_DETAILS_STATUS_LABELS[status as HHDetailsStatus] ?? status
+}
+
+export function hhSellerNotesHover(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'sellerNotesResult' | 'sellerNotesError'>,
+): string | null {
+  if (order.detailsStatus !== 'synced') return null
+  if (order.sellerNotesResult === 'updated') return 'Seller notes updated with the PO'
+  if (order.sellerNotesResult === 'already') return 'Seller notes already include the PO'
+  if (order.sellerNotesResult === 'failed') {
+    const reason = order.sellerNotesError.trim()
+    return reason ? `Seller notes were not updated: ${reason}` : 'Seller notes were not updated'
+  }
+  return null
 }
 
 export function hhCartCanVerify(status: HHCartStatus): boolean {
@@ -263,6 +277,8 @@ export interface HHChildOrder {
   shipViaReason: string
   /** `default` or `usps` when an operator overrode the automatic choice. */
   shipViaOverride: '' | 'default' | 'usps'
+  sellerNotesResult: HHSellerNotesResult
+  sellerNotesError: string
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null

@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState, Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup, HHVerifyIssue } from '../../lib/hhSportswear'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup, HHSellerNotesResult, HHVerifyIssue } from '../../lib/hhSportswear'
 import {
   HH_CART_STATUS_LABELS,
   HH_DETAILS_COUNT_ORDER,
@@ -10,6 +10,7 @@ import {
   hhCartColumnStatus,
   hhCartCounts,
   hhDetailsCounts,
+  hhSellerNotesHover,
   hhShipViaChip,
   hhHasCartDraft,
   hhHasSyncedDetails,
@@ -850,8 +851,24 @@ function cartTone(status: Exclude<HHCartStatus, 'none'>): HHBadgeTone {
   return 'warn'
 }
 
-export function HHDetailsBadge({ status }: { status: HHDetailsStatus }) {
-  return <HHToneBadge tone={detailsTone(status)}>{HH_DETAILS_STATUS_LABELS[status]}</HHToneBadge>
+export function HHDetailsBadge({
+  status,
+  sellerNotesResult = '',
+  sellerNotesError = '',
+}: {
+  status: HHDetailsStatus
+  sellerNotesResult?: HHSellerNotesResult
+  sellerNotesError?: string
+}) {
+  const hover = hhSellerNotesHover({ detailsStatus: status, sellerNotesResult, sellerNotesError })
+  const badge = (
+    <HHToneBadge tone={detailsTone(status)}>
+      {HH_DETAILS_STATUS_LABELS[status]}
+      {status === 'synced' && sellerNotesResult === 'failed' ? <HHHelpMark /> : null}
+    </HHToneBadge>
+  )
+  if (!hover) return badge
+  return <Tooltip content={hover}>{badge}</Tooltip>
 }
 
 export function HHCartBadge({

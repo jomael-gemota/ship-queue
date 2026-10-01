@@ -317,7 +317,11 @@ export default function HHSportswearItems() {
               <AmazonIcon className="h-4 w-4 shrink-0" />
               {order.orderId}
             </span>
-            <HHDetailsBadge status={order.detailsStatus} />
+            <HHDetailsBadge
+              status={order.detailsStatus}
+              sellerNotesResult={order.sellerNotesResult}
+              sellerNotesError={order.sellerNotesError}
+            />
             <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
             <HHShipViaChip
               order={order}

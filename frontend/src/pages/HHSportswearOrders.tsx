@@ -330,7 +330,11 @@ export default function HHSportswearOrders() {
                       />
                     </Td>
                     <Td compact>
-                      <HHDetailsBadge status={order.detailsStatus} />
+                      <HHDetailsBadge
+                        status={order.detailsStatus}
+                        sellerNotesResult={order.sellerNotesResult}
+                        sellerNotesError={order.sellerNotesError}
+                      />
                     </Td>
                     <Td compact>
                       <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
