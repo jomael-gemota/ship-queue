@@ -1972,6 +1972,7 @@ function auditColStr(
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
+    case 'parsedAt':          return order.matchedInvoice?.cachedAt ? formatDate(order.matchedInvoice.cachedAt) : ''
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
@@ -2391,8 +2392,12 @@ export default function DocTidyInvoiceAudit() {
   /* Reset page + selection when filters change */
   useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
 
+  /** Generation counter — incremented on every fetch so stale responses are discarded. */
+  const pdfFetchGenRef = useRef(0)
+
   const fetchPdfImports = useCallback(async () => {
     if (!activeWorkspace) return
+    const gen = ++pdfFetchGenRef.current
     setPdfImportsLoading(true)
     setPdfImportsError(null)
     try {
@@ -2407,12 +2412,14 @@ export default function DocTidyInvoiceAudit() {
       const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number; parsedCount: number } }>(
         `/doc-tidy/pdf-imports?${params.toString()}`
       )
+      if (gen !== pdfFetchGenRef.current) return  // stale response — a newer fetch is in flight
       setPdfImports(res.data)
       setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
+      if (gen !== pdfFetchGenRef.current) return
       setPdfImportsError(err instanceof Error ? err.message : 'Failed to load PDF imports')
     } finally {
-      setPdfImportsLoading(false)
+      if (gen === pdfFetchGenRef.current) setPdfImportsLoading(false)
     }
   }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo])
 
@@ -2838,8 +2845,12 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /* ── Fetch workspace emails (with parse jobs) ── */
+  /** Generation counter — incremented on every fetch so stale responses are discarded. */
+  const emailFetchGenRef = useRef(0)
+
   const fetchEmails = useCallback(async (silent = false) => {
     if (!activeWorkspace) return
+    const gen = ++emailFetchGenRef.current
     if (!silent) setEmailLoading(true)
     setEmailError(null)
     try {
@@ -2852,12 +2863,14 @@ export default function DocTidyInvoiceAudit() {
       if (emailDateFrom) params.set('dateFrom', emailDateFrom)
       if (emailDateTo) params.set('dateTo', emailDateTo)
       const res = await authApi.get<DocTidyMessagesResponse>(`/doc-tidy/messages?${params.toString()}`)
+      if (gen !== emailFetchGenRef.current) return  // stale response — a newer fetch is in flight
       setEmailMessages(res.data)
       setEmailPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
+      if (gen !== emailFetchGenRef.current) return
       setEmailError(err instanceof Error ? err.message : 'Failed to load messages')
     } finally {
-      if (!silent) setEmailLoading(false)
+      if (gen === emailFetchGenRef.current && !silent) setEmailLoading(false)
     }
   }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo])
 
@@ -3001,8 +3014,12 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, auditDateFrom, auditDateTo, orderPageSize])
 
   /* ── Fetch order imports (primary table rows) ── */
+  /** Generation counter — incremented on every fetch so stale responses are discarded. */
+  const orderFetchGenRef = useRef(0)
+
   const fetchOrderImports = useCallback(async () => {
     if (!activeWorkspace) return
+    const gen = ++orderFetchGenRef.current
     setOrderLoading(true)
     setOrderError(null)
     try {
@@ -3013,12 +3030,14 @@ export default function DocTidyInvoiceAudit() {
       })
       if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
       const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
+      if (gen !== orderFetchGenRef.current) return  // stale response — a newer fetch is in flight
       setOrderImports(res.data)
       setOrderPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
     } catch (err) {
+      if (gen !== orderFetchGenRef.current) return
       setOrderError(err instanceof Error ? err.message : 'Failed to load order imports')
     } finally {
-      setOrderLoading(false)
+      if (gen === orderFetchGenRef.current) setOrderLoading(false)
     }
   }, [activeWorkspace, orderPage, orderPageSize, debouncedAuditSearch])
 
@@ -3686,6 +3705,15 @@ export default function DocTidyInvoiceAudit() {
       case 'dropshipFee': return numCell(inv.dropshipFee)
       case 'miscCharges': return numCell(inv.miscCharges)
       case 'totalCost':   return numCell(inv.totalCost)
+      case 'parsedAt': {
+        const cachedAt = order.matchedInvoice?.cachedAt
+        if (!cachedAt) return emDash
+        return (
+          <span title={formatDateTime(cachedAt)} className="text-[var(--text-200)]">
+            {formatDate(cachedAt)}
+          </span>
+        )
+      }
 
       // ── Computed ──
       case 'discrepancy': return discrepancyCell(order, match)
@@ -3731,6 +3759,14 @@ export default function DocTidyInvoiceAudit() {
         return numCell(extractJsonField(json,
           'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
           'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+      case 'parsedAt': {
+        if (!job.completedAt) return emDash
+        return (
+          <span title={formatDateTime(job.completedAt)} className="text-[var(--text-200)]">
+            {formatDate(job.completedAt)}
+          </span>
+        )
+      }
       default:
         return emDash
     }
