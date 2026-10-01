@@ -4616,6 +4616,11 @@ export default function DocTidyInvoiceAudit() {
                                     return null
                                   case 'parseStatus': {
                                     const statusLabel = deriveEmailParseStatusLabel(msg)
+                                    // Most recent completedAt across all parse jobs for this message
+                                    const latestCompletedAt = msg.parseJobs
+                                      ?.filter((j) => j.completedAt)
+                                      .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())[0]
+                                      ?.completedAt ?? null
                                     return (
                                       <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
                                         {statusLabel === 'Not sent' ? (
@@ -4623,11 +4628,18 @@ export default function DocTidyInvoiceAudit() {
                                             Not sent
                                           </span>
                                         ) : (
-                                          <ParseStatusChip
-                                            status={(['pending', 'processing', 'completed', 'failed'] as const).find(
-                                              (s) => PARSE_STATUS_LABELS[s] === statusLabel
-                                            ) ?? 'completed'}
-                                          />
+                                          <div className="flex flex-col gap-0.5">
+                                            <ParseStatusChip
+                                              status={(['pending', 'processing', 'completed', 'failed'] as const).find(
+                                                (s) => PARSE_STATUS_LABELS[s] === statusLabel
+                                              ) ?? 'completed'}
+                                            />
+                                            {latestCompletedAt && (
+                                              <span title={formatDateTime(latestCompletedAt)} className="text-[10px] text-[var(--text-200)]">
+                                                {formatDate(latestCompletedAt)}
+                                              </span>
+                                            )}
+                                          </div>
                                         )}
                                       </td>
                                     )
@@ -5047,7 +5059,14 @@ export default function DocTidyInvoiceAudit() {
                                     return (
                                       <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${cls}`}>
                                         {imp.parseJob ? (
-                                          <ParseStatusChip status={imp.parseJob.status} />
+                                          <div className="flex flex-col gap-0.5">
+                                            <ParseStatusChip status={imp.parseJob.status} />
+                                            {imp.parseJob.completedAt && (
+                                              <span title={formatDateTime(imp.parseJob.completedAt)} className="text-[10px] text-[var(--text-200)]">
+                                                {formatDate(imp.parseJob.completedAt)}
+                                              </span>
+                                            )}
+                                          </div>
                                         ) : (
                                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
                                             Not sent

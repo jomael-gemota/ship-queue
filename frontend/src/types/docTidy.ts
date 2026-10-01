@@ -831,6 +831,7 @@ export interface PdfImportParseJob {
   _id: string
   status: ParseJobStatus
   error?: string | null
+  completedAt?: string | null
 }
 
 export interface PdfImport {
