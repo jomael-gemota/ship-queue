@@ -243,21 +243,18 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
+    const orderDetails = hhUsesOrderDetailsDraft(brand)
     if (sessionBrandRef.current !== brand) {
       sessionBrandRef.current = brand
       setSessionCheck(null)
       setSyncStatus(null)
-    }
-    if (hhUsesOrderDetailsDraft(brand)) {
-      setPlaceOrderEnabled(false)
-      setSessionCheck(null)
-      return
+      if (orderDetails) setPlaceOrderEnabled(false)
     }
     const load = () => {
       getHHB2bConfig(brand)
         .then((res) => {
           if (cancelled) return
-          setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
+          setPlaceOrderEnabled(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
           setSessionCheck(res.data.sessionCheck)
         })
         .catch(() => {

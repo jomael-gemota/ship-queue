@@ -6,12 +6,11 @@ import { HHImportButton } from '../components/hh/HHImportButton'
 import { HHListProvider, useHHList } from '../context/HHListContext'
 import { formatCreatedAt } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection, hhParentPath, prefersReducedMotion } from '../lib/hhNav'
-import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 
 function HHSportswearShell() {
   const location = useLocation()
   const { groupId } = useParams<{ groupId: string }>()
-  const { brand, brandName, brandPath, sessionCheck } = useHHList()
+  const { brandName, brandPath, sessionCheck } = useHHList()
   const outlet = useOutlet()
   const pathnameRef = useRef(location.pathname)
   const snapshotRef = useRef(outlet)
@@ -42,8 +41,7 @@ function HHSportswearShell() {
   const page = hhBreadcrumbPage(location.pathname)
   const backTo = hhParentPath(location.pathname, groupId)
   const isConfig = page === 'config'
-  const sessionDown =
-    !hhUsesOrderDetailsDraft(brand) && (sessionCheck?.status === 'auth' || sessionCheck?.status === 'down')
+  const sessionDown = sessionCheck?.status === 'auth' || sessionCheck?.status === 'down'
 
   return (
     <div className="space-y-6">

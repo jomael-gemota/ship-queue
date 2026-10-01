@@ -3,6 +3,7 @@ import HHB2bConfig, { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { hhBrand, hhDraftMode, HH_BRAND_IDS, type HHBrandId } from '../lib/hhBrand';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { probeHhB2bSession } from '../lib/hhB2bHellyHansen';
+import { probeThorogoodSession } from '../lib/hhB2bThorogood';
 
 const LOG = '[hh-b2b-health]';
 export const HH_B2B_HEALTH_TIMEZONE = 'Asia/Manila';
@@ -155,7 +156,7 @@ async function postAlert(url: string, payload: HhB2bAlertPayload): Promise<strin
 }
 
 async function classifyProbe(brand: HHBrandId): Promise<{ status: HhB2bHealthStatus; message: string; latencyMs: number }> {
-  if (hhDraftMode(brand) === 'order-details') {
+  if (brand !== 'thorogood' && hhDraftMode(brand) === 'order-details') {
     return {
       status: 'ok',
       message: 'Order details sync. Carts are drafted from Seller Central details.',
@@ -165,6 +166,22 @@ async function classifyProbe(brand: HHBrandId): Promise<{ status: HhB2bHealthSta
   const started = Date.now();
   try {
     const config = await loadHhB2bConfig(brand);
+    if (brand === 'thorogood') {
+      if (!config.baseUrl || !config.accountId) {
+        return {
+          status: 'down',
+          message: 'Thorogood base URL or customer code is missing',
+          latencyMs: Date.now() - started,
+        };
+      }
+      const cookie = await loadHhB2bCookie(brand);
+      await probeThorogoodSession(config.baseUrl, cookie, config.accountId);
+      return {
+        status: 'ok',
+        message: 'Session accepted and the customer API responded',
+        latencyMs: Date.now() - started,
+      };
+    }
     if (!config.baseUrl || !config.catalog || !config.accountId) {
       return { status: 'down', message: 'B2B base URL, catalog, or account id is missing', latencyMs: Date.now() - started };
     }
@@ -293,7 +310,7 @@ export async function reconcileHhB2bHealthSchedule(): Promise<void> {
 
   const desired = new Map<string, { brand: HHBrandId; cron: string; time: string }>();
   for (const brand of HH_BRAND_IDS) {
-    if (hhDraftMode(brand) === 'order-details') continue;
+    if (brand !== 'thorogood' && hhDraftMode(brand) === 'order-details') continue;
     const doc = await getOrCreateHhB2bConfig(brand, false);
     const times = resolveSessionCheckTimes(doc.sessionCheckTimes, Boolean(doc.sessionCheckTimesSet));
     if (times.length === 0) console.log(`${LOG} ${brand} has no daily check`);

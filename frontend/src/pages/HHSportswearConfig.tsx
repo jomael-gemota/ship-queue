@@ -210,12 +210,12 @@ export default function HHSportswearConfig() {
   const dirty =
     saved != null &&
     (baseUrl !== saved.baseUrl ||
+      alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
+      !sameCheckTimes(checkTimes, savedTimes) ||
       (!orderDetails &&
         (catalog !== saved.catalog ||
           accountId !== saved.accountId ||
           placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
-          alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
-          !sameCheckTimes(checkTimes, savedTimes) ||
           !sameExcludes(skuExcludesText, saved.skuExcludes ?? []))) ||
       cookie.trim().length > 0 ||
       clearCookie ||
@@ -242,7 +242,12 @@ export default function HHSportswearConfig() {
         return
       }
       const patch: HHB2bConfigPatch = orderDetails
-        ? { baseUrl, skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [] }
+        ? {
+            baseUrl,
+            skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [],
+            alertWebhookUrl,
+            sessionCheckTimes: checkTimes,
+          }
         : {
             baseUrl,
             catalog,
@@ -371,20 +376,47 @@ export default function HHSportswearConfig() {
 
         <ConfigSection
           title="Session"
-          description="Paste the cookie from a logged-in browser. It is stored for this brand only."
+          description="Paste the cookie from a logged-in browser. Check session reads the customer record only."
         >
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-              saved?.hasCookie
-                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
-            }`}
-          >
-            {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
-          </span>
-          {saved?.hasCookie && saved.cookieUpdatedAt ? (
-            <p className={hintClass}>Cookie updated {formatCreatedAt(saved.cookieUpdatedAt)}.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sessionPillClass(saved?.sessionCheck.status ?? null)}`}>
+                {sessionLabel(saved?.sessionCheck.status ?? null)}
+              </span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  saved?.hasCookie
+                    ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                    : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
+                }`}
+              >
+                {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={checking || busy}
+              onClick={() => {
+                void checkSession()
+              }}
+              className={quietButtonClass}
+            >
+              {checking ? 'Checking…' : 'Check session'}
+            </button>
+          </div>
+          <p className={hintClass}>
+            {saved?.sessionCheck.checkedAt
+              ? `Last checked ${formatCreatedAt(saved.sessionCheck.checkedAt)}.`
+              : 'No check has run yet.'}
+            {saved?.hasCookie && saved.cookieUpdatedAt ? ` Cookie updated ${formatCreatedAt(saved.cookieUpdatedAt)}.` : ''}
+            {saved?.sessionCheck.latencyMs != null && saved.sessionCheck.status === 'ok'
+              ? ` Responded in ${saved.sessionCheck.latencyMs} ms.`
+              : ''}
+          </p>
+          {saved?.sessionCheck.message && saved.sessionCheck.status && saved.sessionCheck.status !== 'ok' ? (
+            <p className="text-sm text-red-700 dark:text-red-300">{saved.sessionCheck.message}</p>
           ) : null}
+          {checkError ? <p className="text-sm text-red-600 dark:text-red-400">{checkError}</p> : null}
           <div className="space-y-1.5">
             <label className={labelClass} htmlFor="hh-b2b-cookie">
               Session cookie
@@ -424,6 +456,100 @@ export default function HHSportswearConfig() {
               Clear the stored session
             </label>
           ) : null}
+        </ConfigSection>
+
+        <ConfigSection
+          title="Alerts"
+          description="When the daily check fails, and when the session recovers. Times are Philippines time."
+        >
+          <div className="space-y-2">
+            <span className={labelClass}>Check times</span>
+            <p className={hintClass}>{scheduleLabel} Save to apply.</p>
+            {checkTimes.length > 0 ? (
+              <ul className="space-y-2">
+                {checkTimes.map((time, index) => (
+                  <li key={index} className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      aria-label={`Check time ${index + 1}`}
+                      className={`${inputClass} w-40`}
+                      value={time}
+                      disabled={busy}
+                      onChange={(event) => {
+                        const next = [...checkTimes]
+                        next[index] = event.target.value
+                        setCheckTimes(next)
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setCheckTimes(checkTimes.filter((_, itemIndex) => itemIndex !== index))}
+                      className="cursor-pointer px-2 py-2 text-sm font-medium text-slate-600 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--text-200)]"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy || checkTimes.length >= MAX_CHECK_TIMES}
+              onClick={() => setCheckTimes((current) => [...current, nextCheckTime(current)])}
+              className={quietButtonClass}
+            >
+              Add time
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-webhook">
+              Alert webhook
+            </label>
+            <input
+              id="hh-b2b-webhook"
+              className={inputClass}
+              value={alertWebhookUrl}
+              onChange={(event) => setAlertWebhookUrl(event.target.value)}
+              placeholder="https://example.com/hooks/thorogood"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            <p className={hintClass}>
+              Posted when a check starts failing, and again when the session recovers. Repeat failures stay quiet.
+              The body includes <span className="font-mono">event</span>, <span className="font-mono">brand</span>,{' '}
+              <span className="font-mono">status</span>, <span className="font-mono">message</span>, and{' '}
+              <span className="font-mono">checkedAt</span>. Leave blank to keep the result in this app only.
+            </p>
+            {saved?.lastAlert.at ? (
+              <p className={saved.lastAlert.error ? 'text-xs text-red-600 dark:text-red-400' : hintClass}>
+                {alertLabel(saved.lastAlert.event)} {formatCreatedAt(saved.lastAlert.at)}
+                {saved.lastAlert.error ? ` — ${saved.lastAlert.error}` : ''}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={testingWebhook || busy || !savedWebhook || webhookDirty}
+              onClick={() => {
+                void sendWebhookTest()
+              }}
+              className={quietButtonClass}
+            >
+              {testingWebhook ? 'Sending…' : 'Send test'}
+            </button>
+            <span className={hintClass}>
+              {webhookDirty
+                ? 'Save the webhook URL before sending a test.'
+                : savedWebhook
+                  ? 'Uses the saved URL. Does not check the session.'
+                  : 'Save a webhook URL to send a test.'}
+            </span>
+            {testNotice ? <span className="text-sm text-emerald-700 dark:text-emerald-300">{testNotice}</span> : null}
+            {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
+          </div>
         </ConfigSection>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">

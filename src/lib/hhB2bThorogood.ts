@@ -290,6 +290,13 @@ function addressFrom(record: Record<string, unknown> | null): Record<string, str
   };
 }
 
+/** Read-only customer lookup. A JSON body proves the session and API are up. */
+export async function probeThorogoodSession(baseUrl: string, cookie: string, customerCode: string): Promise<void> {
+  const code = customerCode.trim();
+  if (!code) throw new HhB2bDraftError('Thorogood customer code is missing');
+  unwrap(await envoyRequest(baseUrl, cookie, `/api/b2b/customers/${encodeURIComponent(code)}`));
+}
+
 async function loadDefaultShipTo(baseUrl: string, cookie: string, customerCode: string): Promise<ShipTo> {
   try {
     const payload = unwrap(
