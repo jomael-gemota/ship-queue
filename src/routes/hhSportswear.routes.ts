@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { requireAuth } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import {
   createGroup,
   deleteGroup,
@@ -66,9 +66,9 @@ router.post('/', createGroup);
 router.post('/import/preview', handleImportUpload, previewImport);
 router.post('/import', handleImportUpload, importGroup);
 router.get('/config', getHhB2bConfig);
-router.patch('/config', updateHhB2bConfig);
-router.post('/config/session-check', checkHhB2bSession);
-router.post('/config/webhook-test', testHhB2bWebhook);
+router.patch('/config', requireAdmin, updateHhB2bConfig);
+router.post('/config/session-check', requireAdmin, checkHhB2bSession);
+router.post('/config/webhook-test', requireAdmin, testHhB2bWebhook);
 router.get('/sc-sync', getScSyncStatus);
 router.post('/:groupId/sc-sync', rerunGroupScSync);
 router.post('/:groupId/orders/:orderId/sc-sync', rerunOrderScSync);

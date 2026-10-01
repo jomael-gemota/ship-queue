@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
@@ -12,7 +13,7 @@ import {
 import { normalizeHhSkuExcludes } from '../lib/hhSkuExclude'
 
 const inputClass =
-  'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
+  'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:cursor-default disabled:opacity-80 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
 
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
 const hintClass = 'block text-xs text-slate-500 dark:text-[var(--text-200)]'
@@ -80,6 +81,14 @@ function sameCheckTimes(current: string[], saved: string[]): boolean {
   return current.every((time, index) => time === saved[index])
 }
 
+function ReadOnlyBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
+      Read-only
+    </span>
+  )
+}
+
 function ConfigSection({
   title,
   description,
@@ -107,6 +116,8 @@ function sessionPillClass(status: HHSessionCheck['status']): string {
 }
 
 export default function HHSportswearConfig() {
+  const { user } = useAuth()
+  const canEdit = user?.role === 'admin'
   const { brand, setPlaceOrderEnabled: setPlaceOrderEnabledContext } = useHHList()
   const brandDef = hhBrand(brand)
   const orderDetails = hhUsesOrderDetailsDraft(brand)
@@ -166,7 +177,7 @@ export default function HHSportswearConfig() {
   }, [brand])
 
   const checkSession = async () => {
-    if (checking) return
+    if (!canEdit || checking) return
     setChecking(true)
     setCheckError(null)
     try {
@@ -190,7 +201,7 @@ export default function HHSportswearConfig() {
   }
 
   const sendWebhookTest = async () => {
-    if (testingWebhook) return
+    if (!canEdit || testingWebhook) return
     setTestingWebhook(true)
     setTestError(null)
     setTestNotice(null)
@@ -208,6 +219,7 @@ export default function HHSportswearConfig() {
 
   const savedTimes = saved?.sessionCheckTimes ?? []
   const dirty =
+    canEdit &&
     saved != null &&
     (baseUrl !== saved.baseUrl ||
       alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
@@ -222,7 +234,7 @@ export default function HHSportswearConfig() {
       (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
 
   const save = async () => {
-    if (busy || !dirty) return
+    if (!canEdit || busy || !dirty) return
     setBusy(true)
     setSaveError(null)
     setSaveNotice(null)
@@ -298,15 +310,19 @@ export default function HHSportswearConfig() {
         }}
       >
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-            {brandDef.name} B2B
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              {brandDef.name} B2B
+            </h2>
+            {canEdit ? null : <ReadOnlyBadge />}
+          </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
             Save the portal address and a session cookie from a logged-in browser. Cart drafts are created on
             Thorogood and are not submitted. Place Order stays off.
           </p>
         </div>
 
+        <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-5 border-0 p-0">
         <ConfigSection
           title="Portal"
           description="The signed-in site Ship Queue calls when it drafts a cart."
@@ -551,6 +567,7 @@ export default function HHSportswearConfig() {
             {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
           </div>
         </ConfigSection>
+        </fieldset>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
           <p
@@ -574,13 +591,17 @@ export default function HHSportswearConfig() {
                     ? `Saved ${formatCreatedAt(saved.updatedAt)}${saved.updatedByName ? ` by ${saved.updatedByName}` : ''}`
                     : 'No unsaved changes'}
           </p>
-          <button
-            type="submit"
-            disabled={!dirty || busy}
-            className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
-          >
-            {busy ? 'Saving…' : 'Save'}
-          </button>
+          {canEdit ? (
+            <button
+              type="submit"
+              disabled={!dirty || busy}
+              className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          ) : (
+            <p className={hintClass}>Only an admin can change these settings.</p>
+          )}
         </div>
       </form>
     )
@@ -599,15 +620,19 @@ export default function HHSportswearConfig() {
       }}
     >
       <div className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-          B2B {brandLabel} account
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            B2B {brandLabel} account
+          </h2>
+          {canEdit ? null : <ReadOnlyBadge />}
+        </div>
         <p className="max-w-2xl text-sm text-slate-500 dark:text-[var(--text-200)]">
           Cart drafts go to this {brandDef.supplier} account. The session is a cookie you paste from a logged-in
           browser. Sphere does not refresh it.
         </p>
       </div>
 
+      <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-5 border-0 p-0">
       <ConfigSection
         title="Account"
         description="Where drafts are sent, and whether Place Order is allowed to submit."
@@ -675,10 +700,10 @@ export default function HHSportswearConfig() {
             role="switch"
             aria-checked={placeOrderEnabled}
             aria-label="Place Order enabled"
-            disabled={busy}
+            disabled={busy || !canEdit}
             onClick={() => setPlaceOrderEnabled((current) => !current)}
-            className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-              busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+            className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              busy || !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
             } ${placeOrderEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
           >
             <span
@@ -889,6 +914,7 @@ export default function HHSportswearConfig() {
           {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
         </div>
       </ConfigSection>
+      </fieldset>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
         <p
@@ -912,13 +938,17 @@ export default function HHSportswearConfig() {
                   ? `Saved ${formatCreatedAt(saved.updatedAt)}${saved.updatedByName ? ` by ${saved.updatedByName}` : ''}`
                   : 'No unsaved changes'}
         </p>
-        <button
-          type="submit"
-          disabled={!dirty || busy}
-          className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
-        >
-          {busy ? 'Saving…' : 'Save'}
-        </button>
+        {canEdit ? (
+          <button
+            type="submit"
+            disabled={!dirty || busy}
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        ) : (
+          <p className={hintClass}>Only an admin can change these settings.</p>
+        )}
       </div>
     </form>
   )
