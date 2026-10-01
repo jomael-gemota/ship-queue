@@ -85,6 +85,8 @@ export interface HHChildOrderDto {
     shipVia: string;
     shipViaReason: string;
     shipViaOverride: '' | 'default' | 'usps';
+    sellerNotesResult: '' | 'updated' | 'already' | 'failed';
+    sellerNotesError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -189,6 +191,13 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
     shipViaReason: order.shipViaReason ?? '',
     shipViaOverride:
       order.shipViaOverride === 'default' || order.shipViaOverride === 'usps' ? order.shipViaOverride : '',
+    sellerNotesResult:
+      order.sellerNotesResult === 'updated' ||
+      order.sellerNotesResult === 'already' ||
+      order.sellerNotesResult === 'failed'
+        ? order.sellerNotesResult
+        : '',
+    sellerNotesError: order.sellerNotesError ?? '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -507,7 +516,6 @@ function markChildrenPending(group: IHHOrderGroup, childId?: string, options?: {
   let marked = 0;
   for (const child of targets) {
     if (isHhPlaced(child)) continue;
-    if (child.detailsStatus === 'synced') child.sellerNotesStamped = true;
     child.detailsStatus = HH_DEFAULT_DETAILS_STATUS;
     if (resetCart) resetCartForResync(child);
     else invalidateHhCartVerification(child);

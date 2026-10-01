@@ -74,8 +74,12 @@ export interface IHHChildOrder {
   shipViaReason: string;
   /** `default` or `usps` when an operator overrode the automatic choice. */
   shipViaOverride: '' | 'default' | 'usps';
-  /** PO was already written to Amazon Seller Notes for this order. */
+  /** PO was already written to Amazon Seller Notes, or the note already ended with the PO. */
   sellerNotesStamped: boolean;
+  /** Result of the last Seller Notes attempt. Empty until a sync tries. */
+  sellerNotesResult: '' | 'updated' | 'already' | 'failed';
+  /** Why the last Seller Notes write failed. Empty after a success or a skip. */
+  sellerNotesError: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
@@ -135,6 +139,8 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
     shipViaReason: { type: String, default: '' },
     shipViaOverride: { type: String, default: '' },
     sellerNotesStamped: { type: Boolean, default: false },
+    sellerNotesResult: { type: String, enum: ['', 'updated', 'already', 'failed'], default: '' },
+    sellerNotesError: { type: String, default: '', trim: true },
     detailsStatus: {
       type: String,
       enum: HH_DETAILS_STATUSES,

@@ -190,7 +190,8 @@ async function fillChild(
   currentOrderId = child.orderId;
   const groupId = String(group._id);
   const childId = String(child._id);
-  const stampNotes = child.detailsStatus !== 'synced' && !child.sellerNotesStamped;
+  const notesSettled = child.sellerNotesResult === 'updated' || child.sellerNotesResult === 'already';
+  const stampNotes = child.detailsStatus !== 'synced' && !notesSettled && !child.sellerNotesStamped;
   const scOrder = await fetchScOrder(child.orderId, cookie);
   if (scOrder.sellerNotes && scOrder.sellerNotes !== child.po) {
     console.warn(
@@ -219,15 +220,12 @@ async function fillChild(
   const itemCount = saved?.items.length ?? child.items.length;
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
   if (saved && saved.detailsStatus === 'synced' && stampNotes) {
-    try {
-      await stampSellerNotePo(child.orderId, child.po, scOrder.sellerNotes, cookie);
-      await persistChild(groupId, childId, (row) => {
-        row.sellerNotesStamped = true;
-      });
-    } catch (err) {
-      const message = truncateError(err instanceof Error ? err.message : String(err));
-      console.warn(`${LOG} ${child.orderId} synced, Seller Notes were not updated: ${message}`);
-    }
+    const outcome = await stampSellerNotePo(child.orderId, child.po, scOrder.sellerNotes, cookie);
+    await persistChild(groupId, childId, (row) => {
+      row.sellerNotesResult = outcome.result;
+      row.sellerNotesError = outcome.error;
+      row.sellerNotesStamped = outcome.result === 'updated' || outcome.result === 'already';
+    });
   }
   if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
     enqueueHhCartDraft(groupId, childId);
@@ -241,19 +239,26 @@ async function stampSellerNotePo(
   po: string,
   existingNotes: string,
   cookie: string
-): Promise<void> {
+): Promise<{ result: 'updated' | 'already' | 'failed'; error: string }> {
   const purchaseOrder = po.trim();
   if (!purchaseOrder) {
     console.warn(`${LOG} ${orderId} synced without a PO — skipped Seller Notes`);
-    return;
+    return { result: 'failed', error: 'This order has no PO' };
   }
   const noteText = composeSellerNoteWithPo(existingNotes, purchaseOrder);
   if (noteText == null) {
     console.log(`${LOG} ${orderId} Seller Notes already include PO ${purchaseOrder}`);
-    return;
+    return { result: 'already', error: '' };
   }
-  await updateScSellerNotes(orderId, noteText, cookie);
+  try {
+    await updateScSellerNotes(orderId, noteText, cookie);
+  } catch (err) {
+    const message = truncateError(err instanceof Error ? err.message : String(err));
+    console.warn(`${LOG} ${orderId} synced, Seller Notes were not updated: ${message}`);
+    return { result: 'failed', error: message };
+  }
   console.log(`${LOG} ${orderId} Seller Notes updated with PO ${purchaseOrder}`);
+  return { result: 'updated', error: '' };
 }
 
 function pickNextChild(group: IHHOrderGroup, job: HhScSyncJob, attempted: Set<string>): IHHChildOrder | undefined {
