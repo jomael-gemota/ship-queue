@@ -36,6 +36,8 @@ import {
   removeVendorSample,
   deleteVendor,
   listParseJobs,
+  deleteParseJob,
+  bulkDeleteParseJobs,
 } from '../controllers/docTidyParse.controller';
 import {
   listWorkspaces,
@@ -98,6 +100,8 @@ router.get('/parse-jobs/:id', getParseJob);
 router.post('/parse-jobs/:id/rerun', rerunParseJob);
 router.post('/parse-jobs/:id/abort', abortParseJob);
 router.post('/parse-jobs/:id/vendor', setParseJobVendor);
+router.delete('/parse-jobs/:id', deleteParseJob);
+router.post('/parse-jobs/bulk-delete', bulkDeleteParseJobs);
 // Per-job SSE: the agent's reasoning as it is produced.
 router.get('/parse-jobs/:id/stream', streamParseJob);
 

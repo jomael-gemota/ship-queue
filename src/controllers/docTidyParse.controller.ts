@@ -682,3 +682,52 @@ export const deleteVendor = async (req: Request, res: Response): Promise<void> =
     fail(res, error, 'Failed to delete the vendor');
   }
 };
+
+/* ── Delete a single parse job ── */
+export const deleteParseJob = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ message: 'Invalid parse job id' });
+      return;
+    }
+
+    const job = await DocTidyParseJob.findByIdAndDelete(id);
+    if (!job) {
+      res.status(404).json({ message: 'Parse job not found' });
+      return;
+    }
+
+    // Clean up associated corrections so they don't linger.
+    await DocTidyCorrection.deleteMany({ jobId: new Types.ObjectId(id) });
+
+    res.json({ data: { deleted: true } });
+  } catch (error) {
+    fail(res, error, 'Failed to delete parse job');
+  }
+};
+
+/* ── Bulk delete parse jobs by explicit id list ── */
+export const bulkDeleteParseJobs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body as { ids?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return;
+    }
+    if (!ids.every((id) => typeof id === 'string' && isValidObjectId(id))) {
+      res.status(400).json({ message: 'All ids must be valid ObjectIds' });
+      return;
+    }
+
+    const objectIds = ids.map((id) => new Types.ObjectId(id as string));
+    const [jobResult, corrResult] = await Promise.all([
+      DocTidyParseJob.deleteMany({ _id: { $in: objectIds } }),
+      DocTidyCorrection.deleteMany({ jobId: { $in: objectIds } }),
+    ]);
+
+    res.json({ data: { deleted: jobResult.deletedCount, correctionsDeleted: corrResult.deletedCount } });
+  } catch (error) {
+    fail(res, error, 'Failed to bulk delete parse jobs');
+  }
+};
