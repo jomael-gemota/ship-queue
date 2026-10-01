@@ -480,6 +480,7 @@ export type InvoiceAuditColumnId =
   | 'dropshipFee'
   | 'miscCharges'
   | 'totalCost'
+  | 'parsedAt'
   // ── Computed ──
   | 'discrepancy'
 
@@ -521,6 +522,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',          description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true, center: true },
   { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',   description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true, center: true },
   { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',      description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true, center: true },
+  { id: 'parsedAt',           section: 'invoice',  label: 'Parsed',          description: 'Date the Tidy Agent last parsed and matched this invoice',           defaultVisible: true,                center: true },
   // ── Computed ──
   { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',                       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
 ]
@@ -532,14 +534,14 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v4 key — bumped from v3 when LESD was added (2026-09-30).
- * Old v3 preferences are ignored so LESD appears in its correct position
- * (after Order Qty) rather than being appended at the far right.
+ * v5 key — bumped from v4 when "Parsed" (parsedAt) column was added (2026-10-02).
+ * Old v4 preferences are ignored so the new column appears in its correct position
+ * (after Total Cost, before Discrepancy) rather than being appended at the far right.
  *
- * The key is now workspace-scoped: `<base>.<workspaceId>` so changing
+ * The key is workspace-scoped: `<base>.<workspaceId>` so changing
  * visibility in Workspace A never touches Workspace B's preferences.
  */
-const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v4'
+const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v5'
 
 function auditColStorageKey(workspaceId: string): string {
   return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`

@@ -1972,6 +1972,7 @@ function auditColStr(
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
+    case 'parsedAt':          return order.matchedInvoice?.cachedAt ? formatDate(order.matchedInvoice.cachedAt) : ''
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
@@ -3704,6 +3705,15 @@ export default function DocTidyInvoiceAudit() {
       case 'dropshipFee': return numCell(inv.dropshipFee)
       case 'miscCharges': return numCell(inv.miscCharges)
       case 'totalCost':   return numCell(inv.totalCost)
+      case 'parsedAt': {
+        const cachedAt = order.matchedInvoice?.cachedAt
+        if (!cachedAt) return emDash
+        return (
+          <span title={formatDateTime(cachedAt)} className="text-[var(--text-200)]">
+            {formatDate(cachedAt)}
+          </span>
+        )
+      }
 
       // ── Computed ──
       case 'discrepancy': return discrepancyCell(order, match)
@@ -3749,6 +3759,14 @@ export default function DocTidyInvoiceAudit() {
         return numCell(extractJsonField(json,
           'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
           'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+      case 'parsedAt': {
+        if (!job.completedAt) return emDash
+        return (
+          <span title={formatDateTime(job.completedAt)} className="text-[var(--text-200)]">
+            {formatDate(job.completedAt)}
+          </span>
+        )
+      }
       default:
         return emDash
     }
