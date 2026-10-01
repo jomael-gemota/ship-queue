@@ -2348,11 +2348,18 @@ export default function DocTidyInvoiceAudit() {
   const [confirmBulkDeletePdfs, setConfirmBulkDeletePdfs] = useState(false)
   const [pdfBulkDeleting, setPdfBulkDeleting] = useState(false)
 
-  /* ── Audit table delete ── */
+  /* ── Audit table delete (full-import mode) ── */
   const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
   const [auditRowDeleting, setAuditRowDeleting] = useState(false)
   const [confirmBulkDeleteAudit, setConfirmBulkDeleteAudit] = useState(false)
   const [auditBulkDeleting, setAuditBulkDeleting] = useState(false)
+
+  /* ── Header-only parse-job delete ── */
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
+  const [confirmDeleteJob, setConfirmDeleteJob] = useState<ParseJobListItem | null>(null)
+  const [jobDeleting, setJobDeleting] = useState(false)
+  const [confirmBulkDeleteJobs, setConfirmBulkDeleteJobs] = useState(false)
+  const [jobBulkDeleting, setJobBulkDeleting] = useState(false)
 
   /* ── Filtered views (client-side column filters applied to the loaded page) ── */
   const filteredEmailMessages = useMemo(() => {
@@ -3011,7 +3018,7 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [auditSearch])
 
-  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()) }, [debouncedAuditSearch, auditDateFrom, auditDateTo, orderPageSize])
+  useEffect(() => { setOrderPage(1); setSelectedRowKeys(new Set()); setSelectedJobIds(new Set()) }, [debouncedAuditSearch, auditDateFrom, auditDateTo, orderPageSize])
 
   /* ── Fetch order imports (primary table rows) ── */
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
@@ -3495,6 +3502,67 @@ export default function DocTidyInvoiceAudit() {
       }
       return next
     })
+  }
+
+  /* ── Header-only job selection ── */
+  const allJobsSelected = filteredHeaderOnlyJobs.length > 0 && filteredHeaderOnlyJobs.every((j) => selectedJobIds.has(j._id))
+  const someJobsSelected = filteredHeaderOnlyJobs.some((j) => selectedJobIds.has(j._id))
+  const jobSelectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (jobSelectAllRef.current) {
+      jobSelectAllRef.current.indeterminate = someJobsSelected && !allJobsSelected
+    }
+  }, [someJobsSelected, allJobsSelected])
+
+  const toggleJobRow = (id: string) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const toggleAllJobs = () => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev)
+      for (const j of filteredHeaderOnlyJobs) {
+        if (allJobsSelected) next.delete(j._id)
+        else next.add(j._id)
+      }
+      return next
+    })
+  }
+
+  /* ── Header-only parse-job delete handlers ── */
+  const handleDeleteParseJob = async (job: ParseJobListItem) => {
+    setJobDeleting(true)
+    try {
+      await authApi.delete(`/doc-tidy/parse-jobs/${job._id}`)
+      setJobs((prev) => prev.filter((j) => j._id !== job._id))
+      setSelectedJobIds((prev) => { const next = new Set(prev); next.delete(job._id); return next })
+      setConfirmDeleteJob(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete parse job')
+      setConfirmDeleteJob(null)
+    } finally {
+      setJobDeleting(false)
+    }
+  }
+
+  const handleBulkDeleteParseJobs = async () => {
+    const ids = Array.from(selectedJobIds)
+    setJobBulkDeleting(true)
+    try {
+      await authApi.post('/doc-tidy/parse-jobs/bulk-delete', { ids })
+      setJobs((prev) => prev.filter((j) => !selectedJobIds.has(j._id)))
+      setSelectedJobIds(new Set())
+      setConfirmBulkDeleteJobs(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete parse jobs')
+      setConfirmBulkDeleteJobs(false)
+    } finally {
+      setJobBulkDeleting(false)
+    }
   }
 
   /* ── Excel export ── */
@@ -5313,14 +5381,25 @@ export default function DocTidyInvoiceAudit() {
                   </button>
                 )}
 
-                {/* Bulk delete — visible only when rows are selected */}
-                {selectedRowKeys.size > 0 && (
+                {/* Bulk delete — full-import mode */}
+                {!isHeaderOnly && selectedRowKeys.size > 0 && (
                   <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                     Delete {selectedRowKeys.size} selected
+                  </button>
+                )}
+
+                {/* Bulk delete — header-only mode */}
+                {isHeaderOnly && selectedJobIds.size > 0 && (
+                  <button type="button" onClick={() => setConfirmBulkDeleteJobs(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete {selectedJobIds.size} selected
                   </button>
                 )}
               </div>
@@ -5382,15 +5461,27 @@ export default function DocTidyInvoiceAudit() {
                   <thead>
                     <tr>
                       <Th className="w-8">
-                        <input
-                          ref={auditSelectAllRef}
-                          type="checkbox"
-                          checked={allPageSelected}
-                          onChange={toggleAllAuditPage}
-                          disabled={filteredOrderImports.length === 0}
-                          aria-label={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
-                          className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
-                        />
+                        {isHeaderOnly ? (
+                          <input
+                            ref={jobSelectAllRef}
+                            type="checkbox"
+                            checked={allJobsSelected}
+                            onChange={toggleAllJobs}
+                            disabled={filteredHeaderOnlyJobs.length === 0}
+                            aria-label={allJobsSelected ? 'Deselect all' : 'Select all'}
+                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                          />
+                        ) : (
+                          <input
+                            ref={auditSelectAllRef}
+                            type="checkbox"
+                            checked={allPageSelected}
+                            onChange={toggleAllAuditPage}
+                            disabled={filteredOrderImports.length === 0}
+                            aria-label={allPageSelected ? 'Deselect all on page' : 'Select all on page'}
+                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                          />
+                        )}
                       </Th>
                       {visibleCols.map((col) => (
                         <DraggableTh
@@ -5421,8 +5512,8 @@ export default function DocTidyInvoiceAudit() {
                           }}
                         />
                       ))}
-                      {/* Fixed actions column header — hidden for header-only workspaces (no row actions) */}
-                      {!isHeaderOnly && <Th className="w-8" />}
+                      {/* Fixed actions column header */}
+                      <Th className="w-8" />
                     </tr>
                   </thead>
                   <tbody>
@@ -5440,14 +5531,14 @@ export default function DocTidyInvoiceAudit() {
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
-                          {!isHeaderOnly && <td className="px-2.5 py-1" />}
+                          <td className="px-2.5 py-1" />
                         </tr>
                       ))
                     /* ── Header-only: flat list of completed parse jobs ── */
                     ) : isHeaderOnly ? (
                       filteredHeaderOnlyJobs.length === 0 ? (
                         <tr>
-                          <td colSpan={visibleCols.length + 1} className="py-16 text-center">
+                          <td colSpan={visibleCols.length + 2} className="py-16 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
                                 <svg className="h-6 w-6 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5478,11 +5569,15 @@ export default function DocTidyInvoiceAudit() {
                         <>
                           {filteredHeaderOnlyJobs.map((job, rowIdx) => {
                             const isEven = rowIdx % 2 === 0
+                            const isSelected = selectedJobIds.has(job._id)
                             return (
                               <tr key={job._id}
-                                className={['transition-colors align-middle', isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'].join(' ')}>
-                                <td className="px-2.5 py-1.5">
-                                  {/* No row selection for header-only job rows */}
+                                className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
+                                <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                                  <input type="checkbox" checked={isSelected}
+                                    onChange={() => toggleJobRow(job._id)}
+                                    aria-label={`Select job ${job.filename}`}
+                                    className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
@@ -5493,7 +5588,19 @@ export default function DocTidyInvoiceAudit() {
                                     {headerOnlyCellFor(col.id, job)}
                                   </td>
                                 ))}
-                                {/* No actions column in header-only mode */}
+                                {/* Per-row delete */}
+                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteJob(job)}
+                                    title="Delete this parse job"
+                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </td>
                               </tr>
                             )
                           })}
@@ -6106,6 +6213,38 @@ export default function DocTidyInvoiceAudit() {
           deleting={auditBulkDeleting}
           onConfirm={() => void handleBulkDeleteOrderImports()}
           onCancel={() => setConfirmBulkDeleteAudit(false)}
+        />
+      )}
+
+      {/* ── Confirm delete: single header-only parse job ── */}
+      {confirmDeleteJob && (
+        <ConfirmDeleteDialog
+          title="Delete this parsed invoice?"
+          description={
+            <>
+              <span className="font-medium text-[var(--text-100)]">{confirmDeleteJob.filename}</span>
+              <br />
+              <span className="text-[var(--text-200)]">The parse job and its extracted data will be permanently removed. This cannot be undone.</span>
+            </>
+          }
+          deleting={jobDeleting}
+          onConfirm={() => void handleDeleteParseJob(confirmDeleteJob)}
+          onCancel={() => setConfirmDeleteJob(null)}
+        />
+      )}
+
+      {/* ── Confirm delete: bulk header-only parse jobs ── */}
+      {confirmBulkDeleteJobs && (
+        <ConfirmDeleteDialog
+          title={`Delete ${selectedJobIds.size} selected invoice${selectedJobIds.size !== 1 ? 's' : ''}?`}
+          description={
+            <span className="text-[var(--text-200)]">
+              {selectedJobIds.size} parse job{selectedJobIds.size !== 1 ? 's' : ''} and their extracted data will be permanently removed. This cannot be undone.
+            </span>
+          }
+          deleting={jobBulkDeleting}
+          onConfirm={() => void handleBulkDeleteParseJobs()}
+          onCancel={() => setConfirmBulkDeleteJobs(false)}
         />
       )}
     </div>
