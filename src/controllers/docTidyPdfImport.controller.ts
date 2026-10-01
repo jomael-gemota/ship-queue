@@ -82,7 +82,7 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
 
     const parseJobs = parseJobIds.length > 0
       ? await DocTidyParseJob.find({ _id: { $in: parseJobIds } })
-          .select('_id status error')
+          .select('_id status error completedAt')
           .lean()
       : [];
 
