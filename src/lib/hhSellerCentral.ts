@@ -1,6 +1,8 @@
 import CookieJar, { SELLER_CENTRAL_OE_US_KEY } from '../models/CookieJar';
 
 const SC_ORIGIN = 'https://sellercentral.amazon.com';
+const SC_CSRF_HEADER = 'anti-csrftoken-a2z';
+const SC_CSRF_REQUEST_HEADER = 'anti-csrftoken-a2z-request';
 const FETCH_TIMEOUT_MS = 30_000;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -77,15 +79,15 @@ export async function loadSellerCentralCookie(): Promise<string> {
   return cookie;
 }
 
-async function scRequest(path: string, cookie: string, init: RequestInit = {}): Promise<unknown> {
+async function scFetch(path: string, cookie: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('Cookie', cookie);
   headers.set('Accept', 'application/json, text/plain, */*');
   headers.set('User-Agent', USER_AGENT);
   headers.set('Accept-Language', 'en-US,en;q=0.9');
-  const csrf = cookieNamedValue(cookie, 'anti-csrftoken-a2z');
-  if (csrf && !headers.has('anti-csrftoken-a2z')) {
-    headers.set('anti-csrftoken-a2z', csrf);
+  const csrf = cookieNamedValue(cookie, SC_CSRF_HEADER);
+  if (csrf && !headers.has(SC_CSRF_HEADER)) {
+    headers.set(SC_CSRF_HEADER, csrf);
   }
 
   const res = await fetch(`${SC_ORIGIN}${path}`, {
@@ -107,8 +109,23 @@ async function scRequest(path: string, cookie: string, init: RequestInit = {}): 
   if (res.status === 404) {
     throw new HhScNotFoundError('Seller Central order was not found');
   }
+  return res;
+}
+
+async function readErrorDetail(res: Response): Promise<string> {
+  try {
+    const compact = (await res.text()).trim().replace(/\s+/g, ' ');
+    if (!compact) return '';
+    return compact.length > 240 ? `${compact.slice(0, 240)}…` : compact;
+  } catch {
+    return '';
+  }
+}
+
+async function readScJson(res: Response): Promise<unknown> {
   if (!res.ok) {
-    throw new Error(`Seller Central request failed (${res.status})`);
+    const detail = await readErrorDetail(res);
+    throw new Error(`Seller Central request failed (${res.status})${detail ? `: ${detail}` : ''}`);
   }
 
   const contentType = res.headers.get('content-type') ?? '';
@@ -123,6 +140,23 @@ async function scRequest(path: string, cookie: string, init: RequestInit = {}): 
   } catch {
     throw new Error('Seller Central returned a non-JSON body');
   }
+}
+
+async function scRequest(path: string, cookie: string, init: RequestInit = {}): Promise<unknown> {
+  return readScJson(await scFetch(path, cookie, init));
+}
+
+/** Ask Get Order for a CSRF token, then echo it on the Seller Notes POST. */
+async function fetchScCsrfToken(orderId: string, cookie: string): Promise<string> {
+  const res = await scFetch(`/orders-api/order/${encodeURIComponent(orderId)}`, cookie, {
+    headers: { [SC_CSRF_REQUEST_HEADER]: 'true' },
+  });
+  const token = res.headers.get(SC_CSRF_HEADER)?.trim() ?? '';
+  await readScJson(res);
+  if (!token) {
+    throw new Error('Seller Central did not return an anti-csrftoken-a2z token');
+  }
+  return token;
 }
 
 /** Existing note plus a blank line and the PO. Null when there is nothing to write. */
@@ -165,11 +199,13 @@ export async function fetchScOrder(orderId: string, cookie: string): Promise<ScO
 }
 
 export async function updateScSellerNotes(orderId: string, noteText: string, cookie: string): Promise<void> {
+  const csrf = await fetchScCsrfToken(orderId, cookie);
   await scRequest(`/orders-api/order/${encodeURIComponent(orderId)}/seller-notes`, cookie, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Referer: `${SC_ORIGIN}/orders-v3/order/${encodeURIComponent(orderId)}`,
+      [SC_CSRF_HEADER]: csrf,
     },
     body: JSON.stringify({ orderId, noteText }),
   });
