@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import {
   Banner,
   DocumentTypeBadge,
-  ParseProgressBadge,
   PaginationArrows,
   ParseStatusChip,
   Spinner,
@@ -4356,6 +4355,8 @@ export default function DocTidyInvoiceAudit() {
                             className={`${emailCheckboxClass} disabled:cursor-not-allowed disabled:opacity-40`}
                           />
                         </Th>
+                        {/* Actions — second column, right after the checkbox */}
+                        <Th align="center" className="w-[68px]" />
                         {orderedEmailCols.map((col) => (
                           <DraggableTh
                             key={col.id}
@@ -4385,7 +4386,6 @@ export default function DocTidyInvoiceAudit() {
                             }}
                           />
                         ))}
-                        <Th label="Actions" align="center" className="min-w-[200px]" />
                       </tr>
                     </thead>
                     <tbody>
@@ -4393,6 +4393,12 @@ export default function DocTidyInvoiceAudit() {
                         Array.from({ length: 8 }).map((_, i) => (
                           <tr key={i} className="border-b border-[var(--bg-300)]">
                             <td className="px-3 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1">
+                              <div className="flex justify-center gap-1">
+                                <div className="h-4 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
+                                <div className="h-4 w-4 animate-pulse rounded bg-[var(--bg-300)]" />
+                              </div>
+                            </td>
                             {orderedEmailCols.map((col) => (
                               <td key={col.id} className="px-3 py-1">
                                 {col.id === 'from' ? (
@@ -4410,7 +4416,6 @@ export default function DocTidyInvoiceAudit() {
                                 )}
                               </td>
                             ))}
-                            <td className="px-3 py-1"><div className="flex justify-center gap-1.5"><div className="h-7 w-7 animate-pulse rounded-md bg-[var(--bg-300)]" /></div></td>
                           </tr>
                         ))
                       ) : emailMessages.length === 0 ? (
@@ -4473,16 +4478,32 @@ export default function DocTidyInvoiceAudit() {
                                   : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
-                              {/* Checkbox — always first, not draggable */}
+                              {/* Checkbox — always first */}
                               <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1.5">
-                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                    aria-label={`Select ${msg.subject || 'message'}`}
-                                    className={emailCheckboxClass} />
-                                  {(() => {
-                                    const runningJob = msg.parseJobs?.find(j => isParseRunning(j.status))
-                                    return runningJob ? <ParseProgressBadge jobId={runningJob._id} /> : null
-                                  })()}
+                                <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
+                                  aria-label={`Select ${msg.subject || 'message'}`}
+                                  className={emailCheckboxClass} />
+                              </td>
+
+                              {/* Actions — second column, right after the checkbox */}
+                              <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <AttachmentIcons
+                                    message={msg}
+                                    onOpenJob={setOpenJobId}
+                                    onChanged={() => void fetchEmails(true)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteEmail(msg)}
+                                    title="Delete this message"
+                                    aria-label="Delete message"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
                                 </div>
                               </td>
 
@@ -4653,27 +4674,6 @@ export default function DocTidyInvoiceAudit() {
                                 }
                               })}
 
-                              {/* Actions — always last, not draggable */}
-                              <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center justify-center gap-0.5">
-                                  <AttachmentIcons
-                                    message={msg}
-                                    onOpenJob={setOpenJobId}
-                                    onChanged={() => void fetchEmails(true)}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteEmail(msg)}
-                                    title="Delete this message"
-                                    aria-label="Delete message"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </td>
                             </tr>
                           )
                         })
