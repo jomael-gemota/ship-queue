@@ -464,6 +464,25 @@ export function LiveReasoningSnippet({
   )
 }
 
+/**
+ * A compact `XX%` progress badge shown next to the row checkbox while a job is
+ * running. The percentage is estimated from the reasoning step (10 % per step,
+ * capped at 95 % so it never falsely reaches 100 % before completion).
+ */
+export function ParseProgressBadge({ jobId }: { jobId: string }) {
+  const progress = useParseProgress(jobId)
+  if (!progress) return null
+  const pct = Math.min(progress.step * 10, 95)
+  return (
+    <span
+      title={`Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`}
+      className="shrink-0 tabular-nums text-[10px] font-semibold leading-none text-sky-600 dark:text-sky-400 animate-pulse"
+    >
+      {pct}%
+    </span>
+  )
+}
+
 /** Dismissible status banner using the shared notice-card styles. */
 export function Banner({
   kind,
