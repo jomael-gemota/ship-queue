@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import {
   Banner,
   DocumentTypeBadge,
-  LiveReasoningSnippet,
+  ParseProgressBadge,
   PaginationArrows,
   ParseStatusChip,
   Spinner,
@@ -4475,9 +4475,15 @@ export default function DocTidyInvoiceAudit() {
                             >
                               {/* Checkbox — always first, not draggable */}
                               <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
-                                <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                  aria-label={`Select ${msg.subject || 'message'}`}
-                                  className={emailCheckboxClass} />
+                                <div className="flex items-center gap-1.5">
+                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
+                                    aria-label={`Select ${msg.subject || 'message'}`}
+                                    className={emailCheckboxClass} />
+                                  {(() => {
+                                    const runningJob = msg.parseJobs?.find(j => isParseRunning(j.status))
+                                    return runningJob ? <ParseProgressBadge jobId={runningJob._id} /> : null
+                                  })()}
+                                </div>
                               </td>
 
                               {/* Dynamic ordered columns */}
@@ -4655,19 +4661,17 @@ export default function DocTidyInvoiceAudit() {
                                     onOpenJob={setOpenJobId}
                                     onChanged={() => void fetchEmails(true)}
                                   />
-                                  {!msg.parseJobs?.some(j => isParseRunning(j.status)) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDeleteEmail(msg)}
-                                      title="Delete this message"
-                                      aria-label="Delete message"
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                    >
-                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteEmail(msg)}
+                                    title="Delete this message"
+                                    aria-label="Delete message"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -5103,27 +5107,30 @@ export default function DocTidyInvoiceAudit() {
                                       )
                                     }
 
-                                    // Running — live reasoning snippet; abort lives inside the reasoning panel
+                                    // Running — icon-only spinner; reasoning/abort lives inside the panel
                                     if (isRunning) {
                                       return (
-                                        <LiveReasoningSnippet
-                                          jobId={job._id}
-                                          onOpen={() => setOpenJobId(job._id)}
-                                        />
+                                        <button
+                                          type="button"
+                                          title="Tidy Agent is processing — click to watch"
+                                          onClick={() => setOpenJobId(job._id)}
+                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20"
+                                        >
+                                          <Spinner className="h-3.5 w-3.5" />
+                                        </button>
                                       )
                                     }
 
-                                    // Completed — emerald check + "View Tidy Reasoning" text link
+                                    // Completed — icon-only button
                                     if (job.status === 'completed') {
                                       return (
                                         <button
                                           type="button"
                                           title="Open Tidy Agent's reasoning and output"
                                           onClick={() => setOpenJobId(job._id)}
-                                          className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                                         >
-                                          <SuccessIcon className="h-5 w-5 shrink-0" />
-                                          View Tidy Reasoning
+                                          <SuccessIcon className="h-5 w-5" />
                                         </button>
                                       )
                                     }
@@ -5147,20 +5154,18 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   })()}
 
-                                  {/* Delete — hidden while the agent is running */}
-                                  {!isRunning && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDeletePdf(imp)}
-                                      title="Delete this import"
-                                      aria-label="Delete import"
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                                    >
-                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  )}
+                                  {/* Delete — always visible */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeletePdf(imp)}
+                                    title="Delete this import"
+                                    aria-label="Delete import"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                  >
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
                                 </div>
                               </td>
                             </tr>
