@@ -2005,23 +2005,8 @@ function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string
     case 'documentType': return DOCUMENT_TYPE_LABELS[documentTypeOf(msg.documentType)]
     case 'rule':         return msg.ruleName ?? ''
     case 'attachments':  return msg.attachments?.map((a) => a.filename).join(', ') ?? ''
-    case 'parseStatus':  return deriveEmailParseStatusLabel(msg)
     default:             return ''
   }
-}
-
-/**
- * Derives a single human-readable Tidy Agent status label for an email
- * message by collapsing its (possibly multiple) parse jobs into one value.
- * Priority: processing > pending > failed > completed > "Not sent".
- */
-function deriveEmailParseStatusLabel(msg: DocTidyMessage): string {
-  const jobs = msg.parseJobs
-  if (!jobs || jobs.length === 0) return 'Not sent'
-  if (jobs.some((j) => j.status === 'processing')) return PARSE_STATUS_LABELS.processing
-  if (jobs.some((j) => j.status === 'pending'))    return PARSE_STATUS_LABELS.pending
-  if (jobs.some((j) => j.status === 'failed'))     return PARSE_STATUS_LABELS.failed
-  return PARSE_STATUS_LABELS.completed
 }
 
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
@@ -4356,7 +4341,7 @@ export default function DocTidyInvoiceAudit() {
                           />
                         </Th>
                         {/* Actions — second column, right after the checkbox */}
-                        <Th align="center" className="w-[68px]" />
+                        <Th label="Actions" align="center" className="w-[68px]" />
                         {orderedEmailCols.map((col) => (
                           <DraggableTh
                             key={col.id}
@@ -4409,7 +4394,7 @@ export default function DocTidyInvoiceAudit() {
                                       <div className="h-2.5 w-32 animate-pulse rounded bg-[var(--bg-300)]" />
                                     </div>
                                   </div>
-                                ) : col.id === 'documentType' || col.id === 'rule' || col.id === 'parseStatus' ? (
+                                ) : col.id === 'documentType' || col.id === 'rule' ? (
                                   <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
                                 ) : (
                                   <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -4641,36 +4626,6 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   default:
                                     return null
-                                  case 'parseStatus': {
-                                    const statusLabel = deriveEmailParseStatusLabel(msg)
-                                    // Most recent completedAt across all parse jobs for this message
-                                    const latestCompletedAt = msg.parseJobs
-                                      ?.filter((j) => j.completedAt)
-                                      .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())[0]
-                                      ?.completedAt ?? null
-                                    return (
-                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
-                                        {statusLabel === 'Not sent' ? (
-                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
-                                            Not sent
-                                          </span>
-                                        ) : (
-                                          <div className="flex flex-col gap-0.5">
-                                            <ParseStatusChip
-                                              status={(['pending', 'processing', 'completed', 'failed'] as const).find(
-                                                (s) => PARSE_STATUS_LABELS[s] === statusLabel
-                                              ) ?? 'completed'}
-                                            />
-                                            {latestCompletedAt && (
-                                              <span title={formatDateTime(latestCompletedAt)} className="text-[10px] text-[var(--text-200)]">
-                                                {formatDate(latestCompletedAt)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        )}
-                                      </td>
-                                    )
-                                  }
                                 }
                               })}
 
