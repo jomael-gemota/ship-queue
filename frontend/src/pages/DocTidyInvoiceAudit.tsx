@@ -4327,7 +4327,7 @@ export default function DocTidyInvoiceAudit() {
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                  <table className="text-[11px] border-separate border-spacing-0">
+                  <table className="w-full text-[11px] border-separate border-spacing-0">
                     <thead>
                       <tr>
                         <Th className="w-8">
@@ -4483,7 +4483,7 @@ export default function DocTidyInvoiceAudit() {
                                     onClick={() => setConfirmDeleteEmail(msg)}
                                     title="Delete this message"
                                     aria-label="Delete message"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -5040,7 +5040,7 @@ export default function DocTidyInvoiceAudit() {
                               <td className="px-3 py-1 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-0.5">
                                   {(() => {
-                                    // No job yet — sparkle button
+                                    // No job yet — paper-airplane button (sky blue)
                                     if (!job) {
                                       return (
                                         <button
@@ -5048,16 +5048,15 @@ export default function DocTidyInvoiceAudit() {
                                           title={!workerOnline ? 'Tidy Agent is offline' : 'Send this document to Tidy Agent for parsing'}
                                           onClick={() => void handleSendToAgent(imp)}
                                           disabled={isSending || !workerOnline}
-                                          className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                           {isSending ? (
-                                            <Spinner className="h-3 w-3" />
+                                            <Spinner className="h-3.5 w-3.5" />
                                           ) : (
-                                            <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12 3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                                             </svg>
                                           )}
-                                          Send to Tidy Agent
                                         </button>
                                       )
                                     }
@@ -5069,42 +5068,41 @@ export default function DocTidyInvoiceAudit() {
                                           type="button"
                                           title="Tidy Agent is processing — click to watch"
                                           onClick={() => setOpenJobId(job._id)}
-                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20"
+                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400"
                                         >
                                           <Spinner className="h-3.5 w-3.5" />
                                         </button>
                                       )
                                     }
 
-                                    // Completed — icon-only button
+                                    // Completed — emerald icon button
                                     if (job.status === 'completed') {
                                       return (
                                         <button
                                           type="button"
                                           title="Open Tidy Agent's reasoning and output"
                                           onClick={() => setOpenJobId(job._id)}
-                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400"
                                         >
                                           <SuccessIcon className="h-5 w-5" />
                                         </button>
                                       )
                                     }
 
-                                    // Failed — alert icon + Retry
+                                    // Failed — rose icon button, click retries
                                     return (
                                       <button
                                         type="button"
                                         title={job.error ?? 'Parse failed — click to retry'}
                                         onClick={() => void handleSendToAgent(imp)}
                                         disabled={isSending || !workerOnline}
-                                        className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
                                       >
                                         {isSending ? (
-                                          <Spinner className="h-3 w-3" />
+                                          <Spinner className="h-3.5 w-3.5" />
                                         ) : (
-                                          <ErrorIcon className="h-3.5 w-3.5 text-rose-500" />
+                                          <ErrorIcon className="h-4 w-4" />
                                         )}
-                                        Retry
                                       </button>
                                     )
                                   })()}
@@ -5115,7 +5113,7 @@ export default function DocTidyInvoiceAudit() {
                                     onClick={() => setConfirmDeletePdf(imp)}
                                     title="Delete this import"
                                     aria-label="Delete import"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-200)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
                                   >
                                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
