@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { authApi } from '../../lib/api'
 import { ErrorIcon, SuccessIcon } from '../labels/labelUi'
-import { Spinner, TableActionButton } from './docTidyUi'
+import { ParseProgressBadge, Spinner, TableActionButton } from './docTidyUi'
 import { PARSEABLE } from './AttachmentCell'
 import { isParseRunning, type DocTidyMessage, type DocTidyParseJob } from '../../types/docTidy'
 
@@ -64,18 +64,14 @@ export default function AttachmentIcons({
         if (job) {
           const running = isParseRunning(job.status)
 
-          // Running — icon-only spinner button; reasoning/abort lives inside the panel
+          // Running — show % progress; click opens the reasoning panel
           if (running) {
             return (
-              <button
+              <ParseProgressBadge
                 key={i}
-                type="button"
-                title="Tidy Agent is processing — click to watch"
+                jobId={job._id}
                 onClick={() => onOpenJob(job._id)}
-                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20"
-              >
-                <Spinner className="h-3.5 w-3.5" />
-              </button>
+              />
             )
           }
 

@@ -465,17 +465,40 @@ export function LiveReasoningSnippet({
 }
 
 /**
- * A compact `XX%` progress badge shown next to the row checkbox while a job is
+ * A compact `XX%` progress indicator shown in the Actions cell while a job is
  * running. The percentage is estimated from the reasoning step (10 % per step,
  * capped at 95 % so it never falsely reaches 100 % before completion).
+ *
+ * Pass `onClick` to make it a button that opens the reasoning modal.
  */
-export function ParseProgressBadge({ jobId }: { jobId: string }) {
+export function ParseProgressBadge({
+  jobId,
+  onClick,
+}: {
+  jobId: string
+  onClick?: () => void
+}) {
   const progress = useParseProgress(jobId)
   if (!progress) return null
   const pct = Math.min(progress.step * 10, 95)
+  const title = `Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={`${title} · Click to watch`}
+        className="shrink-0 cursor-pointer tabular-nums text-[10px] font-semibold leading-none text-sky-600 dark:text-sky-400 animate-pulse hover:text-sky-700 dark:hover:text-sky-300 transition-colors"
+      >
+        {pct}%
+      </button>
+    )
+  }
+
   return (
     <span
-      title={`Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`}
+      title={title}
       className="shrink-0 tabular-nums text-[10px] font-semibold leading-none text-sky-600 dark:text-sky-400 animate-pulse"
     >
       {pct}%
