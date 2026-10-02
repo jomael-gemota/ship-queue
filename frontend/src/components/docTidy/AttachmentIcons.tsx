@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { authApi } from '../../lib/api'
 import { ErrorIcon, SuccessIcon } from '../labels/labelUi'
-import { LiveReasoningSnippet, Spinner, TableActionButton } from './docTidyUi'
+import { Spinner, TableActionButton } from './docTidyUi'
 import { PARSEABLE } from './AttachmentCell'
 import { isParseRunning, type DocTidyMessage, type DocTidyParseJob } from '../../types/docTidy'
 
@@ -64,31 +64,31 @@ export default function AttachmentIcons({
         if (job) {
           const running = isParseRunning(job.status)
 
-          // Running — live reasoning snippet; abort lives inside the reasoning panel
+          // Running — icon-only spinner button; reasoning/abort lives inside the panel
           if (running) {
             return (
-              <LiveReasoningSnippet
+              <button
                 key={i}
-                jobId={job._id}
-                onOpen={() => onOpenJob(job._id)}
-              />
+                type="button"
+                title="Tidy Agent is processing — click to watch"
+                onClick={() => onOpenJob(job._id)}
+                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20"
+              >
+                <Spinner className="h-3.5 w-3.5" />
+              </button>
             )
           }
 
-          // Finished / failed — open the panel on click.
-          // Completed jobs show a "View Tidy Reasoning" text link; failed jobs keep the icon-only button.
+          // Finished / failed — icon-only button opens the panel.
           return (
             <span key={i} className="flex items-center gap-0.5">
               {job.status === 'completed' ? (
-                <button
-                  type="button"
-                  title="Open Tidy Agent's reasoning and output"
+                <TableActionButton
+                  label="Open Tidy Agent's reasoning and output"
                   onClick={() => onOpenJob(job._id)}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                 >
-                  <SuccessIcon className="h-5 w-5 shrink-0" />
-                  View Tidy Reasoning
-                </button>
+                  <SuccessIcon className="h-5 w-5 text-emerald-500" />
+                </TableActionButton>
               ) : (
                 <TableActionButton
                   label={job.error ?? 'Parse failed — open to see error'}
@@ -101,7 +101,7 @@ export default function AttachmentIcons({
           )
         }
 
-        // No job yet — plain text at rest, styled on hover, stays compact
+        // No job yet — icon-only bolt button at rest, styled on hover
         return (
           <button
             key={i}
@@ -109,20 +109,19 @@ export default function AttachmentIcons({
             title={failure ? `Parse failed — ${failure}` : 'Send this document to Tidy Agent for parsing'}
             onClick={() => void startParse(i)}
             disabled={startingIndex !== null}
-            className="group inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-200)] transition-all hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {startingIndex === i ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="h-3.5 w-3.5" />
             ) : failure ? (
-              <svg className="h-3 w-3 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
             ) : (
-              <svg className="h-3 w-3 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <svg className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
               </svg>
             )}
-            {failure ? 'Retry' : 'Send to Tidy Agent'}
           </button>
         )
       })}
