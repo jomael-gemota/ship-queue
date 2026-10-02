@@ -9,15 +9,20 @@ export const COOKIE_JAR_TIMEZONE = 'Asia/Manila';
 /** 12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM Philippines time. */
 export const SELLER_CENTRAL_OE_US_CRON = '0 0,6,12,18 * * *';
 
-/** Helly Hansen Sports B2B session. Stored manually — no Sphere fetcher. */
+/** Helly Hansen Sports B2B session. One jar; it calls Sphere provider id `b2b-hhsportswear`. */
 export const HELLY_HANSEN_SPORTS_B2B_KEY = 'helly-hansen-sports-b2b';
 export const HELLY_HANSEN_SPORTS_B2B_NAME = 'Helly Hansen Sports B2B';
+export const HELLY_HANSEN_SPORTS_B2B_CRON = SELLER_CENTRAL_OE_US_CRON;
+/** Sphere cookie provider id. Not a CookieJar key. */
+export const SPHERE_B2B_HH_SPORTSWEAR_ID = 'b2b-hhsportswear';
 /** Helly Hansen Work B2B session. Stored manually — no Sphere fetcher. */
 export const HELLY_HANSEN_WORK_B2B_KEY = 'helly-hansen-work-b2b';
 export const HELLY_HANSEN_WORK_B2B_NAME = 'Helly Hansen Work B2B';
 
-/** Previous key — renamed in place on seed so existing cookies are kept. */
+/** Previous Seller Central key — renamed in place on seed so the stored cookie is kept. */
 const LEGACY_SELLER_CENTRAL_OE_US_KEY = 'outdoor-equipped-us';
+/** A row that used the Sphere provider id as a jar key. Folded back into Helly Hansen Sports B2B. */
+const STRAY_SPHERE_ID_JAR_KEY = SPHERE_B2B_HH_SPORTSWEAR_ID;
 
 export const DEFAULT_JAR_CRON = SELLER_CENTRAL_OE_US_CRON;
 export const MAX_JAR_NAME_LEN = 80;
@@ -70,7 +75,7 @@ const CookieJarSchema = new Schema<ICookieJar>(
 );
 
 export function isManualCookieJar(key: string): boolean {
-  return key === HELLY_HANSEN_SPORTS_B2B_KEY || key === HELLY_HANSEN_WORK_B2B_KEY;
+  return key === HELLY_HANSEN_WORK_B2B_KEY;
 }
 
 const CookieJar = model<ICookieJar>('CookieJar', CookieJarSchema);
@@ -89,8 +94,11 @@ async function seedJar(key: string, name: string, cron: string, enabled: boolean
 
 /**
  * Inserts the built-in jars if they are missing. Renames the legacy
- * `outdoor-equipped-us` row in place (keeps cookie / last-run). After that, name /
- * enabled / cron are not overwritten — the DB (and UI) stay authoritative.
+ * `outdoor-equipped-us` row in place (keeps cookie / last-run). A row whose key
+ * is the Sphere id `b2b-hhsportswear` is not a jar: it is folded into
+ * Helly Hansen Sports B2B, or removed when that jar already exists.
+ * After that, name / enabled / cron are not overwritten — the DB (and UI) stay
+ * authoritative.
  */
 export async function seedCookieJars(): Promise<void> {
   const current = await CookieJar.findOne({ key: SELLER_CENTRAL_OE_US_KEY }).select('key');
@@ -111,9 +119,31 @@ export async function seedCookieJars(): Promise<void> {
     }
   }
 
+  const sports = await CookieJar.findOne({ key: HELLY_HANSEN_SPORTS_B2B_KEY }).select('key');
+  if (!sports) {
+    const renamed = await CookieJar.findOneAndUpdate(
+      { key: STRAY_SPHERE_ID_JAR_KEY },
+      {
+        $set: {
+          key: HELLY_HANSEN_SPORTS_B2B_KEY,
+          name: HELLY_HANSEN_SPORTS_B2B_NAME,
+        },
+      },
+      { new: true }
+    );
+    if (renamed) {
+      console.log(`[cookie-jar] Renamed ${STRAY_SPHERE_ID_JAR_KEY} → ${HELLY_HANSEN_SPORTS_B2B_KEY}`);
+    }
+  } else {
+    const removed = await CookieJar.deleteOne({ key: STRAY_SPHERE_ID_JAR_KEY });
+    if (removed.deletedCount) {
+      console.log(`[cookie-jar] Removed stray jar ${STRAY_SPHERE_ID_JAR_KEY}`);
+    }
+  }
+
   await seedJar(SELLER_CENTRAL_OE_US_KEY, SELLER_CENTRAL_OE_US_NAME, SELLER_CENTRAL_OE_US_CRON, true);
-  await seedJar(HELLY_HANSEN_SPORTS_B2B_KEY, HELLY_HANSEN_SPORTS_B2B_NAME, DEFAULT_JAR_CRON, true);
-  await seedJar(HELLY_HANSEN_WORK_B2B_KEY, HELLY_HANSEN_WORK_B2B_NAME, DEFAULT_JAR_CRON, true);
+  await seedJar(HELLY_HANSEN_SPORTS_B2B_KEY, HELLY_HANSEN_SPORTS_B2B_NAME, HELLY_HANSEN_SPORTS_B2B_CRON, false);
+  await seedJar(HELLY_HANSEN_WORK_B2B_KEY, HELLY_HANSEN_WORK_B2B_NAME, DEFAULT_JAR_CRON, false);
 }
 
 export default CookieJar;
