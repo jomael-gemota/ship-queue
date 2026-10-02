@@ -627,8 +627,9 @@ export default function HHSportswearConfig() {
           {canEdit ? null : <ReadOnlyBadge />}
         </div>
         <p className="max-w-2xl text-sm text-slate-500 dark:text-[var(--text-200)]">
-          Cart drafts go to this {brandDef.supplier} account. The session is a cookie you paste from a logged-in
-          browser. Sphere does not refresh it.
+          {brand === 'sportswear'
+            ? `Cart drafts go to this ${brandDef.supplier} account. Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session.`
+            : `Cart drafts go to this ${brandDef.supplier} account. The session is a cookie you paste from a logged-in browser. Sphere does not refresh it.`}
         </p>
       </div>
 
@@ -742,7 +743,11 @@ export default function HHSportswearConfig() {
 
       <ConfigSection
         title="Session"
-        description="Paste a cookie from a logged-in browser. Check session reads the catalog only."
+        description={
+          brand === 'sportswear'
+            ? 'Cookie Jar refreshes this from Sphere. A cookie pasted here overrides that session. Check session reads the catalog only.'
+            : 'Paste a cookie from a logged-in browser. Check session reads the catalog only.'
+        }
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -788,7 +793,9 @@ export default function HHSportswearConfig() {
             Session cookie
           </label>
           <p className={hintClass}>
-            Paste the Cookie header from a logged-in {sessionHost} tab. It is not shown again after you save.
+            {brand === 'sportswear'
+              ? `Optional. Paste the Cookie header from a logged-in ${sessionHost} tab to override the Sphere session. It is not shown again after you save.`
+              : `Paste the Cookie header from a logged-in ${sessionHost} tab. It is not shown again after you save.`}
           </p>
         </div>
         <textarea
