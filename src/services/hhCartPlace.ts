@@ -25,6 +25,7 @@ export interface HhCartPlaceRuntime {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queued: number;
+  queuedGroupIds: string[];
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -76,6 +77,7 @@ export function getHhCartPlaceRuntime(): HhCartPlaceRuntime {
     currentGroupId,
     currentOrderId,
     queued: queue.length,
+    queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
     lastRunAt: iso(lastRunAt),
     lastSuccessAt: iso(lastSuccessAt),
     lastError,

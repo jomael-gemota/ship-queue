@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import type { IHHB2bConfig } from '../models/HHB2bConfig';
-import { hhBrandFromRequest } from '../lib/hhBrand';
+import { hhBrand, hhBrandFromRequest } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
 import { normalizeHhB2bAccountId, parseHhB2bBaseUrl } from '../lib/hhB2bConfig';
+import { effectiveThorogoodSkuInitials, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
+import { effectiveHhSkuExcludes, normalizeHhSkuExcludes } from '../lib/hhSkuExclude';
 import {
   HhB2bHealthBusyError,
   HhB2bWebhookTestError,
@@ -32,6 +34,8 @@ export interface HhB2bConfigDto {
   baseUrl: string;
   catalog: string;
   accountId: string;
+  skuInitials: string[];
+  skuExcludes: string[];
   hasCookie: boolean;
   cookieUpdatedAt: string | null;
   placeOrderEnabled: boolean;
@@ -58,6 +62,14 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
     baseUrl: doc.baseUrl,
     catalog: doc.catalog,
     accountId: doc.accountId,
+    skuInitials:
+      doc.key === hhBrand('thorogood').configKey
+        ? effectiveThorogoodSkuInitials(doc.skuInitials, Boolean(doc.skuInitialsSet))
+        : [],
+    skuExcludes:
+      doc.key === hhBrand('sportswear').configKey || doc.key === hhBrand('workwear').configKey
+        ? effectiveHhSkuExcludes(doc.skuExcludes, Boolean(doc.skuExcludesSet))
+        : [],
     hasCookie: Boolean(normalizeCookieHeader(doc.cookie ?? '')),
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
     placeOrderEnabled: Boolean(doc.placeOrderEnabled),
@@ -156,6 +168,35 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
     }
     doc.sessionCheckTimes = parsed.times;
     doc.sessionCheckTimesSet = true;
+  }
+
+  if ('skuExcludes' in body) {
+    const brand = hhBrandFromRequest(req);
+    if (brand !== 'sportswear' && brand !== 'workwear') {
+      res.status(400).json({ message: 'SKU exclusions are only saved for Helly Hansen Sports and Work.' });
+      return;
+    }
+    const parsed = normalizeHhSkuExcludes(body.skuExcludes);
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.skuExcludes = parsed.excludes;
+    doc.skuExcludesSet = true;
+  }
+
+  if ('skuInitials' in body) {
+    if (hhBrandFromRequest(req) !== 'thorogood') {
+      res.status(400).json({ message: 'SKU initials are only saved for Thorogood.' });
+      return;
+    }
+    const parsed = normalizeThorogoodSkuInitials(body.skuInitials);
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.skuInitials = parsed.initials;
+    doc.skuInitialsSet = true;
   }
 
   if ('cookie' in body) {

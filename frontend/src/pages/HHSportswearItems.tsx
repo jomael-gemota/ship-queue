@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton } from '../components/hh/hhUi'
+import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton, HHShipViaChip } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import { hhSkuExcludedByRule } from '../lib/hhSkuExclude'
 import {
   hhCartErrorMentionsSku,
   hhExcludedItems,
@@ -150,7 +152,7 @@ function HHItemExcludeControls({
             {item.excludeNote}
           </p>
         ) : null}
-        {locked ? null : (
+        {locked || hhSkuExcludedByRule(item.excludeNote) ? null : (
           <button
             type="button"
             disabled={busy}
@@ -234,7 +236,9 @@ export default function HHSportswearItems() {
     rerunCartDraft,
     cartDraftBusyId,
     updateOrderItemExclude,
+    brand,
   } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const match = getOrder(groupId, orderId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -313,18 +317,29 @@ export default function HHSportswearItems() {
               <AmazonIcon className="h-4 w-4 shrink-0" />
               {order.orderId}
             </span>
-            <HHDetailsBadge status={order.detailsStatus} />
+            <HHDetailsBadge
+              status={order.detailsStatus}
+              sellerNotesResult={order.sellerNotesResult}
+              sellerNotesError={order.sellerNotesError}
+            />
             <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
+            <HHShipViaChip
+              order={order}
+              busy={cartDraftBusyId === order.id}
+              onChange={
+                locked ? undefined : (next) => rerunCartDraft(groupId, order.id, next)
+              }
+            />
             <HHVerifiedCell groupId={groupId} order={order} />
             <HHPlacedBadge status={order.cartStatus} error={order.placeError} />
             <HHRedraftButton
               size="sm"
-              title={hhOrderDraftTitle(order)}
+              title={hhOrderDraftTitle(order, orderDetails)}
               disabled={locked || !canDraft}
               busy={cartDraftBusyId === order.id}
               onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
             />
-            {hhOrderCanPlace(order) ? (
+            {!orderDetails && hhOrderCanPlace(order) ? (
               <HHPlaceButton
                 size="sm"
                 title={hhPlaceActionTitle(placeOrderEnabled)}

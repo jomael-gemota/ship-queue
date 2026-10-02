@@ -4,7 +4,8 @@ import { HHActionRow, HHBatchProgress, HHBatchProgressLabels, HHConfirmModal, HH
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
-import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
+import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders, hhProgressActivity } from '../lib/hhSportswear'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
   ClockIcon,
   DeleteBatchButton,
@@ -61,7 +62,9 @@ export default function HHSportswear() {
     placeOrderEnabled,
     brand,
     brandPath,
+    syncStatus,
   } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -247,7 +250,7 @@ export default function HHSportswear() {
                       />
                     </Td>
                     <Td compact className="text-center">
-                      <HHBatchProgress orders={group.children} />
+                      <HHBatchProgress orders={group.children} activity={hhProgressActivity(syncStatus, group.id)} />
                     </Td>
                     <Td compact>
                       <Link
@@ -271,12 +274,12 @@ export default function HHSportswear() {
                       />
                       <HHRedraftButton
                         size="sm"
-                        title={hhGroupDraftTitle(group.children)}
+                        title={hhGroupDraftTitle(group.children, orderDetails)}
                         disabled={mutateLocked || !canDraft}
                         busy={cartDraftBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
-                      {hhPlaceableOrders(group.children).length > 0 ? (
+                      {!orderDetails && hhPlaceableOrders(group.children).length > 0 ? (
                         <HHPlaceButton
                           size="sm"
                           title={hhPlaceActionTitle(placeOrderEnabled)}

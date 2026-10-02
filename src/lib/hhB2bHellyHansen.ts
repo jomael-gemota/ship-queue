@@ -232,7 +232,7 @@ function addToCartPayload(
         purchase_order: asString(request.po) || null,
         customer_number: config.accountId,
         location_number: null,
-        client_fields: { ship_via: HH_B2B_DEFAULT_SHIP_VIA },
+        client_fields: { ship_via: request.shipVia === 'MSB' ? 'MSB' : HH_B2B_DEFAULT_SHIP_VIA },
         programs: [],
         page_products: pageProducts,
         drop_ship_address: toDropShipAddress(request.address),
@@ -307,6 +307,144 @@ export async function fetchHhB2bOrderNumber(
   return parseOrderNumber(record);
 }
 
+function slimPageItem(item: Record<string, unknown>): PageItem {
+  const quantity = Number(item.quantity);
+  const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
+  const pageItem: PageItem = {
+    stock_item_key: asString(item.stock_item_key),
+    stock_item_sku: asString(item.stock_item_sku),
+    stock_item_upc: asString(item.stock_item_upc),
+    quantity: safeQuantity,
+    reference_quantity: null,
+  };
+  if (safeQuantity > 0) {
+    pageItem.quantity_source = [{ source: 'NA', quantity: safeQuantity }];
+  }
+  return pageItem;
+}
+
+/** Create-shaped body. Posting the raw GET document back 404s; the portal saves with this shape. */
+function placeOrderPayload(document: Record<string, unknown>, documentId: string): Record<string, unknown> {
+  const pages = Array.isArray(document.pages) ? document.pages : [];
+  return {
+    _id: documentId,
+    name: asString(document.name) || 'Elastic Order',
+    note: asString(document.note),
+    notes: asString(document.notes),
+    catalog_key: asString(document.catalog_key),
+    customer: asString(document.customer),
+    payment: null,
+    version_created: asString(document.version_created) || 'dbf01d3',
+    version_updated: asString(document.version_updated) || 'dbf01d3',
+    client_created: asString(document.client_created) || 'scramble',
+    client_updated: 'scramble',
+    platform_created: asString(document.platform_created) || USER_AGENT,
+    platform_updated: USER_AGENT,
+    programs: [],
+    do_submit: true,
+    do_review: false,
+    do_reject: false,
+    duplicated_from_id: null,
+    duplicated_for: null,
+    share_to: null,
+    share_to_selection: null,
+    shared_to: null,
+    shared_by: null,
+    copied_to: null,
+    pages: pages.map((pageRaw) => {
+      const page = asRecord(pageRaw) ?? {};
+      const products = Array.isArray(page.page_products) ? page.page_products : [];
+      return {
+        name: asString(page.name) || 'Shipment 1',
+        type: asString(page.type),
+        note: page.note ?? null,
+        arrive_on: asString(page.arrive_on),
+        cancel_on: asString(page.cancel_on),
+        purchase_order: asString(page.purchase_order) || null,
+        customer_number: asString(page.customer_number) || asString(document.customer),
+        location_number: page.location_number ?? null,
+        client_fields: asRecord(page.client_fields) ?? {},
+        programs: [],
+        page_products: products.map((productRaw, index) => {
+          const product = asRecord(productRaw) ?? {};
+          const items = Array.isArray(product.page_items) ? product.page_items : [];
+          return {
+            product_number: asString(product.product_number),
+            color_code: asString(product.color_code),
+            position: Number(product.position) || index + 1,
+            page_items: items.map((item) => slimPageItem(asRecord(item) ?? {})),
+            coordination_group: null,
+          };
+        }),
+        drop_ship_address: asRecord(page.drop_ship_address) ?? {},
+      };
+    }),
+    whiteboard: null,
+    client_fields: asRecord(document.client_fields) ?? {},
+  };
+}
+
+function assertOrderSubmitted(record: Record<string, unknown> | null): void {
+  const error = record?.error;
+  if (error) {
+    throw new HhB2bDraftError(`B2B place failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
+  }
+  if (asString(record?.type) === 'error') {
+    throw new HhB2bDraftError(asString(record?.content) || 'B2B place failed');
+  }
+  if (asString(record?.state) === 'draft') {
+    throw new HhB2bDraftError('B2B place did not submit the draft');
+  }
+}
+
+function pageShipVia(document: Record<string, unknown>): string {
+  const pages = Array.isArray(document.pages) ? document.pages : [];
+  const page = asRecord(pages[0]);
+  const fields = asRecord(page?.client_fields);
+  return asString(fields?.ship_via);
+}
+
+/** Change Ship Via on the existing draft. The document id and order number stay. */
+export async function updateHellyHansenSportsShipVia(
+  config: HhB2bConfig,
+  cookie: string,
+  documentId: string,
+  shipVia: string
+): Promise<void> {
+  const id = documentId.trim();
+  if (!id || !looksLikeMongoObjectId(id)) {
+    throw new HhB2bDraftError('Cannot change Ship Via without a live Helly Hansen document id');
+  }
+  const code = shipVia === 'MSB' ? 'MSB' : HH_B2B_DEFAULT_SHIP_VIA;
+  const document = await fetchHhB2bDocument(config, cookie, id);
+  const payload = placeOrderPayload(document, id);
+  payload.do_submit = false;
+  const pages = Array.isArray(payload.pages) ? payload.pages : [];
+  for (const pageRaw of pages) {
+    const page = asRecord(pageRaw);
+    if (!page) continue;
+    const fields = asRecord(page.client_fields) ?? {};
+    page.client_fields = { ...fields, ship_via: code };
+  }
+  const updated = await b2bRequest(config, cookie, `/api/documents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  const record = asRecord(updated);
+  const error = record?.error;
+  if (error) {
+    throw new HhB2bDraftError(`B2B Ship Via update failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
+  }
+  if (asString(record?.type) === 'error') {
+    throw new HhB2bDraftError(asString(record?.content) || 'B2B Ship Via update failed');
+  }
+  const fresh = await fetchHhB2bDocument(config, cookie, id);
+  const actual = pageShipVia(fresh);
+  if (actual !== code) {
+    throw new HhB2bDraftError(`B2B kept Ship Via "${actual || 'blank'}" instead of "${code}"`);
+  }
+}
+
 export async function submitHellyHansenSportsOrder(
   config: HhB2bConfig,
   cookie: string,
@@ -318,34 +456,11 @@ export async function submitHellyHansenSportsOrder(
   }
 
   const document = await fetchHhB2bDocument(config, cookie, id);
-  const payload: Record<string, unknown> = {
-    ...document,
-    _id: asString(document._id) || asString(document.id) || id,
-    do_submit: true,
-    do_review: false,
-    do_reject: false,
-  };
-  delete payload.error;
-
-  let created: unknown;
-  try {
-    created = await b2bRequest(config, cookie, '/api/documents/', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    if (!(err instanceof HhB2bDraftError) || !/B2B 404 /.test(err.message)) throw err;
-    created = await b2bRequest(config, cookie, `/api/documents/${id}/`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  const record = asRecord(created);
-  const error = record?.error;
-  if (error) {
-    throw new HhB2bDraftError(`B2B place failed: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
-  }
+  const created = await b2bRequest(config, cookie, `/api/documents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(placeOrderPayload(document, id)),
+  });
+  assertOrderSubmitted(asRecord(created));
 }
 
 function skuLabel(item: HhB2bDraftItem): string {

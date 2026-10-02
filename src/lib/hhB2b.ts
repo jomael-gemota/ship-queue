@@ -2,7 +2,7 @@
  * B2B ASAP / Builder Cart client (Helly Hansen Sports / Scramble).
  *
  * Cart drafts go through HTTP calls that imitate the B2B site — not Puppeteer.
- * Place Order (`do_submit: true`) is a separate path in hhCartPlace, gated by brand config.
+ * Place Order (`PUT /api/documents/:id` with `do_submit: true`) is a separate path in hhCartPlace, gated by brand config.
  */
 
 import { hhBrandId, type HHBrandId } from './hhBrand';
@@ -12,7 +12,7 @@ import {
   loadHhB2bConfig,
   loadHhB2bCookie,
 } from './hhB2bConfig';
-import { createHellyHansenSportsDraft } from './hhB2bHellyHansen';
+import { createHellyHansenSportsDraft, updateHellyHansenSportsShipVia } from './hhB2bHellyHansen';
 
 export { HhB2bAuthError, HhB2bDraftError } from './hhB2bConfig';
 
@@ -40,6 +40,8 @@ export interface HhB2bDraftRequest {
   po: string;
   address: HhB2bDraftAddress;
   items: HhB2bDraftItem[];
+  /** Helly Hansen Ship Via code. Omitted drafts use Default. */
+  shipVia?: string;
 }
 
 export interface HhB2bDraftResult {
@@ -75,4 +77,16 @@ export async function createHhB2bDraft(
     `[hh-b2b] Drafted ${request.amazonOrderId} PO ${request.po} on ${config.catalog} · Order #${created.orderNumber}`
   );
   return { draftId: created.documentId, orderNumber: created.orderNumber, remote: true };
+}
+
+/** Write Ship Via onto a live Helly Hansen draft. Does not create a new document. */
+export async function updateHhB2bShipVia(
+  documentId: string,
+  shipVia: string,
+  brand: HHBrandId | unknown = 'sportswear'
+): Promise<void> {
+  const brandId = hhBrandId(brand);
+  const config = await loadHhB2bConfig(brandId);
+  const cookie = await loadHhB2bCookie(brandId);
+  await updateHellyHansenSportsShipVia(config, cookie, documentId, shipVia);
 }

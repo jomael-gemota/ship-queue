@@ -33,13 +33,19 @@ import {
   clearHhCartVerification,
   enqueueHhCartVerify,
   getHhCartVerifyQueued,
+  getHhCartVerifyRuntime,
   invalidateHhCartVerification,
   liveCompareHhCarts,
 } from '../services/hhCartVerify';
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
+import { loadHhB2bConfig } from '../lib/hhB2bConfig';
+import { matchingSkuExclude } from '../lib/hhSkuExclude';
+import { hhShipViaForDraft, HH_SHIP_VIA_UI_PREVIEW_SOURCE, type HhShipViaOverride } from '../lib/hhShipVia';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
-import { HhB2bAuthError, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrand, hhBrandFromRequest, hhBrandId, type HHBrandId } from '../lib/hhBrand';
+import { HhB2bAuthError, HhB2bDraftError, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { updateHhB2bShipVia } from '../lib/hhB2b';
+import { looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { hhBrand, hhBrandFromRequest, hhBrandId, hhDraftMode, type HHBrandId } from '../lib/hhBrand';
 import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
 import { hhCartItems } from '../lib/hhLineItems';
 import { withHhGroupLock } from '../lib/hhGroupLock';
@@ -74,8 +80,13 @@ export interface HHChildOrderDto {
   notes: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
-  placeError: string;
-  cartError: string;
+    placeError: string;
+    cartError: string;
+    shipVia: string;
+    shipViaReason: string;
+    shipViaOverride: '' | 'default' | 'usps';
+    sellerNotesResult: '' | 'updated' | 'already' | 'failed';
+    sellerNotesError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -176,6 +187,17 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
       : mapLegacyHhStatus((order as { status?: string }).status).cartStatus,
     placeError: order.placeError ?? '',
     cartError: order.cartError ?? '',
+    shipVia: order.shipVia ?? '',
+    shipViaReason: order.shipViaReason ?? '',
+    shipViaOverride:
+      order.shipViaOverride === 'default' || order.shipViaOverride === 'usps' ? order.shipViaOverride : '',
+    sellerNotesResult:
+      order.sellerNotesResult === 'updated' ||
+      order.sellerNotesResult === 'already' ||
+      order.sellerNotesResult === 'failed'
+        ? order.sellerNotesResult
+        : '',
+    sellerNotesError: order.sellerNotesError ?? '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -237,6 +259,9 @@ function emptyImportedOrder(orderId: string, po: string) {
     b2bDraftId: '',
     cartError: '',
     placeError: '',
+    shipVia: '',
+    shipViaReason: '',
+    shipViaOverride: '',
     verifyIssues: [],
     verifyRows: [],
     verifiedAt: null,
@@ -367,6 +392,15 @@ function requestBrand(req: Request): HHBrandId {
   return hhBrandFromRequest(req);
 }
 
+function rejectOrderDetailsPlace(req: Request, res: Response): boolean {
+  if (hhDraftMode(requestBrand(req)) !== 'order-details') return false;
+  const name = hhBrand(requestBrand(req)).name;
+  res.status(400).json({
+    message: `${name} drafts are saved on the portal and are not submitted.`,
+  });
+  return true;
+}
+
 function isBrandGroup(group: { brand?: string } | null | undefined, req: Request): group is NonNullable<typeof group> {
   return Boolean(group) && hhBrandId(group?.brand) === requestBrand(req);
 }
@@ -380,6 +414,7 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
       getOrCreateHhB2bConfig(brand, false),
     ]);
     const place = getHhCartPlaceRuntime();
+    const verify = getHhCartVerifyRuntime();
     res.json({
       data: {
         ...getHhScSyncRuntime(),
@@ -388,10 +423,15 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
         cart: {
           ...getHhCartDraftRuntime(),
           pendingUndrafted,
-          verifying: getHhCartVerifyQueued() > 0,
+          verifying: verify.running || verify.queuedGroupIds.length > 0 || getHhCartVerifyQueued() > 0,
+          verifyCurrentGroupId: verify.currentGroupId,
+          verifyCurrentOrderId: verify.currentOrderId,
+          verifyQueuedGroupIds: verify.queuedGroupIds,
           placing: place.running || place.queued > 0,
+          placeCurrentGroupId: place.currentGroupId,
           placeCurrentOrderId: place.currentOrderId,
           placeQueued: place.queued,
+          placeQueuedGroupIds: place.queuedGroupIds,
         },
       },
     });
@@ -400,6 +440,26 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
   }
 };
 
+function isShipViaPreview(group: { sourceFileName?: string }): boolean {
+  return group.sourceFileName === HH_SHIP_VIA_UI_PREVIEW_SOURCE;
+}
+
+function paintPreviewShipVia(child: IHHChildOrder): void {
+  const override: HhShipViaOverride =
+    child.shipViaOverride === 'default' || child.shipViaOverride === 'usps' ? child.shipViaOverride : '';
+  const choice = hhShipViaForDraft(
+    {
+      line1: child.addressLine1,
+      line2: child.addressLine2,
+      city: child.city,
+      state: child.state,
+    },
+    override,
+  );
+  child.shipVia = choice.code;
+  child.shipViaReason = choice.reason;
+}
+
 function resetCartForResync(child: IHHChildOrder): void {
   if (child.cartStatus === 'placed') return;
   child.cartStatus = HH_DEFAULT_CART_STATUS;
@@ -407,6 +467,8 @@ function resetCartForResync(child: IHHChildOrder): void {
   child.referenceNumber = '';
   child.placeError = '';
   child.cartError = '';
+  child.shipVia = '';
+  child.shipViaReason = '';
   clearHhCartVerification(child);
 }
 
@@ -435,6 +497,8 @@ function prepareCartRedraft(group: IHHOrderGroup, childId?: string): number {
     child.referenceNumber = '';
     child.placeError = '';
     child.cartError = '';
+    child.shipVia = '';
+    child.shipViaReason = '';
     clearHhCartVerification(child);
     prepared += 1;
   }
@@ -480,6 +544,10 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
       res.status(400).json({ message: 'This batch has no orders to re-sync.' });
       return;
     }
+    if (isShipViaPreview(group)) {
+      res.status(400).json({ message: 'This preview batch is sample data. It is not synced from SellerCloud.' });
+      return;
+    }
     if (group.children.every(isHhPlaced)) {
       res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
       return;
@@ -522,6 +590,10 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
       res.status(409).json({ message: 'Placed orders cannot be re-synced.' });
       return;
     }
+    if (isShipViaPreview(group)) {
+      res.status(400).json({ message: 'This preview batch is sample data. It is not synced from SellerCloud.' });
+      return;
+    }
 
     const draftCart = parseBoolFlag(req.body?.draftCart, true);
     markChildrenPending(group, String(order._id), { resetCart: draftCart });
@@ -549,6 +621,17 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
 
     if (group.children.length > 0 && group.children.every(isHhPlaced)) {
       res.status(409).json({ message: 'Placed orders cannot have their cart regenerated.' });
+      return;
+    }
+
+    if (isShipViaPreview(group)) {
+      for (const child of group.children) {
+        if (isHhPlaced(child)) continue;
+        paintPreviewShipVia(child);
+      }
+      group.markModified('children');
+      await group.save();
+      res.json({ data: serializeGroup(group) });
       return;
     }
 
@@ -602,11 +685,70 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
       return;
     }
 
+    const requestedShipVia = req.body?.shipVia;
+    if (requestedShipVia !== undefined) {
+      if (requestedShipVia !== 'default' && requestedShipVia !== 'usps' && requestedShipVia !== 'auto') {
+        res.status(400).json({ message: 'shipVia must be default, usps, or auto.' });
+        return;
+      }
+      if (hhDraftMode(requestBrand(req)) !== 'b2b') {
+        res.status(400).json({ message: 'Ship Via is only set for Helly Hansen carts.' });
+        return;
+      }
+      const nextOverride: HhShipViaOverride = requestedShipVia === 'auto' ? '' : requestedShipVia;
+      if (isShipViaPreview(group)) {
+        order.shipViaOverride = nextOverride;
+        paintPreviewShipVia(order);
+        group.markModified('children');
+        await group.save();
+        res.json({ data: serializeGroup(group) });
+        return;
+      }
+      const documentId = (order.b2bDraftId ?? '').trim();
+      if (!looksLikeMongoObjectId(documentId)) {
+        res.status(400).json({ message: 'Draft a cart before changing Ship Via.' });
+        return;
+      }
+      const choice = hhShipViaForDraft(
+        {
+          line1: order.addressLine1,
+          line2: order.addressLine2,
+          city: order.city,
+          state: order.state,
+        },
+        nextOverride,
+      );
+      await updateHhB2bShipVia(documentId, choice.code, requestBrand(req));
+      const saved = await withHhGroupLock(String(group._id), async () => {
+        const fresh = await HHOrderGroup.findById(group._id);
+        if (!fresh) return null;
+        const child = fresh.children.id(String(order._id));
+        if (!child || child.cartStatus === 'placed') return fresh;
+        if ((child.b2bDraftId ?? '').trim() !== documentId) return fresh;
+        child.shipViaOverride = nextOverride;
+        child.shipVia = choice.code;
+        child.shipViaReason = choice.reason;
+        fresh.markModified('children');
+        await fresh.save();
+        return fresh;
+      });
+      res.json({ data: serializeGroup(saved ?? group) });
+      return;
+    }
+
     prepareCartRedraft(group, String(order._id));
     await group.save();
     enqueueHhCartDraft(String(group._id), String(order._id));
     res.json({ data: serializeGroup(group) });
   } catch (error) {
+    if (error instanceof HhB2bAuthError) {
+      res.status(401).json({ message: error.message });
+      return;
+    }
+    if (error instanceof HhB2bDraftError) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     res.status(500).json({ message: 'Failed to regenerate HH Sportswear cart draft', error: (error as Error).message });
   }
 };
@@ -626,7 +768,10 @@ export const rerunGroupCartVerify = async (req: Request, res: Response): Promise
     }
     if (!group.children.some(childCanVerify)) {
       res.status(400).json({
-        message: 'No B2B drafts to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+        message:
+          hhDraftMode(requestBrand(req)) === 'order-details'
+            ? 'No carts to check. Sync order details first so a cart can be drafted.'
+            : 'No B2B drafts to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
       });
       return;
     }
@@ -663,7 +808,10 @@ export const rerunOrderCartVerify = async (req: Request, res: Response): Promise
     }
     if (!childCanVerify(order)) {
       res.status(400).json({
-        message: 'This order has no B2B draft to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
+        message:
+          hhDraftMode(requestBrand(req)) === 'order-details'
+            ? 'This order has no cart to check. Sync order details first.'
+            : 'This order has no B2B draft to check. Cart must be Draft, Ready, or Review with a live Helly Hansen document.',
       });
       return;
     }
@@ -760,6 +908,7 @@ export const placeGroupCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Group not found' });
       return;
     }
+    if (rejectOrderDetailsPlace(req, res)) return;
     if (!group.children.some(childCanPlace)) {
       res.status(400).json({
         message: 'No Ready orders to place. Cart must match the live Helly Hansen draft.',
@@ -797,6 +946,7 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Order not found' });
       return;
     }
+    if (rejectOrderDetailsPlace(req, res)) return;
     if (isHhPlaced(order)) {
       res.status(409).json({ message: 'This order is already placed.' });
       return;
@@ -1110,6 +1260,7 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       return;
     }
 
+    let ruleMessage = '';
     const group = await withHhGroupLock(groupId, async () => {
       const found = await HHOrderGroup.findById(groupId);
       if (!isBrandGroup(found, req)) return null;
@@ -1118,6 +1269,15 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       if (isHhPlaced(order)) return 'placed';
       const item = order.items.find((row) => String(row._id) === itemId);
       if (!item) return 'item';
+
+      if (!excluded) {
+        const tokens = (await loadHhB2bConfig(hhBrandId(found.brand))).skuExcludes;
+        const hit = matchingSkuExclude(item.sku, tokens);
+        if (hit) {
+          ruleMessage = `SKU ${item.sku} contains ${hit} and stays off the cart.`;
+          return 'rule';
+        }
+      }
 
       item.excluded = excluded;
       item.excludeNote = excluded ? asString(body.excludeNote, 500) : '';
@@ -1148,6 +1308,10 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
     }
     if (group === 'item') {
       res.status(404).json({ message: 'Item not found' });
+      return;
+    }
+    if (group === 'rule') {
+      res.status(409).json({ message: ruleMessage || 'This SKU stays off the cart.' });
       return;
     }
 

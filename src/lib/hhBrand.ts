@@ -1,9 +1,15 @@
-export const HH_BRAND_IDS = ['sportswear', 'workwear'] as const;
+export const HH_BRAND_IDS = ['sportswear', 'workwear', 'thorogood'] as const;
 export type HHBrandId = (typeof HH_BRAND_IDS)[number];
+
+/** `b2b` posts a live supplier cart. `order-details` drafts that cart from synced Seller Central details. */
+export type HhDraftMode = 'b2b' | 'order-details';
+
+/** Stored on the order until a supplier API returns a real document id. */
+export const ORDER_DETAILS_DRAFT_PREFIX = 'details:';
 
 export interface HhBrandDefinition {
   id: HHBrandId;
-  slug: 'hh-sportswear' | 'hh-workwear';
+  slug: 'hh-sportswear' | 'hh-workwear' | 'thorogood';
   name: string;
   supplier: string;
   configKey: string;
@@ -12,6 +18,7 @@ export interface HhBrandDefinition {
   baseUrl: string;
   catalog: string;
   accountId: string;
+  draftMode: HhDraftMode;
 }
 
 export const HH_BRANDS: Record<HHBrandId, HhBrandDefinition> = {
@@ -26,6 +33,7 @@ export const HH_BRANDS: Record<HHBrandId, HhBrandDefinition> = {
     baseUrl: 'https://b2bsport.hellyhansen.com',
     catalog: 'ASAPSPORT',
     accountId: '9014876',
+    draftMode: 'b2b',
   },
   workwear: {
     id: 'workwear',
@@ -38,13 +46,35 @@ export const HH_BRANDS: Record<HHBrandId, HhBrandDefinition> = {
     baseUrl: 'https://b2bwork.hellyhansen.com',
     catalog: 'ASAPWW',
     accountId: '9062220',
+    draftMode: 'b2b',
+  },
+  thorogood: {
+    id: 'thorogood',
+    slug: 'thorogood',
+    name: 'Thorogood',
+    supplier: 'Thorogood',
+    configKey: 'thorogood',
+    cookieJarKey: '',
+    cookieJarName: 'Thorogood',
+    baseUrl: 'https://thorogood.thorogoodb2b.com',
+    catalog: 'Order details sync',
+    accountId: '23550',
+    draftMode: 'order-details',
   },
 };
 
 export const HH_DEFAULT_BRAND: HHBrandId = 'sportswear';
 
 export function isHhBrandId(value: unknown): value is HHBrandId {
-  return value === 'sportswear' || value === 'workwear';
+  return typeof value === 'string' && (HH_BRAND_IDS as readonly string[]).includes(value);
+}
+
+export function hhDraftMode(brand: HHBrandId | unknown): HhDraftMode {
+  return hhBrand(brand).draftMode;
+}
+
+export function isOrderDetailsDraftId(value: string | null | undefined): boolean {
+  return (value ?? '').startsWith(ORDER_DETAILS_DRAFT_PREFIX);
 }
 
 export function hhBrandId(value: unknown): HHBrandId {

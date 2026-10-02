@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { getHHScSyncStatus, hhWaitingForCartCount } from '../../lib/hhSportswear'
 import type { HHOrderGroup, HHScSyncStatus as HHScSyncSnapshot } from '../../lib/hhSportswear'
 import { useHHList } from '../../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../../lib/hhBrand'
 import { Tooltip } from '../Tooltip'
 
 const POLL_IDLE_MS = 5000
@@ -67,7 +68,8 @@ function statusLabel(data: HHScSyncSnapshot, waitingForCart: number): string {
 }
 
 export function HHScSyncStatus() {
-  const { refreshSilent, brand, level, getGroup } = useHHList()
+  const { refreshSilent, brand, level, getGroup, setSyncStatus } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { groupId = '' } = useParams<{ groupId: string }>()
   const group = groupId ? getGroup(groupId) : undefined
   const [data, setData] = useState<HHScSyncSnapshot | null>(null)
@@ -94,6 +96,7 @@ export function HHScSyncStatus() {
         .then((res) => {
           if (cancelled) return
           setData(res.data)
+          setSyncStatus(res.data)
           running =
             res.data.running ||
             Boolean(res.data.cart?.running) ||
@@ -117,7 +120,7 @@ export function HHScSyncStatus() {
       cancelled = true
       stop()
     }
-  }, [brand])
+  }, [brand, setSyncStatus])
 
   if (!data) return null
 
@@ -133,7 +136,9 @@ export function HHScSyncStatus() {
   const ago = formatAgo(data.lastSuccessAt || cart?.lastSuccessAt || null)
   const title = [
     ago ? `Last success ${ago}` : null,
-    'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
+    orderDetails
+      ? 'Fills details after upload, then drafts a cart on the portal and checks it against those details. Place Order stays off.'
+      : 'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
   ]
     .filter(Boolean)
     .join(' · ')

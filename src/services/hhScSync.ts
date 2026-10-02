@@ -9,12 +9,17 @@ import {
   HhScAuthError,
   HhScNotFoundError,
   HhScRateLimitError,
+  composeSellerNoteWithPo,
   fetchScBuyerInfo,
   fetchScOrder,
   loadSellerCentralCookie,
+  updateScSellerNotes,
 } from '../lib/hhSellerCentral';
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
 import { mergeHhItemExclusions } from '../lib/hhLineItems';
+import { hhBrandId, hhDraftMode } from '../lib/hhBrand';
+import { loadHhB2bConfig } from '../lib/hhB2bConfig';
+import { applyHhSkuExcludes } from '../lib/hhSkuExclude';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { enqueueHhCartDraft } from './hhCartDraft';
 import { childCanVerify, enqueueHhCartVerify, invalidateHhCartVerification } from './hhCartVerify';
@@ -33,6 +38,7 @@ export interface HhScSyncRuntime {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queuedGroups: number;
+  queuedGroupIds: string[];
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -87,12 +93,17 @@ function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+function queuedGroupIds(jobs: Array<{ groupId: string }>): string[] {
+  return [...new Set(jobs.map((job) => job.groupId))];
+}
+
 export function getHhScSyncRuntime(): HhScSyncRuntime {
   return {
     running: draining,
     currentGroupId,
     currentOrderId,
     queuedGroups: queue.length,
+    queuedGroupIds: queuedGroupIds(queue),
     lastRunAt: iso(lastRunAt),
     lastSuccessAt: iso(lastSuccessAt),
     lastError,
@@ -110,7 +121,12 @@ export async function countUnsyncedHhOrders(brand?: string): Promise<number> {
   return rows[0]?.count ?? 0;
 }
 
-function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetailsStatus): void {
+function applyFill(
+  child: IHHChildOrder,
+  fill: HhScFill,
+  detailsStatus: HHDetailsStatus,
+  skuExcludes: readonly string[]
+): void {
   if (child.cartStatus === 'placed') return;
   child.customerName = fill.customerName;
   child.customerEmail = fill.customerEmail;
@@ -122,6 +138,7 @@ function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetail
   child.postalCode = fill.postalCode;
   child.country = fill.country || 'US';
   const nextItems = mergeHhItemExclusions(child.items, fill.items);
+  applyHhSkuExcludes(nextItems, skuExcludes);
   const items = child.items as unknown as { splice: (start: number, del: number, ...rest: typeof nextItems) => void };
   items.splice(0, (child.items as unknown[]).length, ...nextItems);
   child.detailsStatus = detailsStatus;
@@ -167,11 +184,14 @@ async function fillChild(
   child: IHHChildOrder,
   cookie: string,
   run: HhScSyncRunResult,
-  autoDraft: boolean
+  autoDraft: boolean,
+  skuExcludes: readonly string[]
 ): Promise<void> {
   currentOrderId = child.orderId;
   const groupId = String(group._id);
   const childId = String(child._id);
+  const notesSettled = child.sellerNotesResult === 'updated' || child.sellerNotesResult === 'already';
+  const stampNotes = child.detailsStatus !== 'synced' && !notesSettled && !child.sellerNotesStamped;
   const scOrder = await fetchScOrder(child.orderId, cookie);
   if (scOrder.sellerNotes && scOrder.sellerNotes !== child.po) {
     console.warn(
@@ -184,24 +204,61 @@ async function fillChild(
       console.warn(`${LOG} Skipped ${child.orderId} — missing order.blob on refresh`);
       return;
     }
-    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed'));
+    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed', skuExcludes));
     run.flagged += 1;
     console.warn(`${LOG} Failed ${child.orderId} — missing order.blob`);
     return;
   }
 
   const buyer = await fetchScBuyerInfo(child.orderId, scOrder.blob, cookie);
-  const saved = await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, buyer), 'synced'));
+  const saved = await persistChild(groupId, childId, (row) =>
+    applyFill(row, mapScFill(scOrder, buyer), 'synced', skuExcludes)
+  );
   run.synced += 1;
   lastSuccessAt = new Date();
   lastError = null;
   const itemCount = saved?.items.length ?? child.items.length;
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
+  if (saved && saved.detailsStatus === 'synced' && stampNotes) {
+    const outcome = await stampSellerNotePo(child.orderId, child.po, scOrder.sellerNotes, cookie);
+    await persistChild(groupId, childId, (row) => {
+      row.sellerNotesResult = outcome.result;
+      row.sellerNotesError = outcome.error;
+      row.sellerNotesStamped = outcome.result === 'updated' || outcome.result === 'already';
+    });
+  }
   if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
     enqueueHhCartDraft(groupId, childId);
   } else if (saved && childCanVerify(saved)) {
     enqueueHhCartVerify(groupId, childId);
   }
+}
+
+async function stampSellerNotePo(
+  orderId: string,
+  po: string,
+  existingNotes: string,
+  cookie: string
+): Promise<{ result: 'updated' | 'already' | 'failed'; error: string }> {
+  const purchaseOrder = po.trim();
+  if (!purchaseOrder) {
+    console.warn(`${LOG} ${orderId} synced without a PO — skipped Seller Notes`);
+    return { result: 'failed', error: 'This order has no PO' };
+  }
+  const noteText = composeSellerNoteWithPo(existingNotes, purchaseOrder);
+  if (noteText == null) {
+    console.log(`${LOG} ${orderId} Seller Notes already include PO ${purchaseOrder}`);
+    return { result: 'already', error: '' };
+  }
+  try {
+    await updateScSellerNotes(orderId, noteText, cookie);
+  } catch (err) {
+    const message = truncateError(err instanceof Error ? err.message : String(err));
+    console.warn(`${LOG} ${orderId} synced, Seller Notes were not updated: ${message}`);
+    return { result: 'failed', error: message };
+  }
+  console.log(`${LOG} ${orderId} Seller Notes updated with PO ${purchaseOrder}`);
+  return { result: 'updated', error: '' };
 }
 
 function pickNextChild(group: IHHOrderGroup, job: HhScSyncJob, attempted: Set<string>): IHHChildOrder | undefined {
@@ -227,6 +284,9 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
   }
 
   const attempted = new Set<string>();
+  const brandGroup = await HHOrderGroup.findById(job.groupId).select('brand');
+  const brand = hhBrandId(brandGroup?.brand);
+  const skuExcludes = hhDraftMode(brand) === 'b2b' ? (await loadHhB2bConfig(brand)).skuExcludes : [];
   console.log(`${LOG} Filling ${jobLabel(job)}`);
 
   try {
@@ -247,7 +307,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
 
       attempted.add(String(child._id));
       try {
-        await fillChild(group, child, cookie, run, job.autoDraft);
+        await fillChild(group, child, cookie, run, job.autoDraft, skuExcludes);
       } catch (err) {
         if (err instanceof HhScAuthError || err instanceof HhScRateLimitError) {
           throw new StopGroupError(err.message);
@@ -258,7 +318,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
             continue;
           }
           await persistChild(String(group._id), String(child._id), (row) =>
-            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed')
+            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed', skuExcludes)
           );
           run.flagged += 1;
           lastError = truncateError(`${child.orderId}: ${err.message}`);

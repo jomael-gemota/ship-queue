@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useHHList } from '../../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../../lib/hhBrand'
 import {
   compareHHCart,
   formatCreatedAt,
@@ -116,7 +117,7 @@ function CompareValue({ value, mismatch }: { value: string; mismatch: boolean })
   )
 }
 
-function CompareTable({ rows }: { rows: HHCompareRow[] }) {
+function CompareTable({ rows, cartLabel }: { rows: HHCompareRow[]; cartLabel: string }) {
   const groups = groupedCompareRows(rows)
   return (
     <table className="w-full border-separate border-spacing-0 text-sm">
@@ -125,7 +126,7 @@ function CompareTable({ rows }: { rows: HHCompareRow[] }) {
           <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">Field</th>
           <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">Order details</th>
           <th className="border-b border-[var(--bg-300)] px-1 py-2.5" aria-hidden="true" />
-          <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">B2B cart</th>
+          <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">{cartLabel}</th>
           <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">
             <span className="sr-only">Check</span>
           </th>
@@ -216,10 +217,18 @@ function SummaryList({
   )
 }
 
-function DetailBody({ result, live }: { result: HHCartCompareOrder; live: boolean }) {
+function DetailBody({
+  result,
+  live,
+  orderDetails = false,
+}: {
+  result: HHCartCompareOrder
+  live: boolean
+  orderDetails?: boolean
+}) {
   const mismatchCount = blockingMismatches(result.rows).length
   const matchedCount = result.rows.filter((row) => row.field !== 'orderNumber' && row.match).length
-  const source = live ? 'the live cart' : 'the last check'
+  const source = orderDetails ? 'the order details' : live ? 'the live cart' : 'the last check'
   return (
     <div>
       {result.error ? (
@@ -254,11 +263,15 @@ function DetailBody({ result, live }: { result: HHCartCompareOrder; live: boolea
             </p>
             <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
               {matchedCount} matched
-              {mismatchCount > 0 ? ` · Place Order blocked until this matches` : ' · Place Order will re-check first'}
+              {orderDetails
+                ? ' · Place Order stays off'
+                : mismatchCount > 0
+                  ? ' · Place Order blocked until this matches'
+                  : ' · Place Order will re-check first'}
             </p>
           </div>
           <div className="overflow-x-auto px-1 pb-1">
-            <CompareTable rows={result.rows} />
+            <CompareTable rows={result.rows} cartLabel={orderDetails ? 'Drafted cart' : 'B2B cart'} />
           </div>
         </>
       )}
@@ -366,7 +379,8 @@ function CompareModal({
   )
 }
 
-function lastCheckedSubtitle(orders: HHChildOrder[], live: boolean): string {
+function lastCheckedSubtitle(orders: HHChildOrder[], live: boolean, orderDetails: boolean): string {
+  if (orderDetails) return 'Portal draft · Refresh to check again'
   if (live) return 'Live Helly Hansen cart · Refresh to check again'
   const times = orders.map((order) => order.verifiedAt).filter((value): value is string => Boolean(value))
   if (times.length === 0) return 'Last saved result · Refresh to check the live cart'
@@ -433,11 +447,13 @@ export function HHVerifyCompare({
   size?: 'sm' | 'md'
   trigger?: ReactNode
 }) {
+  const { brand } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { open, setOpen, close, busy, error, results, setResults, live, runCompare } = useCompareModal(groupId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   if (orders.length === 0) return null
 
-  const title = 'Order details vs B2B cart'
+  const title = orderDetails ? 'Order details vs drafted cart' : 'Order details vs B2B cart'
   const sizing = size === 'sm' ? 'px-1.5 py-1' : 'p-2'
   const iconSize = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
   const shown = results ?? orders.map(hhStoredCartCompare)
@@ -485,8 +501,8 @@ export function HHVerifyCompare({
           title={title}
           subtitle={
             selectedOrder
-              ? `${selectedOrder.orderId} · ${lastCheckedSubtitle([selectedOrder], live)}`
-              : lastCheckedSubtitle(orders, live)
+              ? `${selectedOrder.orderId} · ${lastCheckedSubtitle([selectedOrder], live, orderDetails)}`
+              : lastCheckedSubtitle(orders, live, orderDetails)
           }
           busy={busy}
           error={error}
@@ -496,7 +512,7 @@ export function HHVerifyCompare({
           onRefresh={() => runCompare(selectedId ?? undefined)}
         >
           {selected ? (
-            <DetailBody result={selected} live={live} />
+            <DetailBody result={selected} live={live} orderDetails={orderDetails} />
           ) : (
             <SummaryList results={shown} onOpenOrder={(row) => setSelectedId(row.id)} />
           )}
@@ -531,6 +547,8 @@ export function HHVerifiedCell({
   order: HHChildOrder
 }) {
   const verified = hhOrderVerifiedResult(order)
+  const { brand } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { open, setOpen, close, busy, error, results, live, runCompare } = useCompareModal(groupId, order.id)
 
   if (!verified) {
@@ -545,15 +563,15 @@ export function HHVerifiedCell({
 
       {open ? (
         <CompareModal
-          title="Order details vs B2B cart"
-          subtitle={`${order.orderId} · ${lastCheckedSubtitle([order], live)}`}
+          title={orderDetails ? 'Order details vs drafted cart' : 'Order details vs B2B cart'}
+          subtitle={`${order.orderId} · ${lastCheckedSubtitle([order], live, orderDetails)}`}
           busy={busy}
           error={error}
           wide
           onClose={close}
           onRefresh={runCompare}
         >
-          <DetailBody result={detail} live={live} />
+          <DetailBody result={detail} live={live} orderDetails={orderDetails} />
         </CompareModal>
       ) : null}
     </>

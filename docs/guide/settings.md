@@ -81,8 +81,10 @@ admin can change them.
 
 Cookie Jar is a background worker that refreshes stored session cookies on a
 schedule. Settings shows one cookie at a time. **Seller Central Outdoor Equipped US**
-is selected by default. Settings only edits the **schedule**; the cookie value
-itself is never shown.
+is selected by default, and it is the scheduled job. **Helly Hansen Sports B2B**
+calls Sphere with id `b2b-hhsportswear` when that job is enabled. **Helly Hansen
+Work B2B** is stored by hand and has no Sphere refresh. Settings only edits the
+**schedule**; the cookie value itself is never shown.
 
 - **Enabled** — turns that job on or off.
 - **Name** — label in this list. Does not change which fetcher runs.
