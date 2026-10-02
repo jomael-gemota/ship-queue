@@ -201,6 +201,7 @@ Key variables (see `.env.example` for the full list and inline notes):
 | `AUTO_SYNC_ENABLED` / `AUTO_SYNC_INTERVAL_MS` | Initial background order-sync seed config         |
 | `COOKIE_JAR_PORT`                         | Cookie Jar health port (local; default 5001)       |
 | `COOKIE_JAR_OE_US_TOKEN`                  | Sphere API token for Seller Central OE US cookies  |
+| `COOKIE_JAR_HH_SPORTSWEAR_TOKEN`          | Sphere token for HH Sportswear B2B; falls back to `COOKIE_JAR_OE_US_TOKEN` |
 | `HH_B2B_COOKIE` / `HH_B2B_BASE_URL` / `HH_B2B_CATALOG` / `HH_B2B_ACCOUNT_ID` | Optional Sportswear-only Helly Hansen overrides (cookie optional if Configurations / Cookie Jar has it). Workwear is not overridden by these. |
 | `SHIP_FROM_WAREHOUSE_ID` / `SHIP_FROM_*`  | Ship-from origin warehouse / fallback address          |
 
@@ -387,7 +388,7 @@ Hansen B2B (`POST /api/documents/` with `do_submit: false`). Cart becomes
 cross-check then sets Cart to **Ready** or **Review**. Place Order only
 submits Ready orders, and only when Configurations has Place Order on
 (default off). The session cookie lives in that brand’s Configurations page
-or Cookie Jar (`helly-hansen-sports-b2b` / `helly-hansen-work-b2b`). Env
+or Cookie Jar (`helly-hansen-sports-b2b` calls Sphere `b2b-hhsportswear` / `helly-hansen-work-b2b` pasted). Env
 `HH_B2B_*` overrides Sportswear only. The Notes column starts as the uploaded
 filename and can be edited later (for example `Skip: Cancelled`). Each order
 also has its own Notes field. Batch export downloads an `.xlsx` of Order ID,
