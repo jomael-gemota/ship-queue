@@ -67,7 +67,7 @@ export default function AttachmentCell({
 
               {/* Meta row: size + parse status */}
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <span className="text-[11px] text-slate-400">{formatBytes(att.size)}</span>
+                <span className="text-[10px] text-slate-400">{formatBytes(att.size)}</span>
 
                 {job && (
                   <button
@@ -86,7 +86,7 @@ export default function AttachmentCell({
                 )}
 
                 {att.uploadError && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-rose-600 dark:text-rose-400">
+                  <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400">
                     <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
@@ -102,7 +102,7 @@ export default function AttachmentCell({
 
               {/* Full upload error detail */}
               {att.uploadError && (
-                <p className="mt-1 break-words text-[11px] text-rose-600 dark:text-rose-400">
+                <p className="mt-1 break-words text-[10px] text-rose-600 dark:text-rose-400">
                   {att.uploadError}
                 </p>
               )}
