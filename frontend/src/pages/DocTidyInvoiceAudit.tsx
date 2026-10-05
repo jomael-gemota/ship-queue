@@ -5,6 +5,7 @@ import {
   Banner,
   DocumentTypeBadge,
   PaginationArrows,
+  ParseProgressBadge,
   ParseStatusChip,
   Spinner,
   Th,
@@ -252,14 +253,24 @@ function DraggableTh({
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver() }}
       onDrop={(e) => { e.preventDefault(); onDrop() }}
       onDragEnd={onDragEnd}
+      // Right-side column separator is an inline-style inset box-shadow instead of
+      // border-r.  Inline styles survive Chrome's GPU re-compositing after tbody
+      // content changes (skeleton → real rows), whereas Tailwind-generated CSS classes
+      // can be dropped from the repainted layer.  When dragging, the separator is
+      // replaced by a sky-blue inset ring drawn in the same property.
+      style={{
+        boxShadow: isDragging
+          ? 'inset 0 0 0 2px rgb(56 189 248)' // sky-400 drag ring
+          : 'inset -1px 0 0 var(--bg-300)',    // column separator
+      }}
       className={[
-        'sticky top-0 z-20 border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0',
+        'sticky top-0 z-20 border-b border-b-[var(--bg-300)]',
         'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
-        // ── Drag source: sky-blue ring + tinted background so it's obvious what's being moved
+        // ── Drag source: tinted background + opacity so it's obvious what's being moved
         isDragging
-          ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 ring-2 ring-inset ring-sky-400 text-sky-700 dark:text-sky-300'
+          ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300'
           : 'cursor-grab bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
         // ── Drop target: thick sky-blue left bar as an insertion indicator
         isDragTarget
@@ -1939,6 +1950,34 @@ function resolveInvoiceFields(
   }
 }
 
+/**
+ * Extracts a plain string value from a header-only parse job for a given
+ * InvoiceAuditColumn. Mirrors the field-extraction logic in `headerOnlyCellFor`
+ * but returns a raw string suitable for filter comparisons.
+ */
+function headerOnlyColStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): string {
+  const json = job.jsonOutput ?? null
+  switch (colId) {
+    case 'poNumber':
+      return extractJsonField(json,
+        'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no')
+    case 'invoiceDate':
+      return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+    case 'invoiceNumber':
+      return extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
+    case 'terms':
+      return extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms')
+    case 'totalCost':
+      return extractJsonField(json,
+        'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
+        'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice')
+    case 'parsedAt':
+      return job.completedAt ? formatDate(job.completedAt) : ''
+    default:
+      return ''
+  }
+}
+
 function auditColStr(
   colId: InvoiceAuditColumnId,
   order: DocTidyOrderImport,
@@ -3332,13 +3371,21 @@ export default function DocTidyInvoiceAudit() {
    */
   const getColUniqueValues = useCallback((colId: InvoiceAuditColumnId): Map<string, number> => {
     const vals = new Map<string, number>()
-    for (const order of orderImports) {
-      const match = invoiceMatchMap.get(order._id) ?? null
-      const val = auditColStr(colId, order, match).trim()
-      vals.set(val, (vals.get(val) ?? 0) + 1)
+    if (isHeaderOnly) {
+      // Header-only workspaces: rows are parse jobs, not order imports
+      for (const job of jobs) {
+        const val = headerOnlyColStr(colId, job).trim()
+        vals.set(val, (vals.get(val) ?? 0) + 1)
+      }
+    } else {
+      for (const order of orderImports) {
+        const match = invoiceMatchMap.get(order._id) ?? null
+        const val = auditColStr(colId, order, match).trim()
+        vals.set(val, (vals.get(val) ?? 0) + 1)
+      }
     }
     return vals
-  }, [orderImports, invoiceMatchMap])
+  }, [isHeaderOnly, jobs, orderImports, invoiceMatchMap])
 
   /**
    * Client-side filter applied on top of the server-fetched `orderImports`.
@@ -3390,17 +3437,38 @@ export default function DocTidyInvoiceAudit() {
    */
   const filteredHeaderOnlyJobs = useMemo(() => {
     if (!isHeaderOnly) return jobs
-    if (!auditDateFrom && !auditDateTo) return jobs
+
+    const activeColEntries = Object.entries(colFilters).filter(
+      (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
+    )
+    const hasDateFilter = Boolean(auditDateFrom || auditDateTo)
+
+    if (activeColEntries.length === 0 && !hasDateFilter) return jobs
+
     return jobs.filter((job) => {
-      const raw = extractJsonField(job.jsonOutput ?? null,
-        'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
-      const ds = toISODateStr(raw)
-      if (!ds) return false
-      if (auditDateFrom && ds < auditDateFrom) return false
-      if (auditDateTo   && ds > auditDateTo)   return false
+      // ── Column filters ──
+      if (activeColEntries.length > 0) {
+        const passesCol = activeColEntries.every(([colId, allowed]) => {
+          const val = headerOnlyColStr(colId, job).trim()
+          if (!val) return allowed.has(BLANK_SENTINEL)
+          return allowed.has(val)
+        })
+        if (!passesCol) return false
+      }
+
+      // ── Date range filter ──
+      if (hasDateFilter) {
+        const raw = extractJsonField(job.jsonOutput ?? null,
+          'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
+        const ds = toISODateStr(raw)
+        if (!ds) return false
+        if (auditDateFrom && ds < auditDateFrom) return false
+        if (auditDateTo   && ds > auditDateTo)   return false
+      }
+
       return true
     })
-  }, [isHeaderOnly, jobs, auditDateFrom, auditDateTo])
+  }, [isHeaderOnly, jobs, colFilters, auditDateFrom, auditDateTo])
 
   /* ── Org / workspace grouping ── */
   /** Workspaces that have no organization assignment (visible to all users). */
@@ -4485,7 +4553,7 @@ export default function DocTidyInvoiceAudit() {
                                     aria-label="Delete message"
                                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
                                   >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
                                   </button>
@@ -5052,26 +5120,24 @@ export default function DocTidyInvoiceAudit() {
                                         >
                                           {isSending ? (
                                             <Spinner className="h-3.5 w-3.5" />
-                                          ) : (
-                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12 3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                                            </svg>
-                                          )}
+                          ) : (
+                            /* Envelope + arrow — "send to Tidy Agent for processing" */
+                            <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 10.5v7.5a2.25 2.25 0 0 0 2.25 2.25h12.75a2.25 2.25 0 0 0 2.25-2.25v-7.5M2.25 10.5 12 15l9.75-4.5M2.25 10.5v-.75A2.25 2.25 0 0 1 4.5 7.5h9.75" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 5.25 21 2.25m0 0h-3.75m3.75 0v3.75" />
+                            </svg>
+                          )}
                                         </button>
                                       )
                                     }
 
-                                    // Running — icon-only spinner; reasoning/abort lives inside the panel
+                                    // Running — % progress badge; click opens the panel to watch
                                     if (isRunning) {
                                       return (
-                                        <button
-                                          type="button"
-                                          title="Tidy Agent is processing — click to watch"
+                                        <ParseProgressBadge
+                                          jobId={job._id}
                                           onClick={() => setOpenJobId(job._id)}
-                                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400"
-                                        >
-                                          <Spinner className="h-3.5 w-3.5" />
-                                        </button>
+                                        />
                                       )
                                     }
 
@@ -5460,6 +5526,8 @@ export default function DocTidyInvoiceAudit() {
                           />
                         )}
                       </Th>
+                      {/* Fixed actions column header — second column, right after the checkbox */}
+                      <Th label="Actions" align="center" className="w-20" />
                       {visibleCols.map((col) => (
                         <DraggableTh
                           key={col.id}
@@ -5489,8 +5557,6 @@ export default function DocTidyInvoiceAudit() {
                           }}
                         />
                       ))}
-                      {/* Fixed actions column header */}
-                      <Th className="w-8" />
                     </tr>
                   </thead>
                   <tbody>
@@ -5503,12 +5569,12 @@ export default function DocTidyInvoiceAudit() {
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                           <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                          <td className="px-2.5 py-1" />
                           {visibleCols.map((col) => (
                             <td key={col.id} className="px-2.5 py-1">
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
-                          <td className="px-2.5 py-1" />
                         </tr>
                       ))
                     /* ── Header-only: flat list of completed parse jobs ── */
@@ -5556,6 +5622,21 @@ export default function DocTidyInvoiceAudit() {
                                     aria-label={`Select job ${job.filename}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
+                                {/* Per-row actions — always visible, second column */}
+                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteJob(job)}
+                                      title="Delete this parse job"
+                                      className="cursor-pointer rounded p-1 text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-300 transition-colors"
+                                    >
+                                      <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
                                     className={[
@@ -5565,19 +5646,6 @@ export default function DocTidyInvoiceAudit() {
                                     {headerOnlyCellFor(col.id, job)}
                                   </td>
                                 ))}
-                                {/* Per-row delete */}
-                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteJob(job)}
-                                    title="Delete this parse job"
-                                    className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </td>
                               </tr>
                             )
                           })}
@@ -5725,25 +5793,14 @@ export default function DocTidyInvoiceAudit() {
                             rowIdx++
                             return (
                               <tr key={order._id}
-                                className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
+                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
                                 <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
                                     aria-label={`Select order ${order.poNumber}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
-                                {visibleCols.map((col) => (
-                                  <td key={col.id}
-                                    className={[
-                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
-                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
-                                      auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
-                                        auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
-                                    ].join(' ')}>
-                                    {auditCellFor(col.id, order, match)}
-                                  </td>
-                                ))}
-                                {/* Per-row actions: Add Vendor (when needed) + delete */}
+                                {/* Per-row actions — always visible, second column */}
                                 <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
                                     {vendorNeedsSetup && matchedJob && (
@@ -5760,14 +5817,25 @@ export default function DocTidyInvoiceAudit() {
                                       type="button"
                                       onClick={() => setConfirmDeleteAuditRow(order)}
                                       title="Delete this order"
-                                      className="cursor-pointer rounded p-1 text-[var(--text-200)] opacity-0 group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-opacity"
+                                      className="cursor-pointer rounded p-1 text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-300 transition-colors"
                                     >
-                                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                       </svg>
                                     </button>
                                   </div>
                                 </td>
+                                {visibleCols.map((col) => (
+                                  <td key={col.id}
+                                    className={[
+                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
+                                      col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
+                                      auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
+                                        auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
+                                    ].join(' ')}>
+                                    {auditCellFor(col.id, order, match)}
+                                  </td>
+                                ))}
                               </tr>
                             )
                           })
