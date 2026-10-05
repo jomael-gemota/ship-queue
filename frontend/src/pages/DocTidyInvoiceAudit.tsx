@@ -2317,8 +2317,6 @@ export default function DocTidyInvoiceAudit() {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
-  const [emailBulkSending, setEmailBulkSending] = useState(false)
-  const [emailBulkAborting, setEmailBulkAborting] = useState(false)
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
@@ -2343,8 +2341,6 @@ export default function DocTidyInvoiceAudit() {
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
   const [pdfSelectedIds, setPdfSelectedIds] = useState<Set<string>>(new Set())
-  const [pdfBulkSending, setPdfBulkSending] = useState(false)
-  const [pdfBulkAborting, setPdfBulkAborting] = useState(false)
   const pdfSelectAllRef = useRef<HTMLInputElement>(null)
   const [pdfDragOver, setPdfDragOver] = useState(false)
   const [showPdfUploadModal, setShowPdfUploadModal] = useState(false)
@@ -2597,89 +2593,6 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /**
-   * Send all parseable attachments across selected email rows to the Tidy Agent.
-   * Always includes completed jobs (rerun them) — only skips actively
-   * running/pending jobs since those are already being processed.
-   */
-  const handleBulkSendEmailsToAgent = async () => {
-    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
-    const tasks: Array<{ msgId: string; index: number }> = []
-    for (const msg of selectedMsgs) {
-      for (let i = 0; i < msg.attachments.length; i++) {
-        const att = msg.attachments[i]
-        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        // Skip jobs that are actively running — they'll finish on their own
-        if (job && (job.status === 'pending' || job.status === 'processing')) continue
-        tasks.push({ msgId: msg._id, index: i })
-      }
-    }
-    if (tasks.length === 0) return
-    setEmailBulkSending(true)
-    try {
-      await Promise.allSettled(
-        tasks.map(({ msgId, index }) =>
-          authApi.post(`/doc-tidy/messages/${msgId}/attachments/${index}/parse`)
-        )
-      )
-      void fetchEmails(true)
-    } finally {
-      setEmailBulkSending(false)
-    }
-  }
-
-  /**
-   * Send all selected PDF imports to the Tidy Agent.
-   * Always includes completed jobs (rerun them) — only skips actively
-   * running/pending jobs since those are already being processed.
-   */
-  const handleBulkSendPdfsToAgent = async () => {
-    const selected = pdfImports.filter(
-      (imp) =>
-        pdfSelectedIds.has(imp._id) &&
-        imp.parseJob?.status !== 'pending' &&
-        imp.parseJob?.status !== 'processing'
-    )
-    if (selected.length === 0) return
-    setPdfBulkSending(true)
-    try {
-      await Promise.allSettled(
-        selected.map((imp) => authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`))
-      )
-      void fetchPdfImports()
-    } finally {
-      setPdfBulkSending(false)
-    }
-  }
-
-  /**
-   * Abort all running parse jobs across selected email rows.
-   * Only targets jobs that are actively pending or processing — finished/failed
-   * jobs are ignored, same as the per-job Abort in ParseJobPanel.
-   */
-  const handleBulkAbortEmails = async () => {
-    const jobIds: string[] = []
-    for (const msg of emailMessages) {
-      if (!selectedEmailIds.has(msg._id)) continue
-      for (const job of msg.parseJobs ?? []) {
-        if (job.status === 'pending' || job.status === 'processing') {
-          jobIds.push(job._id)
-        }
-      }
-    }
-    if (jobIds.length === 0) return
-    setEmailBulkAborting(true)
-    try {
-      await Promise.allSettled(
-        jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
-      )
-      void fetchEmails(true)
-    } finally {
-      setEmailBulkAborting(false)
-    }
-  }
-
-  /**
    * Abort all running parse jobs across selected PDF imports.
    */
   const handleBulkAbortPdfs = async () => {
@@ -2692,64 +2605,16 @@ export default function DocTidyInvoiceAudit() {
       )
       .map((imp) => imp.parseJob!._id)
     if (jobIds.length === 0) return
-    setPdfBulkAborting(true)
-    try {
-      await Promise.allSettled(
-        jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
-      )
-      void fetchPdfImports()
-    } finally {
-      setPdfBulkAborting(false)
-    }
+    await Promise.allSettled(
+      jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
+    )
+    void fetchPdfImports()
   }
 
   /* Selection helpers */
   const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
 
-  /**
-   * True when every selected PDF import already has a completed parse job —
-   * used to switch the bulk button label to "Send X to Tidy Agent for Rerun".
-   */
-  const allSelectedPdfsCompleted =
-    pdfSelectedIds.size > 0 &&
-    pdfImports
-      .filter((imp) => pdfSelectedIds.has(imp._id))
-      .every((imp) => imp.parseJob?.status === 'completed')
-
-  /**
-   * True when every parseable attachment across all selected email messages
-   * already has a completed parse job — used to switch the bulk button label
-   * to "Send X to Tidy Agent for Rerun".
-   */
-  const allSelectedEmailsCompleted =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .every((m) => {
-        let hasParseable = false
-        for (let i = 0; i < m.attachments.length; i++) {
-          const att = m.attachments[i]
-          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-          hasParseable = true
-          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
-          if (!job || job.status !== 'completed') return false
-        }
-        return hasParseable
-      })
-  /** True when at least one selected email has a running (pending/processing) parse job. */
-  const anySelectedEmailRunning =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
-
-  /** True when at least one selected PDF import has a running parse job. */
-  const anySelectedPdfRunning =
-    pdfSelectedIds.size > 0 &&
-    pdfImports
-      .filter((imp) => pdfSelectedIds.has(imp._id))
-      .some((imp) => imp.parseJob?.status === 'pending' || imp.parseJob?.status === 'processing')
 
   useEffect(() => {
     if (pdfSelectAllRef.current) {
@@ -2776,8 +2641,6 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || Object.values(pdfColFilters).some((s) => s?.size))
-  const pdfStartItem = pdfImportsPagination.total === 0 ? 0 : (pdfPage - 1) * pdfPageSize + 1
-  const pdfEndItem = Math.min(pdfPage * pdfPageSize, pdfImportsPagination.total)
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
     .filter((c): c is PdfImportColumn => Boolean(c))
@@ -3670,9 +3533,6 @@ export default function DocTidyInvoiceAudit() {
       setExporting(false)
     }
   }
-
-  const startItem = orderPagination.total === 0 ? 0 : (orderPage - 1) * orderPageSize + 1
-  const endItem = Math.min(orderPage * orderPageSize, orderPagination.total)
 
   const inputClass =
     'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
