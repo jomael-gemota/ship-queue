@@ -479,9 +479,14 @@ export function ParseProgressBadge({
   onClick?: () => void
 }) {
   const progress = useParseProgress(jobId)
-  if (!progress) return null
-  const pct = Math.min(progress.step * 10, 95)
-  const title = `Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`
+  const pct = progress ? Math.min(progress.step * 10, 95) : null
+  const title = progress
+    ? `Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`
+    : 'Tidy Agent is starting…'
+
+  const content = pct !== null
+    ? <span className="tabular-nums text-[10px] font-semibold leading-none">{pct}%</span>
+    : <Spinner className="h-4 w-4" />
 
   if (onClick) {
     return (
@@ -489,9 +494,9 @@ export function ParseProgressBadge({
         type="button"
         onClick={onClick}
         title={`${title} · Click to watch`}
-        className="shrink-0 cursor-pointer tabular-nums text-[10px] font-semibold leading-none text-sky-600 dark:text-sky-400 animate-pulse hover:text-sky-700 dark:hover:text-sky-300 transition-colors"
+        className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400 animate-pulse"
       >
-        {pct}%
+        {content}
       </button>
     )
   }
@@ -499,9 +504,9 @@ export function ParseProgressBadge({
   return (
     <span
       title={title}
-      className="shrink-0 tabular-nums text-[10px] font-semibold leading-none text-sky-600 dark:text-sky-400 animate-pulse"
+      className="inline-flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400 animate-pulse"
     >
-      {pct}%
+      {content}
     </span>
   )
 }
