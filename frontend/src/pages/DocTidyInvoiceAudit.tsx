@@ -265,7 +265,7 @@ function DraggableTh({
       }}
       className={[
         'sticky top-0 z-20 border-b border-b-[var(--bg-300)]',
-        'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
+        'px-3 py-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap select-none',
         'transition-all duration-100',
         textAlign,
         // ── Drag source: tinted background + opacity so it's obvious what's being moved
@@ -446,7 +446,7 @@ function ColumnFilterDropdown({
     <div
       ref={dropdownRef}
       style={{ position: 'fixed', top, left, width: dropdownWidth, zIndex: 9999 }}
-      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl overflow-hidden text-[11px] flex flex-col"
+      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl overflow-hidden text-[10px] flex flex-col"
     >
       {/* Search */}
       <div className="px-2.5 py-2 border-b border-[var(--bg-300)]">
@@ -456,7 +456,7 @@ function ColumnFilterDropdown({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search values…"
-          className="w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]"
+          className="w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-200)] px-2.5 py-1.5 text-[10px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]"
         />
       </div>
 
@@ -511,7 +511,7 @@ function ColumnFilterDropdown({
         <button
           type="button"
           onClick={clear}
-          className="cursor-pointer text-[11px] text-[var(--text-200)] hover:text-rose-500 hover:underline"
+          className="cursor-pointer text-[10px] text-[var(--text-200)] hover:text-rose-500 hover:underline"
         >
           Clear filter
         </button>
@@ -519,14 +519,14 @@ function ColumnFilterDropdown({
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-2.5 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-2.5 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={apply}
-            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[11px] font-medium text-white"
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[10px] font-medium text-white"
           >
             OK
           </button>
@@ -543,7 +543,7 @@ function DrawerSectionHeader({ icon, label }: { icon: React.ReactNode; label: st
   return (
     <div className="flex items-center gap-2 mb-3">
       {icon}
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)]">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">{label}</p>
     </div>
   )
 }
@@ -587,7 +587,7 @@ function ColumnSettingsDrawer({
         />
         <div className="min-w-0">
           <p className="text-sm font-medium text-[var(--text-100)]">{col.label}</p>
-          <p className="text-[11px] text-[var(--text-200)]">{col.description}</p>
+          <p className="text-[10px] text-[var(--text-200)]">{col.description}</p>
         </div>
       </label>
     </li>
@@ -768,7 +768,7 @@ function WorkspaceEditorDialog({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
               Workspace name
             </label>
             <input
@@ -784,7 +784,7 @@ function WorkspaceEditorDialog({
 
           {/* Import mode — visible for all users, both when creating and editing */}
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
               Import mode
             </label>
             <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-sm">
@@ -798,7 +798,7 @@ function WorkspaceEditorDialog({
                 }`}
               >
                 <span className="block font-medium">Full import</span>
-                <span className={`block text-[11px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                <span className={`block text-[10px] mt-0.5 ${importMode === 'full' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
                   All fields; PO # + SKU matching
                 </span>
               </button>
@@ -812,13 +812,13 @@ function WorkspaceEditorDialog({
                 }`}
               >
                 <span className="block font-medium">Header only</span>
-                <span className={`block text-[11px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
+                <span className={`block text-[10px] mt-0.5 ${importMode === 'header-only' ? 'text-white/80' : 'text-[var(--text-200)]'}`}>
                   PO # only required; PO-level matching
                 </span>
               </button>
             </div>
             {importMode === 'header-only' && (
-              <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+              <p className="mt-1.5 text-[10px] text-[var(--text-200)]">
                 Line-item columns (SKU, Qty, Item Cost, Discrepancy) will be hidden by default for this workspace.
               </p>
             )}
@@ -881,31 +881,31 @@ function WorkspaceCard({
         <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
           {workspace.name}
         </h3>
-        <p className="mt-2 text-[11px] text-[var(--text-200)]">
+        <p className="mt-2 text-[10px] text-[var(--text-200)]">
           Open to manage rules, emails, and audit results.
         </p>
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
-        <span className="text-[11px] text-[var(--text-200)]">
+        <span className="text-[10px] text-[var(--text-200)]">
           Created {new Date(workspace.createdAt).toLocaleDateString()}
         </span>
         <div className="flex items-center gap-1">
           {confirmDelete ? (
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-rose-500">Delete?</span>
-              <button onClick={onDelete} className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">Yes</button>
-              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]">No</button>
+              <span className="text-[10px] text-rose-500">Delete?</span>
+              <button onClick={onDelete} className="cursor-pointer rounded px-2 py-1 text-[10px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20">Yes</button>
+              <button onClick={() => setConfirmDelete(false)} className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)]">No</button>
             </div>
           ) : (
             <>
-              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Edit</button>
+              <button onClick={onEdit} className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Edit</button>
               {isAdmin && onMove && (
-                <button onClick={onMove} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Move</button>
+                <button onClick={onMove} className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">Move</button>
               )}
-              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400">Delete</button>
-              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-80 transition-opacity">Open →</button>
+              <button onClick={() => setConfirmDelete(true)} className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400">Delete</button>
+              <button onClick={onOpen} className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1 text-[10px] font-medium text-white hover:opacity-80 transition-opacity">Open →</button>
             </>
           )}
         </div>
@@ -982,16 +982,16 @@ function OrgCard({
       >
         {confirmDelete ? (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-rose-500">Delete?</span>
+            <span className="text-[10px] text-rose-500">Delete?</span>
             <button
               onClick={onDelete}
-              className="cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+              className="cursor-pointer rounded px-2 py-1 text-[10px] font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
             >
               Yes
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
+              className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)]"
             >
               No
             </button>
@@ -1002,13 +1002,13 @@ function OrgCard({
               <>
                 <button
                   onClick={onEdit}
-                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
+                  className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => setConfirmDelete(true)}
-                  className="cursor-pointer rounded px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
+                  className="cursor-pointer rounded px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400"
                 >
                   Delete
                 </button>
@@ -1016,7 +1016,7 @@ function OrgCard({
             )}
             <button
               onClick={onOpen}
-              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
+              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[10px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
             >
               Open →
             </button>
@@ -1216,7 +1216,7 @@ function OrganizationEditorDialog({
             <div className="space-y-5">
               {/* Name */}
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
                   Organization name
                 </label>
                 <input
@@ -1232,10 +1232,10 @@ function OrganizationEditorDialog({
 
               {/* Members */}
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
                   Members
                 </label>
-                <p className="text-[11px] text-[var(--text-200)] mb-2">
+                <p className="text-[10px] text-[var(--text-200)] mb-2">
                   Checked users can view workspaces inside this organization. Admins always have access.
                 </p>
                 {usersLoading ? (
@@ -1298,7 +1298,7 @@ function OrganizationEditorDialog({
 
               {/* Workspaces currently in this org */}
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
                   In this organization ({inOrgWorkspaces.length})
                 </p>
                 {inOrgWorkspaces.length === 0 ? (
@@ -1326,7 +1326,7 @@ function OrganizationEditorDialog({
                               }}
                               disabled={wsMoving === ws._id}
                               className={[
-                                'cursor-pointer rounded px-2 py-1 text-[11px] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors',
+                                'cursor-pointer rounded px-2 py-1 text-[10px] hover:bg-[var(--bg-300)] disabled:opacity-40 transition-colors',
                                 wsPickerOpen === ws._id
                                   ? 'bg-[var(--bg-300)] text-[var(--text-100)]'
                                   : 'text-[var(--text-200)] hover:text-[var(--text-100)]',
@@ -1343,7 +1343,7 @@ function OrganizationEditorDialog({
                               }}
                               disabled={wsMoving === ws._id}
                               className={[
-                                'cursor-pointer rounded px-2 py-1 text-[11px] disabled:opacity-40 transition-colors',
+                                'cursor-pointer rounded px-2 py-1 text-[10px] disabled:opacity-40 transition-colors',
                                 confirmRemoveId === ws._id
                                   ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
                                   : 'text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-rose-500 dark:hover:text-rose-400',
@@ -1390,7 +1390,7 @@ function OrganizationEditorDialog({
                                 type="button"
                                 onClick={() => void moveWorkspace(ws, null)}
                                 disabled={wsMoving === ws._id}
-                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-[10px] font-medium text-white hover:bg-rose-600 disabled:opacity-50"
                               >
                                 {wsMoving === ws._id && <Spinner className="h-3 w-3 text-white" />}
                                 {wsMoving === ws._id ? 'Removing…' : 'Yes, remove'}
@@ -1398,7 +1398,7 @@ function OrganizationEditorDialog({
                               <button
                                 type="button"
                                 onClick={() => setConfirmRemoveId(null)}
-                                className="cursor-pointer rounded-lg px-3 py-1.5 text-[11px] text-[var(--text-200)] hover:bg-rose-100 dark:hover:bg-rose-900/20"
+                                className="cursor-pointer rounded-lg px-3 py-1.5 text-[10px] text-[var(--text-200)] hover:bg-rose-100 dark:hover:bg-rose-900/20"
                               >
                                 Cancel
                               </button>
@@ -1413,7 +1413,7 @@ function OrganizationEditorDialog({
 
               {/* Unassigned workspaces — can be added to this org */}
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
                   Unassigned workspaces ({unassignedWorkspaces.length})
                 </p>
                 {unassignedWorkspaces.length === 0 ? (
@@ -1433,7 +1433,7 @@ function OrganizationEditorDialog({
                           type="button"
                           onClick={() => void moveWorkspace(ws, initial._id)}
                           disabled={wsMoving === ws._id}
-                          className="shrink-0 cursor-pointer rounded px-2 py-1 text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-40"
+                          className="shrink-0 cursor-pointer rounded px-2 py-1 text-[10px] font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-40"
                         >
                           {wsMoving === ws._id ? '…' : 'Add to this org'}
                         </button>
@@ -1615,7 +1615,7 @@ const emDash = <span className="text-[var(--text-200)]">—</span>
 /** Text cell for codes / identifiers (SKU / PO # / invoice number). */
 function monoCell(value: string): React.ReactNode {
   if (!value) return emDash
-  return <span className="text-[11px] text-[var(--text-100)]">{value}</span>
+  return <span className="text-[10px] text-[var(--text-100)]">{value}</span>
 }
 
 /** Plain text cell. */
@@ -1684,14 +1684,14 @@ function discrepancyCell(
         <div className="px-3.5 py-3 space-y-1.5">
           <div className="flex items-center gap-2 mb-2">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
-            <p className="text-[11px] font-semibold text-slate-300">No invoice matched</p>
+            <p className="text-[10px] font-semibold text-slate-300">No invoice matched</p>
           </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed">
+          <p className="text-[10px] text-slate-500 leading-relaxed">
             Parse an invoice PDF containing this PO # to enable SKU, Qty, and COGS checks.
           </p>
         </div>
       }>
-        <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-200)] italic underline decoration-dotted underline-offset-2">
+        <span className="inline-flex items-center gap-1 text-[10px] text-[var(--text-200)] italic underline decoration-dotted underline-offset-2">
           No match
         </span>
       </Tooltip>
@@ -1778,7 +1778,7 @@ function discrepancyCell(
           ) : (
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400">✓</span>
           )}
-          <p className="text-[11px] font-semibold text-slate-200">
+          <p className="text-[10px] font-semibold text-slate-200">
             {hasAnyMismatch ? 'Discrepancies found' : 'All checks passed'}
           </p>
         </div>
@@ -1832,13 +1832,13 @@ function discrepancyCell(
 
               {/* Values */}
               {isPending ? (
-                <span className="italic text-[11px] text-amber-400">Pending DC COGS…</span>
+                <span className="italic text-[10px] text-amber-400">Pending DC COGS…</span>
               ) : isNoData ? (
-                <span className="italic text-[11px] text-slate-600">
+                <span className="italic text-[10px] text-slate-600">
                   {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
                 </span>
               ) : (
-                <div className="flex flex-1 items-center gap-1.5 font-mono text-[11px] min-w-0">
+                <div className="flex flex-1 items-center gap-1.5 font-mono text-[10px] min-w-0">
                   {/* Order value */}
                   <span className="flex-1 truncate text-slate-300">{row.orderVal}</span>
                   {/* Arrow */}
@@ -3675,7 +3675,7 @@ export default function DocTidyInvoiceAudit() {
   const endItem = Math.min(orderPage * orderPageSize, orderPagination.total)
 
   const inputClass =
-    'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+    'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
   /* ── Per-row cell renderer (new v2 columns) ── */
   const auditCellFor = (
@@ -3725,7 +3725,7 @@ export default function DocTidyInvoiceAudit() {
             <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
               target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
+              className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
               <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
               </svg>
@@ -3770,9 +3770,9 @@ export default function DocTidyInvoiceAudit() {
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
                               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">$</span>
-                              <span className="text-[11px] text-slate-400">List price</span>
+                              <span className="text-[10px] text-slate-400">List price</span>
                             </div>
-                            <span className="tabular-nums text-[11px] text-slate-300 line-through decoration-slate-600">
+                            <span className="tabular-nums text-[10px] text-slate-300 line-through decoration-slate-600">
                               {inv.itemCost}
                             </span>
                           </div>
@@ -3781,9 +3781,9 @@ export default function DocTidyInvoiceAudit() {
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
                               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-400">%</span>
-                              <span className="text-[11px] text-slate-400">Discount</span>
+                              <span className="text-[10px] text-slate-400">Discount</span>
                             </div>
-                            <span className="tabular-nums text-[11px] font-semibold text-amber-400">
+                            <span className="tabular-nums text-[10px] font-semibold text-amber-400">
                               {pctDisplay} off
                             </span>
                           </div>
@@ -3791,9 +3791,9 @@ export default function DocTidyInvoiceAudit() {
                         <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                           <div className="flex items-center gap-2">
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-bold text-emerald-400">✓</span>
-                            <span className="text-[11px] font-semibold text-slate-300">You pay</span>
+                            <span className="text-[10px] font-semibold text-slate-300">You pay</span>
                           </div>
-                          <span className="tabular-nums text-[11px] font-bold text-emerald-400">
+                          <span className="tabular-nums text-[10px] font-bold text-emerald-400">
                             {effectiveCost}
                           </span>
                         </div>
@@ -3863,7 +3863,7 @@ export default function DocTidyInvoiceAudit() {
             <a href={`https://drive.google.com/file/d/${fileId}/view`}
               target="_blank" rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-200)] hover:underline">
+              className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
               <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
               </svg>
@@ -4079,11 +4079,11 @@ export default function DocTidyInvoiceAudit() {
 
           {/* Members badge */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-[var(--text-200)]">
+            <span className="text-[10px] text-[var(--text-200)]">
               {activeOrg.memberUserIds.length} member{activeOrg.memberUserIds.length !== 1 ? 's' : ''}
             </span>
-            <span className="text-[11px] text-[var(--bg-300)]">·</span>
-            <span className="text-[11px] text-[var(--text-200)]">
+            <span className="text-[10px] text-[var(--bg-300)]">·</span>
+            <span className="text-[10px] text-[var(--text-200)]">
               {orgWorkspaces.length} workspace{orgWorkspaces.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -4143,7 +4143,7 @@ export default function DocTidyInvoiceAudit() {
 
       {/* ══════════════════════════════ AUDIT DETAIL ══════════════════════════════ */}
       {view === 'audit' && activeWorkspace && (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4 overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
 
           {/* Breadcrumb */}
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4200,7 +4200,7 @@ export default function DocTidyInvoiceAudit() {
             <div className="ml-auto flex items-center gap-1.5 pr-4 pb-px shrink-0">
               <span
                 title={workerOnline === null ? 'Checking Tidy Agent status…' : workerOnline ? 'Tidy Agent is connected and ready' : 'Tidy Agent is offline — parses will queue until it reconnects'}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium ${
                   workerOnline === null
                     ? 'bg-[var(--bg-200)] text-[var(--text-200)]'
                     : workerOnline
@@ -4222,180 +4222,78 @@ export default function DocTidyInvoiceAudit() {
 
           {/* ══════════════ EMAILS TAB ══════════════ */}
           {workspaceTab === 'emails' && (
-            <div className="space-y-2">
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
               {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
-              <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
-                {/* Filter bar */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
-                  <div className="relative min-w-[200px] flex-1 max-w-sm">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
-                      </svg>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
                     <input type="text" value={emailSearch} onChange={(e) => setEmailSearch(e.target.value)}
-                      placeholder="Search subject, sender, attachment…"
-                      className={`${inputClass} w-full pl-8 pr-8`} />
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
                     {emailSearch && (
                       <button onClick={() => setEmailSearch('')} aria-label="Clear search"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     )}
                   </div>
                   {/* Date range */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-[var(--text-200)]">From</span>
-                    <input type="date" value={emailDateFrom} onChange={(e) => setEmailDateFrom(e.target.value)} className={inputClass} />
-                    <span className="text-[11px] text-[var(--text-200)]">to</span>
-                    <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
-                  </div>
-                  {/* Fetch Emails — manually runs all enabled rules */}
-                  <button
-                    type="button"
-                    onClick={() => void handleFetchEmails()}
-                    disabled={emailFetching}
-                    title="Run all enabled rules and import matching emails"
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:border-[var(--accent-200)] hover:text-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {emailFetching ? (
-                      <Spinner className="h-3 w-3" />
-                    ) : (
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                  <input type="date" value={emailDateFrom} onChange={(e) => setEmailDateFrom(e.target.value)} className={inputClass} />
+                  <span>–</span>
+                  <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
+                  {(emailSearch || emailDateFrom || emailDateTo) && (
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
+                      className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
+                  )}
+                  <div className="h-4 w-px bg-[var(--bg-300)]" />
+                  {/* Fetch Emails icon button */}
+                  <button type="button" onClick={() => void handleFetchEmails()} disabled={emailFetching}
+                    title="Fetch Emails — run all enabled rules and import matching emails"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] disabled:cursor-not-allowed disabled:opacity-40">
+                    {emailFetching ? <Spinner className="h-3.5 w-3.5" /> : (
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     )}
-                    {emailFetching ? 'Fetching…' : 'Fetch Emails'}
                   </button>
-                  {(emailSearch || emailDateFrom || emailDateTo) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
-                      className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
-                      Clear filters
-                    </button>
-                  )}
-                  {/* Active column-filter pill */}
-                  {emailActiveFilterCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setEmailColFilters({})}
-                      title="Clear all column filters"
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
-                    >
-                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
-                      </svg>
-                      {emailActiveFilterCount} column filter{emailActiveFilterCount !== 1 ? 's' : ''} active
-                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  )}
-                  <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                    {emailLoading && <Spinner className="h-3 w-3" />}
-                    {emailPagination.total > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <span>{emailPagination.total.toLocaleString()} message{emailPagination.total === 1 ? '' : 's'}</span>
-                        <span className="text-[var(--text-300)]">·</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">{emailPagination.parsedCount.toLocaleString()} parsed</span>
-                        <span className="text-[var(--text-300)]">·</span>
-                        <span className="text-amber-600 dark:text-amber-400">{(emailPagination.total - emailPagination.parsedCount).toLocaleString()} pending</span>
-                      </span>
+                  {/* Right: rows per page + range + pagination */}
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="whitespace-nowrap">Rows per page:</span>
+                    <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
+                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {emailPagination.pages > 0 && (
+                      <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
                     )}
-                    {anySelectedEmailRunning && (
-                      <button
-                        type="button"
-                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
-                        onClick={() => void handleBulkAbortEmails()}
-                        disabled={emailBulkAborting}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
-                      >
-                        {emailBulkAborting ? (
-                          <Spinner className="h-3 w-3" />
-                        ) : (
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        Abort Jobs
-                      </button>
-                    )}
-                    {selectedEmailIds.size > 0 && (
-                      <button
-                        type="button"
-                        title={
-                          !workerOnline
-                            ? 'Tidy Agent is offline'
-                            : allSelectedEmailsCompleted
-                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
-                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
-                        }
-                        onClick={() => void handleBulkSendEmailsToAgent()}
-                        disabled={emailBulkSending || workerOnline === false}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          allSelectedEmailsCompleted
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
-                        }`}
-                      >
-                        {emailBulkSending ? (
-                          <Spinner className="h-3 w-3" />
-                        ) : (
-                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                          </svg>
-                        )}
-                        {allSelectedEmailsCompleted
-                          ? `Send ${selectedEmailIds.size} to Tidy Agent for Rerun`
-                          : `Send ${selectedEmailIds.size} to Tidy Agent`}
-                      </button>
-                    )}
-                    {/* Bulk delete emails */}
-                    {selectedEmailIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDeleteEmails(true)}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete {selectedEmailIds.size} selected
-                      </button>
-                    )}
-                  </span>
+                  </div>
                 </div>
 
-                {/* Top pagination */}
-                {!emailLoading && emailPagination.total > 0 && (
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                      <span>Rows per page:</span>
-                      <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
-                        className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                        {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <span>
-                        {emailPagination.total === 0 ? 0 : (emailPage - 1) * emailPageSize + 1}–{Math.min(emailPage * emailPageSize, emailPagination.total)} of {emailPagination.total.toLocaleString()}
-                      </span>
-                      {selectedEmailIds.size > 0 && (
-                        <span className="flex items-center gap-1.5">
-                          <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">{selectedEmailIds.size} selected</span>
-                          <button onClick={() => setSelectedEmailIds(new Set())} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
-                        </span>
-                      )}
-                    </div>
-                    <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
-                  </div>
-                )}
-
                 {/* Table */}
-                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                  <table className="w-full text-[11px] border-separate border-spacing-0">
+                <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
+                  {/* Resync overlay — thin violet progress bar; no layout shift */}
+                  {emailLoading && (
+                    <div className="sticky top-0 left-0 z-30 w-full">
+                      <div className="h-1 w-full overflow-hidden bg-orange-200 dark:bg-orange-800/40">
+                        <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-400 to-orange-600"
+                          style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
+                      </div>
+                    </div>
+                  )}
+                  <style>{`
+                    @keyframes audit-resync-slide {
+                      0%   { transform: translateX(-100%); }
+                      50%  { transform: translateX(200%); }
+                      100% { transform: translateX(-100%); }
+                    }
+                  `}</style>
+                  <table className="w-full text-[10px] border-separate border-spacing-0">
                     <thead>
                       <tr>
                         <Th className="w-8">
@@ -4442,18 +4340,18 @@ export default function DocTidyInvoiceAudit() {
                       </tr>
                     </thead>
                     <tbody>
-                      {emailLoading ? (
+                      {emailLoading && emailMessages.length === 0 ? (
                         Array.from({ length: 8 }).map((_, i) => (
                           <tr key={i} className="border-b border-[var(--bg-300)]">
-                            <td className="px-3 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-1">
+                            <td className="px-3 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-px">
                               <div className="flex justify-center gap-1">
                                 <div className="h-4 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
                                 <div className="h-4 w-4 animate-pulse rounded bg-[var(--bg-300)]" />
                               </div>
                             </td>
                             {orderedEmailCols.map((col) => (
-                              <td key={col.id} className="px-3 py-1">
+                              <td key={col.id} className="px-3 py-px">
                                 {col.id === 'from' ? (
                                   <div className="flex items-center gap-2">
                                     <div className="h-6 w-6 animate-pulse rounded-full bg-[var(--bg-300)]" />
@@ -4481,10 +4379,10 @@ export default function DocTidyInvoiceAudit() {
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-[11px] font-medium text-[var(--text-100)]">
+                                <p className="text-[10px] font-medium text-[var(--text-100)]">
                                   {(emailSearch || emailDateFrom || emailDateTo) ? 'No messages match' : 'No emails in this workspace yet'}
                                 </p>
-                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                                <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                                   {(emailSearch || emailDateFrom || emailDateTo)
                                     ? 'Try adjusting or clearing the filters.'
                                     : 'Emails matching this workspace\'s rules will appear here. Add rules in the Rules tab.'}
@@ -4492,7 +4390,7 @@ export default function DocTidyInvoiceAudit() {
                               </div>
                               {(emailSearch || emailDateFrom || emailDateTo) && (
                                 <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
-                                  className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                  className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                   Clear filters
                                 </button>
                               )}
@@ -4509,10 +4407,10 @@ export default function DocTidyInvoiceAudit() {
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
-                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                                <p className="text-[10px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                                <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
                               </div>
-                              <button onClick={() => setEmailColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                              <button onClick={() => setEmailColFilters({})} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                 Clear all column filters
                               </button>
                             </div>
@@ -4532,14 +4430,14 @@ export default function DocTidyInvoiceAudit() {
                               }`}
                             >
                               {/* Checkbox — always first */}
-                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
                                 <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
                                   aria-label={`Select ${msg.subject || 'message'}`}
                                   className={emailCheckboxClass} />
                               </td>
 
                               {/* Actions — second column, right after the checkbox */}
-                              <td className="px-3 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-px text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-0.5">
                                   <AttachmentIcons
                                     message={msg}
@@ -4573,15 +4471,15 @@ export default function DocTidyInvoiceAudit() {
                                 switch (col.id) {
                                   case 'received':
                                     return (
-                                      <td key="received" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={formatDateTime(msg.sentAt)}>
+                                      <td key="received" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={formatDateTime(msg.sentAt)}>
                                         {formatDate(msg.sentAt)}
                                       </td>
                                     )
                                   case 'from':
                                     return (
-                                      <td key="from" className={`px-3 py-1 min-w-0 ${emailColDragCls}`}>
+                                      <td key="from" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
                                         <div className="flex min-w-0 items-center gap-2">
-                                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${avatarColour(senderSeed)}`}>
+                                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white ${avatarColour(senderSeed)}`}>
                                             {senderSeed.charAt(0).toUpperCase()}
                                           </span>
                                           <div className="min-w-0 truncate text-[var(--text-100)]"
@@ -4593,7 +4491,7 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'to':
                                     return (
-                                      <td key="to" className={`px-3 py-1 min-w-0 max-w-[180px] ${emailColDragCls}`}>
+                                      <td key="to" className={`px-3 py-px min-w-0 max-w-[180px] ${emailColDragCls}`}>
                                         {msg.to && msg.to.length > 0 ? (
                                           <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
                                             {msg.to[0]}
@@ -4610,7 +4508,7 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'subject':
                                     return (
-                                      <td key="subject" className={`px-3 py-1 min-w-0 ${emailColDragCls}`}>
+                                      <td key="subject" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
                                         <div className="truncate text-[var(--text-100)]" title={msg.subject}>
                                           {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
                                         </div>
@@ -4618,29 +4516,29 @@ export default function DocTidyInvoiceAudit() {
                                     )
                                   case 'documentType':
                                     return (
-                                      <td key="documentType" className={`px-3 py-1 whitespace-nowrap ${emailColDragCls}`}>
+                                      <td key="documentType" className={`px-3 py-px whitespace-nowrap ${emailColDragCls}`}>
                                         <DocumentTypeBadge value={msg.documentType} />
                                       </td>
                                     )
                                   case 'rule':
                                     return (
-                                      <td key="rule" className={`px-3 py-1 ${emailColDragCls}`}>
+                                      <td key="rule" className={`px-3 py-px ${emailColDragCls}`}>
                                         {msg.ruleName ? (
                                           <span title={msg.ruleName}
-                                            className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
+                                            className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] text-[var(--accent-200)]">
                                             <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
                                             </svg>
                                             <span className="truncate">{msg.ruleName}</span>
                                           </span>
                                         ) : (
-                                          <span className="text-[11px] italic text-[var(--text-200)]">—</span>
+                                          <span className="text-[10px] italic text-[var(--text-200)]">—</span>
                                         )}
                                       </td>
                                     )
                                   case 'attachments':
                                     return (
-                                      <td key="attachments" className={`px-3 py-1 ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
+                                      <td key="attachments" className={`px-3 py-px ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
                                         {msg.attachments && msg.attachments.length > 0 ? (
                                           <div className="space-y-0.5">
                                             {msg.attachments.map((att, ai) => {
@@ -4721,188 +4619,78 @@ export default function DocTidyInvoiceAudit() {
 
           {/* ══════════════ PDF IMPORTS TAB ══════════════ */}
           {workspaceTab === 'pdf-imports' && (
-            <div className="space-y-2">
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
               {pdfImportsError && (
                 <Banner kind="error" onDismiss={() => setPdfImportsError(null)}>{pdfImportsError}</Banner>
               )}
 
-              <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
-                {/* ── Filter bar ── */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
-                  <div className="relative min-w-[200px] flex-1 max-w-sm">
-                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
-                      </svg>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
-                    <input
-                      type="text"
-                      value={pdfSearch}
-                      onChange={(e) => setPdfSearch(e.target.value)}
-                      placeholder="Search filename…"
-                      className={`${inputClass} w-full pl-8 pr-8`}
-                    />
+                    <input type="text" value={pdfSearch} onChange={(e) => setPdfSearch(e.target.value)}
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
                     {pdfSearch && (
                       <button onClick={() => setPdfSearch('')} aria-label="Clear search"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     )}
                   </div>
-
                   {/* Date range */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-[var(--text-200)]">From</span>
-                    <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
-                    <span className="text-[11px] text-[var(--text-200)]">to</span>
-                    <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
-                  </div>
-
+                  <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
+                  <span>–</span>
+                  <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
                   {pdfHasActiveFilters && (
-                    <button
-                      onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
-                      className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
-                    >
-                      Clear filters
-                    </button>
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                      className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
-                  {/* Active column-filter pill */}
-                  {pdfActiveFilterCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setPdfColFilters({})}
-                      title="Clear all column filters"
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
-                    >
-                      <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                        <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
-                      </svg>
-                      {pdfActiveFilterCount} column filter{pdfActiveFilterCount !== 1 ? 's' : ''} active
-                      <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  )}
-
-                  {/* Right side: count + spinner + bulk action + Import button */}
-                  <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                    {pdfImportsLoading && <Spinner className="h-3 w-3" />}
-                    {pdfImportsPagination.total > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
-                        <span className="text-[var(--text-300)]">·</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
-                        <span className="text-[var(--text-300)]">·</span>
-                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
-                      </span>
-                    )}
-                    {anySelectedPdfRunning && (
-                      <button
-                        type="button"
-                        title={`Abort running parse jobs for ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'}`}
-                        onClick={() => void handleBulkAbortPdfs()}
-                        disabled={pdfBulkAborting}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
-                      >
-                        {pdfBulkAborting ? (
-                          <Spinner className="h-3 w-3" />
-                        ) : (
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        Abort Jobs
-                      </button>
-                    )}
-                    {pdfSelectedIds.size > 0 && (
-                      <button
-                        type="button"
-                        title={
-                          !workerOnline
-                            ? 'Tidy Agent is offline'
-                            : allSelectedPdfsCompleted
-                              ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
-                              : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
-                        }
-                        onClick={() => void handleBulkSendPdfsToAgent()}
-                        disabled={pdfBulkSending || workerOnline === false}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          allSelectedPdfsCompleted
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
-                        }`}
-                      >
-                        {pdfBulkSending ? (
-                          <Spinner className="h-3 w-3" />
-                        ) : (
-                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                          </svg>
-                        )}
-                        {allSelectedPdfsCompleted
-                          ? `Send ${pdfSelectedIds.size} to Tidy Agent for Rerun`
-                          : `Send ${pdfSelectedIds.size} to Tidy Agent`}
-                      </button>
-                    )}
-                    {/* Bulk delete PDF imports */}
-                    {pdfSelectedIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDeletePdfs(true)}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700"
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete {pdfSelectedIds.size} selected
-                      </button>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="h-4 w-px bg-[var(--bg-300)]" />
+                  {/* Import PDFs icon button */}
+                  <button type="button" onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
+                    title="Import PDFs — upload PDF files to parse"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
-                    Import PDFs
                   </button>
+                  {/* Right: rows per page + range + pagination */}
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="whitespace-nowrap">Rows per page:</span>
+                    <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
+                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {pdfImportsPagination.pages > 0 && (
+                      <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                    )}
+                  </div>
                 </div>
 
-                {/* ── Top pagination ── */}
-                {!pdfImportsLoading && pdfImportsPagination.total > 0 && (
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                    <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                      <span>Rows per page:</span>
-                      <select
-                        value={pdfPageSize}
-                        onChange={(e) => setPdfPageSize(Number(e.target.value))}
-                        className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
-                      >
-                        {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <span>
-                        {pdfStartItem}–{pdfEndItem} of {pdfImportsPagination.total.toLocaleString()}
-                      </span>
-                      {pdfSelectedIds.size > 0 && (
-                        <span className="flex items-center gap-1.5">
-                          <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">{pdfSelectedIds.size} selected</span>
-                          <button onClick={() => setPdfSelectedIds(new Set())} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
-                        </span>
-                      )}
-                    </div>
-                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
-                  </div>
-                )}
-
                 {/* ── Table ── */}
-                <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
-                  {pdfImportsLoading ? (
+                <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
+                  {/* Resync overlay — thin violet progress bar; no layout shift */}
+                  {pdfImportsLoading && (
+                    <div className="sticky top-0 left-0 z-30 w-full">
+                      <div className="h-1 w-full overflow-hidden bg-orange-200 dark:bg-orange-800/40">
+                        <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-400 to-orange-600"
+                          style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
+                      </div>
+                    </div>
+                  )}
+                  <style>{`
+                    @keyframes audit-resync-slide {
+                      0%   { transform: translateX(-100%); }
+                      50%  { transform: translateX(200%); }
+                      100% { transform: translateX(-100%); }
+                    }
+                  `}</style>
+                  {pdfImportsLoading && pdfImports.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-16 text-[var(--text-200)]">
                       <Spinner className="h-4 w-4" />
                       <span className="text-sm">Loading…</span>
@@ -4916,10 +4704,10 @@ export default function DocTidyInvoiceAudit() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-[11px] font-medium text-[var(--text-100)]">
+                        <p className="text-[10px] font-medium text-[var(--text-100)]">
                           {pdfHasActiveFilters ? 'No files match' : 'No PDFs imported yet'}
                         </p>
-                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                        <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                           {pdfHasActiveFilters
                             ? 'Try adjusting or clearing the filters.'
                             : 'Click "Import PDFs" above to upload files.'}
@@ -4928,7 +4716,7 @@ export default function DocTidyInvoiceAudit() {
                       {pdfHasActiveFilters && (
                         <button
                           onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
-                          className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer"
+                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer"
                         >
                           Clear filters
                         </button>
@@ -4942,15 +4730,15 @@ export default function DocTidyInvoiceAudit() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
-                        <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                        <p className="text-[10px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
                       </div>
-                      <button onClick={() => setPdfColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                      <button onClick={() => setPdfColFilters({})} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                         Clear all column filters
                       </button>
                     </div>
                   ) : (
-                    <table className="text-[11px] border-separate border-spacing-0">
+                    <table className="text-[10px] border-separate border-spacing-0">
                       <thead>
                         <tr>
                           {/* Checkbox — select all */}
@@ -5022,7 +4810,7 @@ export default function DocTidyInvoiceAudit() {
                               }`}
                             >
                               {/* Checkbox */}
-                              <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
@@ -5037,25 +4825,25 @@ export default function DocTidyInvoiceAudit() {
                                 switch (col.id) {
                                   case 'imported':
                                     return (
-                                      <td key="imported" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
+                                      <td key="imported" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
                                         {formatDate(imp.createdAt)}
                                       </td>
                                     )
                                   case 'importedBy':
                                     return (
-                                      <td key="importedBy" className={`px-3 py-1 whitespace-nowrap text-[var(--text-200)] ${cls}`}>
+                                      <td key="importedBy" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`}>
                                         {imp.uploadedByName ?? <span className="italic">—</span>}
                                       </td>
                                     )
                                   case 'size':
                                     return (
-                                      <td key="size" className={`px-3 py-1 whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
+                                      <td key="size" className={`px-3 py-px whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
                                         {formatBytes(imp.size)}
                                       </td>
                                     )
                                   case 'filename':
                                     return (
-                                      <td key="filename" className={`px-3 py-1 min-w-0 max-w-[300px] ${cls}`}>
+                                      <td key="filename" className={`px-3 py-px min-w-0 max-w-[300px] ${cls}`}>
                                         {imp.driveWebViewLink ? (
                                           <a
                                             href={imp.driveWebViewLink}
@@ -5084,7 +4872,7 @@ export default function DocTidyInvoiceAudit() {
                                     return null
                                   case 'parseStatus':
                                     return (
-                                      <td key="parseStatus" className={`px-3 py-1 whitespace-nowrap ${cls}`}>
+                                      <td key="parseStatus" className={`px-3 py-px whitespace-nowrap ${cls}`}>
                                         {imp.parseJob ? (
                                           <div className="flex flex-col gap-0.5">
                                             <ParseStatusChip status={imp.parseJob.status} />
@@ -5095,7 +4883,7 @@ export default function DocTidyInvoiceAudit() {
                                             )}
                                           </div>
                                         ) : (
-                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
                                             Not sent
                                           </span>
                                         )}
@@ -5105,7 +4893,7 @@ export default function DocTidyInvoiceAudit() {
                               })}
 
                               {/* Actions — mirrors the Emails tab AttachmentIcons states */}
-                              <td className="px-3 py-1 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-3 py-px text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-0.5">
                                   {(() => {
                                     // No job yet — paper-airplane button (sky blue)
@@ -5293,7 +5081,7 @@ export default function DocTidyInvoiceAudit() {
 
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
           {workspaceTab === 'audit' && (
-            <div className="space-y-4">
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
             {(orderError || error) && (
               <Banner kind="error" onDismiss={() => { setOrderError(null); setError(null) }}>
                 {orderError || error}
@@ -5301,194 +5089,101 @@ export default function DocTidyInvoiceAudit() {
             )}
 
             {/* Table card */}
-            <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
               {/* Toolbar */}
-              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                 {/* Search */}
-                <div className="relative min-w-[180px] flex-1 max-w-xs">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
-                    </svg>
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                   </span>
                   <input type="text" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)}
-                    placeholder="Search PO #, SKU, customer, order ID…" className={`${inputClass} w-full pl-8 pr-8`} />
+                    placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
                   {auditSearch && (
                     <button onClick={() => setAuditSearch('')} aria-label="Clear search"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
-                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   )}
                 </div>
-
-                {/* Date range filter */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-[var(--text-200)]">From</span>
-                  <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} className={inputClass} />
-                  <span className="text-[11px] text-[var(--text-200)]">to</span>
-                  <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} className={inputClass} />
-                </div>
-                {(auditDateFrom || auditDateTo) && (
-                  <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
-                    className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">
-                    Clear dates
-                  </button>
+                {/* Date range */}
+                <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} className={inputClass} />
+                <span>–</span>
+                <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} className={inputClass} />
+                {(auditSearch || auditDateFrom || auditDateTo) && (
+                  <button onClick={() => { setAuditSearch(''); setAuditDateFrom(''); setAuditDateTo('') }}
+                    className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                 )}
-
-                {/* Import Orders button — disabled in header-only mode */}
+                <div className="h-4 w-px bg-[var(--bg-300)]" />
+                {/* Import Orders icon button */}
                 <button type="button"
                   onClick={() => { if (!isHeaderOnly) { setShowImportModal(true); setImportSuccess(null); setImportError(null) } }}
                   disabled={isHeaderOnly}
-                  title={isHeaderOnly ? 'Header-only workspaces display invoice data directly from parsed PDFs — no order import needed' : undefined}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-40">
-                  <svg className="h-3.5 w-3.5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  title={isHeaderOnly ? 'Header-only workspaces use parsed PDFs directly — no order import needed' : 'Import Orders — upload a CSV or Excel file'}
+                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-sky-500 transition-colors hover:bg-[var(--bg-300)] hover:text-sky-600 disabled:cursor-not-allowed disabled:opacity-40">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
-                  Import Orders
                 </button>
-
-                {/* Resync invoice data button */}
-                <button
-                  type="button"
+                {/* Resync icon button */}
+                <button type="button"
                   onClick={() => {
                     void fetchAllJobsRef.current()
                     void fetchOrderImportsRef.current()
-                    // Kick off COGS refresh + match cache rebuild, then re-fetch orders
-                    // a few seconds later to surface all newly written values.
                     void Promise.all([triggerCogsRefresh(), triggerMatchCacheRebuild()]).then(() => {
                       setTimeout(() => void fetchOrderImportsRef.current(), 4000)
                     })
                   }}
                   disabled={loading || orderLoading}
-                  title="Re-fetch parsed invoices + order COGS and re-match against imported orders"
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? (
-                    <Spinner className="h-3.5 w-3.5 text-[var(--accent-200)]" />
-                  ) : (
-                    <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  title="Resync Invoice Data — re-fetch parsed invoices, COGS and re-match orders"
+                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-emerald-500 transition-colors hover:bg-[var(--bg-300)] hover:text-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">
+                  {loading ? <Spinner className="h-3.5 w-3.5 text-[var(--accent-200)]" /> : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                   )}
-                  {loading ? 'Syncing…' : 'Resync Invoice Data'}
                 </button>
-
-                {/* Active column filters pill */}
-                {activeFilterCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setColFilters({})}
-                    title="Clear all column filters"
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--accent-200)]/40 bg-[var(--primary-100)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--accent-200)] transition-colors hover:bg-[var(--primary-100)]/80"
-                  >
-                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                      <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
-                    </svg>
-                    {activeFilterCount} column filter{activeFilterCount !== 1 ? 's' : ''} active
-                    <svg className="h-3 w-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                )}
-
-                {/* Column settings */}
-                <button type="button" onClick={() => setShowColSettings(true)} title="Configure visible columns"
-                  className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] px-2.5 py-1.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]">
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                {/* Column settings icon button */}
+                <button type="button" onClick={() => setShowColSettings(true)}
+                  title={`Column Settings — ${visibleCols.length} columns visible`}
+                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a1 1 0 00-1 1v14a1 1 0 001 1h4a1 1 0 001-1V5a1 1 0 00-1-1zm10 0h-4a1 1 0 00-1 1v14a1 1 0 001 1h4a1 1 0 001-1V5a1 1 0 00-1-1z" />
                   </svg>
-                  Columns
-                  <span className="rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-200)]">
-                    {visibleCols.length}
-                  </span>
                 </button>
-
-                {/* Export */}
-                {selectedRowKeys.size > 0 ? (
-                  <button type="button" onClick={() => void exportToExcel('selection')} disabled={exporting}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
-                    {exporting ? <Spinner className="h-3.5 w-3.5" /> : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>}
-                    Export {selectedRowKeys.size} selected
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => void exportToExcel('all')} disabled={exporting}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
-                    {exporting ? <Spinner className="h-3.5 w-3.5" /> : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>}
-                    Export all
-                  </button>
-                )}
-
-                {/* Bulk delete — full-import mode */}
-                {!isHeaderOnly && selectedRowKeys.size > 0 && (
-                  <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                {/* Export icon button */}
+                <button type="button"
+                  onClick={() => void exportToExcel(selectedRowKeys.size > 0 ? 'selection' : 'all')}
+                  disabled={exporting}
+                  title={selectedRowKeys.size > 0 ? `Export ${selectedRowKeys.size} selected rows` : 'Export all rows to Excel'}
+                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-emerald-600 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {exporting ? <Spinner className="h-3.5 w-3.5" /> : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Delete {selectedRowKeys.size} selected
-                  </button>
-                )}
-
-                {/* Bulk delete — header-only mode */}
-                {isHeaderOnly && selectedJobIds.size > 0 && (
-                  <button type="button" onClick={() => setConfirmBulkDeleteJobs(true)}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-rose-700">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete {selectedJobIds.size} selected
-                  </button>
-                )}
-              </div>
-
-              {/* Top pagination */}
-              {orderPagination.total > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60">
-                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-200)]">
-                    <span>Rows per page:</span>
-                    <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
-                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                      {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {orderPagination.total > 0 && (
-                      <span>{startItem}–{endItem} of {orderPagination.total.toLocaleString()}</span>
-                    )}
-                    {activeFilterCount > 0 && (
-                      <span className="flex items-center gap-1 text-[var(--accent-200)] font-medium">
-                        <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                          <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
-                        </svg>
-                        {filteredOrderImports.length} of {orderImports.length} shown
-                      </span>
-                    )}
-                    {selectedRowKeys.size > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <span className="rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[11px] text-[var(--accent-200)]">
-                          {selectedRowKeys.size} selected
-                        </span>
-                        <button onClick={() => setSelectedRowKeys(new Set())} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
-                      </span>
-                    )}
-                  </div>
+                  )}
+                </button>
+                {/* Right: rows per page + range + pagination */}
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="whitespace-nowrap">Rows per page:</span>
+                  <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
                   {orderPagination.pages > 0 && (
                     <PaginationArrows page={orderPage} pages={orderPagination.pages} onChange={setOrderPage} />
                   )}
                 </div>
-              )}
+              </div>
 
               {/* Table */}
-              <div className="relative overflow-x-auto overflow-y-auto max-h-[calc(100vh-20rem)]">
+              <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
                 {/* Resync overlay — thin progress bar only; no text banner to avoid table layout shift */}
                 {loading && (
                   <div className="sticky top-0 left-0 z-30 w-full">
-                    <div className="h-0.5 w-full overflow-hidden bg-violet-200 dark:bg-violet-800/40">
-                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                    <div className="h-1 w-full overflow-hidden bg-orange-200 dark:bg-orange-800/40">
+                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-400 to-orange-600"
                         style={{ animation: 'audit-resync-slide 1.4s ease-in-out infinite' }} />
                     </div>
                   </div>
@@ -5500,7 +5195,7 @@ export default function DocTidyInvoiceAudit() {
                     100% { transform: translateX(-100%); }
                   }
                 `}</style>
-                <table className="text-[11px] border-separate border-spacing-0">
+                <table className="text-[10px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <Th className="w-8">
@@ -5561,17 +5256,20 @@ export default function DocTidyInvoiceAudit() {
                   </thead>
                   <tbody>
                     {/* ── Loading skeleton ──
-                        Show skeleton while orders are loading OR while jobs haven't arrived yet
-                        on the first load (jobs.length === 0 + loading). This prevents a flash
-                        where orderImports populate before fetchAllJobs returns, causing every
-                        invoice-matched cell to briefly render as "—" against an empty jobs array. */}
-                    {(isHeaderOnly ? loading : (orderLoading || (loading && jobs.length === 0))) ? (
+                        Only show on the *initial* load (no data yet). While a background
+                        resync is running the violet progress bar at the top of the table
+                        provides feedback without replacing the visible rows with skeletons.
+                        - header-only:  skeleton while jobs haven't arrived at all yet
+                        - full mode:    skeleton while orderImports haven't arrived yet,
+                          OR while jobs haven't arrived yet on first load (prevents a flash
+                          where rows render with "—" matched-invoice cells before jobs load) */}
+                    {(isHeaderOnly ? (loading && jobs.length === 0) : ((orderLoading && orderImports.length === 0) || (loading && jobs.length === 0))) ? (
                       Array.from({ length: 12 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
-                          <td className="px-2.5 py-1"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                          <td className="px-2.5 py-1" />
+                          <td className="px-2.5 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                          <td className="px-2.5 py-px" />
                           {visibleCols.map((col) => (
-                            <td key={col.id} className="px-2.5 py-1">
+                            <td key={col.id} className="px-2.5 py-px">
                               <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                             </td>
                           ))}
@@ -5590,10 +5288,10 @@ export default function DocTidyInvoiceAudit() {
                                 </svg>
                               </div>
                               <div>
-                                <p className="text-[11px] font-medium text-[var(--text-100)]">
+                                <p className="text-[10px] font-medium text-[var(--text-100)]">
                                   {(auditDateFrom || auditDateTo) ? 'No invoices match the date range' : 'No parsed invoices yet'}
                                 </p>
-                                <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                                <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                                   {(auditDateFrom || auditDateTo)
                                     ? 'Try adjusting or clearing the date filter.'
                                     : 'Upload PDFs in the PDF Imports tab and send them to Tidy Agent — parsed invoices appear here automatically.'}
@@ -5601,7 +5299,7 @@ export default function DocTidyInvoiceAudit() {
                               </div>
                               {(auditDateFrom || auditDateTo) && (
                                 <button onClick={() => { setAuditDateFrom(''); setAuditDateTo('') }}
-                                  className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                                  className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                   Clear date filter
                                 </button>
                               )}
@@ -5616,14 +5314,14 @@ export default function DocTidyInvoiceAudit() {
                             return (
                               <tr key={job._id}
                                 className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
-                                <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleJobRow(job._id)}
                                     aria-label={`Select job ${job.filename}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
                                 {/* Per-row actions — always visible, second column */}
-                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-1.5 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
                                     <button
                                       type="button"
@@ -5640,7 +5338,7 @@ export default function DocTidyInvoiceAudit() {
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
                                     className={[
-                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
+                                      'px-2.5 py-0.5 text-[10px] whitespace-nowrap',
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                     ].join(' ')}>
                                     {headerOnlyCellFor(col.id, job)}
@@ -5664,21 +5362,21 @@ export default function DocTidyInvoiceAudit() {
                               </svg>
                             </div>
                             <div>
-                              <p className="text-[11px] font-medium text-[var(--text-100)]">
+                              <p className="text-[10px] font-medium text-[var(--text-100)]">
                                 {debouncedAuditSearch ? 'No orders match this search' : 'No orders imported yet'}
                               </p>
-                              <p className="mt-0.5 text-[11px] text-[var(--text-200)]">
+                              <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                                 {debouncedAuditSearch ? 'Try clearing the filter above.' : 'Click “Import Orders” above to upload a CSV or Excel file.'}
                               </p>
                             </div>
                             {debouncedAuditSearch && (
-                              <button onClick={() => setAuditSearch('')} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                              <button onClick={() => setAuditSearch('')} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                 Clear filter
                               </button>
                             )}
                             {!debouncedAuditSearch && (
                               <button onClick={() => { setShowImportModal(true); setImportSuccess(null); setImportError(null) }}
-                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-[11px] font-medium text-white">
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-[10px] font-medium text-white">
                                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                 </svg>
@@ -5699,10 +5397,10 @@ export default function DocTidyInvoiceAudit() {
                               </svg>
                             </div>
                             <div>
-                              <p className="text-[11px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
-                              <p className="mt-0.5 text-[11px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
+                              <p className="text-[10px] font-medium text-[var(--text-100)]">No rows match the active column filters</p>
+                              <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Try adjusting your filters or clearing them.</p>
                             </div>
-                            <button onClick={() => setColFilters({})} className="text-[11px] text-[var(--accent-200)] hover:underline cursor-pointer">
+                            <button onClick={() => setColFilters({})} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                               Clear all column filters
                             </button>
                           </div>
@@ -5773,7 +5471,7 @@ export default function DocTidyInvoiceAudit() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
-                                  <span className="text-[11px] font-semibold text-[var(--text-100)]">{label}</span>
+                                  <span className="text-[10px] font-semibold text-[var(--text-100)]">{label}</span>
                                   <span className="rounded-full bg-[var(--accent-200)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-200)]">
                                     {groupOrders.length} {groupOrders.length === 1 ? 'order' : 'orders'}
                                   </span>
@@ -5794,14 +5492,14 @@ export default function DocTidyInvoiceAudit() {
                             return (
                               <tr key={order._id}
                                 className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
-                                <td className="px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
                                     aria-label={`Select order ${order.poNumber}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
                                 {/* Per-row actions — always visible, second column */}
-                                <td className="px-1.5 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-1.5 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
                                     {vendorNeedsSetup && matchedJob && (
                                       <button
@@ -5828,7 +5526,7 @@ export default function DocTidyInvoiceAudit() {
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
                                     className={[
-                                      'px-2.5 py-1.5 text-[11px] whitespace-nowrap',
+                                      'px-2.5 py-0.5 text-[10px] whitespace-nowrap',
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
@@ -5963,7 +5661,7 @@ export default function DocTidyInvoiceAudit() {
                 return (
                   <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-[11px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
+                      <p className="text-[10px] font-semibold text-[var(--text-200)] uppercase tracking-wide">Expected columns</p>
                       <button
                         type="button"
                         onClick={() => {
@@ -5975,7 +5673,7 @@ export default function DocTidyInvoiceAudit() {
                           a.click()
                           URL.revokeObjectURL(url)
                         }}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[11px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)] transition-colors"
                       >
                         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -5985,17 +5683,17 @@ export default function DocTidyInvoiceAudit() {
                     </div>
                     {isHeaderOnly ? (
                       <>
-                        <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                        <p className="text-[10px] text-[var(--text-200)] leading-relaxed font-mono">
                           <span className="font-semibold text-[var(--text-100)]">PO #</span>
                           {' · '}
                           <span className="opacity-60">Processed Date · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status</span>
                         </p>
-                        <p className="mt-1.5 text-[11px] text-[var(--text-200)]">
+                        <p className="mt-1.5 text-[10px] text-[var(--text-200)]">
                           Only <strong>PO #</strong> is required — all other columns are optional. Rows will be matched to invoices by PO # alone.
                         </p>
                       </>
                     ) : (
-                      <p className="text-[11px] text-[var(--text-200)] leading-relaxed font-mono">
+                      <p className="text-[10px] text-[var(--text-200)] leading-relaxed font-mono">
                         Processed Date · PO # · Purchased Date · Customer Name · Order ID · Order SKU · Order Qty · LESD · Status
                       </p>
                     )}
@@ -6056,7 +5754,7 @@ export default function DocTidyInvoiceAudit() {
                   <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
                     ✓ Imported {importSuccess.count.toLocaleString()} order {importSuccess.count === 1 ? 'row' : 'rows'} successfully.
                   </p>
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-500">
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-500">
                     DC COGS is being fetched in the background — close this dialog and use <strong>Resync</strong> in a moment to see the values.
                   </p>
                 </div>

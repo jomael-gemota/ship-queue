@@ -92,7 +92,7 @@ export function PaginationArrows({
         </svg>
       </button>
 
-      <span className="px-2 py-1 text-[11px] text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
+      <span className="px-2 py-1 text-[10px] text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
         Page {page} of {pages}
       </span>
 
@@ -152,7 +152,7 @@ export function DocumentTypeBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] whitespace-nowrap ring-1 ring-inset ${DOCUMENT_TYPE_STYLES[type]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] whitespace-nowrap ring-1 ring-inset ${DOCUMENT_TYPE_STYLES[type]} ${className}`}
     >
       <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -195,7 +195,7 @@ export function ParseStatusChip({
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset ${PARSE_STATUS_STYLES[status]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap ring-1 ring-inset ${PARSE_STATUS_STYLES[status]}`}
     >
       {isParseRunning(status) && (
         <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-current" />
@@ -399,7 +399,7 @@ export function RuleCriteria({ rule }: { rule: DocTidyRuleInput }) {
         <span
           key={`${item.label}-${item.value}`}
           title={`${item.label}: ${item.value}`}
-          className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${
+          className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${
             item.tone === 'exclude'
               ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/15 dark:text-rose-300'
               : 'border-[var(--bg-300)] bg-[var(--bg-200)] text-[var(--text-100)]'
@@ -449,7 +449,7 @@ export function LiveReasoningSnippet({
       type="button"
       onClick={onOpen}
       title="Open to watch Tidy Agent work"
-      className="group inline-flex max-w-[300px] cursor-pointer items-center gap-2 text-[11px] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
+      className="group inline-flex max-w-[300px] cursor-pointer items-center gap-2 text-[10px] transition-colors hover:text-sky-600 dark:hover:text-sky-400"
     >
       <Spinner className="h-3.5 w-3.5 shrink-0 text-sky-500" />
       {/* Step badge */}
@@ -494,7 +494,7 @@ export function ParseProgressBadge({
         type="button"
         onClick={onClick}
         title={`${title} · Click to watch`}
-        className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400 animate-pulse"
+        className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-orange-500 transition-colors hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-600 dark:hover:text-orange-400 animate-pulse"
       >
         {content}
       </button>
@@ -504,7 +504,7 @@ export function ParseProgressBadge({
   return (
     <span
       title={title}
-      className="inline-flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400 animate-pulse"
+      className="inline-flex shrink-0 items-center justify-center text-orange-500 dark:text-orange-400 animate-pulse"
     >
       {content}
     </span>
