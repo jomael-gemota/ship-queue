@@ -518,7 +518,7 @@ export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
   { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',      description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true, center: true },
   { id: 'parsedAt',           section: 'invoice',  label: 'Parsed',          description: 'Date the Tidy Agent last parsed and matched this invoice',           defaultVisible: true,                center: true },
   // ── Computed ──
-  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',                       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
+  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',     center: true,       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
 ]
 
 /** Default order mirrors the declaration order in INVOICE_AUDIT_COLUMNS. */
