@@ -13,7 +13,6 @@ import {
 } from '../components/docTidy/docTidyUi'
 import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
-import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import VendorSetup from '../components/docTidy/VendorSetup'
@@ -2590,25 +2589,6 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       setAuditBulkDeleting(false)
     }
-  }
-
-  /**
-   * Abort all running parse jobs across selected PDF imports.
-   */
-  const handleBulkAbortPdfs = async () => {
-    const jobIds = pdfImports
-      .filter(
-        (imp) =>
-          pdfSelectedIds.has(imp._id) &&
-          imp.parseJob != null &&
-          (imp.parseJob.status === 'pending' || imp.parseJob.status === 'processing')
-      )
-      .map((imp) => imp.parseJob!._id)
-    if (jobIds.length === 0) return
-    await Promise.allSettled(
-      jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`))
-    )
-    void fetchPdfImports()
   }
 
   /* Selection helpers */
