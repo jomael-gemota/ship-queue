@@ -464,6 +464,53 @@ export function LiveReasoningSnippet({
   )
 }
 
+/**
+ * A compact `XX%` progress indicator shown in the Actions cell while a job is
+ * running. The percentage is estimated from the reasoning step (10 % per step,
+ * capped at 95 % so it never falsely reaches 100 % before completion).
+ *
+ * Pass `onClick` to make it a button that opens the reasoning modal.
+ */
+export function ParseProgressBadge({
+  jobId,
+  onClick,
+}: {
+  jobId: string
+  onClick?: () => void
+}) {
+  const progress = useParseProgress(jobId)
+  const pct = progress ? Math.min(progress.step * 10, 95) : null
+  const title = progress
+    ? `Step ${progress.step}${progress.snippet ? ` — ${progress.snippet}` : ''}`
+    : 'Tidy Agent is starting…'
+
+  const content = pct !== null
+    ? <span className="tabular-nums text-[10px] font-semibold leading-none">{pct}%</span>
+    : <Spinner className="h-4 w-4" />
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={`${title} · Click to watch`}
+        className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:text-sky-600 dark:hover:text-sky-400 animate-pulse"
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <span
+      title={title}
+      className="inline-flex shrink-0 items-center justify-center text-sky-600 dark:text-sky-400 animate-pulse"
+    >
+      {content}
+    </span>
+  )
+}
+
 /** Dismissible status banner using the shared notice-card styles. */
 export function Banner({
   kind,
