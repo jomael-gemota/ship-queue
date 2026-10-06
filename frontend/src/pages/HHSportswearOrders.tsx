@@ -9,14 +9,15 @@ import { useHHList } from '../context/HHListContext'
 import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhExcludedItems, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
-  AmazonIcon,
   DeleteBatchButton,
   EyeIcon,
   HeaderLabel,
   IdIcon,
+  SellerCentralOrderId,
   StatusIcon,
   Td,
   Th,
+  UploaderAvatar,
   UserIcon,
 } from '../components/labels/labelUi'
 
@@ -174,10 +175,22 @@ export default function HHSportswearOrders() {
             <HHVerifiedSummary orders={group.children} />
             <HHPlacedSummary orders={group.children} />
           </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-            {group.children.length} order{group.children.length === 1 ? '' : 's'}
-            {' · '}
-            {group.createdByName} ({group.createdByEmail})
+          <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <span>
+              {group.children.length} order{group.children.length === 1 ? '' : 's'}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <UploaderAvatar
+                email={group.createdByEmail}
+                name={group.createdByName}
+                avatar={group.createdByAvatar}
+                size="md"
+              />
+              <span className="truncate">
+                {group.createdByName} ({group.createdByEmail})
+              </span>
+            </span>
           </p>
           <HHNotesField
             groupId={group.id}
@@ -300,11 +313,8 @@ export default function HHSportswearOrders() {
                     exiting={exitingId === order.id}
                     onExitEnd={() => finishExit(order.id)}
                   >
-                    <Td compact className="whitespace-nowrap font-mono text-slate-800 dark:text-[var(--text-100)]">
-                      <span className="inline-flex items-center gap-1.5">
-                        <AmazonIcon className="h-3.5 w-3.5 shrink-0" />
-                        {order.orderId}
-                      </span>
+                    <Td compact className="whitespace-nowrap font-mono">
+                      <SellerCentralOrderId orderId={order.orderId} />
                     </Td>
                     <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
                       {order.po}

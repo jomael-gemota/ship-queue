@@ -27,7 +27,6 @@ import { BackIcon, Spinner } from '../labels/labelUi'
 import { Tooltip } from '../Tooltip'
 import type { HHPage } from '../../lib/hhNav'
 import { prefersReducedMotion } from '../../lib/hhNav'
-import { DROPSHIP_PATH } from '../../lib/dropship'
 import { hhBrand, hhBrandFromPath } from '../../lib/hhBrand'
 
 function useOrderingBrand() {
@@ -38,18 +37,15 @@ function useOrderingBrand() {
 export function HHBreadcrumb({
   groupId,
   current,
-  brandName,
   brandPath,
 }: {
   groupId?: string
   current: HHPage
-  brandName: string
   brandPath: string
 }) {
   const crumbs: { label: string; to?: string }[] = [
-    { label: 'Dropship (B2B)', to: DROPSHIP_PATH },
     {
-      label: brandName,
+      label: 'Batches',
       to: current === 'list' ? undefined : brandPath,
     },
   ]

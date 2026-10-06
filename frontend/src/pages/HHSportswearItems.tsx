@@ -26,12 +26,12 @@ import type { HHLineItem } from '../lib/hhSportswear'
 import { hhCartSkuAdjustment } from '../lib/hhSkuExclude'
 import { thorogoodPortalSku } from '../lib/hhThorogoodSku'
 import {
-  AmazonIcon,
   BoxIcon,
   DollarIcon,
   formatCurrency,
   HeaderLabel,
   IdIcon,
+  SellerCentralOrderId,
   Td,
   Th,
 } from '../components/labels/labelUi'
@@ -475,10 +475,11 @@ export default function HHSportswearItems() {
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
         <div className="min-w-0">
           <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-            <span className="inline-flex items-center gap-1.5 font-mono">
-              <AmazonIcon className="h-4 w-4 shrink-0" />
-              {order.orderId}
-            </span>
+            <SellerCentralOrderId
+              orderId={order.orderId}
+              iconClassName="h-4 w-4 shrink-0"
+              className="font-mono"
+            />
             <HHDetailsBadge
               status={order.detailsStatus}
               sellerNotesResult={order.sellerNotesResult}

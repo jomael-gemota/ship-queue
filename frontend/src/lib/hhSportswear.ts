@@ -204,6 +204,22 @@ export function hhOrderIsLocked(order: Pick<HHChildOrder, 'cartStatus'>): boolea
   return hhCartIsPlaced(order.cartStatus)
 }
 
+/** Last five characters of a batch id, uppercased so the table stays scannable. */
+export function shortHhBatchId(id: string): string {
+  const trimmed = id.trim()
+  if (trimmed.length <= 5) return trimmed.toUpperCase()
+  return trimmed.slice(-5).toUpperCase()
+}
+
+/** Paste imports are stored under this name; anything else is an uploaded file. */
+export function hhImportSource(sourceFileName: string): { kind: 'paste' | 'file'; label: string } {
+  const name = sourceFileName.trim()
+  if (!name || name.toLowerCase() === 'pasted orders') {
+    return { kind: 'paste', label: 'Pasted orders' }
+  }
+  return { kind: 'file', label: name }
+}
+
 export function hhGroupHasPlaced(group: Pick<HHOrderGroup, 'children'>): boolean {
   return group.children.some((order) => hhCartIsPlaced(order.cartStatus))
 }
@@ -292,6 +308,8 @@ export interface HHOrderGroup {
   createdAt: string
   createdByName: string
   createdByEmail: string
+  /** Google account photo, when the creator has one on their account. */
+  createdByAvatar?: string
   notes: string
   sourceFileName: string
   detailsStatus: HHDetailsStatus

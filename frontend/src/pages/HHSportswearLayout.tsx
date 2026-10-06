@@ -46,7 +46,7 @@ function HHSportswearShell() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <HHBreadcrumb current={page} groupId={groupId} brandName={brandName} brandPath={brandPath} />
+        <HHBreadcrumb current={page} groupId={groupId} brandPath={brandPath} />
         {backTo ? (
           <HHBackButton to={backTo} />
         ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useHHList } from '../../context/HHListContext'
+import { hhImportSource } from '../../lib/hhSportswear'
 
 const MAX_NOTES = 4000
 
@@ -38,8 +39,9 @@ export function HHNotesField({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const skipBlurRef = useRef(false)
   const savingRef = useRef(false)
-  const display = notes || sourceFileName
-  const placeholder = sourceFileName || 'Add a note…'
+  const importedFile = hhImportSource(sourceFileName).kind === 'file' ? sourceFileName.trim() : ''
+  const display = notes || importedFile
+  const placeholder = importedFile || 'Add a note…'
   const label = orderId ? 'Order notes' : 'Batch notes'
 
   useEffect(() => {
@@ -140,7 +142,7 @@ export function HHNotesField({
     <button
       type="button"
       onClick={startEdit}
-      title={sourceFileName ? `Click to edit notes · File: ${sourceFileName}` : 'Click to edit notes'}
+      title={importedFile ? `Click to edit notes · File: ${importedFile}` : 'Click to edit notes'}
       className={`group/notes flex w-full items-start gap-1.5 rounded-md text-left cursor-text hover:bg-[var(--primary-100)]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)] ${
         variant === 'header' ? 'mt-2 max-w-3xl px-1 py-0.5' : 'px-0.5 py-0.5'
       }`}

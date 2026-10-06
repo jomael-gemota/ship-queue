@@ -47,6 +47,7 @@ import { hhBrand, hhBrandFromRequest, hhBrandId, hhDraftMode, type HHBrandId } f
 import { buildHhBatchExportXlsx, hhExportFileName } from '../lib/hhExportXlsx';
 import { hhCartItems } from '../lib/hhLineItems';
 import { withHhGroupLock } from '../lib/hhGroupLock';
+import User from '../models/User';
 
 export interface HHLineItemDto {
   id: string;
@@ -104,6 +105,8 @@ export interface HHOrderGroupDto {
   createdAt: string;
   createdByName: string;
   createdByEmail: string;
+  /** Google account photo, resolved from the user record by email. */
+  createdByAvatar?: string;
   notes: string;
   sourceFileName: string;
   detailsStatus: HHDetailsStatus;
@@ -252,6 +255,31 @@ function serializeGroup(
       : mapLegacyHhStatus((group as { status?: string }).status).cartStatus,
     children: (group.children ?? []).map(serializeOrder),
   };
+}
+
+/** Looks up each creator's Google photo once, so list and mutation responses stay in sync. */
+async function withCreatorAvatars<T extends { createdByEmail?: string }>(
+  groups: T[]
+): Promise<Array<T & { createdByAvatar?: string }>> {
+  const emails = [
+    ...new Set(groups.map((group) => group.createdByEmail).filter((email): email is string => Boolean(email))),
+  ];
+  if (emails.length === 0) return groups.map((group) => ({ ...group }));
+
+  const users = await User.find({ email: { $in: emails } })
+    .select('email avatar')
+    .lean();
+  const avatars = new Map(users.map((user) => [user.email, user.avatar]));
+
+  return groups.map((group) => ({
+    ...group,
+    createdByAvatar: group.createdByEmail ? avatars.get(group.createdByEmail) || undefined : undefined,
+  }));
+}
+
+async function presentGroup(group: Parameters<typeof serializeGroup>[0]): Promise<HHOrderGroupDto> {
+  const [dto] = await withCreatorAvatars([serializeGroup(group)]);
+  return dto;
 }
 
 function emptyImportedOrder(orderId: string, po: string) {
@@ -576,7 +604,7 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
     markChildrenPending(group, undefined, { resetCart: draftCart });
     await group.save();
     enqueueHhGroupScSync(String(group._id), undefined, { autoDraft: draftCart, stampSellerNotes });
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-sync HH Sportswear group', error: (error as Error).message });
   }
@@ -619,7 +647,7 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
     markChildrenPending(group, String(order._id), { resetCart: draftCart });
     await group.save();
     enqueueHhGroupScSync(String(group._id), String(order._id), { autoDraft: draftCart, stampSellerNotes });
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-sync HH Sportswear order', error: (error as Error).message });
   }
@@ -651,7 +679,7 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
       }
       group.markModified('children');
       await group.save();
-      res.json({ data: serializeGroup(group) });
+      res.json({ data: await presentGroup(group) });
       return;
     }
 
@@ -665,7 +693,7 @@ export const rerunGroupCartDraft = async (req: Request, res: Response): Promise<
 
     await group.save();
     enqueueHhCartDraft(String(group._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to regenerate HH Sportswear cart drafts', error: (error as Error).message });
   }
@@ -721,7 +749,7 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
         paintPreviewShipVia(order);
         group.markModified('children');
         await group.save();
-        res.json({ data: serializeGroup(group) });
+        res.json({ data: await presentGroup(group) });
         return;
       }
       const documentId = (order.b2bDraftId ?? '').trim();
@@ -752,14 +780,14 @@ export const rerunOrderCartDraft = async (req: Request, res: Response): Promise<
         await fresh.save();
         return fresh;
       });
-      res.json({ data: serializeGroup(saved ?? group) });
+      res.json({ data: await presentGroup(saved ?? group) });
       return;
     }
 
     prepareCartRedraft(group, String(order._id));
     await group.save();
     enqueueHhCartDraft(String(group._id), String(order._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     if (error instanceof HhB2bAuthError) {
       res.status(401).json({ message: error.message });
@@ -797,7 +825,7 @@ export const rerunGroupCartVerify = async (req: Request, res: Response): Promise
     }
 
     enqueueHhCartVerify(String(group._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-check HH Sportswear carts', error: (error as Error).message });
   }
@@ -837,7 +865,7 @@ export const rerunOrderCartVerify = async (req: Request, res: Response): Promise
     }
 
     enqueueHhCartVerify(String(group._id), String(order._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-check HH Sportswear cart', error: (error as Error).message });
   }
@@ -850,7 +878,7 @@ async function respondCartCompare(req: Request, res: Response, groupId: string, 
     res.status(404).json({ message: 'Group not found' });
     return;
   }
-  res.json({ data: serializeGroup(fresh), compare });
+  res.json({ data: await presentGroup(fresh), compare });
 }
 
 export const compareGroupCart = async (req: Request, res: Response): Promise<void> => {
@@ -937,7 +965,7 @@ export const placeGroupCart = async (req: Request, res: Response): Promise<void>
     }
 
     enqueueHhCartPlace(String(group._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to place HH Sportswear orders', error: (error as Error).message });
   }
@@ -979,7 +1007,7 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
     }
 
     enqueueHhCartPlace(String(group._id), String(order._id));
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to place HH Sportswear order', error: (error as Error).message });
   }
@@ -992,7 +1020,7 @@ export const listGroups = async (req: Request, res: Response): Promise<void> => 
     queueMissingImageBackfill(brand, groups);
     queueMissingCartDrafts(brand, groups);
     queueMissingCartVerifies(brand, groups);
-    res.json({ data: groups.map(serializeGroup) });
+    res.json({ data: await withCreatorAvatars(groups.map(serializeGroup)) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch HH Sportswear groups', error: (error as Error).message });
   }
@@ -1107,7 +1135,7 @@ export const getGroup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch HH Sportswear group', error: (error as Error).message });
   }
@@ -1177,7 +1205,7 @@ export const createGroup = async (req: Request, res: Response): Promise<void> =>
       children,
     });
 
-    res.status(201).json({ data: serializeGroup(group) });
+    res.status(201).json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to create HH Sportswear group', error: (error as Error).message });
   }
@@ -1207,7 +1235,7 @@ export const updateGroupNotes = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update HH Sportswear notes', error: (error as Error).message });
   }
@@ -1247,7 +1275,7 @@ export const updateOrderNotes = async (req: Request, res: Response): Promise<voi
     group.markModified('children');
     await group.save();
 
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update HH Sportswear order notes', error: (error as Error).message });
   }
@@ -1343,7 +1371,7 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       return;
     }
 
-    res.json({ data: serializeGroup(group) });
+    res.json({ data: await presentGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update HH line item', error: (error as Error).message });
   }
@@ -1531,7 +1559,7 @@ export const importGroup = async (req: Request, res: Response): Promise<void> =>
       incompleteRowsSkipped: parsed.incompleteRowsSkipped,
     };
 
-    res.status(201).json({ data: serializeGroup(group), meta });
+    res.status(201).json({ data: await presentGroup(group), meta });
     const fetchDetails = parseBoolFlag(req.body?.fetchDetails, true);
     const draftCart = fetchDetails && parseBoolFlag(req.body?.draftCart, true);
     const stampSellerNotes = fetchDetails && parseBoolFlag(req.body?.stampSellerNotes, true);
