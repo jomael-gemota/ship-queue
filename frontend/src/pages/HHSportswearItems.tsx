@@ -483,6 +483,7 @@ export default function HHSportswearItems() {
               status={order.detailsStatus}
               sellerNotesResult={order.sellerNotesResult}
               sellerNotesError={order.sellerNotesError}
+              error={order.detailsError}
             />
             <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
             <HHShipViaChip

@@ -280,6 +280,7 @@ export interface HHChildOrder {
   shipViaOverride: '' | 'default' | 'usps'
   sellerNotesResult: HHSellerNotesResult
   sellerNotesError: string
+  detailsError: string
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null
@@ -668,7 +669,9 @@ export interface HHCartDraftStatus {
   verifyCurrentGroupId?: string | null
   verifyCurrentOrderId?: string | null
   verifyQueuedGroupIds?: string[]
+  verifyLastError?: string | null
   placing?: boolean
+  placeLastError?: string | null
   placeCurrentGroupId?: string | null
   placeCurrentOrderId?: string | null
   placeQueued?: number

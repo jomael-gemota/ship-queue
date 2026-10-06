@@ -135,7 +135,10 @@ function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetail
   const items = child.items as unknown as { splice: (start: number, del: number, ...rest: typeof nextItems) => void };
   items.splice(0, (child.items as unknown[]).length, ...nextItems);
   child.detailsStatus = detailsStatus;
-  if (detailsStatus === 'synced') invalidateHhCartVerification(child);
+  if (detailsStatus === 'synced') {
+    child.detailsError = '';
+    invalidateHhCartVerification(child);
+  }
 }
 
 function applyGroupRollup(group: IHHOrderGroup): void {
@@ -196,8 +199,13 @@ async function fillChild(
       console.warn(`${LOG} Skipped ${child.orderId} — missing order.blob on refresh`);
       return;
     }
-    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed'));
+    const message = 'Seller Central order is missing order data';
+    await persistChild(groupId, childId, (row) => {
+      applyFill(row, mapScFill(scOrder, null), 'failed');
+      if (row.detailsStatus === 'failed') row.detailsError = truncateError(message);
+    });
     run.flagged += 1;
+    lastError = truncateError(`${child.orderId}: ${message}`);
     console.warn(`${LOG} Failed ${child.orderId} — missing order.blob`);
     return;
   }
@@ -208,7 +216,6 @@ async function fillChild(
   );
   run.synced += 1;
   lastSuccessAt = new Date();
-  lastError = null;
   const itemCount = saved?.items.length ?? child.items.length;
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
   if (saved && saved.detailsStatus === 'synced' && stampNotes) {
@@ -272,7 +279,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
     lastError = truncateError(err instanceof Error ? err.message : String(err));
     console.warn(`${LOG} ${lastError}`);
     lastRun = run;
-    return;
+    throw new StopGroupError(lastError);
   }
 
   const attempted = new Set<string>();
@@ -299,32 +306,49 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
         await fillChild(group, child, cookie, run, job.autoDraft);
       } catch (err) {
         if (err instanceof HhScAuthError || err instanceof HhScRateLimitError) {
-          throw new StopGroupError(err.message);
+          throw new StopGroupError(`${child.orderId}: ${err.message}`);
         }
         if (err instanceof HhScNotFoundError) {
           if (child.detailsStatus !== 'pending') {
             console.warn(`${LOG} Skipped ${child.orderId} — ${err.message}`);
             continue;
           }
-          await persistChild(String(group._id), String(child._id), (row) =>
-            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed')
-          );
+          await persistChild(String(group._id), String(child._id), (row) => {
+            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed');
+            if (row.detailsStatus === 'failed') row.detailsError = truncateError(err.message);
+          });
           run.flagged += 1;
           lastError = truncateError(`${child.orderId}: ${err.message}`);
           console.warn(`${LOG} Failed ${child.orderId} — ${err.message}`);
           continue;
         }
+        const message = err instanceof Error ? err.message : String(err);
         run.failed += 1;
-        lastError = truncateError(err instanceof Error ? err.message : String(err));
+        lastError = truncateError(`${child.orderId}: ${message}`);
+        try {
+          await persistChild(String(group._id), String(child._id), (row) => {
+            if (row.detailsStatus !== 'pending') return;
+            row.detailsStatus = 'failed';
+            row.detailsError = truncateError(message);
+          });
+        } catch (persistErr) {
+          console.error(
+            `${LOG} Could not save sync error for ${child.orderId}: ${
+              persistErr instanceof Error ? persistErr.message : String(persistErr)
+            }`
+          );
+        }
         console.error(`${LOG} ${child.orderId} failed: ${lastError}`);
       }
     }
   } catch (err) {
     lastError = truncateError(err instanceof Error ? err.message : String(err));
     console.warn(`${LOG} Stopped group ${job.groupId}: ${lastError}`);
+    if (err instanceof StopGroupError) throw err;
   }
 
   lastRun = run;
+  if (run.synced > 0 && run.failed === 0 && run.flagged === 0) lastError = null;
   console.log(
     `${LOG} Group ${job.groupId} done — synced ${run.synced}, flagged ${run.flagged}, failed ${run.failed}`
   );
@@ -342,8 +366,13 @@ async function drainQueue(): Promise<void> {
       try {
         await fillGroup(job);
       } catch (err) {
-        lastError = truncateError(err instanceof Error ? err.message : String(err));
-        console.error(`${LOG} Group ${job.groupId} failed: ${lastError}`);
+        if (err instanceof StopGroupError) {
+          queue.length = 0;
+          console.warn(`${LOG} Stopped the sync queue: ${lastError ?? err.message}`);
+        } else {
+          lastError = truncateError(err instanceof Error ? err.message : String(err));
+          console.error(`${LOG} Group ${job.groupId} failed: ${lastError}`);
+        }
       }
     }
   } finally {

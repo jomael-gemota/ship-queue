@@ -39,6 +39,8 @@ const queue: HhCartVerifyJob[] = [];
 let draining = false;
 let verifyCurrentGroupId: string | null = null;
 let verifyCurrentOrderId: string | null = null;
+let lastError: string | null = null;
+let sessionStopped = false;
 
 function cartSkuOverrides(child: IHHChildOrder): Set<string> {
   return new Set(
@@ -143,6 +145,32 @@ async function persistVerification(
   });
 }
 
+function sessionIssue(message: string, expected: string): HhVerifyIssue {
+  return {
+    field: 'document',
+    label: 'B2B draft',
+    expected,
+    actual: message.slice(0, 240),
+  };
+}
+
+/** Session is dead, so mark the orders we will not call out for and stop those calls. */
+async function stopVerifyForSession(
+  groupId: string,
+  children: IHHChildOrder[],
+  message: string,
+  expected: string
+): Promise<void> {
+  sessionStopped = true;
+  lastError = message.slice(0, 1000);
+  const issue = sessionIssue(message, expected);
+  for (const child of children) {
+    verifyCurrentOrderId = child.orderId;
+    await persistVerification(groupId, String(child._id), 'review', [issue]);
+    console.warn(`${LOG} ${child.orderId} ${message}`);
+  }
+}
+
 export async function verifyHhCart(groupId: string, childId?: string): Promise<void> {
   const group = await HHOrderGroup.findById(groupId);
   if (!group) return;
@@ -151,6 +179,7 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     childCanVerify
   );
   if (targets.length === 0) return;
+  sessionStopped = false;
 
   const liveTargets: IHHChildOrder[] = [];
   const envoyTargets: IHHChildOrder[] = [];
@@ -170,9 +199,17 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     liveTargets.push(child);
   }
 
-  const envoyInitials =
-    envoyTargets.length > 0 ? (await loadHhB2bConfig('thorogood')).skuInitials : [];
+  let envoyInitials: string[] = [];
+  if (envoyTargets.length > 0) {
+    try {
+      envoyInitials = (await loadHhB2bConfig('thorogood')).skuInitials;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await stopVerifyForSession(groupId, envoyTargets, message, 'Live Thorogood draft');
+    }
+  }
   for (const child of envoyTargets) {
+    if (sessionStopped) break;
     verifyCurrentOrderId = child.orderId;
     try {
       const compared = await compareEnvoyDraft(child, envoyInitials);
@@ -184,21 +221,20 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof HhB2bAuthError) {
-        console.warn(`${LOG} ${child.orderId} ${message}`);
-        return;
+        const start = envoyTargets.indexOf(child);
+        await stopVerifyForSession(groupId, envoyTargets.slice(Math.max(0, start)), message, 'Live Thorogood draft');
+        break;
       }
       await persistVerification(groupId, String(child._id), 'review', [
-        {
-          field: 'document',
-          label: 'B2B draft',
-          expected: 'Live Thorogood draft',
-          actual: message.slice(0, 240),
-        },
+        sessionIssue(message, 'Live Thorogood draft'),
       ]);
       console.warn(`${LOG} ${child.orderId} ${message}`);
     }
   }
-  if (liveTargets.length === 0) return;
+  if (liveTargets.length === 0) {
+    if (!sessionStopped) lastError = null;
+    return;
+  }
 
   let config;
   let cookie;
@@ -206,11 +242,9 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     config = await loadHhB2bConfig(hhBrandId(group.brand));
     cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   } catch (err) {
-    if (err instanceof HhB2bAuthError) {
-      console.warn(`${LOG} ${err.message}`);
-      return;
-    }
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    await stopVerifyForSession(groupId, liveTargets, message, 'Live Helly Hansen cart');
+    return;
   }
 
   for (const child of liveTargets) {
@@ -236,21 +270,17 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof HhB2bAuthError) {
-        console.warn(`${LOG} ${child.orderId} ${message}`);
+        const start = liveTargets.indexOf(child);
+        await stopVerifyForSession(groupId, liveTargets.slice(Math.max(0, start)), message, 'Live Helly Hansen cart');
         return;
       }
-      const fetchIssues: HhVerifyIssue[] = [
-        {
-          field: 'document',
-          label: 'B2B draft',
-          expected: 'Live Helly Hansen cart',
-          actual: message.slice(0, 240),
-        },
-      ];
-      await persistVerification(groupId, String(child._id), 'review', fetchIssues);
+      await persistVerification(groupId, String(child._id), 'review', [
+        sessionIssue(message, 'Live Helly Hansen cart'),
+      ]);
       console.warn(`${LOG} ${child.orderId} ${message}`);
     }
   }
+  if (!sessionStopped) lastError = null;
 }
 
 async function drainQueue(): Promise<void> {
@@ -306,12 +336,14 @@ export function getHhCartVerifyRuntime(): {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queuedGroupIds: string[];
+  lastError: string | null;
 } {
   return {
     running: draining,
     currentGroupId: verifyCurrentGroupId,
     currentOrderId: verifyCurrentOrderId,
     queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
+    lastError,
   };
 }
 

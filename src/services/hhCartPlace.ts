@@ -195,11 +195,25 @@ async function placeGroup(job: HhCartPlaceJob): Promise<void> {
     try {
       await placeChild(group, child, run);
     } catch (err) {
+      const message = truncateError(err instanceof Error ? err.message : String(err));
       run.failed += 1;
-      lastError = truncateError(err instanceof Error ? err.message : String(err));
-      await persistPlaceError(String(group._id), String(child._id), lastError);
-      if (err instanceof HhB2bAuthError || err instanceof HhB2bDraftError) {
-        console.warn(`${LOG} ${child.orderId} ${lastError}`);
+      lastError = truncateError(`${child.orderId}: ${message}`);
+      await persistPlaceError(String(group._id), String(child._id), message);
+      if (err instanceof HhB2bAuthError) {
+        console.warn(`${LOG} ${child.orderId} ${message}`);
+        for (const other of group.children) {
+          const id = String(other._id);
+          if (attempted.has(id)) continue;
+          if (job.childId && id !== job.childId) continue;
+          if (!childCanPlace(other)) continue;
+          attempted.add(id);
+          run.failed += 1;
+          await persistPlaceError(String(group._id), id, message);
+        }
+        break;
+      }
+      if (err instanceof HhB2bDraftError) {
+        console.warn(`${LOG} ${child.orderId} ${message}`);
       } else {
         console.error(`${LOG} ${child.orderId} failed: ${lastError}`);
       }
@@ -207,6 +221,7 @@ async function placeGroup(job: HhCartPlaceJob): Promise<void> {
   }
 
   lastRun = run;
+  if (run.failed === 0) lastError = null;
   console.log(
     `${LOG} Group ${job.groupId} done — placed ${run.placed}, preview ${run.preview}, skipped ${run.skipped}, failed ${run.failed}`
   );

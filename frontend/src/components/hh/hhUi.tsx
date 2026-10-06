@@ -856,16 +856,19 @@ export function HHDetailsBadge({
   status,
   sellerNotesResult = '',
   sellerNotesError = '',
+  error = '',
 }: {
   status: HHDetailsStatus
   sellerNotesResult?: HHSellerNotesResult
   sellerNotesError?: string
+  error?: string
 }) {
-  const hover = hhSellerNotesHover({ detailsStatus: status, sellerNotesResult, sellerNotesError })
+  const failedMessage = status === 'failed' ? error.trim() : ''
+  const hover = failedMessage || hhSellerNotesHover({ detailsStatus: status, sellerNotesResult, sellerNotesError })
   const badge = (
     <HHToneBadge tone={detailsTone(status)}>
       {HH_DETAILS_STATUS_LABELS[status]}
-      {status === 'synced' && sellerNotesResult === 'failed' ? <HHHelpMark /> : null}
+      {failedMessage || (status === 'synced' && sellerNotesResult === 'failed') ? <HHHelpMark /> : null}
     </HHToneBadge>
   )
   if (!hover) return badge

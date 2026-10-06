@@ -86,6 +86,7 @@ export interface HHChildOrderDto {
     shipViaOverride: '' | 'default' | 'usps';
     sellerNotesResult: '' | 'updated' | 'already' | 'failed';
     sellerNotesError: string;
+    detailsError: string;
   verifyIssues: Array<{ field: string; label: string; expected: string; actual: string }>;
   verifyRows: Array<{ field: string; label: string; expected: string; actual: string; match: boolean }>;
   verifiedAt: string | null;
@@ -211,6 +212,7 @@ function serializeOrder(order: IHHChildOrder): HHChildOrderDto {
         ? order.sellerNotesResult
         : '',
     sellerNotesError: order.sellerNotesError ?? '',
+    detailsError: order.detailsError ?? '',
     verifyIssues: (order.verifyIssues ?? []).map((issue) => ({
       field: issue.field ?? '',
       label: issue.label ?? '',
@@ -440,7 +442,9 @@ export const getScSyncStatus = async (req: Request, res: Response): Promise<void
           verifyCurrentGroupId: verify.currentGroupId,
           verifyCurrentOrderId: verify.currentOrderId,
           verifyQueuedGroupIds: verify.queuedGroupIds,
+          verifyLastError: verify.lastError,
           placing: place.running || place.queued > 0,
+          placeLastError: place.lastError,
           placeCurrentGroupId: place.currentGroupId,
           placeCurrentOrderId: place.currentOrderId,
           placeQueued: place.queued,
@@ -530,6 +534,7 @@ function markChildrenPending(group: IHHOrderGroup, childId?: string, options?: {
   for (const child of targets) {
     if (isHhPlaced(child)) continue;
     child.detailsStatus = HH_DEFAULT_DETAILS_STATUS;
+    child.detailsError = '';
     if (resetCart) resetCartForResync(child);
     else invalidateHhCartVerification(child);
     marked += 1;

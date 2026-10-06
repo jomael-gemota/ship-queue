@@ -83,6 +83,8 @@ export interface IHHChildOrder {
   sellerNotesResult: '' | 'updated' | 'already' | 'failed';
   /** Why the last Seller Notes write failed. Empty after a success or a skip. */
   sellerNotesError: string;
+  /** Why the last Seller Central sync failed. Empty after a successful sync. */
+  detailsError: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
@@ -145,6 +147,7 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
     sellerNotesStamped: { type: Boolean, default: false },
     sellerNotesResult: { type: String, enum: ['', 'updated', 'already', 'failed'], default: '' },
     sellerNotesError: { type: String, default: '', trim: true },
+    detailsError: { type: String, default: '', trim: true },
     detailsStatus: {
       type: String,
       enum: HH_DETAILS_STATUSES,

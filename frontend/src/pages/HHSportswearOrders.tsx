@@ -334,6 +334,7 @@ export default function HHSportswearOrders() {
                         status={order.detailsStatus}
                         sellerNotesResult={order.sellerNotesResult}
                         sellerNotesError={order.sellerNotesError}
+                        error={order.detailsError}
                       />
                     </Td>
                     <Td compact>
