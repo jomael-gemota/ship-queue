@@ -437,7 +437,10 @@ async function buildConfigPayload() {
     driveFolderId: config.driveFolderId || null,
     driveFolderName: config.driveFolderName || null,
     pollerIntervalSeconds: poller.intervalSeconds,
+    pollerRunning: poller.isPolling,
     lastPollAt: poller.lastPollAt?.toISOString() ?? null,
+    lastImportAt: poller.lastImportAt?.toISOString() ?? null,
+    lastPollError: poller.lastError,
   };
 }
 
