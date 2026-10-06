@@ -565,6 +565,17 @@ export function HHImportButton() {
                 }}
               />
               <ImportSwitch
+                checked={fetchDetails && stampSellerNotes}
+                disabled={importBusy || !fetchDetails}
+                label="Put PO Number in the Seller Notes"
+                description={
+                  fetchDetails
+                    ? 'Write the PO into Seller Central seller notes after details sync. Existing notes stay.'
+                    : 'Turn on Fetch order details first. Seller notes need the fetched order.'
+                }
+                onChange={setStampSellerNotes}
+              />
+              <ImportSwitch
                 checked={fetchDetails && draftCart}
                 disabled={importBusy || !fetchDetails}
                 label={orderDetails ? 'Draft portal cart' : 'Draft B2B cart'}
@@ -576,17 +587,6 @@ export function HHImportButton() {
                     : 'Turn on Fetch order details first. Carts need synced items.'
                 }
                 onChange={setDraftCart}
-              />
-              <ImportSwitch
-                checked={fetchDetails && stampSellerNotes}
-                disabled={importBusy || !fetchDetails}
-                label="Put PO Number in the Seller Notes"
-                description={
-                  fetchDetails
-                    ? 'Write the spreadsheet PO into Seller Central seller notes after details sync. Existing notes stay.'
-                    : 'Turn on Fetch order details first. Seller notes need the fetched order.'
-                }
-                onChange={setStampSellerNotes}
               />
             </div>
 

@@ -1762,6 +1762,17 @@ export function HHConfirmModal({
         {isResync && (
           <div className="space-y-3">
             <HHConfirmSwitch
+              checked={stampSellerNotes}
+              disabled={busy}
+              label="Put PO Number in the Seller Notes"
+              description={
+                stampSellerNotes
+                  ? 'Writes the PO into Seller Central seller notes after details sync. Existing notes stay. If the PO is already there, nothing is sent.'
+                  : 'Seller notes stay as they are.'
+              }
+              onChange={setStampSellerNotes}
+            />
+            <HHConfirmSwitch
               checked={draftCart}
               disabled={busy}
               label={
@@ -1787,17 +1798,6 @@ export function HHConfirmModal({
                     : 'You can draft a cart later after details sync.'
               }
               onChange={setDraftCart}
-            />
-            <HHConfirmSwitch
-              checked={stampSellerNotes}
-              disabled={busy}
-              label="Put PO Number in the Seller Notes"
-              description={
-                stampSellerNotes
-                  ? 'Writes the spreadsheet PO into Seller Central seller notes after details sync. Existing notes stay. If the PO is already there, nothing is sent.'
-                  : 'Seller notes stay as they are.'
-              }
-              onChange={setStampSellerNotes}
             />
           </div>
         )}
