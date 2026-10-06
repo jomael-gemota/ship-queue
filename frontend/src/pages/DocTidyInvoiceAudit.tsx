@@ -55,6 +55,7 @@ import {
   type DocTidyOrderImport,
   type OrderImportsResponse,
   type RunAllResult,
+  type DocTidyConfig,
 } from '../types/docTidy'
 
 /**
@@ -2325,6 +2326,38 @@ export default function DocTidyInvoiceAudit() {
   const [emailFetching, setEmailFetching] = useState(false)
   const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
 
+  /* Background poller / manual-fetch SSE status chips */
+  const [pollerRunning, setPollerRunning] = useState(false)
+  const [pollError, setPollError] = useState<string | null>(null)
+  const [showFetchDone, setShowFetchDone] = useState(false)
+  const fetchDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up fetch-done timer on unmount.
+  useEffect(() => {
+    return () => { if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current) }
+  }, [])
+
+  /* Countdown to next automated poll */
+  const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
+  const pollerIntervalMsRef = useRef<number>(30_000)
+  // 1-second tick to keep the countdown display fresh.
+  const [, setCountdownTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setCountdownTick((n) => n + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Fetch the poller config once to seed the initial countdown.
+  useEffect(() => {
+    authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null).then((res) => {
+      if (!res) return
+      const intervalMs = (res.data.pollerIntervalSeconds ?? 30) * 1_000
+      pollerIntervalMsRef.current = intervalMs
+      const base = res.data.lastPollAt ? new Date(res.data.lastPollAt).getTime() : Date.now()
+      setNextSyncAt(new Date(base + intervalMs))
+    })
+  }, [])
+
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
   const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
@@ -2771,6 +2804,19 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
+        }
+        if (event.type === 'poll_status') {
+          setPollerRunning(event.pollerRunning ?? false)
+          setPollError(event.pollError ?? null)
+          if (!event.pollerRunning) {
+            // Reset the countdown whenever a poll finishes (success or error).
+            setNextSyncAt(new Date(Date.now() + pollerIntervalMsRef.current))
+            if (!event.pollError) {
+              setShowFetchDone(true)
+              if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current)
+              fetchDoneTimerRef.current = setTimeout(() => setShowFetchDone(false), 8_000)
+            }
+          }
         }
         if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
@@ -4102,6 +4148,58 @@ export default function DocTidyInvoiceAudit() {
                       </svg>
                     )}
                   </button>
+                  {/* Fetch status chips */}
+                  {pollerRunning && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                      title="Fetching emails from the mailbox — new messages will appear shortly"
+                    >
+                      <svg className="h-3.5 w-3.5 shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                      </svg>
+                      Fetching emails…
+                    </span>
+                  )}
+                  {!pollerRunning && pollError && (
+                    <span
+                      className="inline-flex cursor-help items-center gap-1.5 rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
+                      title={`Last email fetch failed: ${pollError}`}
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      Fetch error
+                    </span>
+                  )}
+                  {!pollerRunning && !pollError && showFetchDone && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      title="Mailbox checked — all matched emails are now imported"
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Fetched
+                    </span>
+                  )}
+                  {/* Next poll countdown */}
+                  {nextSyncAt && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[var(--text-200)]"
+                      title="Estimated time until the next automated email fetch"
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {pollerRunning
+                        ? 'syncing…'
+                        : (() => {
+                            const s = Math.max(0, Math.round((nextSyncAt.getTime() - Date.now()) / 1_000))
+                            return s > 0 ? `next in ${s}s` : 'syncing…'
+                          })()
+                      }
+                    </span>
+                  )}
                   {/* Right: rows per page + range + pagination */}
                   <div className="ml-auto flex items-center gap-2">
                     <span className="whitespace-nowrap">Rows per page:</span>
