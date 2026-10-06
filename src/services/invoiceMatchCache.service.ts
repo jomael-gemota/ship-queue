@@ -5,11 +5,15 @@
  *   1. Extracts the PO # and line items from the job's jsonOutput.
  *   2. Finds every DocTidyOrderImport in the same workspace whose poNumber +
  *      orderSku normalise-match the invoice data.
- *   3. Writes a `matchedInvoice` subdocument onto each matching order import.
+ *   3. Appends a cache entry to `matchedInvoices[]` on each matching order
+ *      import (pull-then-push so re-parses replace, not duplicate, an entry).
  *
  * This means the Invoice Audit table only ever needs to query
  * DocTidyOrderImport — it never has to load all parse jobs to do client-side
  * matching, keeping the table fast as the parse-job collection grows.
+ *
+ * Multiple invoices can match the same order line (split-shipment case).
+ * The frontend aggregates all entries in `matchedInvoices[]` for display.
  */
 
 import { Types } from 'mongoose';
@@ -108,9 +112,12 @@ async function resolveWorkspaceId(job: {
 /* ────────────────────────── cache-building logic ──────────────────────── */
 
 /**
- * Given a completed parse job, build the `matchedInvoice` cache for all order
+ * Given a completed parse job, build the `matchedInvoices` cache for all order
  * imports in the same workspace that match by PO # (and optionally by SKU for
  * the line-item fields).
+ *
+ * Uses an idempotent pull-then-push strategy so re-parsing a job replaces its
+ * existing entry in `matchedInvoices[]` rather than duplicating it.
  *
  * Returns the number of order-import documents updated.
  */
@@ -202,23 +209,35 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
 
   if (matchedIds.length === 0) return 0;
 
-  const bulkOps = matchedIds.map(({ id, cache }) => ({
+  // Step 1: remove any prior entry for this job (idempotent re-parse support).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pullOps: any[] = matchedIds.map(({ id }) => ({
     updateOne: {
       filter: { _id: id },
-      update: { $set: { matchedInvoice: cache } },
+      update: { $pull: { matchedInvoices: { jobId: job._id } } },
     },
   }));
+  await DocTidyOrderImport.bulkWrite(pullOps);
 
-  const result = await DocTidyOrderImport.bulkWrite(bulkOps);
+  // Step 2: append the fresh cache entry for this job.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pushOps: any[] = matchedIds.map(({ id, cache }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $push: { matchedInvoices: cache } },
+    },
+  }));
+  const result = await DocTidyOrderImport.bulkWrite(pushOps);
   return result.modifiedCount;
 }
 
 /* ─────────────────── workspace-wide backfill (for Resync) ─────────────── */
 
 /**
- * Re-run matching for every order import in a workspace that does not yet have
- * a `matchedInvoice` cache.  Intended to be called when the Resync button is
- * clicked so that rows imported before this feature existed get caught up.
+ * Re-run matching for every order import in a workspace. Intended to be called
+ * when the Resync button is clicked — both to catch up rows that pre-date the
+ * cache feature and to migrate legacy `matchedInvoice` rows to the new
+ * `matchedInvoices[]` array.
  *
  * Runs in the background (fire-and-forget).
  */
