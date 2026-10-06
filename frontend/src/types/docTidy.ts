@@ -371,6 +371,8 @@ export interface DocTidyOrganization {
   createdByName?: string
   createdAt: string
   updatedAt: string
+  /** Computed by the API: true when the current user is an admin or a listed member. */
+  hasAccess?: boolean
 }
 
 /* ──────────────────────────────── Workspace Emails column types ── */

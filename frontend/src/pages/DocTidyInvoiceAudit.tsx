@@ -13,6 +13,7 @@ import {
 } from '../components/docTidy/docTidyUi'
 import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
+import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import VendorSetup from '../components/docTidy/VendorSetup'
@@ -923,6 +924,7 @@ function OrgCard({
   onEdit,
   onDelete,
   isAdmin = false,
+  hasAccess = true,
 }: {
   org: DocTidyOrganization
   workspaceCount: number
@@ -930,52 +932,78 @@ function OrgCard({
   onEdit: () => void
   onDelete: () => void
   isAdmin?: boolean
+  hasAccess?: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
     <div
-      onClick={onOpen}
-      className="group relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-hidden"
+      onClick={hasAccess ? onOpen : undefined}
+      className={`group relative flex items-center gap-4 rounded-xl border bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden transition-all ${
+        hasAccess
+          ? 'border-[var(--bg-300)] cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]'
+          : 'border-[var(--bg-300)] cursor-not-allowed opacity-50 select-none'
+      }`}
     >
-      {/* Violet left accent stripe */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500 dark:bg-violet-600 rounded-l-xl" />
+      {/* Left accent stripe — violet when accessible, gray when locked */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${hasAccess ? 'bg-violet-500 dark:bg-violet-600' : 'bg-[var(--bg-300)]'}`} />
 
       {/* Icon */}
-      <div className="ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
+      <div className={`ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${hasAccess ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400' : 'bg-[var(--bg-200)] dark:bg-[var(--bg-300)] text-[var(--text-200)]'}`}>
+        {hasAccess ? (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        )}
       </div>
 
       {/* Main content */}
       <div className="flex-1 min-w-0 py-4 pr-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+          <h3 className={`text-sm font-semibold transition-colors ${hasAccess ? 'text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400' : 'text-[var(--text-200)]'}`}>
             {org.name}
           </h3>
-          {/* Badge pills */}
-          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
-            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
-            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
-          </span>
+          {/* No-access badge */}
+          {!hasAccess && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              No access
+            </span>
+          )}
+          {/* Badge pills — only shown to members/admins */}
+          {hasAccess && (
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
+                <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+                <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Workspace name previews removed — keeps all rows uniform height */}
       </div>
 
-      {/* Actions */}
+      {/* Actions — only shown when the user has access (or is admin) */}
       <div
         className="flex items-center gap-1 pr-4 shrink-0"
         onClick={(e) => e.stopPropagation()}
@@ -1014,12 +1042,14 @@ function OrgCard({
                 </button>
               </>
             )}
-            <button
-              onClick={onOpen}
-              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[10px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
-            >
-              Open →
-            </button>
+            {hasAccess && (
+              <button
+                onClick={onOpen}
+                className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[10px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
+              >
+                Open →
+              </button>
+            )}
           </>
         )}
       </div>
@@ -2399,6 +2429,12 @@ export default function DocTidyInvoiceAudit() {
   const [confirmBulkDeletePdfs, setConfirmBulkDeletePdfs] = useState(false)
   const [pdfBulkDeleting, setPdfBulkDeleting] = useState(false)
 
+  /* ── Bulk parse: emails and PDFs ── */
+  const [emailBulkSending, setEmailBulkSending] = useState(false)
+  const [emailBulkAborting, setEmailBulkAborting] = useState(false)
+  const [pdfBulkSending, setPdfBulkSending] = useState(false)
+  const [pdfBulkAborting, setPdfBulkAborting] = useState(false)
+
   /* ── Audit table delete (full-import mode) ── */
   const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
   const [auditRowDeleting, setAuditRowDeleting] = useState(false)
@@ -2624,9 +2660,133 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
+  /* ── Emails: bulk send selected messages to Tidy Agent for parsing ── */
+  const handleBulkSendEmailsToAgent = async () => {
+    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    const tasks: Array<{ msgId: string; index: number }> = []
+    for (const msg of selectedMsgs) {
+      for (let i = 0; i < msg.attachments.length; i++) {
+        const att = msg.attachments[i]
+        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
+        if (job && (job.status === 'pending' || job.status === 'processing')) continue
+        tasks.push({ msgId: msg._id, index: i })
+      }
+    }
+    if (tasks.length === 0) return
+    setEmailBulkSending(true)
+    try {
+      await Promise.allSettled(
+        tasks.map(({ msgId, index }) =>
+          authApi.post(`/doc-tidy/messages/${msgId}/attachments/${index}/parse`)
+        )
+      )
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkSending(false)
+    }
+  }
+
+  /** Send all selected PDF imports to the Tidy Agent (skips actively running/pending jobs). */
+  const handleBulkSendPdfsToAgent = async () => {
+    const selected = pdfImports.filter(
+      (imp) =>
+        pdfSelectedIds.has(imp._id) &&
+        imp.parseJob?.status !== 'pending' &&
+        imp.parseJob?.status !== 'processing'
+    )
+    if (selected.length === 0) return
+    setPdfBulkSending(true)
+    try {
+      await Promise.allSettled(
+        selected.map((imp) => authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`))
+      )
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkSending(false)
+    }
+  }
+
+  /** Abort all running/pending parse jobs across selected email rows. */
+  const handleBulkAbortEmails = async () => {
+    const jobIds: string[] = []
+    for (const msg of emailMessages) {
+      if (!selectedEmailIds.has(msg._id)) continue
+      for (const job of msg.parseJobs ?? []) {
+        if (job.status === 'pending' || job.status === 'processing') jobIds.push(job._id)
+      }
+    }
+    if (jobIds.length === 0) return
+    setEmailBulkAborting(true)
+    try {
+      await Promise.allSettled(jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`)))
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkAborting(false)
+    }
+  }
+
+  /** Abort all running/pending parse jobs across selected PDF imports. */
+  const handleBulkAbortPdfs = async () => {
+    const jobIds = pdfImports
+      .filter(
+        (imp) =>
+          pdfSelectedIds.has(imp._id) &&
+          imp.parseJob != null &&
+          (imp.parseJob.status === 'pending' || imp.parseJob.status === 'processing')
+      )
+      .map((imp) => imp.parseJob!._id)
+    if (jobIds.length === 0) return
+    setPdfBulkAborting(true)
+    try {
+      await Promise.allSettled(jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`)))
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkAborting(false)
+    }
+  }
+
   /* Selection helpers */
   const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
+
+  /** True when every parseable attachment across all selected emails already has a completed parse job. */
+  const allSelectedEmailsCompleted =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .every((m) => {
+        let hasParseable = false
+        for (let i = 0; i < m.attachments.length; i++) {
+          const att = m.attachments[i]
+          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+          hasParseable = true
+          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
+          if (!job || job.status !== 'completed') return false
+        }
+        return hasParseable
+      })
+
+  /** True when at least one selected email has a running (pending/processing) parse job. */
+  const anySelectedEmailRunning =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
+
+  /** True when at least one selected PDF import has a running parse job. */
+  const anySelectedPdfRunning =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .some((imp) => imp.parseJob?.status === 'pending' || imp.parseJob?.status === 'processing')
+
+  /** True when every selected PDF import already has a completed parse job. */
+  const allSelectedPdfsCompleted =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .every((imp) => imp.parseJob?.status === 'completed')
 
 
   useEffect(() => {
@@ -3158,6 +3318,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Organization navigation ── */
   const enterOrg = (org: DocTidyOrganization) => {
+    if (org.hasAccess === false) return   // safety guard — locked orgs must not be opened
     setActiveOrg(org)
     setView('workspaces')
   }
@@ -3419,6 +3580,8 @@ export default function DocTidyInvoiceAudit() {
   const pageRowKeys = useMemo(() => filteredOrderImports.map((o) => o._id), [filteredOrderImports])
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
   const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
+  const auditStartItem = orderPagination.total === 0 ? 0 : (orderPage - 1) * orderPageSize + 1
+  const auditEndItem = Math.min(orderPage * orderPageSize, orderPagination.total)
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (auditSelectAllRef.current) {
@@ -3834,7 +3997,7 @@ export default function DocTidyInvoiceAudit() {
                 <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
                   {isAdmin
                     ? 'Create an organization to group workspaces and control who can access them.'
-                    : 'You have not been added to any organizations yet. Contact an admin.'}
+                    : 'No organizations have been created yet. Contact an admin.'}
                 </p>
                 {isAdmin && (
                   <button type="button" onClick={() => openOrgEditor('new')}
@@ -3857,6 +4020,7 @@ export default function DocTidyInvoiceAudit() {
                     onEdit={() => openOrgEditor(org)}
                     onDelete={() => void handleDeleteOrg(org)}
                     isAdmin={isAdmin}
+                    hasAccess={org.hasAccess ?? true}
                   />
                 ))}
               </div>
@@ -4121,7 +4285,7 @@ export default function DocTidyInvoiceAudit() {
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
                     <input type="text" value={emailSearch} onChange={(e) => setEmailSearch(e.target.value)}
-                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                     {emailSearch && (
                       <button onClick={() => setEmailSearch('')} aria-label="Clear search"
                         className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -4200,8 +4364,76 @@ export default function DocTidyInvoiceAudit() {
                       }
                     </span>
                   )}
-                  {/* Right: rows per page + range + pagination */}
+                  {/* Right: stats + bulk actions + rows per page + pagination */}
                   <div className="ml-auto flex items-center gap-2">
+                    {/* Stats: parsed / total emails */}
+                    {emailPagination.total > 0 && (
+                      <span className="text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
+                        <span className="opacity-50">/</span>
+                        <span>{emailPagination.total.toLocaleString()}</span>
+                        {' '}email{emailPagination.total === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {/* Abort Jobs */}
+                    {anySelectedEmailRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortEmails()}
+                        disabled={emailBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
+                    )}
+                    {/* Send to Tidy Agent */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedEmailsCompleted
+                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
+                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendEmailsToAgent()}
+                        disabled={emailBulkSending || workerOnline === false}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedEmailsCompleted
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
+                      >
+                        {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        {allSelectedEmailsCompleted
+                          ? `Rerun ${selectedEmailIds.size}`
+                          : `Send ${selectedEmailIds.size} to Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete emails */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeleteEmails(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {selectedEmailIds.size}
+                      </button>
+                    )}
                     <span className="whitespace-nowrap">Rows per page:</span>
                     <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
                       className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -4572,7 +4804,7 @@ export default function DocTidyInvoiceAudit() {
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
                     <input type="text" value={pdfSearch} onChange={(e) => setPdfSearch(e.target.value)}
-                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                     {pdfSearch && (
                       <button onClick={() => setPdfSearch('')} aria-label="Clear search"
                         className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -4597,8 +4829,77 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
-                  {/* Right: rows per page + range + pagination */}
+                  {/* Right: stats + bulk actions + rows per page + pagination */}
                   <div className="ml-auto flex items-center gap-2">
+                    {/* Stats: total / parsed / pending */}
+                    {pdfImportsPagination.total > 0 && (
+                      <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
+                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                        <span className="opacity-30">·</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
+                        <span className="opacity-30">·</span>
+                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
+                      </span>
+                    )}
+                    {/* Abort Jobs */}
+                    {anySelectedPdfRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs for ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortPdfs()}
+                        disabled={pdfBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {pdfBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
+                    )}
+                    {/* Send to Tidy Agent */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedPdfsCompleted
+                              ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
+                              : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendPdfsToAgent()}
+                        disabled={pdfBulkSending || workerOnline === false}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedPdfsCompleted
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
+                      >
+                        {pdfBulkSending ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        {allSelectedPdfsCompleted
+                          ? `Rerun ${pdfSelectedIds.size}`
+                          : `Send ${pdfSelectedIds.size} to Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete PDF imports */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeletePdfs(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {pdfSelectedIds.size}
+                      </button>
+                    )}
                     <span className="whitespace-nowrap">Rows per page:</span>
                     <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
                       className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -5037,7 +5338,7 @@ export default function DocTidyInvoiceAudit() {
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                   </span>
                   <input type="text" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)}
-                    placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                    placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                   {auditSearch && (
                     <button onClick={() => setAuditSearch('')} aria-label="Clear search"
                       className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -5102,8 +5403,55 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   )}
                 </button>
-                {/* Right: rows per page + range + pagination */}
+                {/* Right: row count + bulk delete + rows per page + pagination */}
                 <div className="ml-auto flex items-center gap-2">
+                  {/* Row count / filter count / selection count */}
+                  {orderPagination.total > 0 && (
+                    <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
+                      {activeFilterCount > 0 && (
+                        <>
+                          <span className="opacity-30">·</span>
+                          <span className="flex items-center gap-0.5 text-[var(--accent-200)] font-medium">
+                            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                              <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                            </svg>
+                            {filteredOrderImports.length} shown
+                          </span>
+                        </>
+                      )}
+                      {selectedRowKeys.size > 0 && (
+                        <>
+                          <span className="opacity-30">·</span>
+                          <span className="flex items-center gap-1">
+                            <span className="rounded-full bg-[var(--primary-100)] px-1.5 py-0.5 text-[10px] text-[var(--accent-200)]">
+                              {selectedRowKeys.size} selected
+                            </span>
+                            <button onClick={() => setSelectedRowKeys(new Set())} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  )}
+                  {/* Bulk delete — full-import mode */}
+                  {!isHeaderOnly && selectedRowKeys.size > 0 && (
+                    <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete {selectedRowKeys.size}
+                    </button>
+                  )}
+                  {/* Bulk delete — header-only mode */}
+                  {isHeaderOnly && selectedJobIds.size > 0 && (
+                    <button type="button" onClick={() => setConfirmBulkDeleteJobs(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete {selectedJobIds.size}
+                    </button>
+                  )}
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
                     className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
