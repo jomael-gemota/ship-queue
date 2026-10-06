@@ -17,9 +17,16 @@ export interface DocTidyEvent {
     | 'parse_status'
     | 'parse_progress'
     | 'worker_status'
+    | 'poll_status'
     | 'ui_prefs';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
+  /** For `poll_status`: whether the background poller is actively fetching. */
+  pollerRunning?: boolean;
+  /** For `poll_status`: the error message from the last failed poll, or null on success. */
+  pollError?: string | null;
+  /** For `poll_status`: ISO timestamp of the last successful import, or null. */
+  lastImportAt?: string | null;
   /**
    * For `parse_status`: which parse job changed and what it changed to, so a
    * table showing that document can move its status chip without refetching the
