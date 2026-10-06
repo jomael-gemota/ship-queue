@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
@@ -54,6 +54,80 @@ function sessionLabel(status: HHSessionCheck['status']): string {
   return 'Not checked yet'
 }
 
+function sessionNeedsAttention(data: HHB2bConfig): boolean {
+  if (!data.hasCookie) return true
+  return data.sessionCheck.status === 'auth' || data.sessionCheck.status === 'down'
+}
+
+function sessionSummary(data: HHB2bConfig | null): string {
+  if (!data?.hasCookie) {
+    if (data?.sessionCheck.status === 'auth' || data?.sessionCheck.status === 'down') {
+      return sessionLabel(data.sessionCheck.status)
+    }
+    return 'No cookie'
+  }
+  if (!data.cookieUpdatedAt) return `${sessionLabel(data.sessionCheck.status)} · Cookie stored`
+  return `${sessionLabel(data.sessionCheck.status)} · Cookie updated ${formatCreatedAt(data.cookieUpdatedAt)}`
+}
+
+function portalSummary(url: string): string {
+  const host = url.trim().replace(/^https?:\/\//, '')
+  return host || 'No portal address'
+}
+
+function accountSummary(catalogValue: string, accountValue: string, enabled: boolean): string {
+  const catalogLabel = catalogValue.trim() || 'No catalog'
+  const accountLabel = accountValue.trim() || 'No account'
+  return `${catalogLabel} · ${accountLabel} · Place Order ${enabled ? 'on' : 'off'}`
+}
+
+function countPhrase(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function initialsSummary(count: number): string {
+  if (count === 0) return 'None'
+  return countPhrase(count, 'initial', 'initials')
+}
+
+function skuStringsSummary(start: number, end: number): string {
+  if (start === 0 && end === 0) return 'None'
+  return `${countPhrase(start, 'start string', 'start strings')}, ${countPhrase(end, 'end string', 'end strings')}`
+}
+
+function manilaMinutesNow(): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+  let hour = Number(parts.find((part) => part.type === 'hour')?.value)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0
+  if (hour === 24) hour = 0
+  return hour * 60 + minute
+}
+
+function alertsSummary(times: string[]): string {
+  const slots = times
+    .map((time) => {
+      const [hourRaw, minuteRaw] = time.split(':')
+      const hour = Number(hourRaw)
+      const minute = Number(minuteRaw)
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+      return { time, at: hour * 60 + minute }
+    })
+    .filter((slot): slot is { time: string; at: number } => slot != null)
+    .sort((left, right) => left.at - right.at)
+  if (slots.length === 0) return 'No daily check'
+  const now = manilaMinutesNow()
+  const upcoming = slots.find((slot) => slot.at > now) ?? slots[0]
+  return `Next check ${formatCheckClock(upcoming.time)}`
+}
+
+type ConfigSectionId = 'portal' | 'account' | 'sku' | 'session' | 'alerts'
+
 function initialsFromText(text: string): { initials: string[] } | { error: string } {
   return normalizeThorogoodSkuInitials(text.split(/\r?\n/))
 }
@@ -92,19 +166,118 @@ function ReadOnlyBadge() {
 function ConfigSection({
   title,
   description,
+  summary,
+  open,
+  dirty,
+  error,
+  attention,
+  canEdit,
+  onToggle,
   children,
 }: {
   title: string
   description: string
+  summary: string
+  open: boolean
+  dirty: boolean
+  error?: string | null
+  attention?: boolean
+  canEdit: boolean
+  onToggle: () => void
   children: ReactNode
 }) {
+  const panelId = useId()
+  const summaryText = error || summary
+  const summaryAlert = Boolean(error) || Boolean(attention)
+  const staysOpen = open && (dirty || Boolean(error))
+  const motionClass =
+    'duration-[240ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none'
+
   return (
-    <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/30 px-4 py-4 dark:border-[var(--bg-300)]">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</h3>
-        <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+    <section
+      className={`overflow-hidden rounded-xl border transition-colors ${motionClass} ${
+        open
+          ? 'bg-[color-mix(in_srgb,var(--accent-200)_14%,var(--bg-100))]'
+          : 'bg-[var(--bg-200)]/30'
+      } ${
+        error
+          ? 'border-red-300 dark:border-red-900/60'
+          : open
+            ? 'border-[var(--accent-200)]'
+            : 'border-[var(--bg-300)]'
+      }`}
+    >
+      <h3 className="m-0">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={panelId}
+          title={staysOpen ? 'Save changes before closing this section.' : undefined}
+          className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent-200)] ${motionClass} ${
+            open ? '' : 'hover:bg-[var(--bg-200)]/80'
+          }`}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</span>
+              {dirty ? (
+                <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
+                  Unsaved
+                </span>
+              ) : null}
+            </span>
+            <span
+              className={`grid transition-[grid-template-rows] ${motionClass} ${
+                open ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'
+              }`}
+              aria-hidden={open}
+            >
+              <span className="min-h-0 overflow-hidden">
+                <span
+                  className={`mt-0.5 block truncate text-xs ${
+                    summaryAlert ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-[var(--text-200)]'
+                  }`}
+                >
+                  {summaryText}
+                </span>
+              </span>
+            </span>
+          </span>
+          <svg
+            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform dark:text-[var(--text-200)] ${motionClass} ${
+              open ? 'rotate-180' : ''
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </h3>
+      <div
+        id={panelId}
+        className={`grid transition-[grid-template-rows] ${motionClass} ${
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+        inert={!open}
+        aria-hidden={open ? undefined : true}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className={`border-t border-[var(--bg-300)] px-4 py-4 transition-opacity ${motionClass} ${
+              open ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <p className="mb-4 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+            <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-4 border-0 p-0">
+              {children}
+            </fieldset>
+          </div>
+        </div>
       </div>
-      <div className="space-y-4">{children}</div>
     </section>
   )
 }
@@ -143,6 +316,7 @@ export default function HHSportswearConfig() {
   const [checkError, setCheckError] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
   const [testNotice, setTestNotice] = useState<string | null>(null)
+  const [openIds, setOpenIds] = useState<ConfigSectionId[]>([])
 
   const applySaved = (data: HHB2bConfig) => {
     setSaved(data)
@@ -166,6 +340,7 @@ export default function HHSportswearConfig() {
       .then((res) => {
         if (cancelled) return
         applySaved(res.data)
+        setOpenIds(sessionNeedsAttention(res.data) ? ['session'] : [])
         setLoadState('ready')
       })
       .catch((error: unknown) => {
@@ -236,6 +411,67 @@ export default function HHSportswearConfig() {
       clearCookie ||
       (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
 
+  const portalDirty = Boolean(orderDetails && saved && baseUrl !== saved.baseUrl)
+  const accountDirty = Boolean(
+    !orderDetails &&
+      saved &&
+      (baseUrl !== saved.baseUrl ||
+        catalog !== saved.catalog ||
+        accountId !== saved.accountId ||
+        placeOrderEnabled !== Boolean(saved.placeOrderEnabled)),
+  )
+  const initialsParsed = initialsFromText(skuInitialsText)
+  const prefixesParsed = tokensFromText(skuPrefixesText, 'Start strings')
+  const suffixesParsed = tokensFromText(skuSuffixesText, 'End strings')
+  const skuError = orderDetails
+    ? 'error' in initialsParsed
+      ? initialsParsed.error
+      : null
+    : 'error' in prefixesParsed
+      ? prefixesParsed.error
+      : 'error' in suffixesParsed
+        ? suffixesParsed.error
+        : null
+  const skuDirty = !saved
+    ? false
+    : orderDetails
+      ? !sameInitials(skuInitialsText, saved.skuInitials ?? [])
+      : (!sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
+        !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings'))
+  const sessionDirty = canEdit && (cookie.trim().length > 0 || clearCookie)
+  const alertsDirty = Boolean(
+    canEdit &&
+      saved &&
+      (alertWebhookUrl !== (saved.alertWebhookUrl || '') || !sameCheckTimes(checkTimes, savedTimes)),
+  )
+
+  const sectionLocked = (id: ConfigSectionId) => {
+    if (id === 'portal') return portalDirty
+    if (id === 'account') return accountDirty
+    if (id === 'sku') return skuDirty || Boolean(skuError)
+    if (id === 'session') return sessionDirty
+    return alertsDirty
+  }
+
+  const toggleSection = (id: ConfigSectionId) => {
+    setOpenIds((current) => {
+      if (current.includes(id)) {
+        if (sectionLocked(id)) return current
+        return current.filter((key) => key !== id)
+      }
+      return [...current.filter((key) => sectionLocked(key)), id]
+    })
+  }
+
+  const revealSection = (id: ConfigSectionId) => {
+    setOpenIds((current) => {
+      const kept = current.filter((key) => sectionLocked(key))
+      return kept.includes(id) ? kept : [...kept, id]
+    })
+  }
+
+  const isOpen = (id: ConfigSectionId) => openIds.includes(id)
+
   const save = async () => {
     if (!canEdit || busy || !dirty) return
     setBusy(true)
@@ -247,18 +483,21 @@ export default function HHSportswearConfig() {
       const parsedInitials = orderDetails ? initialsFromText(skuInitialsText) : null
       if (parsedInitials && 'error' in parsedInitials) {
         setSaveError(parsedInitials.error)
+        revealSection('sku')
         setBusy(false)
         return
       }
       const parsedPrefixes = orderDetails ? null : tokensFromText(skuPrefixesText, 'Start strings')
       if (parsedPrefixes && 'error' in parsedPrefixes) {
         setSaveError(parsedPrefixes.error)
+        revealSection('sku')
         setBusy(false)
         return
       }
       const parsedSuffixes = orderDetails ? null : tokensFromText(skuSuffixesText, 'End strings')
       if (parsedSuffixes && 'error' in parsedSuffixes) {
         setSaveError(parsedSuffixes.error)
+        revealSection('sku')
         setBusy(false)
         return
       }
@@ -332,10 +571,15 @@ export default function HHSportswearConfig() {
           </p>
         </div>
 
-        <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-5 border-0 p-0">
+        <div className="space-y-3">
         <ConfigSection
           title="Portal"
           description="The signed-in site Ship Queue calls when it drafts a cart."
+          summary={portalSummary(baseUrl)}
+          open={isOpen('portal')}
+          dirty={portalDirty}
+          canEdit={canEdit}
+          onToggle={() => toggleSection('portal')}
         >
           <div className="space-y-1.5">
             <label className={labelClass} htmlFor="hh-b2b-base-url">
@@ -357,6 +601,12 @@ export default function HHSportswearConfig() {
         <ConfigSection
           title="SKU initials"
           description="Prefixes removed from Seller Central SKUs before the portal search. Footwear is then written as the width, then the size in tenths."
+          summary={initialsSummary('initials' in initialsParsed ? initialsParsed.initials.length : 0)}
+          open={isOpen('sku')}
+          dirty={skuDirty}
+          error={skuError}
+          canEdit={canEdit}
+          onToggle={() => toggleSection('sku')}
         >
           <div className="space-y-1.5">
             <label className={labelClass} htmlFor="hh-b2b-sku-initials">
@@ -403,6 +653,12 @@ export default function HHSportswearConfig() {
         <ConfigSection
           title="Session"
           description="Paste the cookie from a logged-in browser. Check session reads the customer record only."
+          summary={sessionSummary(saved)}
+          open={isOpen('session')}
+          dirty={sessionDirty}
+          attention={saved ? sessionNeedsAttention(saved) : false}
+          canEdit={canEdit}
+          onToggle={() => toggleSection('session')}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -487,6 +743,11 @@ export default function HHSportswearConfig() {
         <ConfigSection
           title="Alerts"
           description="When the daily check fails, and when the session recovers. Times are Philippines time."
+          summary={alertsSummary(checkTimes)}
+          open={isOpen('alerts')}
+          dirty={alertsDirty}
+          canEdit={canEdit}
+          onToggle={() => toggleSection('alerts')}
         >
           <div className="space-y-2">
             <span className={labelClass}>Check times</span>
@@ -577,7 +838,7 @@ export default function HHSportswearConfig() {
             {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
           </div>
         </ConfigSection>
-        </fieldset>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
           <p
@@ -646,10 +907,15 @@ export default function HHSportswearConfig() {
         </p>
       </div>
 
-      <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-5 border-0 p-0">
+      <div className="space-y-3">
       <ConfigSection
         title="Account"
         description="Where drafts are sent, and whether Place Order is allowed to submit."
+        summary={accountSummary(catalog, accountId, placeOrderEnabled)}
+        open={isOpen('account')}
+        dirty={accountDirty}
+        canEdit={canEdit}
+        onToggle={() => toggleSection('account')}
       >
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
@@ -732,6 +998,15 @@ export default function HHSportswearConfig() {
       <ConfigSection
         title="SKU strings"
         description="Removed from the Seller Central SKU before it is added to the cart and before verification. The line still ships. Start strings are only removed from the front, and end strings only from the back. Matching ignores case, so dup_ and DUP_ are the same string."
+        summary={skuStringsSummary(
+          'tokens' in prefixesParsed ? prefixesParsed.tokens.length : 0,
+          'tokens' in suffixesParsed ? suffixesParsed.tokens.length : 0,
+        )}
+        open={isOpen('sku')}
+        dirty={skuDirty}
+        error={skuError}
+        canEdit={canEdit}
+        onToggle={() => toggleSection('sku')}
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -798,6 +1073,12 @@ export default function HHSportswearConfig() {
             ? 'Cookie Jar refreshes this from Sphere. A cookie pasted here overrides that session. Check session reads the catalog only.'
             : 'Paste a cookie from a logged-in browser. Check session reads the catalog only.'
         }
+        summary={sessionSummary(saved)}
+        open={isOpen('session')}
+        dirty={sessionDirty}
+        attention={saved ? sessionNeedsAttention(saved) : false}
+        canEdit={canEdit}
+        onToggle={() => toggleSection('session')}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -881,6 +1162,11 @@ export default function HHSportswearConfig() {
       <ConfigSection
         title="Alerts"
         description="When the daily check fails, and when the session recovers. Times are Philippines time."
+        summary={alertsSummary(checkTimes)}
+        open={isOpen('alerts')}
+        dirty={alertsDirty}
+        canEdit={canEdit}
+        onToggle={() => toggleSection('alerts')}
       >
         <div className="space-y-2">
           <span className={labelClass}>Check times</span>
@@ -971,7 +1257,7 @@ export default function HHSportswearConfig() {
           {testError ? <span className="text-sm text-red-600 dark:text-red-400">{testError}</span> : null}
         </div>
       </ConfigSection>
-      </fieldset>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
         <p
