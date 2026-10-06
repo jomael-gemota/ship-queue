@@ -53,6 +53,7 @@ import {
   PDF_IMPORT_COLUMNS,
   DEFAULT_PDF_IMPORT_COL_ORDER,
   isParseRunning,
+  type ParseJobStatus,
   type DocTidyOrderImport,
   type OrderImportsResponse,
   type RunAllResult,
@@ -2096,6 +2097,20 @@ function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string
   }
 }
 
+/**
+ * Derive the single most-urgent parse status across all of a message's parse
+ * jobs, for use in the parse-status filter.
+ * Priority: processing > pending > failed > completed > none (no jobs at all).
+ */
+function emailEffectiveParseStatus(msg: DocTidyMessage): ParseJobStatus | 'none' {
+  const jobs = msg.parseJobs ?? []
+  if (jobs.length === 0) return 'none'
+  if (jobs.some((j) => j.status === 'processing')) return 'processing'
+  if (jobs.some((j) => j.status === 'pending'))    return 'pending'
+  if (jobs.some((j) => j.status === 'failed'))     return 'failed'
+  return 'completed'
+}
+
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
 function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
   switch (colId) {
@@ -2362,6 +2377,7 @@ export default function DocTidyInvoiceAudit() {
   const [emailDebouncedSearch, setEmailDebouncedSearch] = useState('')
   const [emailDateFrom, setEmailDateFrom] = useState('')
   const [emailDateTo, setEmailDateTo] = useState('')
+  const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
@@ -2417,6 +2433,7 @@ export default function DocTidyInvoiceAudit() {
   const [pdfDebouncedSearch, setPdfDebouncedSearch] = useState('')
   const [pdfDateFrom, setPdfDateFrom] = useState('')
   const [pdfDateTo, setPdfDateTo] = useState('')
+  const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -2471,29 +2488,38 @@ export default function DocTidyInvoiceAudit() {
     const activeEntries = Object.entries(emailColFilters).filter(
       (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return emailMessages
-    return emailMessages.filter((msg) =>
-      activeEntries.every(([colId, allowed]) => {
+    return emailMessages.filter((msg) => {
+      // Parse-status filter
+      if (emailParseStatusFilter) {
+        if (emailEffectiveParseStatus(msg) !== emailParseStatusFilter) return false
+      }
+      // Column filters
+      return activeEntries.every(([colId, allowed]) => {
         const val = emailColStr(colId, msg).trim()
         if (!val) return allowed.has(BLANK_SENTINEL)
         return allowed.has(val)
       })
-    )
-  }, [emailMessages, emailColFilters])
+    })
+  }, [emailMessages, emailColFilters, emailParseStatusFilter])
 
   const filteredPdfImports = useMemo(() => {
     const activeEntries = Object.entries(pdfColFilters).filter(
       (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return pdfImports
-    return pdfImports.filter((imp) =>
-      activeEntries.every(([colId, allowed]) => {
+    return pdfImports.filter((imp) => {
+      // Parse-status filter
+      if (pdfParseStatusFilter) {
+        const impStatus: ParseJobStatus | 'none' = imp.parseJob?.status ?? 'none'
+        if (impStatus !== pdfParseStatusFilter) return false
+      }
+      // Column filters
+      return activeEntries.every(([colId, allowed]) => {
         const val = pdfColStr(colId, imp).trim()
         if (!val) return allowed.has(BLANK_SENTINEL)
         return allowed.has(val)
       })
-    )
-  }, [pdfImports, pdfColFilters])
+    })
+  }, [pdfImports, pdfColFilters, pdfParseStatusFilter])
 
   /* Debounce search */
   useEffect(() => {
@@ -2502,7 +2528,7 @@ export default function DocTidyInvoiceAudit() {
   }, [pdfSearch])
 
   /* Reset page + selection when filters change */
-  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter])
 
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
   const pdfFetchGenRef = useRef(0)
@@ -2831,7 +2857,7 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || Object.values(pdfColFilters).some((s) => s?.size))
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || Object.values(pdfColFilters).some((s) => s?.size))
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
     .filter((c): c is PdfImportColumn => Boolean(c))
@@ -2900,7 +2926,7 @@ export default function DocTidyInvoiceAudit() {
   }, [emailSearch])
 
   /* Reset email page when filters change */
-  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize])
+  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter])
 
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
@@ -3328,6 +3354,18 @@ export default function DocTidyInvoiceAudit() {
     setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1, parsedCount: 0 })
+    setEmailSearch('')
+    setEmailDateFrom('')
+    setEmailDateTo('')
+    setEmailParseStatusFilter('')
+    setEmailColFilters({})
+    setPdfImports([])
+    setPdfImportsPagination({ total: 0, pages: 1, parsedCount: 0 })
+    setPdfSearch('')
+    setPdfDateFrom('')
+    setPdfDateTo('')
+    setPdfParseStatusFilter('')
+    setPdfColFilters({})
     // Reset column orders so no stale workspace layout bleeds into the next open.
     setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
     setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
@@ -3561,7 +3599,7 @@ export default function DocTidyInvoiceAudit() {
     return vals
   }, [emailMessages])
 
-  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length
+  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length + (emailParseStatusFilter ? 1 : 0)
 
   /* ── PDF import column filter helpers ── */
   const getPdfColUniqueValues = useCallback((colId: PdfImportColumnId): Map<string, number> => {
@@ -4315,8 +4353,22 @@ export default function DocTidyInvoiceAudit() {
                   <input type="date" value={emailDateFrom} onChange={(e) => setEmailDateFrom(e.target.value)} className={inputClass} />
                   <span>–</span>
                   <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
-                  {(emailSearch || emailDateFrom || emailDateTo) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
+                  {/* Parse status filter */}
+                  <select
+                    value={emailParseStatusFilter}
+                    onChange={(e) => setEmailParseStatusFilter(e.target.value as '' | 'none' | ParseJobStatus)}
+                    className={`${inputClass} cursor-pointer`}
+                    aria-label="Filter by parse status"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="none">Unparsed</option>
+                    <option value="pending">Queued</option>
+                    <option value="processing">Parsing</option>
+                    <option value="completed">Parsed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter) && (
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -4577,7 +4629,7 @@ export default function DocTidyInvoiceAudit() {
                                 </p>
                               </div>
                               {(emailSearch || emailDateFrom || emailDateTo) && (
-                                <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
+                                <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
                                   className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                   Clear filters
                                 </button>
@@ -4834,8 +4886,22 @@ export default function DocTidyInvoiceAudit() {
                   <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
                   <span>–</span>
                   <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
+                  {/* Parse status filter */}
+                  <select
+                    value={pdfParseStatusFilter}
+                    onChange={(e) => setPdfParseStatusFilter(e.target.value as '' | 'none' | ParseJobStatus)}
+                    className={`${inputClass} cursor-pointer`}
+                    aria-label="Filter by parse status"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="none">Unparsed</option>
+                    <option value="pending">Queued</option>
+                    <option value="processing">Parsing</option>
+                    <option value="completed">Parsed</option>
+                    <option value="failed">Failed</option>
+                  </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -4972,7 +5038,7 @@ export default function DocTidyInvoiceAudit() {
                       </div>
                       {pdfHasActiveFilters && (
                         <button
-                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
                           className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer"
                         >
                           Clear filters
