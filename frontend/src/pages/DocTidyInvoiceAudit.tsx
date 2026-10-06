@@ -126,7 +126,7 @@ interface InvoiceMatch {
 }
 
 /**
- * Find the best matching parse job + line item for a given order import.
+ * Find **all** parse jobs that match a given order import (PO # + SKU).
  *
  * Matching strategy:
  *  1. PO # from the job's `jsonOutput` normalises equal to `order.poNumber`.
@@ -135,14 +135,19 @@ interface InvoiceMatch {
  *  3. If `order.orderSku` is blank (PO-only import), a PO match alone is
  *     sufficient even when the invoice has line items. Document-level fields
  *     are used; line-item fields will be empty.
+ *
+ * Returns all matching jobs so split-shipment invoices are all represented.
+ * The caller aggregates the array for display (summed qty, joined invoice #s).
  */
-function findInvoiceMatch(
+function findAllInvoiceMatches(
   order: DocTidyOrderImport,
   jobs: ParseJobListItem[]
-): InvoiceMatch | null {
+): InvoiceMatch[] {
   const normPo  = normForMatch(order.poNumber)
   const normSku = normSkuForMatch(order.orderSku)
-  if (!normPo) return null
+  if (!normPo) return []
+
+  const matches: InvoiceMatch[] = []
 
   for (const job of jobs) {
     const json = job.jsonOutput ?? null
@@ -161,7 +166,14 @@ function findInvoiceMatch(
 
     if (lineItems.length === 0) {
       // No line items — PO match alone is sufficient
-      return { job, item: null }
+      matches.push({ job, item: null })
+      continue
+    }
+
+    if (!normSku) {
+      // PO-only import — accept a PO match regardless of line items
+      matches.push({ job, item: null })
+      continue
     }
 
     for (const item of lineItems) {
@@ -171,15 +183,14 @@ function findInvoiceMatch(
           'product_code', 'sku_number'
         )
       )
-      if (normSku && itemSku === normSku) return { job, item }
+      if (itemSku === normSku) {
+        matches.push({ job, item })
+        break   // one match per job (same SKU won't appear twice in one invoice)
+      }
     }
-
-    // If the order has no SKU (PO-only import), a PO match alone is sufficient
-    // regardless of whether the invoice has line items. Use document-level fields.
-    if (!normSku) return { job, item: null }
   }
 
-  return null
+  return matches
 }
 
 function formatBytes(bytes: number): string {
@@ -1723,10 +1734,10 @@ function hasDiscount(inv: DiscountFields): boolean {
  */
 function discrepancyCell(
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ): React.ReactNode {
-  // Use cached invoice data first; fall back to client-side match.
-  const inv = resolveInvoiceFields(order, match)
+  // Use cached invoice data first; fall back to client-side matches.
+  const inv = resolveInvoiceFields(order, matches)
   if (!inv.hasMatch) {
     return (
       <Tooltip trigger="click" richContent={
@@ -1972,30 +1983,172 @@ function discrepancyCell(
 /** Return the plain-string value for a column (used by Excel export). */
 /**
  * Resolve invoice field values for a row, preferring the server-written
- * `matchedInvoice` cache and falling back to client-side matching.
+/**
+ * Sum a list of numeric strings, ignoring blanks.
+ * Returns '' if nothing is summable, otherwise a string rounded to 2dp.
+ */
+function sumNumericStrings(values: string[]): string {
+  let total = 0
+  let anyValid = false
+  for (const v of values) {
+    const n = parseFloat(v)
+    if (!isNaN(n)) { total += n; anyValid = true }
+  }
+  if (!anyValid) return ''
+  // Round to 2 decimal places; strip trailing zeros
+  const rounded = Math.round(total * 100) / 100
+  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(2)
+}
+
+/**
+ * Return the lexicographically earliest non-empty date string.
+ * ISO/partial-ISO strings sort correctly as strings.
+ */
+function earliestDateStr(values: string[]): string {
+  let earliest = ''
+  for (const v of values) {
+    if (!v) continue
+    if (!earliest || v < earliest) earliest = v
+  }
+  return earliest
+}
+
+/**
+ * Resolve invoice field values for a row, aggregating across ALL matched
+ * invoices (supports split-shipment: same PO+SKU across multiple PDFs).
+ *
+ * Priority order:
+ *   1. `order.matchedInvoices[]` — server-written cache (fast path, multiple)
+ *   2. `order.matchedInvoice`   — legacy singular cache (backward compat)
+ *   3. `matches` array          — client-side fallback (when cache is absent)
  */
 function resolveInvoiceFields(
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ) {
-  const c = order.matchedInvoice   // cached (fast path)
-  const json  = match?.job.jsonOutput ?? null
-  const item  = match?.item ?? null
+  // ── Build a unified list of "per-invoice" value sets ──────────────────────
+  // Each entry in `perInvoice` has all fields for one matched invoice.
+  type PerInvoice = {
+    driveFileId: string
+    invoiceSku: string
+    invoiceDate: string
+    invoiceNumber: string
+    terms: string
+    itemCost: string
+    invoiceQty: string
+    discountedPrice: string
+    discountPct: string
+    dropshipFee: string
+    miscCharges: string
+    totalCost: string
+    jobId?: string
+  }
+
+  let perInvoice: PerInvoice[] = []
+
+  // Fast path: server-written matchedInvoices[] array (new field)
+  if (order.matchedInvoices && order.matchedInvoices.length > 0) {
+    perInvoice = order.matchedInvoices.map((c) => ({
+      driveFileId:     c.driveFileId     ?? '',
+      invoiceSku:      c.invoiceSku      ?? '',
+      invoiceDate:     c.invoiceDate     ?? '',
+      invoiceNumber:   c.invoiceNumber   ?? '',
+      terms:           c.terms           ?? '',
+      itemCost:        c.itemCost        ?? '',
+      invoiceQty:      c.invoiceQty      ?? '',
+      discountedPrice: c.discountedPrice ?? '',
+      discountPct:     c.discountPct     ?? '',
+      dropshipFee:     c.dropshipFee     ?? '',
+      miscCharges:     c.miscCharges     ?? '',
+      totalCost:       c.totalCost       ?? '',
+      jobId:           c.jobId,
+    }))
+  } else if (order.matchedInvoice) {
+    // Backward compat: legacy singular cache
+    const c = order.matchedInvoice
+    perInvoice = [{
+      driveFileId:     c.driveFileId     ?? '',
+      invoiceSku:      c.invoiceSku      ?? '',
+      invoiceDate:     c.invoiceDate     ?? '',
+      invoiceNumber:   c.invoiceNumber   ?? '',
+      terms:           c.terms           ?? '',
+      itemCost:        c.itemCost        ?? '',
+      invoiceQty:      c.invoiceQty      ?? '',
+      discountedPrice: c.discountedPrice ?? '',
+      discountPct:     c.discountPct     ?? '',
+      dropshipFee:     c.dropshipFee     ?? '',
+      miscCharges:     c.miscCharges     ?? '',
+      totalCost:       c.totalCost       ?? '',
+      jobId:           c.jobId,
+    }]
+  } else if (matches.length > 0) {
+    // Client-side fallback (no server cache yet)
+    perInvoice = matches.map((m) => {
+      const json = m.job.jsonOutput ?? null
+      const item = m.item ?? null
+      return {
+        driveFileId:     m.job.driveFileId ?? '',
+        invoiceSku:      liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'),
+        invoiceDate:     extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'),
+        invoiceNumber:   extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'),
+        terms:           extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'),
+        itemCost:        liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'),
+        invoiceQty:      liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'),
+        discountedPrice: liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'),
+        discountPct:     liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
+        dropshipFee:     liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship'),
+        miscCharges:     liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous'),
+        totalCost:       liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
+        jobId:           String(m.job._id),
+      }
+    })
+  }
+
+  if (perInvoice.length === 0) {
+    return {
+      hasMatch:        false,
+      matchCount:      0,
+      driveFileId:     undefined as string | undefined,
+      primaryJobId:    undefined as string | undefined,
+      invoiceSku:      '',
+      invoiceDate:     '',
+      invoiceNumber:   '',
+      terms:           '',
+      itemCost:        '',
+      invoiceQty:      '',
+      discountedPrice: '',
+      discountPct:     '',
+      dropshipFee:     '',
+      miscCharges:     '',
+      totalCost:       '',
+    }
+  }
+
+  // ── Aggregate across all matched invoices ─────────────────────────────────
+  const first = perInvoice[0]
+
+  // Invoice # — unique values joined (preserves order)
+  const uniqueInvNums = [...new Set(perInvoice.map((p) => p.invoiceNumber).filter(Boolean))]
+  const invoiceNumber = uniqueInvNums.join(', ')
 
   return {
-    hasMatch:        !!(c ?? match),
-    driveFileId:     c?.driveFileId ?? match?.job.driveFileId,
-    invoiceSku:      c?.invoiceSku   ?? liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'),
-    invoiceDate:     c?.invoiceDate  ?? extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'),
-    invoiceNumber:   c?.invoiceNumber ?? extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'),
-    terms:           c?.terms        ?? extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'),
-    itemCost:        c?.itemCost     ?? liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'),
-    invoiceQty:      c?.invoiceQty   ?? liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'),
-    discountedPrice: c?.discountedPrice ?? liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'),
-    discountPct:     c?.discountPct  ?? liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
-    dropshipFee:     c?.dropshipFee  ?? (liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')),
-    miscCharges:     c?.miscCharges  ?? (liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')),
-    totalCost:       c?.totalCost    ?? (liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice')),
+    hasMatch:        true,
+    matchCount:      perInvoice.length,
+    driveFileId:     first.driveFileId || undefined,
+    primaryJobId:    first.jobId,
+    invoiceSku:      first.invoiceSku,
+    invoiceDate:     earliestDateStr(perInvoice.map((p) => p.invoiceDate)),
+    invoiceNumber,
+    terms:           first.terms,
+    // Pricing fields from first match (same SKU → same price across invoices)
+    itemCost:        first.itemCost,
+    discountedPrice: first.discountedPrice,
+    discountPct:     first.discountPct,
+    // Quantities and charges sum across all invoices
+    invoiceQty:      sumNumericStrings(perInvoice.map((p) => p.invoiceQty)),
+    dropshipFee:     sumNumericStrings(perInvoice.map((p) => p.dropshipFee)),
+    miscCharges:     sumNumericStrings(perInvoice.map((p) => p.miscCharges)),
+    totalCost:       sumNumericStrings(perInvoice.map((p) => p.totalCost)),
   }
 }
 
@@ -2030,7 +2183,7 @@ function headerOnlyColStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): s
 function auditColStr(
   colId: InvoiceAuditColumnId,
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ): string {
   switch (colId) {
     case 'poNumber':      return order.poNumber
@@ -2043,7 +2196,7 @@ function auditColStr(
     case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     default: break
   }
-  const inv = resolveInvoiceFields(order, match)
+  const inv = resolveInvoiceFields(order, matches)
   switch (colId) {
     case 'invoiceSku':        return inv.invoiceSku
     case 'invoiceDate':       return inv.invoiceDate
@@ -2059,7 +2212,18 @@ function auditColStr(
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
-    case 'parsedAt':          return order.matchedInvoice?.cachedAt ? formatDate(order.matchedInvoice.cachedAt) : ''
+    case 'parsedAt': {
+      // Show the earliest cachedAt across all matched invoices
+      const cachedDates = [
+        ...(order.matchedInvoices?.map((c) => c.cachedAt).filter(Boolean) ?? []),
+        ...(order.matchedInvoice?.cachedAt ? [order.matchedInvoice.cachedAt] : []),
+      ]
+      const earliest = cachedDates.reduce<string | undefined>((acc, d) => {
+        const s = typeof d === 'string' ? d : (d as Date).toISOString()
+        return !acc || s < acc ? s : acc
+      }, undefined)
+      return earliest ? formatDate(earliest) : ''
+    }
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
@@ -3170,9 +3334,9 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Fetch all parse jobs (for invoice matching — fallback for uncached rows) ──
    *
-   * Once every row in the workspace has a `matchedInvoice` cache written by the
-   * server, this call is skipped entirely so the table stays fast even as the
-   * parse-job collection grows into the thousands.
+   * Once every row in the workspace has a `matchedInvoices[]` cache written by
+   * the server, this call is skipped entirely so the table stays fast even as
+   * the parse-job collection grows into the thousands.
    */
   const fetchAllJobs = useCallback(async () => {
     if (!activeWorkspace) return
@@ -3199,8 +3363,12 @@ export default function DocTidyInvoiceAudit() {
     // Header-only workspaces use jobs as the primary display data source —
     // always fetch them regardless of the orderImports cache state.
     // For full-mode workspaces, skip the fetch if every row already has a
-    // server-written matchedInvoice cache so the table stays fast.
-    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
+    // server-written matchedInvoices[] cache so the table stays fast.
+    // A row is considered cached when it has at least one entry in
+    // matchedInvoices[] (new) OR a legacy matchedInvoice (singular) set.
+    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every(
+      (o) => (o.matchedInvoices != null && o.matchedInvoices.length > 0) || o.matchedInvoice != null
+    )) {
       setJobs([])   // clear any stale jobs from a previous workspace
       setLoading(false)
       return
@@ -3452,13 +3620,15 @@ export default function DocTidyInvoiceAudit() {
   }, [collapsedWeeks])
 
   /**
-   * Pre-compute the invoice match for every loaded order import row.
+   * Pre-compute all invoice matches for every loaded order import row.
    * Keyed by order._id for O(1) lookup in the render loop.
+   * Each value is an array — multiple entries when a vendor splits delivery
+   * across more than one invoice / PDF.
    */
-  const invoiceMatchMap = useMemo<Map<string, InvoiceMatch | null>>(() => {
-    const map = new Map<string, InvoiceMatch | null>()
+  const invoiceMatchMap = useMemo<Map<string, InvoiceMatch[]>>(() => {
+    const map = new Map<string, InvoiceMatch[]>()
     for (const order of orderImports) {
-      map.set(order._id, findInvoiceMatch(order, jobs))
+      map.set(order._id, findAllInvoiceMatches(order, jobs))
     }
     return map
   }, [orderImports, jobs])
@@ -3485,8 +3655,8 @@ export default function DocTidyInvoiceAudit() {
       }
     } else {
       for (const order of orderImports) {
-        const match = invoiceMatchMap.get(order._id) ?? null
-        const val = auditColStr(colId, order, match).trim()
+        const matches = invoiceMatchMap.get(order._id) ?? []
+        const val = auditColStr(colId, order, matches).trim()
         vals.set(val, (vals.get(val) ?? 0) + 1)
       }
     }
@@ -3512,9 +3682,9 @@ export default function DocTidyInvoiceAudit() {
     return orderImports.filter((order) => {
       // ── Column filters ──
       if (activeEntries.length > 0) {
-        const match = invoiceMatchMap.get(order._id) ?? null
+        const matches = invoiceMatchMap.get(order._id) ?? []
         const passesCol = activeEntries.every(([colId, allowed]) => {
-          const val = auditColStr(colId, order, match).trim()
+          const val = auditColStr(colId, order, matches).trim()
           if (!val) return allowed.has(BLANK_SENTINEL)
           return allowed.has(val)
         })
@@ -3636,8 +3806,9 @@ export default function DocTidyInvoiceAudit() {
   const pageRowKeys = useMemo(() => filteredOrderImports.map((o) => o._id), [filteredOrderImports])
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
   const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
-  const auditStartItem = orderPagination.total === 0 ? 0 : (orderPage - 1) * orderPageSize + 1
-  const auditEndItem = Math.min(orderPage * orderPageSize, orderPagination.total)
+  // Reserved for pagination display (not yet wired to JSX)
+  void (orderPagination.total === 0 ? 0 : (orderPage - 1) * orderPageSize + 1)  // auditStartItem
+  void Math.min(orderPage * orderPageSize, orderPagination.total)                // auditEndItem
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (auditSelectAllRef.current) {
@@ -3760,10 +3931,10 @@ export default function DocTidyInvoiceAudit() {
 
       const rows: Record<string, string>[] = []
       for (const order of exportOrders) {
-        const match = invoiceMatchMap.get(order._id) ?? findInvoiceMatch(order, jobs)
+        const matches = invoiceMatchMap.get(order._id) ?? findAllInvoiceMatches(order, jobs)
         const row: Record<string, string> = {}
         for (const col of visibleCols) {
-          row[col.label] = auditColStr(col.id, order, match ?? null)
+          row[col.label] = auditColStr(col.id, order, matches)
         }
         rows.push(row)
       }
@@ -3786,7 +3957,7 @@ export default function DocTidyInvoiceAudit() {
   const auditCellFor = (
     colId: InvoiceAuditColumnId,
     order: DocTidyOrderImport,
-    match: InvoiceMatch | null
+    matches: InvoiceMatch[]
   ): React.ReactNode => {
     // ── Order import fields (always from the DB row directly) ──
     switch (colId) {
@@ -3817,8 +3988,8 @@ export default function DocTidyInvoiceAudit() {
       default: break
     }
 
-    // ── Invoice fields — prefer matchedInvoice cache, fall back to client match ──
-    const inv = resolveInvoiceFields(order, match)
+    // ── Invoice fields — prefer matchedInvoices cache, fall back to client matches ──
+    const inv = resolveInvoiceFields(order, matches)
 
     switch (colId) {
       case 'invoiceSku':    return monoCell(inv.invoiceSku)
@@ -3827,18 +3998,38 @@ export default function DocTidyInvoiceAudit() {
         if (!inv.invoiceNumber) return emDash
         if (inv.driveFileId) {
           return (
-            <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
-              target="_blank" rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
-              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-              </svg>
-              {inv.invoiceNumber}
-            </a>
+            <span className="inline-flex items-center gap-1 flex-wrap">
+              <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
+                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                </svg>
+                {inv.invoiceNumber}
+              </a>
+              {inv.matchCount > 1 && (
+                <Tooltip content={`${inv.matchCount} invoices matched for this PO+SKU`}>
+                  <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 cursor-default select-none">
+                    +{inv.matchCount - 1}
+                  </span>
+                </Tooltip>
+              )}
+            </span>
           )
         }
-        return monoCell(inv.invoiceNumber)
+        return (
+          <span className="inline-flex items-center gap-1">
+            {monoCell(inv.invoiceNumber)}
+            {inv.matchCount > 1 && (
+              <Tooltip content={`${inv.matchCount} invoices matched for this PO+SKU`}>
+                <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 cursor-default select-none">
+                  +{inv.matchCount - 1}
+                </span>
+              </Tooltip>
+            )}
+          </span>
+        )
       }
       case 'terms':       return textCell(inv.terms)
       case 'itemCost': {
@@ -3931,17 +4122,25 @@ export default function DocTidyInvoiceAudit() {
       case 'miscCharges': return numCell(inv.miscCharges)
       case 'totalCost':   return numCell(inv.totalCost)
       case 'parsedAt': {
-        const cachedAt = order.matchedInvoice?.cachedAt
-        if (!cachedAt) return emDash
+        // Show the earliest cachedAt across all matched invoices
+        const cachedDates = [
+          ...(order.matchedInvoices?.map((c) => c.cachedAt).filter(Boolean) ?? []),
+          ...(order.matchedInvoice?.cachedAt ? [order.matchedInvoice.cachedAt] : []),
+        ]
+        const earliest = cachedDates.reduce<string | undefined>((acc, d) => {
+          const s = typeof d === 'string' ? d : (d as Date).toISOString()
+          return !acc || s < acc ? s : acc
+        }, undefined)
+        if (!earliest) return emDash
         return (
-          <span title={formatDateTime(cachedAt)} className="text-[var(--text-200)]">
-            {formatDate(cachedAt)}
+          <span title={formatDateTime(earliest)} className="text-[var(--text-200)]">
+            {formatDate(earliest)}
           </span>
         )
       }
 
       // ── Computed ──
-      case 'discrepancy': return discrepancyCell(order, match)
+      case 'discrepancy': return discrepancyCell(order, matches)
 
       default: return null
     }
@@ -5851,10 +6050,11 @@ export default function DocTidyInvoiceAudit() {
                           )
                           if (isCollapsed) return [groupHeader]
                           const dataRows = groupOrders.map((order) => {
-                            const match = invoiceMatchMap.get(order._id) ?? null
+                            const matches = invoiceMatchMap.get(order._id) ?? []
                             // Resolve the matched parse job for vendorNeedsSetup detection.
-                            const matchedJob = match?.job
+                            const matchedJob = matches[0]?.job
                               ?? (order.matchedInvoice?.jobId ? jobsById.get(order.matchedInvoice.jobId) : undefined)
+                              ?? (order.matchedInvoices?.[0]?.jobId ? jobsById.get(order.matchedInvoices[0].jobId) : undefined)
                             const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
@@ -5901,7 +6101,7 @@ export default function DocTidyInvoiceAudit() {
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
                                     ].join(' ')}>
-                                    {auditCellFor(col.id, order, match)}
+                                    {auditCellFor(col.id, order, matches)}
                                   </td>
                                 ))}
                               </tr>

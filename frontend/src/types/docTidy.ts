@@ -752,7 +752,19 @@ export interface DocTidyOrderImport {
    * parse job completes.  When present the audit table reads these fields
    * directly instead of loading all parse jobs for client-side matching.
    */
+  /**
+   * Cached invoice match (legacy singular field — kept for backward compat).
+   * Prefer `matchedInvoices` when present.
+   * @deprecated Read `matchedInvoices` instead; this field is only present on
+   * rows cached before the split-invoice aggregation feature.
+   */
   matchedInvoice?: MatchedInvoiceCache | null
+  /**
+   * All invoice matches for this order line — one entry per distinct parse job
+   * whose PO # + SKU matched.  Written by the server cache service; populated
+   * by a Resync for legacy rows that only have `matchedInvoice`.
+   */
+  matchedInvoices?: MatchedInvoiceCache[]
   createdAt: string
   updatedAt: string
 }
