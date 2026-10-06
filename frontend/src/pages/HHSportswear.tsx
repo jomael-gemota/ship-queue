@@ -243,11 +243,7 @@ export default function HHSportswear() {
                       </p>
                     </Td>
                     <Td compact className="max-w-[22rem]">
-                      <HHNotesField
-                        groupId={group.id}
-                        notes={group.notes}
-                        sourceFileName={group.sourceFileName}
-                      />
+                      <HHNotesField groupId={group.id} notes={group.notes} />
                     </Td>
                     <Td compact className="text-center">
                       <HHBatchProgress orders={group.children} activity={hhProgressActivity(syncStatus, group.id)} />
