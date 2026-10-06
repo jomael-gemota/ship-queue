@@ -51,8 +51,24 @@ export interface IDocTidyOrderImport extends Document {
    * all parse jobs to do client-side matching.
    *
    * `null` = not yet matched (job not yet parsed, or no matching invoice found)
+   *
+   * @deprecated Use `matchedInvoices` for new reads. This field is kept for
+   * rows that were cached before the split-invoice aggregation feature was
+   * introduced. A Resync will migrate existing rows to `matchedInvoices`.
    */
   matchedInvoice?: IMatchedInvoice | null;
+
+  /**
+   * All invoice matches for this order line — one entry per distinct parse job
+   * whose PO # + SKU matches.  Supports the case where a vendor splits a
+   * single order line across multiple invoices / PDFs.
+   *
+   * Written by `writeMatchCacheForJob` via an idempotent pull-then-push so
+   * re-parsing a job updates (not duplicates) its entry in this array.
+   *
+   * Prefer this field over the legacy `matchedInvoice` (singular) when present.
+   */
+  matchedInvoices?: IMatchedInvoice[];
 
   createdAt: Date;
   updatedAt: Date;
@@ -125,6 +141,27 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
         cachedAt:         { type: Date, required: true },
       }, { _id: false }),
       default: null,
+    },
+
+    /** All distinct invoice matches for this order line (one entry per parse job). */
+    matchedInvoices: {
+      type: [new Schema({
+        jobId:            { type: Schema.Types.ObjectId, required: true },
+        driveFileId:      { type: String },
+        invoiceSku:       { type: String },
+        invoiceDate:      { type: String },
+        invoiceNumber:    { type: String },
+        terms:            { type: String },
+        itemCost:         { type: String },
+        invoiceQty:       { type: String },
+        discountedPrice:  { type: String },
+        discountPct:      { type: String },
+        dropshipFee:      { type: String },
+        miscCharges:      { type: String },
+        totalCost:        { type: String },
+        cachedAt:         { type: Date, required: true },
+      }, { _id: false })],
+      default: [],
     },
   },
   { timestamps: true }

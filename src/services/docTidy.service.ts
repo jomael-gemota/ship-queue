@@ -252,9 +252,15 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
  * that nothing downstream cleans up.
  */
 let running = false;
+let lastExtractionImportAt: Date | null = null;
+let lastExtractionError: string | null = null;
 
 export function isExtractionRunning(): boolean {
   return running;
+}
+
+export function getExtractionStatus(): { lastImportAt: Date | null; lastError: string | null } {
+  return { lastImportAt: lastExtractionImportAt, lastError: lastExtractionError };
 }
 
 /**
@@ -266,6 +272,7 @@ export function isExtractionRunning(): boolean {
 export async function runEnabledRules(options: RunRuleOptions = {}): Promise<RunAllRulesResult | null> {
   if (running) return null;
   running = true;
+  broadcast({ type: 'poll_status', pollerRunning: true, pollError: null });
 
   try {
     const rules = await DocTidyRule.find({ enabled: true });
@@ -300,11 +307,24 @@ export async function runEnabledRules(options: RunRuleOptions = {}): Promise<Run
     // Tell any open results table to refetch. Only on a real import, so an
     // idle poll does not churn every connected client.
     if (result.imported > 0) {
+      lastExtractionImportAt = new Date();
       broadcast({ type: 'imported', imported: result.imported });
     }
 
+    const failed = result.results.filter((r) => r.error);
+    lastExtractionError = failed.length ? failed.map((f) => `${f.name}: ${f.error}`).join(' · ') : null;
+
     return result;
+  } catch (err) {
+    lastExtractionError = (err as Error).message;
+    throw err;
   } finally {
     running = false;
+    broadcast({
+      type: 'poll_status',
+      pollerRunning: false,
+      pollError: lastExtractionError,
+      lastImportAt: lastExtractionImportAt?.toISOString() ?? null,
+    });
   }
 }

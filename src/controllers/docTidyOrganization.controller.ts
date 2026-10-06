@@ -14,15 +14,19 @@ function fail(res: Response, error: unknown, fallback: string): void {
 
 /**
  * List organizations.
- * Admin: returns all.
- * Regular user: returns only orgs where their userId is in memberUserIds.
+ * Admin: returns all, hasAccess=true on every org.
+ * Regular user: returns all orgs, hasAccess=true only for orgs they are a member of.
  */
 export const listOrganizations = async (req: Request, res: Response): Promise<void> => {
   try {
     const isAdmin = req.user?.role === 'admin';
-    const filter = isAdmin ? {} : { memberUserIds: req.user?.id };
-    const orgs = await DocTidyOrganization.find(filter).sort({ name: 1 }).lean();
-    res.json({ data: orgs });
+    const userId  = req.user?.id ?? '';
+    const orgs = await DocTidyOrganization.find({}).sort({ name: 1 }).lean();
+    const data = orgs.map((org) => ({
+      ...org,
+      hasAccess: isAdmin || org.memberUserIds.some((id) => String(id) === userId),
+    }));
+    res.json({ data });
   } catch (error) {
     fail(res, error, 'Failed to load organizations');
   }

@@ -1,6 +1,6 @@
 import DocTidyRule from '../models/DocTidyRule';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
-import { isExtractionRunning, runEnabledRules } from './docTidy.service';
+import { isExtractionRunning, runEnabledRules, getExtractionStatus } from './docTidy.service';
 
 /**
  * Polls the connected mailbox so matching mail is captured without anyone
@@ -9,6 +9,9 @@ import { isExtractionRunning, runEnabledRules } from './docTidy.service';
  *
  * Ticks pass `skipKnown` so the cost of a poll is one `messages.list` per rule
  * plus a fetch only for mail we have never seen.
+ *
+ * Broadcasting of `poll_status` SSE events is handled inside `runEnabledRules`
+ * so that both the automated poller and manual "run all" triggers are covered.
  */
 
 const DEFAULT_INTERVAL_SECONDS = 30;
@@ -17,8 +20,6 @@ const STARTUP_DELAY_MS = 8_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastPollAt: Date | null = null;
-let lastImportAt: Date | null = null;
-let lastError: string | null = null;
 
 function intervalMs(): number {
   const raw = Number(process.env.DOC_TIDY_POLL_INTERVAL_SECONDS);
@@ -42,32 +43,29 @@ async function tick(): Promise<void> {
 
     lastPollAt = new Date();
     const result = await runEnabledRules({ skipKnown: true });
-    if (!result) return;
 
-    if (result.imported > 0) {
-      lastImportAt = new Date();
+    if (result && result.imported > 0) {
       console.log(`[DocTidyPoller] Imported ${result.imported} new message(s)`);
     }
-
-    const failed = result.results.filter((r) => r.error);
-    lastError = failed.length ? failed.map((f) => `${f.name}: ${f.error}`).join(' · ') : null;
   } catch (err) {
     // Never let a bad tick kill the interval; the next one retries.
-    lastError = (err as Error).message;
-    console.error('[DocTidyPoller] Poll failed:', lastError);
+    console.error('[DocTidyPoller] Poll failed:', (err as Error).message);
   }
 }
 
 export function getPollerStatus(): {
   enabled: boolean;
   intervalSeconds: number;
+  isPolling: boolean;
   lastPollAt: Date | null;
   lastImportAt: Date | null;
   lastError: string | null;
 } {
+  const { lastImportAt, lastError } = getExtractionStatus();
   return {
     enabled: timer !== null,
     intervalSeconds: Math.round(intervalMs() / 1000),
+    isPolling: isExtractionRunning(),
     lastPollAt,
     lastImportAt,
     lastError,
