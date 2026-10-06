@@ -98,6 +98,24 @@ function normForMatch(s: string): string {
 }
 
 /**
+ * Normalise a SKU for matching.
+ *
+ * On top of the standard normForMatch transforms, strips warehouse/variant
+ * decorations that appear on order-import SKUs but not on supplier invoices:
+ *  • Leading  "DUP-" or "DUP_"  prefix (case-insensitive)
+ *  • Trailing "-V2"  or "_V2"   suffix (case-insensitive)
+ *
+ * This lets "DUP-ABC123-V2" match the invoice SKU "ABC123" without changing
+ * the values that are displayed in the discrepancy tooltip.
+ */
+function normSkuForMatch(s: string): string {
+  const stripped = (s ?? '').trim()
+    .replace(/^DUP[-_]/i, '')   // strip leading DUP- / DUP_
+    .replace(/[-_]V2$/i, '')    // strip trailing -V2 / _V2
+  return normForMatch(stripped)
+}
+
+/**
  * The result of matching one `DocTidyOrderImport` row to a parsed invoice.
  * `item` is `null` when the invoice has no line items (document-level only).
  */
@@ -122,7 +140,7 @@ function findInvoiceMatch(
   jobs: ParseJobListItem[]
 ): InvoiceMatch | null {
   const normPo  = normForMatch(order.poNumber)
-  const normSku = normForMatch(order.orderSku)
+  const normSku = normSkuForMatch(order.orderSku)
   if (!normPo) return null
 
   for (const job of jobs) {
@@ -146,7 +164,7 @@ function findInvoiceMatch(
     }
 
     for (const item of lineItems) {
-      const itemSku = normForMatch(
+      const itemSku = normSkuForMatch(
         extractJsonField(item,
           'sku', 'part_number', 'part_no', 'item_code',
           'product_code', 'sku_number'
@@ -1734,7 +1752,7 @@ function discrepancyCell(
   // invoices don't produce false ✗ COGS mismatches.
   const effectiveCostRaw = resolveEffectiveCost(inv)
 
-  const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
+  const skuMatch  = normSkuForMatch(order.orderSku) === normSkuForMatch(invoiceSku)
   const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
 
   // COGS comparison: compare as floats (rounded to 2 dp) to handle minor formatting differences.
@@ -2044,7 +2062,7 @@ function auditColStr(
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
-      if (inv.invoiceSku && normForMatch(order.orderSku) !== normForMatch(inv.invoiceSku)) issues.push('✗ SKU')
+      if (inv.invoiceSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
       if (inv.invoiceQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
       if (order.dcCogs == null) {
         issues.push('COGS pending')
