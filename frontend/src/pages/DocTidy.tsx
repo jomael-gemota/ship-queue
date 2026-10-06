@@ -56,6 +56,14 @@ export default function DocTidy() {
   const [live, setLive] = useState(false)
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
+
+  // Background poller fetch status
+  const [pollerRunning, setPollerRunning] = useState(false)
+  const [pollError, setPollError] = useState<string | null>(null)
+  const [lastImportAt, setLastImportAt] = useState<Date | null>(null)
+  // Briefly show "Fetched" confirmation after a successful poll completes
+  const [showFetchDone, setShowFetchDone] = useState(false)
+  const fetchDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Holds the poller interval without triggering extra re-renders.
   const pollerIntervalMsRef = useRef<number>(15_000)
   // 1-second tick re-renders the "Synced X ago" and countdown displays.
@@ -116,6 +124,10 @@ export default function DocTidy() {
       pollerIntervalMsRef.current = intervalMs
       const base = configRes.data.lastPollAt ? new Date(configRes.data.lastPollAt).getTime() : Date.now()
       setNextSyncAt(new Date(base + intervalMs))
+      // Seed poller status from config snapshot
+      setPollerRunning(configRes.data.pollerRunning ?? false)
+      setPollError(configRes.data.lastPollError ?? null)
+      if (configRes.data.lastImportAt) setLastImportAt(new Date(configRes.data.lastImportAt))
     })
     return () => {
       cancelled = true
@@ -161,6 +173,20 @@ export default function DocTidy() {
           setLive(true)
           return
         }
+
+        if (event.type === 'poll_status') {
+          setPollerRunning(event.pollerRunning ?? false)
+          setPollError(event.pollError ?? null)
+          if (event.lastImportAt) setLastImportAt(new Date(event.lastImportAt))
+          // Show a brief "Fetched" confirmation when a successful poll finishes.
+          if (!event.pollerRunning && !event.pollError) {
+            setShowFetchDone(true)
+            if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current)
+            fetchDoneTimerRef.current = setTimeout(() => setShowFetchDone(false), 8_000)
+          }
+          return
+        }
+
         if (event.type !== 'imported') return
 
         // Increment the cross-page unread badge, reset the next-sync countdown,
@@ -171,6 +197,13 @@ export default function DocTidy() {
       },
       () => setLive(false)
     )
+  }, [])
+
+  // Clean up the fetch-done timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current)
+    }
   }, [])
 
   const clearFilters = () => {
@@ -335,6 +368,42 @@ export default function DocTidy() {
           {/* Status indicators */}
           <span className="ml-auto flex items-center gap-2 text-[11px] text-[var(--text-200)]">
             {refreshing && <Spinner className="h-3 w-3" />}
+
+            {/* ── Poller fetch-status chip ───────────────────────── */}
+            {config?.mailboxConnected && pollerRunning && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                title="The background poller is currently fetching new emails from the mailbox"
+              >
+                <svg className="h-3.5 w-3.5 shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+                Fetching emails…
+              </span>
+            )}
+            {config?.mailboxConnected && !pollerRunning && pollError && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-400 cursor-help"
+                title={`Last email fetch failed: ${pollError}`}
+              >
+                <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                Fetch error
+              </span>
+            )}
+            {config?.mailboxConnected && !pollerRunning && !pollError && showFetchDone && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                title={lastImportAt ? `Last import: ${lastImportAt.toLocaleString()}` : 'Mailbox checked — no new messages'}
+              >
+                <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Fetched
+              </span>
+            )}
+
             {config?.mailboxConnected && (
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
