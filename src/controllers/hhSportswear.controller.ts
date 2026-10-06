@@ -572,9 +572,10 @@ export const rerunGroupScSync = async (req: Request, res: Response): Promise<voi
     }
 
     const draftCart = parseBoolFlag(req.body?.draftCart, true);
+    const stampSellerNotes = parseBoolFlag(req.body?.stampSellerNotes, true);
     markChildrenPending(group, undefined, { resetCart: draftCart });
     await group.save();
-    enqueueHhGroupScSync(String(group._id), undefined, { autoDraft: draftCart });
+    enqueueHhGroupScSync(String(group._id), undefined, { autoDraft: draftCart, stampSellerNotes });
     res.json({ data: serializeGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-sync HH Sportswear group', error: (error as Error).message });
@@ -614,9 +615,10 @@ export const rerunOrderScSync = async (req: Request, res: Response): Promise<voi
     }
 
     const draftCart = parseBoolFlag(req.body?.draftCart, true);
+    const stampSellerNotes = parseBoolFlag(req.body?.stampSellerNotes, true);
     markChildrenPending(group, String(order._id), { resetCart: draftCart });
     await group.save();
-    enqueueHhGroupScSync(String(group._id), String(order._id), { autoDraft: draftCart });
+    enqueueHhGroupScSync(String(group._id), String(order._id), { autoDraft: draftCart, stampSellerNotes });
     res.json({ data: serializeGroup(group) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to re-sync HH Sportswear order', error: (error as Error).message });
@@ -1015,7 +1017,7 @@ function queueMissingImageBackfill(
         child.detailsStatus === 'synced' &&
         (child.items ?? []).some((item) => item.imageUrl == null || typeof item.tax !== 'number')
     );
-    if (needsImages) enqueueHhGroupScSync(String(group._id));
+    if (needsImages) enqueueHhGroupScSync(String(group._id), undefined, { stampSellerNotes: false });
   }
 }
 
@@ -1532,8 +1534,9 @@ export const importGroup = async (req: Request, res: Response): Promise<void> =>
     res.status(201).json({ data: serializeGroup(group), meta });
     const fetchDetails = parseBoolFlag(req.body?.fetchDetails, true);
     const draftCart = fetchDetails && parseBoolFlag(req.body?.draftCart, true);
+    const stampSellerNotes = fetchDetails && parseBoolFlag(req.body?.stampSellerNotes, true);
     if (fetchDetails) {
-      enqueueHhGroupScSync(String(group._id), undefined, { autoDraft: draftCart });
+      enqueueHhGroupScSync(String(group._id), undefined, { autoDraft: draftCart, stampSellerNotes });
     }
   } catch (error) {
     res.status(500).json({ message: 'Failed to import HH Sportswear group', error: (error as Error).message });

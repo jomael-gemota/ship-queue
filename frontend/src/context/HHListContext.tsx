@@ -67,7 +67,11 @@ interface HHListContextValue {
   setGroups: Dispatch<SetStateAction<HHOrderGroup[]>>
   syncStatus: HHScSyncStatus | null
   setSyncStatus: Dispatch<SetStateAction<HHScSyncStatus | null>>
-  rerunDetails: (groupId: string, orderId?: string, options?: { draftCart?: boolean }) => Promise<void>
+  rerunDetails: (
+    groupId: string,
+    orderId?: string,
+    options?: { draftCart?: boolean; stampSellerNotes?: boolean },
+  ) => Promise<void>
   resyncBusyId: string | null
   rerunCartDraft: (groupId: string, orderId?: string, shipVia?: 'default' | 'usps' | 'auto') => Promise<void>
   cartDraftBusyId: string | null

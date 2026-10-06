@@ -339,7 +339,10 @@ export default function HHSportswear() {
 
             const request =
               pending.type === 'resync'
-                ? rerunDetails(groupId, undefined, { draftCart: options?.draftCart !== false })
+                ? rerunDetails(groupId, undefined, {
+                    draftCart: options?.draftCart !== false,
+                    stampSellerNotes: options?.stampSellerNotes !== false,
+                  })
                 : pending.type === 'place'
                   ? placeOrders(groupId)
                   : rerunCartDraft(groupId)

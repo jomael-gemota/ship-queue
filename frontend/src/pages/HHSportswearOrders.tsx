@@ -75,7 +75,7 @@ export default function HHSportswearOrders() {
     )
   })
 
-  const confirmAction = (options?: { draftCart?: boolean }) => {
+  const confirmAction = (options?: { draftCart?: boolean; stampSellerNotes?: boolean }) => {
     if (!pendingAction || !group || actionBusy) return
     setActionBusy(true)
     setActionError(null)
@@ -111,7 +111,10 @@ export default function HHSportswearOrders() {
     const orderId = pendingAction.target === 'order' ? pendingAction.order.id : undefined
     const request =
       pendingAction.type === 'resync'
-        ? rerunDetails(group.id, orderId, { draftCart: options?.draftCart !== false })
+        ? rerunDetails(group.id, orderId, {
+            draftCart: options?.draftCart !== false,
+            stampSellerNotes: options?.stampSellerNotes !== false,
+          })
         : pendingAction.type === 'place'
           ? placeOrders(group.id, orderId)
           : rerunCartDraft(group.id, orderId)

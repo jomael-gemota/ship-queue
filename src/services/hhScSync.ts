@@ -47,6 +47,7 @@ interface HhScSyncJob {
   groupId: string;
   childId?: string;
   autoDraft: boolean;
+  stampSellerNotes: boolean;
 }
 
 const queue: HhScSyncJob[] = [];
@@ -180,13 +181,11 @@ async function fillChild(
   child: IHHChildOrder,
   cookie: string,
   run: HhScSyncRunResult,
-  autoDraft: boolean
+  options: { autoDraft: boolean; stampSellerNotes: boolean }
 ): Promise<void> {
   currentOrderId = child.orderId;
   const groupId = String(group._id);
   const childId = String(child._id);
-  const notesSettled = child.sellerNotesResult === 'updated' || child.sellerNotesResult === 'already';
-  const stampNotes = child.detailsStatus !== 'synced' && !notesSettled && !child.sellerNotesStamped;
   const scOrder = await fetchScOrder(child.orderId, cookie);
   if (scOrder.sellerNotes && scOrder.sellerNotes !== child.po) {
     console.warn(
@@ -218,7 +217,7 @@ async function fillChild(
   lastSuccessAt = new Date();
   const itemCount = saved?.items.length ?? child.items.length;
   console.log(`${LOG} Synced ${child.orderId} (${itemCount} item${itemCount === 1 ? '' : 's'})`);
-  if (saved && saved.detailsStatus === 'synced' && stampNotes) {
+  if (saved && saved.detailsStatus === 'synced' && options.stampSellerNotes) {
     const outcome = await stampSellerNotePo(child.orderId, child.po, scOrder.sellerNotes, cookie);
     await persistChild(groupId, childId, (row) => {
       row.sellerNotesResult = outcome.result;
@@ -226,7 +225,7 @@ async function fillChild(
       row.sellerNotesStamped = outcome.result === 'updated' || outcome.result === 'already';
     });
   }
-  if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && autoDraft !== false) {
+  if (saved && saved.detailsStatus === 'synced' && (saved.items ?? []).length > 0 && options.autoDraft !== false) {
     enqueueHhCartDraft(groupId, childId);
   } else if (saved && childCanVerify(saved)) {
     enqueueHhCartVerify(groupId, childId);
@@ -303,7 +302,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
 
       attempted.add(String(child._id));
       try {
-        await fillChild(group, child, cookie, run, job.autoDraft);
+        await fillChild(group, child, cookie, run, job);
       } catch (err) {
         if (err instanceof HhScAuthError || err instanceof HhScRateLimitError) {
           throw new StopGroupError(`${child.orderId}: ${err.message}`);
@@ -384,14 +383,20 @@ async function drainQueue(): Promise<void> {
 }
 
 /** Starts filling pending (and image/tax backfill) Order IDs. Safe to call after the HTTP response. */
-export function enqueueHhGroupScSync(groupId: string, childId?: string, options?: { autoDraft?: boolean }): void {
+export function enqueueHhGroupScSync(
+  groupId: string,
+  childId?: string,
+  options?: { autoDraft?: boolean; stampSellerNotes?: boolean }
+): void {
   if (!groupId) return;
   const autoDraft = options?.autoDraft !== false;
-  const job: HhScSyncJob = { groupId, childId, autoDraft };
+  const stampSellerNotes = options?.stampSellerNotes === true;
+  const job: HhScSyncJob = { groupId, childId, autoDraft, stampSellerNotes };
 
   const existing = queue.find((queued) => jobCovers(queued, job));
   if (existing) {
     if (autoDraft) existing.autoDraft = true;
+    if (stampSellerNotes) existing.stampSellerNotes = true;
     console.log(`${LOG} Group ${jobLabel(job)} is already queued`);
     return;
   }

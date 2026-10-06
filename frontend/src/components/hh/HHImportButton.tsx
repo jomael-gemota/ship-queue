@@ -99,6 +99,7 @@ export function HHImportButton() {
   const [dragging, setDragging] = useState(false)
   const [fetchDetails, setFetchDetails] = useState(true)
   const [draftCart, setDraftCart] = useState(true)
+  const [stampSellerNotes, setStampSellerNotes] = useState(true)
   const [preview, setPreview] = useState<ImportPreview>({ status: 'idle' })
   const [picked, setPicked] = useState<{ key: string; excluded: string[] } | null>(null)
   const dragDepth = useRef(0)
@@ -175,6 +176,7 @@ export function HHImportButton() {
     setTab('paste')
     setFetchDetails(true)
     setDraftCart(true)
+    setStampSellerNotes(true)
     setDragging(false)
     dragDepth.current = 0
     resetFileInput()
@@ -297,7 +299,11 @@ export function HHImportButton() {
         orders,
         sourceFileName: tab === 'file' && selectedFile ? selectedFile.name : 'Pasted orders',
       },
-      { fetchDetails, draftCart: fetchDetails && draftCart },
+      {
+        fetchDetails,
+        draftCart: fetchDetails && draftCart,
+        stampSellerNotes: fetchDetails && stampSellerNotes,
+      },
     )
       .then((res) => {
         flashHHGroupRow(res.data.id)
@@ -555,6 +561,7 @@ export function HHImportButton() {
                 onChange={(next) => {
                   setFetchDetails(next)
                   setDraftCart(next)
+                  setStampSellerNotes(next)
                 }}
               />
               <ImportSwitch
@@ -569,6 +576,17 @@ export function HHImportButton() {
                     : 'Turn on Fetch order details first. Carts need synced items.'
                 }
                 onChange={setDraftCart}
+              />
+              <ImportSwitch
+                checked={fetchDetails && stampSellerNotes}
+                disabled={importBusy || !fetchDetails}
+                label="Put PO Number in the Seller Notes"
+                description={
+                  fetchDetails
+                    ? 'Write the spreadsheet PO into Seller Central seller notes after details sync. Existing notes stay.'
+                    : 'Turn on Fetch order details first. Seller notes need the fetched order.'
+                }
+                onChange={setStampSellerNotes}
               />
             </div>
 

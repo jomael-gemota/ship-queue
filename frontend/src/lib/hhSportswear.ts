@@ -824,7 +824,7 @@ export function testHHB2bWebhook(brand: HHBrandId) {
 export function importHHSpreadsheet(
   brand: HHBrandId,
   input: File | { text: string } | { orders: Array<{ orderId: string; po: string }>; sourceFileName?: string },
-  options?: { fetchDetails?: boolean; draftCart?: boolean },
+  options?: { fetchDetails?: boolean; draftCart?: boolean; stampSellerNotes?: boolean },
 ) {
   const body = new FormData()
   if (input instanceof File) body.append('file', input)
@@ -834,6 +834,7 @@ export function importHHSpreadsheet(
   } else body.append('text', input.text)
   body.append('fetchDetails', options?.fetchDetails === false ? 'false' : 'true')
   body.append('draftCart', options?.draftCart === false ? 'false' : 'true')
+  body.append('stampSellerNotes', options?.stampSellerNotes === false ? 'false' : 'true')
   return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>(hhPath(brand, '/import'), body)
 }
 
@@ -855,9 +856,14 @@ export async function previewHHImport(
   }
 }
 
-export function rerunHHGroupScSync(brand: HHBrandId, groupId: string, options?: { draftCart?: boolean }) {
+export function rerunHHGroupScSync(
+  brand: HHBrandId,
+  groupId: string,
+  options?: { draftCart?: boolean; stampSellerNotes?: boolean },
+) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
+    stampSellerNotes: options?.stampSellerNotes !== false,
   })
 }
 
@@ -865,10 +871,11 @@ export function rerunHHOrderScSync(
   brand: HHBrandId,
   groupId: string,
   orderId: string,
-  options?: { draftCart?: boolean },
+  options?: { draftCart?: boolean; stampSellerNotes?: boolean },
 ) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
+    stampSellerNotes: options?.stampSellerNotes !== false,
   })
 }
 

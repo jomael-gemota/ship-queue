@@ -1685,7 +1685,7 @@ function confirmCopy(
   }
 }
 
-export type HHConfirmOptions = { draftCart?: boolean }
+export type HHConfirmOptions = { draftCart?: boolean; stampSellerNotes?: boolean }
 
 function HHConfirmSwitch({
   checked,
@@ -1746,6 +1746,7 @@ export function HHConfirmModal({
   const orderDetails = orderingBrand.draftMode === 'order-details'
   const copy = confirmCopy(pending, placeOrderEnabled, orderDetails, orderingBrand.name)
   const [draftCart, setDraftCart] = useState(true)
+  const [stampSellerNotes, setStampSellerNotes] = useState(true)
   const isResync = pending.type === 'resync'
   const isPlace = pending.type === 'place'
   const replaceCart = hhHasCartDraft(
@@ -1759,33 +1760,46 @@ export function HHConfirmModal({
         <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{copy.title}</h3>
         <div className="text-sm text-slate-500 dark:text-[var(--text-200)]">{copy.body}</div>
         {isResync && (
-          <HHConfirmSwitch
-            checked={draftCart}
-            disabled={busy}
-            label={
-              orderDetails
-                ? replaceCart
-                  ? 'Also regenerate portal draft'
-                  : 'Also draft on the portal'
-                : replaceCart
-                  ? 'Also regenerate B2B cart'
-                  : 'Also draft B2B cart'
-            }
-            description={
-              draftCart
-                ? replaceCart
-                  ? orderDetails
-                    ? 'Builds a new cart from the synced order details. Existing drafts are replaced. The order is not placed.'
-                    : 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
-                  : orderDetails
-                    ? 'Builds a cart from the synced order details. The order is not placed.'
-                    : 'Creates a Helly Hansen draft after details sync. The order is not placed.'
-                : replaceCart
-                  ? 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
-                  : 'You can draft a cart later after details sync.'
-            }
-            onChange={setDraftCart}
-          />
+          <div className="space-y-3">
+            <HHConfirmSwitch
+              checked={draftCart}
+              disabled={busy}
+              label={
+                orderDetails
+                  ? replaceCart
+                    ? 'Also regenerate portal draft'
+                    : 'Also draft on the portal'
+                  : replaceCart
+                    ? 'Also regenerate B2B cart'
+                    : 'Also draft B2B cart'
+              }
+              description={
+                draftCart
+                  ? replaceCart
+                    ? orderDetails
+                      ? 'Builds a new cart from the synced order details. Existing drafts are replaced. The order is not placed.'
+                      : 'Creates a new Helly Hansen draft after details sync. Existing drafts are replaced. The order is not placed.'
+                    : orderDetails
+                      ? 'Builds a cart from the synced order details. The order is not placed.'
+                      : 'Creates a Helly Hansen draft after details sync. The order is not placed.'
+                  : replaceCart
+                    ? 'Existing drafts and reference numbers stay. You can regenerate later from the cart action.'
+                    : 'You can draft a cart later after details sync.'
+              }
+              onChange={setDraftCart}
+            />
+            <HHConfirmSwitch
+              checked={stampSellerNotes}
+              disabled={busy}
+              label="Put PO Number in the Seller Notes"
+              description={
+                stampSellerNotes
+                  ? 'Writes the spreadsheet PO into Seller Central seller notes after details sync. Existing notes stay. If the PO is already there, nothing is sent.'
+                  : 'Seller notes stay as they are.'
+              }
+              onChange={setStampSellerNotes}
+            />
+          </div>
         )}
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2">
@@ -1799,7 +1813,7 @@ export function HHConfirmModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(isResync ? { draftCart } : undefined)}
+            onClick={() => onConfirm(isResync ? { draftCart, stampSellerNotes } : undefined)}
             disabled={busy}
             className={
               copy.danger
