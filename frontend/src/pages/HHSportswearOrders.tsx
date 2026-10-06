@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHShipViaChip, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSkuNotice, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHShipViaChip, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
@@ -57,7 +57,7 @@ function NotesIcon({ className = '' }: { className?: string }) {
 export default function HHSportswearOrders() {
   const { groupId = '' } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
-  const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId, rerunCartDraft, cartDraftBusyId, placeOrders, placeBusyId, placeOrderEnabled, brand, brandPath } =
+  const { setGroups, getGroup, filteredOrders, selectedDetailsStatus, selectedCartStatus, searchInput, loadState, loadError, reload, rerunDetails, resyncBusyId, rerunCartDraft, cartDraftBusyId, placeOrders, placeBusyId, placeOrderEnabled, skuRules, brand, brandPath } =
     useHHList()
   const orderDetails = hhUsesOrderDetailsDraft(brand)
   const group = getGroup(groupId)
@@ -337,7 +337,17 @@ export default function HHSportswearOrders() {
                       />
                     </Td>
                     <Td compact>
-                      <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
+                      <span className="inline-flex items-center gap-1.5">
+                        <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
+                        {skuRules ? (
+                          <HHCartSkuNotice
+                            items={order.items}
+                            prefixes={skuRules.prefixes}
+                            suffixes={skuRules.suffixes}
+                            initials={skuRules.initials}
+                          />
+                        ) : null}
+                      </span>
                     </Td>
                     <Td compact>
                       <HHVerifiedCell groupId={group.id} order={order} />

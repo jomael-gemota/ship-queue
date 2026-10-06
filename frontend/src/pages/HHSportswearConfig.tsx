@@ -10,7 +10,7 @@ import {
   normalizeThorogoodSkuInitials,
   thorogoodPortalSku,
 } from '../lib/hhThorogoodSku'
-import { normalizeHhSkuExcludes } from '../lib/hhSkuExclude'
+import { HH_SKU_SAMPLES, hhCartSku, normalizeHhSkuTokens } from '../lib/hhSkuExclude'
 
 const inputClass =
   'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:cursor-default disabled:opacity-80 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
@@ -58,15 +58,15 @@ function initialsFromText(text: string): { initials: string[] } | { error: strin
   return normalizeThorogoodSkuInitials(text.split(/\r?\n/))
 }
 
-function excludesFromText(text: string): { excludes: string[] } | { error: string } {
-  return normalizeHhSkuExcludes(text.split(/\r?\n/))
+function tokensFromText(text: string, label: string): { tokens: string[] } | { error: string } {
+  return normalizeHhSkuTokens(text.split(/\r?\n/), label)
 }
 
-function sameExcludes(text: string, saved: string[]): boolean {
-  const parsed = excludesFromText(text)
+function sameTokens(text: string, saved: string[], label: string): boolean {
+  const parsed = tokensFromText(text, label)
   if ('error' in parsed) return false
-  if (parsed.excludes.length !== saved.length) return false
-  return parsed.excludes.every((token, index) => token === saved[index])
+  if (parsed.tokens.length !== saved.length) return false
+  return parsed.tokens.every((token, index) => token === saved[index])
 }
 
 function sameInitials(text: string, saved: string[]): boolean {
@@ -129,7 +129,8 @@ export default function HHSportswearConfig() {
   const [accountId, setAccountId] = useState('')
   const [cookie, setCookie] = useState('')
   const [skuInitialsText, setSkuInitialsText] = useState('')
-  const [skuExcludesText, setSkuExcludesText] = useState('')
+  const [skuPrefixesText, setSkuPrefixesText] = useState('')
+  const [skuSuffixesText, setSkuSuffixesText] = useState('')
   const [clearCookie, setClearCookie] = useState(false)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [alertWebhookUrl, setAlertWebhookUrl] = useState('')
@@ -149,7 +150,8 @@ export default function HHSportswearConfig() {
     setCatalog(data.catalog)
     setAccountId(data.accountId)
     setSkuInitialsText((data.skuInitials ?? []).join('\n'))
-    setSkuExcludesText((data.skuExcludes ?? []).join('\n'))
+    setSkuPrefixesText((data.skuPrefixes ?? []).join('\n'))
+    setSkuSuffixesText((data.skuSuffixes ?? []).join('\n'))
     setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
     setAlertWebhookUrl(data.alertWebhookUrl || '')
     setCheckTimes(data.sessionCheckTimes?.length ? data.sessionCheckTimes : [])
@@ -228,7 +230,8 @@ export default function HHSportswearConfig() {
         (catalog !== saved.catalog ||
           accountId !== saved.accountId ||
           placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
-          !sameExcludes(skuExcludesText, saved.skuExcludes ?? []))) ||
+          !sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
+          !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings'))) ||
       cookie.trim().length > 0 ||
       clearCookie ||
       (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
@@ -247,9 +250,15 @@ export default function HHSportswearConfig() {
         setBusy(false)
         return
       }
-      const parsedExcludes = orderDetails ? null : excludesFromText(skuExcludesText)
-      if (parsedExcludes && 'error' in parsedExcludes) {
-        setSaveError(parsedExcludes.error)
+      const parsedPrefixes = orderDetails ? null : tokensFromText(skuPrefixesText, 'Start strings')
+      if (parsedPrefixes && 'error' in parsedPrefixes) {
+        setSaveError(parsedPrefixes.error)
+        setBusy(false)
+        return
+      }
+      const parsedSuffixes = orderDetails ? null : tokensFromText(skuSuffixesText, 'End strings')
+      if (parsedSuffixes && 'error' in parsedSuffixes) {
+        setSaveError(parsedSuffixes.error)
         setBusy(false)
         return
       }
@@ -267,7 +276,8 @@ export default function HHSportswearConfig() {
             placeOrderEnabled,
             alertWebhookUrl,
             sessionCheckTimes: checkTimes,
-            skuExcludes: parsedExcludes && 'excludes' in parsedExcludes ? parsedExcludes.excludes : [],
+            skuPrefixes: parsedPrefixes && 'tokens' in parsedPrefixes ? parsedPrefixes.tokens : [],
+            skuSuffixes: parsedSuffixes && 'tokens' in parsedSuffixes ? parsedSuffixes.tokens : [],
           }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
@@ -609,7 +619,10 @@ export default function HHSportswearConfig() {
 
   const brandLabel = brand === 'workwear' ? 'Work' : 'Sports'
   const sessionHost = brandDef.baseUrl.replace(/^https?:\/\//, '')
-  const parsedSkuExcludes = excludesFromText(skuExcludesText)
+  const parsedSkuPrefixes = tokensFromText(skuPrefixesText, 'Start strings')
+  const parsedSkuSuffixes = tokensFromText(skuSuffixesText, 'End strings')
+  const skuPreviewPrefixes = 'tokens' in parsedSkuPrefixes ? parsedSkuPrefixes.tokens : []
+  const skuPreviewSuffixes = 'tokens' in parsedSkuSuffixes ? parsedSkuSuffixes.tokens : []
 
   return (
     <form
@@ -717,27 +730,64 @@ export default function HHSportswearConfig() {
       </ConfigSection>
 
       <ConfigSection
-        title="SKU exclusions"
-        description="A line stays off the cart when its Seller Central SKU contains one of these."
+        title="SKU strings"
+        description="Removed from the Seller Central SKU before it is added to the cart and before verification. The line still ships. Start strings are only removed from the front, and end strings only from the back. Matching ignores case, so dup_ and DUP_ are the same string."
       >
-        <div className="space-y-1.5">
-          <label className={labelClass} htmlFor="hh-b2b-sku-excludes">
-            Exclusions
-          </label>
-          <p className={hintClass}>One value per line. DUP_12345 matches DUP_.</p>
-          <textarea
-            id="hh-b2b-sku-excludes"
-            className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
-            value={skuExcludesText}
-            onChange={(event) => setSkuExcludesText(event.target.value)}
-            placeholder="DUP_"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={busy}
-          />
-          {'error' in parsedSkuExcludes ? (
-            <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuExcludes.error}</p>
-          ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-sku-prefixes">
+              Start of SKU
+            </label>
+            <p className={hintClass}>One value per line. DUP_70429_482-M becomes 70429_482-M.</p>
+            <textarea
+              id="hh-b2b-sku-prefixes"
+              className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+              value={skuPrefixesText}
+              onChange={(event) => setSkuPrefixesText(event.target.value)}
+              placeholder={'DUP_\nDUP-'}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            {'error' in parsedSkuPrefixes ? (
+              <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuPrefixes.error}</p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass} htmlFor="hh-b2b-sku-suffixes">
+              End of SKU
+            </label>
+            <p className={hintClass}>One value per line. 70429_482-M_fba becomes 70429_482-M.</p>
+            <textarea
+              id="hh-b2b-sku-suffixes"
+              className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+              value={skuSuffixesText}
+              onChange={(event) => setSkuSuffixesText(event.target.value)}
+              placeholder={'_fba\n-fba'}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            {'error' in parsedSkuSuffixes ? (
+              <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuSuffixes.error}</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="hidden font-mono text-[11px] uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
+            <span>Seller Central</span>
+            <span>Cart SKU</span>
+          </div>
+          <ul className="space-y-1.5">
+            {HH_SKU_SAMPLES.map((sample) => (
+              <li key={sample} className="grid grid-cols-1 gap-0.5 font-mono text-xs sm:grid-cols-2 sm:gap-3">
+                <span className="truncate text-slate-500 dark:text-[var(--text-200)]">{sample}</span>
+                <span className="text-slate-800 dark:text-[var(--text-100)]">
+                  {hhCartSku(sample, skuPreviewPrefixes, skuPreviewSuffixes) || '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </ConfigSection>
 

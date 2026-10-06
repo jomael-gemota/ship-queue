@@ -12,7 +12,7 @@ import { createThorogoodDraft } from '../lib/hhB2bThorogood';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { hhCartItems } from '../lib/hhLineItems';
-import { applyHhSkuExcludes } from '../lib/hhSkuExclude';
+import { hhLineCartSku, releaseHhSkuRuleExclusions } from '../lib/hhSkuExclude';
 import { hhShipViaForDraft, type HhShipViaOverride } from '../lib/hhShipVia';
 
 const LOG = '[hh-cart-draft]';
@@ -130,7 +130,10 @@ function childNeedsDraft(child: IHHChildOrder): boolean {
   return child.cartStatus === 'draft' && isLocalB2bDraft(child);
 }
 
-function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
+function toDraftRequest(
+  child: IHHChildOrder,
+  affixes?: { prefixes: readonly string[]; suffixes: readonly string[] }
+): HhB2bDraftRequest {
   return {
     amazonOrderId: child.orderId,
     po: child.po,
@@ -145,7 +148,8 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
       phone: child.customerPhone ?? '',
     },
     items: hhCartItems(child.items).map((item) => ({
-      sku: item.sku,
+      sku: affixes ? hhLineCartSku(item, affixes.prefixes, affixes.suffixes) : item.sku,
+      cartSku: (item.cartSku ?? '').trim(),
       asin: item.asin ?? '',
       title: item.title,
       quantity: item.quantity,
@@ -218,18 +222,14 @@ async function persistDraft(
   });
 }
 
-async function persistSkuExclusions(
-  groupId: string,
-  childId: string,
-  skuExcludes: readonly string[]
-): Promise<IHHChildOrder | null> {
+async function releaseRuleExclusions(groupId: string, childId: string): Promise<IHHChildOrder | null> {
   return withHhGroupLock(groupId, async () => {
     const group = await HHOrderGroup.findById(groupId);
     if (!group) return null;
     const child = group.children.id(childId);
     if (!child) return null;
     if (child.cartStatus === 'placed') return child;
-    if (applyHhSkuExcludes(child.items, skuExcludes)) {
+    if (releaseHhSkuRuleExclusions(child.items)) {
       group.markModified('children');
       await group.save();
     }
@@ -295,8 +295,8 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
     return;
   }
   const brandId = hhBrandId(group.brand);
-  const skuExcludes = (await loadHhB2bConfig(brandId)).skuExcludes;
-  const stamped = await persistSkuExclusions(String(group._id), childId, skuExcludes);
+  const affixes = await loadHhB2bConfig(brandId);
+  const stamped = await releaseRuleExclusions(String(group._id), childId);
   if (!stamped || stamped.cartStatus === 'placed' || stamped.detailsStatus !== 'synced') {
     run.skipped += 1;
     console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
@@ -304,10 +304,10 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   }
   if (hhCartItems(stamped.items).length === 0) {
     run.skipped += 1;
-    console.log(`${LOG} Skipped ${child.orderId} — every line matches a cart exclusion`);
+    console.log(`${LOG} Skipped ${child.orderId} — every line is excluded from the cart`);
     return;
   }
-  const request = toDraftRequest(stamped);
+  const request = toDraftRequest(stamped, { prefixes: affixes.skuPrefixes, suffixes: affixes.skuSuffixes });
   const shipVia = hhShipViaForDraft(request.address, shipViaOverride(child));
   request.shipVia = shipVia.code;
   const result = await createHhB2bDraft(request, group.brand);

@@ -22,6 +22,8 @@ export interface HhB2bDraftItem {
   title: string;
   quantity: number;
   unitPrice: number;
+  /** When set, this exact SKU is used instead of a cleaned Seller Central SKU. */
+  cartSku?: string;
 }
 
 export interface HhB2bDraftAddress {

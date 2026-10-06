@@ -12,7 +12,12 @@ import { startSyncScheduler } from './services/syncScheduler';
 import { startDocTidyPoller } from './services/docTidyPoller';
 import { startDocTidyWorkerServer, WORKER_WS_PATH } from './services/docTidyWorkerRegistry';
 import { startHhB2bHealthScheduler } from './services/hhB2bHealth';
-import { migrateHhSplitStatuses, migrateLocalHhCartDrafts, migrateHhOrderGroupBrands } from './models/HHOrderGroup';
+import {
+  migrateHhSplitStatuses,
+  migrateLocalHhCartDrafts,
+  migrateHhOrderGroupBrands,
+  migrateHhCartRuleExclusions,
+} from './models/HHOrderGroup';
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
@@ -94,6 +99,7 @@ const start = async () => {
   await migrateHhOrderGroupBrands();
   await migrateHhSplitStatuses();
   await migrateLocalHhCartDrafts();
+  await migrateHhCartRuleExclusions();
   await repairHhB2bReferenceNumbers();
   httpServer.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);

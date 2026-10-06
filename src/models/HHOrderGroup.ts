@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { HH_BRAND_IDS, HH_DEFAULT_BRAND, type HHBrandId } from '../lib/hhBrand';
+import { HH_SKU_EXCLUDE_NOTE_PREFIX, releaseHhSkuRuleExclusions } from '../lib/hhSkuExclude';
 
 export const HH_DETAILS_STATUSES = ['pending', 'synced', 'failed'] as const;
 export type HHDetailsStatus = (typeof HH_DETAILS_STATUSES)[number];
@@ -51,6 +52,8 @@ export interface IHHLineItem {
   tax: number;
   excluded: boolean;
   excludeNote: string;
+  /** SKU sent to the cart when set. Empty uses the automatic cleaned SKU. */
+  cartSku: string;
 }
 
 export interface IHHChildOrder {
@@ -116,6 +119,7 @@ const LineItemSchema = new Schema<IHHLineItem>(
     tax: { type: Number, required: true, min: 0, default: 0 },
     excluded: { type: Boolean, default: false },
     excludeNote: { type: String, default: '', trim: true },
+    cartSku: { type: String, default: '', trim: true },
   },
   { _id: true }
 );
@@ -331,6 +335,30 @@ export async function migrateLocalHhCartDrafts(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[hh] Cleared ${updated} group${updated === 1 ? '' : 's'} of local cart placeholders`);
+  }
+}
+
+/** Older builds marked DUP_ lines off the cart. Those strings are now removed from the SKU instead. */
+export async function migrateHhCartRuleExclusions(): Promise<void> {
+  const groups = await HHOrderGroup.find({
+    'children.items.excludeNote': new RegExp(`^${HH_SKU_EXCLUDE_NOTE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+  });
+  let updated = 0;
+
+  for (const group of groups) {
+    let changed = false;
+    for (const child of group.children) {
+      if (child.cartStatus === 'placed') continue;
+      if (releaseHhSkuRuleExclusions(child.items)) changed = true;
+    }
+    if (!changed) continue;
+    group.markModified('children');
+    await group.save();
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    console.log(`[hh] Cleared cart-string flags on ${updated} batch${updated === 1 ? '' : 'es'}`);
   }
 }
 

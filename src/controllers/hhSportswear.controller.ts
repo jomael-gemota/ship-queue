@@ -38,8 +38,6 @@ import {
   liveCompareHhCarts,
 } from '../services/hhCartVerify';
 import { enqueueHhCartPlace, getHhCartPlaceRuntime } from '../services/hhCartPlace';
-import { loadHhB2bConfig } from '../lib/hhB2bConfig';
-import { matchingSkuExclude } from '../lib/hhSkuExclude';
 import { hhShipViaForDraft, HH_SHIP_VIA_UI_PREVIEW_SOURCE, type HhShipViaOverride } from '../lib/hhShipVia';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { HhB2bAuthError, HhB2bDraftError, loadHhB2bCookie } from '../lib/hhB2bConfig';
@@ -61,6 +59,7 @@ export interface HHLineItemDto {
   tax: number;
   excluded: boolean;
   excludeNote: string;
+  cartSku: string;
 }
 
 export interface HHChildOrderDto {
@@ -109,6 +108,19 @@ export interface HHOrderGroupDto {
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   children: HHChildOrderDto[];
+}
+
+const CART_SKU_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._\-/]*$/;
+
+function normalizeCartSku(value: unknown): { cartSku: string } | { error: string } {
+  if (typeof value !== 'string') return { error: 'cartSku must be a string.' };
+  const cartSku = value.trim().replace(/\s+/g, ' ');
+  if (!cartSku) return { cartSku: '' };
+  if (cartSku.length > 80) return { error: 'Cart SKU is too long.' };
+  if (!CART_SKU_PATTERN.test(cartSku)) {
+    return { error: 'Cart SKU can only use letters, numbers, spaces, dots, hyphens, underscores, and slashes.' };
+  }
+  return { cartSku };
 }
 
 function asString(value: unknown, max = 500): string {
@@ -160,6 +172,7 @@ function serializeItem(item: IHHLineItem): HHLineItemDto {
     tax: item.tax ?? 0,
     excluded: Boolean(item.excluded),
     excludeNote: item.excludeNote ?? '',
+    cartSku: item.cartSku ?? '',
   };
 }
 
@@ -1250,8 +1263,13 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const excluded = body.excluded;
-    if (typeof excluded !== 'boolean') {
+    const hasExcluded = 'excluded' in body;
+    const hasCartSku = 'cartSku' in body;
+    if (!hasExcluded && !hasCartSku) {
+      res.status(400).json({ message: 'Send excluded or cartSku.' });
+      return;
+    }
+    if (hasExcluded && typeof body.excluded !== 'boolean') {
       res.status(400).json({ message: 'excluded must be true or false' });
       return;
     }
@@ -1259,8 +1277,12 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       res.status(400).json({ message: 'excludeNote must be a string' });
       return;
     }
+    const cartSku = hasCartSku ? normalizeCartSku(body.cartSku) : null;
+    if (cartSku && 'error' in cartSku) {
+      res.status(400).json({ message: cartSku.error });
+      return;
+    }
 
-    let ruleMessage = '';
     const group = await withHhGroupLock(groupId, async () => {
       const found = await HHOrderGroup.findById(groupId);
       if (!isBrandGroup(found, req)) return null;
@@ -1270,22 +1292,25 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       const item = order.items.find((row) => String(row._id) === itemId);
       if (!item) return 'item';
 
-      if (!excluded) {
-        const tokens = (await loadHhB2bConfig(hhBrandId(found.brand))).skuExcludes;
-        const hit = matchingSkuExclude(item.sku, tokens);
-        if (hit) {
-          ruleMessage = `SKU ${item.sku} contains ${hit} and stays off the cart.`;
-          return 'rule';
-        }
+      let changed = false;
+      if (hasExcluded) {
+        const nextExcluded = body.excluded as boolean;
+        const nextNote = nextExcluded ? asString(body.excludeNote, 500) : '';
+        if (item.excluded !== nextExcluded || (item.excludeNote ?? '') !== nextNote) changed = true;
+        item.excluded = nextExcluded;
+        item.excludeNote = nextNote;
       }
-
-      item.excluded = excluded;
-      item.excludeNote = excluded ? asString(body.excludeNote, 500) : '';
-      order.cartError = '';
-      if (order.cartStatus !== 'none') {
-        resetCartForResync(order);
-      } else {
-        invalidateHhCartVerification(order);
+      if (cartSku && !('error' in cartSku) && (item.cartSku ?? '') !== cartSku.cartSku) {
+        item.cartSku = cartSku.cartSku;
+        changed = true;
+      }
+      if (changed) {
+        order.cartError = '';
+        if (order.cartStatus !== 'none') {
+          resetCartForResync(order);
+        } else {
+          invalidateHhCartVerification(order);
+        }
       }
       found.detailsStatus = rollupHhDetailsStatus(found.children.map((child) => child.detailsStatus));
       found.cartStatus = rollupHhCartStatus(found.children.map((child) => child.cartStatus));
@@ -1303,15 +1328,11 @@ export const updateOrderItemExclude = async (req: Request, res: Response): Promi
       return;
     }
     if (group === 'placed') {
-      res.status(409).json({ message: 'Placed orders cannot exclude line items.' });
+      res.status(409).json({ message: 'Placed orders cannot change line items.' });
       return;
     }
     if (group === 'item') {
       res.status(404).json({ message: 'Item not found' });
-      return;
-    }
-    if (group === 'rule') {
-      res.status(409).json({ message: ruleMessage || 'This SKU stays off the cart.' });
       return;
     }
 

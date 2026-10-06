@@ -17,9 +17,7 @@ import {
 } from '../lib/hhSellerCentral';
 import { HhScFill, mapScFill } from '../lib/hhScDetails';
 import { mergeHhItemExclusions } from '../lib/hhLineItems';
-import { hhBrandId, hhDraftMode } from '../lib/hhBrand';
-import { loadHhB2bConfig } from '../lib/hhB2bConfig';
-import { applyHhSkuExcludes } from '../lib/hhSkuExclude';
+import { releaseHhSkuRuleExclusions } from '../lib/hhSkuExclude';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { enqueueHhCartDraft } from './hhCartDraft';
 import { childCanVerify, enqueueHhCartVerify, invalidateHhCartVerification } from './hhCartVerify';
@@ -121,12 +119,7 @@ export async function countUnsyncedHhOrders(brand?: string): Promise<number> {
   return rows[0]?.count ?? 0;
 }
 
-function applyFill(
-  child: IHHChildOrder,
-  fill: HhScFill,
-  detailsStatus: HHDetailsStatus,
-  skuExcludes: readonly string[]
-): void {
+function applyFill(child: IHHChildOrder, fill: HhScFill, detailsStatus: HHDetailsStatus): void {
   if (child.cartStatus === 'placed') return;
   child.customerName = fill.customerName;
   child.customerEmail = fill.customerEmail;
@@ -138,7 +131,7 @@ function applyFill(
   child.postalCode = fill.postalCode;
   child.country = fill.country || 'US';
   const nextItems = mergeHhItemExclusions(child.items, fill.items);
-  applyHhSkuExcludes(nextItems, skuExcludes);
+  releaseHhSkuRuleExclusions(nextItems);
   const items = child.items as unknown as { splice: (start: number, del: number, ...rest: typeof nextItems) => void };
   items.splice(0, (child.items as unknown[]).length, ...nextItems);
   child.detailsStatus = detailsStatus;
@@ -184,8 +177,7 @@ async function fillChild(
   child: IHHChildOrder,
   cookie: string,
   run: HhScSyncRunResult,
-  autoDraft: boolean,
-  skuExcludes: readonly string[]
+  autoDraft: boolean
 ): Promise<void> {
   currentOrderId = child.orderId;
   const groupId = String(group._id);
@@ -204,7 +196,7 @@ async function fillChild(
       console.warn(`${LOG} Skipped ${child.orderId} — missing order.blob on refresh`);
       return;
     }
-    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed', skuExcludes));
+    await persistChild(groupId, childId, (row) => applyFill(row, mapScFill(scOrder, null), 'failed'));
     run.flagged += 1;
     console.warn(`${LOG} Failed ${child.orderId} — missing order.blob`);
     return;
@@ -212,7 +204,7 @@ async function fillChild(
 
   const buyer = await fetchScBuyerInfo(child.orderId, scOrder.blob, cookie);
   const saved = await persistChild(groupId, childId, (row) =>
-    applyFill(row, mapScFill(scOrder, buyer), 'synced', skuExcludes)
+    applyFill(row, mapScFill(scOrder, buyer), 'synced')
   );
   run.synced += 1;
   lastSuccessAt = new Date();
@@ -284,9 +276,6 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
   }
 
   const attempted = new Set<string>();
-  const brandGroup = await HHOrderGroup.findById(job.groupId).select('brand');
-  const brand = hhBrandId(brandGroup?.brand);
-  const skuExcludes = hhDraftMode(brand) === 'b2b' ? (await loadHhB2bConfig(brand)).skuExcludes : [];
   console.log(`${LOG} Filling ${jobLabel(job)}`);
 
   try {
@@ -307,7 +296,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
 
       attempted.add(String(child._id));
       try {
-        await fillChild(group, child, cookie, run, job.autoDraft, skuExcludes);
+        await fillChild(group, child, cookie, run, job.autoDraft);
       } catch (err) {
         if (err instanceof HhScAuthError || err instanceof HhScRateLimitError) {
           throw new StopGroupError(err.message);
@@ -318,7 +307,7 @@ async function fillGroup(job: HhScSyncJob): Promise<void> {
             continue;
           }
           await persistChild(String(group._id), String(child._id), (row) =>
-            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed', skuExcludes)
+            applyFill(row, { ...EMPTY_FILL, country: row.country || 'US' }, 'failed')
           );
           run.flagged += 1;
           lastError = truncateError(`${child.orderId}: ${err.message}`);

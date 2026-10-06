@@ -235,6 +235,7 @@ export interface HHLineItem {
   tax: number
   excluded: boolean
   excludeNote: string
+  cartSku: string
 }
 
 export interface HHVerifyIssue {
@@ -775,7 +776,8 @@ export interface HHB2bConfig {
   catalog: string
   accountId: string
   skuInitials: string[]
-  skuExcludes: string[]
+  skuPrefixes: string[]
+  skuSuffixes: string[]
   hasCookie: boolean
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
@@ -792,7 +794,8 @@ export type HHB2bConfigPatch = Partial<{
   catalog: string
   accountId: string
   skuInitials: string[]
-  skuExcludes: string[]
+  skuPrefixes: string[]
+  skuSuffixes: string[]
   cookie: string
   placeOrderEnabled: boolean
   alertWebhookUrl: string
@@ -924,6 +927,19 @@ export function updateHHGroupNotes(brand: HHBrandId, id: string, notes: string) 
 
 export function updateHHOrderNotes(brand: HHBrandId, groupId: string, orderId: string, notes: string) {
   return authApi.patch<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}`), { notes })
+}
+
+export function updateHHOrderItemCartSku(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  itemId: string,
+  cartSku: string,
+) {
+  return authApi.patch<{ data: HHOrderGroup }>(
+    hhPath(brand, `/${groupId}/orders/${orderId}/items/${itemId}`),
+    { cartSku },
+  )
 }
 
 export function updateHHOrderItemExclude(
@@ -1121,6 +1137,7 @@ export function hhItemMatchesQuery(item: HHLineItem, rawQuery: string): boolean 
     includesQuery(item.unitPrice, query) ||
     includesQuery(item.tax, query) ||
     includesQuery(item.excludeNote, query) ||
+    includesQuery(item.cartSku, query) ||
     (item.excluded && includesQuery('excluded', query))
   )
 }

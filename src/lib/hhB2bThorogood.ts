@@ -234,10 +234,12 @@ async function resolveSku(
   customerCode: string,
   sku: string,
   qty: number,
-  initials: readonly string[]
+  initials: readonly string[],
+  cartSku = ''
 ): Promise<ResolvedSku> {
   const sellerSku = sku.trim();
-  const textSearch = thorogoodPortalSku(sellerSku, initials);
+  const chosen = cartSku.trim();
+  const textSearch = chosen || thorogoodPortalSku(sellerSku, initials);
   if (!textSearch) {
     throw new HhB2bDraftError(`SKU "${sellerSku}" could not be turned into a Thorogood portal code.`);
   }
@@ -398,7 +400,15 @@ export async function createThorogoodDraft(
   const resolved: ResolvedSku[] = [];
   for (const item of request.items) {
     if (item.quantity <= 0) continue;
-    const line = await resolveSku(config.baseUrl, cookie, customerCode, item.sku, item.quantity, config.skuInitials);
+    const line = await resolveSku(
+      config.baseUrl,
+      cookie,
+      customerCode,
+      item.sku,
+      item.quantity,
+      config.skuInitials,
+      item.cartSku
+    );
     const existing = resolved.find((row) => row.productCode === line.productCode && row.skuCode === line.skuCode);
     if (existing) existing.qty += line.qty;
     else resolved.push(line);
@@ -542,6 +552,24 @@ export function snapshotFromThorogoodOrder(order: Record<string, unknown>): HhVe
     items: [...qtyBySku.entries()]
       .map(([sku, quantity]) => ({ sku, quantity }))
       .sort((a, b) => a.sku.localeCompare(b.sku)),
+  };
+}
+
+/** Match already-resolved portal codes to the cart's own spelling. */
+export function alignResolvedThorogoodSnapshots(
+  details: HhVerifySnapshot,
+  cart: HhVerifySnapshot
+): { details: HhVerifySnapshot; cart: HhVerifySnapshot } {
+  const cartByKey = new Map(cart.items.map((item) => [skuMatchKey(item.sku), item.sku]));
+  return {
+    details: {
+      ...details,
+      items: details.items.map((item) => ({
+        sku: cartByKey.get(skuMatchKey(item.sku)) ?? item.sku,
+        quantity: item.quantity,
+      })),
+    },
+    cart,
   };
 }
 

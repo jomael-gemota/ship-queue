@@ -3,7 +3,7 @@ import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { normalizeCookieHeader } from './hhSellerCentral';
 import { hhBrand, HH_DEFAULT_BRAND, type HHBrandId } from './hhBrand';
 import { effectiveThorogoodSkuInitials } from './hhThorogoodSku';
-import { effectiveHhSkuExcludes, hhBrandUsesSkuExcludes } from './hhSkuExclude';
+import { effectiveHhSkuPrefixes, effectiveHhSkuSuffixes, hhBrandUsesSkuAffixes } from './hhSkuExclude';
 
 export {
   HH_B2B_DEFAULT_ACCOUNT_ID,
@@ -30,7 +30,8 @@ export interface HhB2bConfig {
   catalog: string;
   accountId: string;
   skuInitials: string[];
-  skuExcludes: string[];
+  skuPrefixes: string[];
+  skuSuffixes: string[];
 }
 
 export function stripTrailingSlash(value: string): string {
@@ -83,10 +84,14 @@ export async function loadHhB2bConfig(brand: HHBrandId = HH_DEFAULT_BRAND): Prom
     brand === 'thorogood'
       ? effectiveThorogoodSkuInitials(stored.skuInitials, Boolean(stored.skuInitialsSet))
       : [];
-  const skuExcludes = hhBrandUsesSkuExcludes(brand)
-    ? effectiveHhSkuExcludes(stored.skuExcludes, Boolean(stored.skuExcludesSet))
+  const usesAffixes = hhBrandUsesSkuAffixes(brand);
+  const skuPrefixes = usesAffixes
+    ? effectiveHhSkuPrefixes(stored.skuPrefixes, Boolean(stored.skuPrefixesSet))
     : [];
-  return { baseUrl, catalog, accountId, skuInitials, skuExcludes };
+  const skuSuffixes = usesAffixes
+    ? effectiveHhSkuSuffixes(stored.skuSuffixes, Boolean(stored.skuSuffixesSet))
+    : [];
+  return { baseUrl, catalog, accountId, skuInitials, skuPrefixes, skuSuffixes };
 }
 
 export async function isHhPlaceOrderEnabled(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<boolean> {

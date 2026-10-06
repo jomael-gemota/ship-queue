@@ -1,5 +1,6 @@
 import type { IHHChildOrder } from '../models/HHOrderGroup';
 import { hhCartItems } from './hhLineItems';
+import { hhCartSku, hhLineCartSku } from './hhSkuExclude';
 
 export interface HhVerifyIssue {
   field: string;
@@ -134,6 +135,39 @@ function detailQuantities(child: IHHChildOrder): Map<string, number> {
     qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
   }
   return qtyBySku;
+}
+
+/** Expected lines: an explicit cart SKU, otherwise the cleaned Seller Central SKU. */
+export function snapshotFromChildCartSkus(
+  child: IHHChildOrder,
+  prefixes: readonly string[],
+  suffixes: readonly string[]
+): HhVerifySnapshot {
+  const base = snapshotFromChild(child);
+  const qtyBySku = new Map<string, number>();
+  for (const item of hhCartItems(child.items)) {
+    const sku = hhLineCartSku(item, prefixes, suffixes);
+    if (!sku || item.quantity <= 0) continue;
+    qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
+  }
+  return { ...base, items: itemsFromQty(qtyBySku) };
+}
+
+/** Cart lines keep an explicit override. Every other SKU drops the same start and end strings. */
+export function snapshotRespectingCartSkus(
+  snapshot: HhVerifySnapshot,
+  overrides: ReadonlySet<string>,
+  prefixes: readonly string[],
+  suffixes: readonly string[]
+): HhVerifySnapshot {
+  const qtyBySku = new Map<string, number>();
+  for (const item of snapshot.items) {
+    const raw = item.sku.trim();
+    const sku = overrides.has(raw.toUpperCase()) ? raw : hhCartSku(raw, prefixes, suffixes);
+    if (!sku || item.quantity <= 0) continue;
+    qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
+  }
+  return { ...snapshot, items: itemsFromQty(qtyBySku) };
 }
 
 export function snapshotFromChild(child: IHHChildOrder): HhVerifySnapshot {

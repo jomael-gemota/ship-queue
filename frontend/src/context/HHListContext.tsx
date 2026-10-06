@@ -20,6 +20,7 @@ import {
   updateHHGroupNotes,
   updateHHOrderNotes,
   updateHHOrderItemExclude,
+  updateHHOrderItemCartSku,
 } from '../lib/hhSportswear'
 import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup, HHScSyncStatus, HHSessionCheck } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection } from '../lib/hhNav'
@@ -76,6 +77,7 @@ interface HHListContextValue {
   placeBusyId: string | null
   placeOrderEnabled: boolean
   setPlaceOrderEnabled: (enabled: boolean) => void
+  skuRules: { prefixes: string[]; suffixes: string[]; initials: string[] } | null
   sessionCheck: HHSessionCheck | null
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
@@ -85,6 +87,7 @@ interface HHListContextValue {
     itemId: string,
     patch: { excluded: boolean; excludeNote?: string },
   ) => Promise<void>
+  updateOrderItemCartSku: (groupId: string, orderId: string, itemId: string, cartSku: string) => Promise<void>
   selectedDetailsStatus: HHDetailsStatus | ''
   selectedCartStatus: HHCartStatus | ''
   searchInput: string
@@ -132,6 +135,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const [cartVerifyBusyId, setCartVerifyBusyId] = useState<string | null>(null)
   const [placeBusyId, setPlaceBusyId] = useState<string | null>(null)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
+  const [skuRules, setSkuRules] = useState<{ prefixes: string[]; suffixes: string[]; initials: string[] } | null>(null)
   const [sessionCheck, setSessionCheck] = useState<HHSessionCheck | null>(null)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
@@ -248,6 +252,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       sessionBrandRef.current = brand
       setSessionCheck(null)
       setSyncStatus(null)
+      setSkuRules(null)
       if (orderDetails) setPlaceOrderEnabled(false)
     }
     const load = () => {
@@ -256,6 +261,11 @@ export function HHListProvider({ children }: { children: ReactNode }) {
           if (cancelled) return
           setPlaceOrderEnabled(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
           setSessionCheck(res.data.sessionCheck)
+          setSkuRules({
+            prefixes: res.data.skuPrefixes ?? [],
+            suffixes: res.data.skuSuffixes ?? [],
+            initials: res.data.skuInitials ?? [],
+          })
         })
         .catch(() => {
           if (!cancelled) setPlaceOrderEnabled(false)
@@ -401,6 +411,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     placeBusyId,
     placeOrderEnabled,
     setPlaceOrderEnabled,
+    skuRules,
     sessionCheck,
     updateNotes: async (groupId, notes) => {
       const res = await updateHHGroupNotes(brand, groupId, notes)
@@ -412,6 +423,10 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     },
     updateOrderItemExclude: async (groupId, orderId, itemId, patch) => {
       const res = await updateHHOrderItemExclude(brand, groupId, orderId, itemId, patch)
+      setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+    },
+    updateOrderItemCartSku: async (groupId, orderId, itemId, cartSku) => {
+      const res = await updateHHOrderItemCartSku(brand, groupId, orderId, itemId, cartSku)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
     },
     selectedDetailsStatus,

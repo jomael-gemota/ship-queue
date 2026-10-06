@@ -8,16 +8,20 @@ import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bCo
 import { hhBrandId, isOrderDetailsDraftId } from '../lib/hhBrand';
 import { fetchHhB2bDocument, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import {
-  alignThorogoodSnapshots,
+  alignResolvedThorogoodSnapshots,
   fetchThorogoodOrder,
   isEnvoyOrderCode,
   snapshotFromThorogoodOrder,
 } from '../lib/hhB2bThorogood';
+import { thorogoodPortalSku } from '../lib/hhThorogoodSku';
+import { hhCartItems } from '../lib/hhLineItems';
 import {
   compareSnapshots,
   issuesFromCompareRows,
   snapshotFromB2bDocument,
   snapshotFromChild,
+  snapshotFromChildCartSkus,
+  snapshotRespectingCartSkus,
   type HhCompareRow,
   type HhVerifyIssue,
   type HhVerifySnapshot,
@@ -35,6 +39,30 @@ const queue: HhCartVerifyJob[] = [];
 let draining = false;
 let verifyCurrentGroupId: string | null = null;
 let verifyCurrentOrderId: string | null = null;
+
+function cartSkuOverrides(child: IHHChildOrder): Set<string> {
+  return new Set(
+    hhCartItems(child.items)
+      .map((item) => (item.cartSku ?? '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+}
+
+function thorogoodDetailsSnapshot(child: IHHChildOrder, initials: readonly string[]): HhVerifySnapshot {
+  const base = snapshotFromChild(child);
+  const qtyBySku = new Map<string, number>();
+  for (const item of hhCartItems(child.items)) {
+    const sku = (item.cartSku ?? '').trim() || thorogoodPortalSku(item.sku ?? '', initials);
+    if (!sku || item.quantity <= 0) continue;
+    qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
+  }
+  return {
+    ...base,
+    items: [...qtyBySku.entries()]
+      .map(([sku, quantity]) => ({ sku, quantity }))
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+  };
+}
 
 function jobLabel(job: HhCartVerifyJob): string {
   return job.childId ? `${job.groupId} order ${job.childId}` : job.groupId;
@@ -190,7 +218,15 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     const documentId = (child.b2bDraftId ?? '').trim();
     try {
       const document = await fetchHhB2bDocument(config, cookie, documentId);
-      const rows = compareSnapshots(snapshotFromChild(child), snapshotFromB2bDocument(document));
+      const rows = compareSnapshots(
+        snapshotFromChildCartSkus(child, config.skuPrefixes, config.skuSuffixes),
+        snapshotRespectingCartSkus(
+          snapshotFromB2bDocument(document),
+          cartSkuOverrides(child),
+          config.skuPrefixes,
+          config.skuSuffixes
+        )
+      );
       const issues = issuesFromCompareRows(rows);
       const nextStatus = issues.length === 0 ? 'ready' : 'review';
       await persistVerification(groupId, String(child._id), nextStatus, issues, rows);
@@ -307,7 +343,10 @@ async function compareEnvoyDraft(
   cart: HhVerifySnapshot;
 }> {
   const order = await fetchThorogoodOrder((child.b2bDraftId ?? '').trim());
-  const aligned = alignThorogoodSnapshots(snapshotFromChild(child), snapshotFromThorogoodOrder(order), initials);
+  const aligned = alignResolvedThorogoodSnapshots(
+    thorogoodDetailsSnapshot(child, initials),
+    snapshotFromThorogoodOrder(order)
+  );
   const rows = compareSnapshots(aligned.details, aligned.cart);
   return { rows, issues: issuesFromCompareRows(rows), cart: aligned.cart };
 }
@@ -472,8 +511,13 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
 
     try {
       const document = await fetchHhB2bDocument(config, cookie, documentId);
-      const cart = snapshotFromB2bDocument(document);
-      const rows = compareSnapshots(details, cart);
+      const cart = snapshotRespectingCartSkus(
+        snapshotFromB2bDocument(document),
+        cartSkuOverrides(child),
+        config.skuPrefixes,
+        config.skuSuffixes
+      );
+      const rows = compareSnapshots(snapshotFromChildCartSkus(child, config.skuPrefixes, config.skuSuffixes), cart);
       const issues = issuesFromCompareRows(rows);
       const matched = issues.length === 0;
       let cartStatus = child.cartStatus;

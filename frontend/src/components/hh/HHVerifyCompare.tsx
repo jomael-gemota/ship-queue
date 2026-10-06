@@ -12,10 +12,14 @@ import {
   type HHCartCompareOrder,
   type HHChildOrder,
   type HHCompareRow,
+  type HHLineItem,
 } from '../../lib/hhSportswear'
+import { skuRemovalMarks } from '../../lib/hhCartSkuNotice'
 import { BackIcon, EyeIcon, Spinner } from '../labels/labelUi'
 import { Tooltip } from '../Tooltip'
 import { HHVerifiedSummary } from './hhUi'
+
+type SkuRules = { prefixes: string[]; suffixes: string[]; initials: string[] }
 
 function VerifiedLabel({ result }: { result: 'match' | 'review' }) {
   return result === 'match' ? (
@@ -117,7 +121,77 @@ function CompareValue({ value, mismatch }: { value: string; mismatch: boolean })
   )
 }
 
-function CompareTable({ rows, cartLabel }: { rows: HHCompareRow[]; cartLabel: string }) {
+function RemovedSkuText({
+  sellerSku,
+  prefixLen,
+  suffixLen,
+  note,
+}: {
+  sellerSku: string
+  prefixLen: number
+  suffixLen: number
+  note: string
+}) {
+  const prefix = sellerSku.slice(0, prefixLen)
+  const middle = sellerSku.slice(prefixLen, sellerSku.length - suffixLen)
+  const suffix = suffixLen > 0 ? sellerSku.slice(sellerSku.length - suffixLen) : ''
+  const removedClass = 'text-red-600 dark:text-red-400'
+  return (
+    <Tooltip content={`${note}. The cart uses the rest of this SKU.`}>
+      <span className="font-mono">
+        {prefix ? <span className={removedClass}>{prefix}</span> : null}
+        {middle}
+        {suffix ? <span className={removedClass}>{suffix}</span> : null}
+      </span>
+    </Tooltip>
+  )
+}
+
+function SkuFieldLabel({
+  row,
+  items,
+  skuRules,
+  orderDetails,
+}: {
+  row: HHCompareRow
+  items: HHLineItem[]
+  skuRules: SkuRules | null
+  orderDetails: boolean
+}) {
+  if (!row.field.startsWith('sku:') || !skuRules) return row.label
+  const marks = skuRemovalMarks(items, row.field.slice(4), {
+    orderDetails,
+    prefixes: skuRules.prefixes,
+    suffixes: skuRules.suffixes,
+    initials: skuRules.initials,
+  })
+  if (marks.length === 0) return row.label
+  return (
+    <span>
+      SKU{' '}
+      {marks.map((mark, index) => (
+        <span key={mark.sellerSku}>
+          {index > 0 ? ', ' : null}
+          <RemovedSkuText {...mark} />
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function CompareTable({
+  rows,
+  cartLabel,
+  items,
+  skuRules,
+  orderDetails,
+}: {
+  rows: HHCompareRow[]
+  cartLabel: string
+  items: HHLineItem[]
+  skuRules: SkuRules | null
+  orderDetails: boolean
+}) {
   const groups = groupedCompareRows(rows)
   return (
     <table className="w-full border-separate border-spacing-0 text-sm">
@@ -156,7 +230,7 @@ function CompareTable({ rows, cartLabel }: { rows: HHCompareRow[]; cartLabel: st
                   row.match ? 'border-transparent' : 'border-red-500'
                 }`}
               >
-                {row.label}
+                <SkuFieldLabel row={row} items={items} skuRules={skuRules} orderDetails={orderDetails} />
               </td>
               <td className="px-3 py-2.5">
                 <CompareValue value={row.expected} mismatch={!row.match} />
@@ -221,10 +295,14 @@ function DetailBody({
   result,
   live,
   orderDetails = false,
+  items,
+  skuRules,
 }: {
   result: HHCartCompareOrder
   live: boolean
   orderDetails?: boolean
+  items: HHLineItem[]
+  skuRules: SkuRules | null
 }) {
   const mismatchCount = blockingMismatches(result.rows).length
   const matchedCount = result.rows.filter((row) => row.field !== 'orderNumber' && row.match).length
@@ -271,7 +349,13 @@ function DetailBody({
             </p>
           </div>
           <div className="overflow-x-auto px-1 pb-1">
-            <CompareTable rows={result.rows} cartLabel={orderDetails ? 'Drafted cart' : 'B2B cart'} />
+            <CompareTable
+              rows={result.rows}
+              cartLabel={orderDetails ? 'Drafted cart' : 'B2B cart'}
+              items={items}
+              skuRules={skuRules}
+              orderDetails={orderDetails}
+            />
           </div>
         </>
       )}
@@ -447,7 +531,7 @@ export function HHVerifyCompare({
   size?: 'sm' | 'md'
   trigger?: ReactNode
 }) {
-  const { brand } = useHHList()
+  const { brand, skuRules } = useHHList()
   const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { open, setOpen, close, busy, error, results, setResults, live, runCompare } = useCompareModal(groupId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -512,7 +596,13 @@ export function HHVerifyCompare({
           onRefresh={() => runCompare(selectedId ?? undefined)}
         >
           {selected ? (
-            <DetailBody result={selected} live={live} orderDetails={orderDetails} />
+            <DetailBody
+              result={selected}
+              live={live}
+              orderDetails={orderDetails}
+              items={selectedOrder?.items ?? []}
+              skuRules={skuRules}
+            />
           ) : (
             <SummaryList results={shown} onOpenOrder={(row) => setSelectedId(row.id)} />
           )}
@@ -547,7 +637,7 @@ export function HHVerifiedCell({
   order: HHChildOrder
 }) {
   const verified = hhOrderVerifiedResult(order)
-  const { brand } = useHHList()
+  const { brand, skuRules } = useHHList()
   const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { open, setOpen, close, busy, error, results, live, runCompare } = useCompareModal(groupId, order.id)
 
@@ -571,7 +661,7 @@ export function HHVerifiedCell({
           onClose={close}
           onRefresh={runCompare}
         >
-          <DetailBody result={detail} live={live} orderDetails={orderDetails} />
+          <DetailBody result={detail} live={live} orderDetails={orderDetails} items={order.items} skuRules={skuRules} />
         </CompareModal>
       ) : null}
     </>

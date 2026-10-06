@@ -1,11 +1,16 @@
 import { Request, Response } from 'express';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import type { IHHB2bConfig } from '../models/HHB2bConfig';
-import { hhBrand, hhBrandFromRequest } from '../lib/hhBrand';
+import { hhBrand, hhBrandFromRequest, hhBrandId, HH_BRANDS, type HHBrandId } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
 import { normalizeHhB2bAccountId, parseHhB2bBaseUrl } from '../lib/hhB2bConfig';
 import { effectiveThorogoodSkuInitials, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
-import { effectiveHhSkuExcludes, normalizeHhSkuExcludes } from '../lib/hhSkuExclude';
+import {
+  effectiveHhSkuPrefixes,
+  effectiveHhSkuSuffixes,
+  hhBrandUsesSkuAffixes,
+  normalizeHhSkuTokens,
+} from '../lib/hhSkuExclude';
 import {
   HhB2bHealthBusyError,
   HhB2bWebhookTestError,
@@ -35,7 +40,8 @@ export interface HhB2bConfigDto {
   catalog: string;
   accountId: string;
   skuInitials: string[];
-  skuExcludes: string[];
+  skuPrefixes: string[];
+  skuSuffixes: string[];
   hasCookie: boolean;
   cookieUpdatedAt: string | null;
   placeOrderEnabled: boolean;
@@ -45,6 +51,11 @@ export interface HhB2bConfigDto {
   lastAlert: HhB2bLastAlertDto;
   updatedAt: string;
   updatedByName: string;
+}
+
+function brandFromConfigKey(key: string): HHBrandId {
+  const match = (Object.keys(HH_BRANDS) as HHBrandId[]).find((id) => HH_BRANDS[id].configKey === key);
+  return hhBrandId(match);
 }
 
 function sessionStatus(value: string | undefined): HhB2bSessionCheckDto['status'] {
@@ -66,10 +77,12 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
       doc.key === hhBrand('thorogood').configKey
         ? effectiveThorogoodSkuInitials(doc.skuInitials, Boolean(doc.skuInitialsSet))
         : [],
-    skuExcludes:
-      doc.key === hhBrand('sportswear').configKey || doc.key === hhBrand('workwear').configKey
-        ? effectiveHhSkuExcludes(doc.skuExcludes, Boolean(doc.skuExcludesSet))
-        : [],
+    skuPrefixes: hhBrandUsesSkuAffixes(brandFromConfigKey(doc.key))
+      ? effectiveHhSkuPrefixes(doc.skuPrefixes, Boolean(doc.skuPrefixesSet))
+      : [],
+    skuSuffixes: hhBrandUsesSkuAffixes(brandFromConfigKey(doc.key))
+      ? effectiveHhSkuSuffixes(doc.skuSuffixes, Boolean(doc.skuSuffixesSet))
+      : [],
     hasCookie: Boolean(normalizeCookieHeader(doc.cookie ?? '')),
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
     placeOrderEnabled: Boolean(doc.placeOrderEnabled),
@@ -170,19 +183,32 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
     doc.sessionCheckTimesSet = true;
   }
 
-  if ('skuExcludes' in body) {
+  if ('skuPrefixes' in body || 'skuSuffixes' in body) {
     const brand = hhBrandFromRequest(req);
-    if (brand !== 'sportswear' && brand !== 'workwear') {
-      res.status(400).json({ message: 'SKU exclusions are only saved for Helly Hansen Sports and Work.' });
+    if (!hhBrandUsesSkuAffixes(brand)) {
+      res.status(400).json({ message: 'SKU strings are only saved for Helly Hansen Sports and Work.' });
       return;
     }
-    const parsed = normalizeHhSkuExcludes(body.skuExcludes);
+  }
+
+  if ('skuPrefixes' in body) {
+    const parsed = normalizeHhSkuTokens(body.skuPrefixes, 'Start strings');
     if ('error' in parsed) {
       res.status(400).json({ message: parsed.error });
       return;
     }
-    doc.skuExcludes = parsed.excludes;
-    doc.skuExcludesSet = true;
+    doc.skuPrefixes = parsed.tokens;
+    doc.skuPrefixesSet = true;
+  }
+
+  if ('skuSuffixes' in body) {
+    const parsed = normalizeHhSkuTokens(body.skuSuffixes, 'End strings');
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.skuSuffixes = parsed.tokens;
+    doc.skuSuffixesSet = true;
   }
 
   if ('skuInitials' in body) {

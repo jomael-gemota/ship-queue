@@ -2,7 +2,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { useEffect, useLayoutEffect, useRef, useState, Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHOrderGroup, HHSellerNotesResult, HHVerifyIssue } from '../../lib/hhSportswear'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup, HHSellerNotesResult, HHVerifyIssue } from '../../lib/hhSportswear'
+import { cartSkuStrips, cartSkuStripTooltip } from '../../lib/hhCartSkuNotice'
 import {
   HH_CART_STATUS_LABELS,
   HH_DETAILS_COUNT_ORDER,
@@ -908,6 +909,32 @@ export function HHCartBadge({
         : undefined
   if (!content) return badge
   return <Tooltip content={content}>{badge}</Tooltip>
+}
+
+export function HHCartSkuNotice({
+  items,
+  prefixes,
+  suffixes,
+  initials,
+}: {
+  items: Array<Pick<HHLineItem, 'sku' | 'cartSku' | 'excluded'>>
+  prefixes: readonly string[]
+  suffixes: readonly string[]
+  initials: readonly string[]
+}) {
+  const orderDetails = useOrderingBrand().draftMode === 'order-details'
+  const strips = cartSkuStrips(items, { orderDetails, prefixes, suffixes, initials })
+  if (strips.length === 0) return null
+  return (
+    <Tooltip content={cartSkuStripTooltip(strips)}>
+      <span
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold leading-none text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+        aria-label="SKU string removed"
+      >
+        !
+      </span>
+    </Tooltip>
+  )
 }
 
 export function HHShipViaChip({
