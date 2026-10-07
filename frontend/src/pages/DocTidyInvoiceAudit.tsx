@@ -5063,17 +5063,17 @@ export default function DocTidyInvoiceAudit() {
                     </thead>
                     <tbody>
                       {emailLoading && emailMessages.length === 0 ? (
-                        Array.from({ length: 8 }).map((_, i) => (
-                          <tr key={i} className="border-b border-[var(--bg-300)]">
-                            <td className="px-3 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-px">
+                        Array.from({ length: 20 }).map((_, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                            <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1.5">
                               <div className="flex justify-center gap-1">
                                 <div className="h-4 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
                                 <div className="h-4 w-4 animate-pulse rounded bg-[var(--bg-300)]" />
                               </div>
                             </td>
                             {orderedEmailCols.map((col) => (
-                              <td key={col.id} className="px-3 py-px">
+                              <td key={col.id} className="px-3 py-1.5">
                                 {col.id === 'from' ? (
                                   <div className="flex items-center gap-2">
                                     <div className="h-6 w-6 animate-pulse rounded-full bg-[var(--bg-300)]" />
@@ -5084,8 +5084,10 @@ export default function DocTidyInvoiceAudit() {
                                   </div>
                                 ) : col.id === 'documentType' || col.id === 'rule' ? (
                                   <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                ) : col.id === 'subject' ? (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]" style={{ width: `${5 + (i % 5) * 2}rem` }} />
                                 ) : (
-                                  <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                  <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                                 )}
                               </td>
                             ))}
@@ -5496,10 +5498,34 @@ export default function DocTidyInvoiceAudit() {
                     }
                   `}</style>
                   {pdfImportsLoading && pdfImports.length === 0 ? (
-                    <div className="flex items-center justify-center gap-2 py-16 text-[var(--text-200)]">
-                      <Spinner className="h-4 w-4" />
-                      <span className="text-sm">Loading…</span>
-                    </div>
+                    <table className="w-full text-[10px] border-separate border-spacing-0">
+                      <tbody>
+                        {Array.from({ length: 20 }).map((_, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                            <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            {orderedPdfCols.map((col, ci) => (
+                              <td key={col.id} className="px-3 py-1.5">
+                                {col.id === 'status' ? (
+                                  <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                ) : col.id === 'filename' ? (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                    style={{ width: `${6 + ((i + ci) % 5) * 2}rem` }} />
+                                ) : (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                    style={{ width: `${3 + ((i + ci) % 4) * 1.5}rem` }} />
+                                )}
+                              </td>
+                            ))}
+                            <td className="px-3 py-1.5">
+                              <div className="flex justify-center gap-2">
+                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   ) : pdfImports.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 py-16 text-center">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
@@ -6116,13 +6142,14 @@ export default function DocTidyInvoiceAudit() {
                           OR while jobs haven't arrived yet on first load (prevents a flash
                           where rows render with "—" matched-invoice cells before jobs load) */}
                     {(isHeaderOnly ? (loading && jobs.length === 0) : ((orderLoading && orderImports.length === 0) || (loading && jobs.length === 0))) ? (
-                      Array.from({ length: 12 }).map((_, i) => (
+                      Array.from({ length: 25 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
-                          <td className="px-2.5 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                          <td className="px-2.5 py-px" />
-                          {visibleCols.map((col) => (
-                            <td key={col.id} className="px-2.5 py-px">
-                              <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+                          <td className="px-2.5 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                          <td className="px-2.5 py-1.5" />
+                          {visibleCols.map((col, ci) => (
+                            <td key={col.id} className="px-2.5 py-1.5">
+                              <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                style={{ width: `${3 + ((i + ci) % 4) * 1.5}rem` }} />
                             </td>
                           ))}
                         </tr>
