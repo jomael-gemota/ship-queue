@@ -6,7 +6,12 @@ import HHOrderGroup, {
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, HhB2bDraftError, isHhPlaceOrderEnabled, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { hhBrandId } from '../lib/hhBrand';
-import { looksLikeMongoObjectId, submitHellyHansenSportsOrder } from '../lib/hhB2bHellyHansen';
+import {
+  HH_B2B_READ_TIMEOUT_PLACE_MESSAGE,
+  isHhB2bRequestTimeout,
+  looksLikeMongoObjectId,
+  submitHellyHansenSportsOrder,
+} from '../lib/hhB2bHellyHansen';
 import { childCanPlace, liveCompareHhCarts } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 
@@ -131,6 +136,9 @@ async function placeChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   currentOrderId = child.orderId;
   const childId = String(child._id);
   const [compare] = await liveCompareHhCarts(String(group._id), childId);
+  if (compare?.error && isHhB2bRequestTimeout(compare.error)) {
+    throw new HhB2bDraftError(HH_B2B_READ_TIMEOUT_PLACE_MESSAGE);
+  }
   if (!compare || !compare.canPlace || compare.cartStatus !== 'ready') {
     run.skipped += 1;
     console.log(`${LOG} Skipped ${child.orderId} — not Ready after live check`);

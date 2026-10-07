@@ -82,6 +82,31 @@ function fetchFailureDetail(err: unknown): string {
   return parts.filter(Boolean).join(' — ');
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+}
+
+/** Catalog and document lookups are safe to repeat. Place and Ship Via writes are not. */
+function isReadRequest(init: RequestInit): boolean {
+  const method = (init.method ?? 'GET').toUpperCase();
+  return method === 'GET' || method === 'HEAD';
+}
+
+export function isHhB2bRequestTimeout(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return message.startsWith('B2B request timed out:');
+}
+
+/** Shown when Place could not read the draft. The document was not submitted. */
+export const HH_B2B_READ_TIMEOUT_PLACE_MESSAGE =
+  'B2B timed out reading the cart. Place this order again — the draft was not changed.';
+
+const HH_B2B_PLACE_UNCONFIRMED_MESSAGE =
+  'B2B place timed out before the order could be confirmed. Place this order again without regenerating the cart.';
+
+const HH_B2B_PLACE_STILL_DRAFT_MESSAGE =
+  'B2B place timed out. The cart is still a draft — place this order again.';
+
 async function b2bRequest(
   config: HhB2bConfig,
   cookie: string,
@@ -95,6 +120,7 @@ async function b2bRequest(
     extra.forEach((value, key) => headers.set(key, value));
   }
 
+  const read = isReadRequest(init);
   let res: Response | undefined;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -106,12 +132,15 @@ async function b2bRequest(
       break;
     } catch (err) {
       lastErr = err;
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new HhB2bDraftError(`B2B request timed out: ${path}`);
-      }
-      if (attempt === 0) {
-        console.warn(`[hh-b2b] ${path} ${fetchFailureDetail(err)} — retrying`);
+      const timedOut = isAbortError(err);
+      const retry = attempt === 0 && (read || !timedOut);
+      if (retry) {
+        console.warn(`[hh-b2b] ${path} ${timedOut ? 'timed out' : fetchFailureDetail(err)} — retrying`);
         await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_MS));
+        continue;
+      }
+      if (timedOut) {
+        throw new HhB2bDraftError(`B2B request timed out: ${path}`);
       }
     } finally {
       clearTimeout(timer);
@@ -445,6 +474,52 @@ export async function updateHellyHansenSportsShipVia(
   }
 }
 
+type DocumentSubmitState = 'draft' | 'submitted' | 'unknown';
+
+/** A missing state is unknown. Only a non-draft state means the order was already sent. */
+function documentSubmitState(record: Record<string, unknown> | null): DocumentSubmitState {
+  if (!record || record.error || asString(record.type) === 'error') return 'unknown';
+  const state = asString(record.state).toLowerCase();
+  if (!state) return 'unknown';
+  if (state === 'draft') return 'draft';
+  return 'submitted';
+}
+
+async function fetchPlaceDocument(
+  config: HhB2bConfig,
+  cookie: string,
+  id: string,
+  purpose: 'before-place' | 'confirm'
+): Promise<Record<string, unknown>> {
+  try {
+    return await fetchHhB2bDocument(config, cookie, id);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`[hh-b2b] ${id} ${detail}`);
+    if (!isHhB2bRequestTimeout(err)) throw err;
+    throw new HhB2bDraftError(
+      purpose === 'before-place' ? HH_B2B_READ_TIMEOUT_PLACE_MESSAGE : HH_B2B_PLACE_UNCONFIRMED_MESSAGE
+    );
+  }
+}
+
+async function putPlaceOrder(
+  config: HhB2bConfig,
+  cookie: string,
+  id: string,
+  document: Record<string, unknown>
+): Promise<void> {
+  const created = await b2bRequest(config, cookie, `/api/documents/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(placeOrderPayload(document, id)),
+  });
+  assertOrderSubmitted(asRecord(created));
+}
+
+/**
+ * Submit a draft once. A timed-out submit is checked with a fresh read.
+ * A second submit happens only when that read still shows a draft.
+ */
 export async function submitHellyHansenSportsOrder(
   config: HhB2bConfig,
   cookie: string,
@@ -455,12 +530,46 @@ export async function submitHellyHansenSportsOrder(
     throw new HhB2bDraftError('Cannot place an order without a live Helly Hansen document id');
   }
 
-  const document = await fetchHhB2bDocument(config, cookie, id);
-  const created = await b2bRequest(config, cookie, `/api/documents/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(placeOrderPayload(document, id)),
-  });
-  assertOrderSubmitted(asRecord(created));
+  const document = await fetchPlaceDocument(config, cookie, id, 'before-place');
+  if (documentSubmitState(document) === 'submitted') {
+    console.log(`[hh-b2b] ${id} is already submitted — not placing again`);
+    return;
+  }
+
+  try {
+    await putPlaceOrder(config, cookie, id, document);
+    return;
+  } catch (err) {
+    if (!isHhB2bRequestTimeout(err)) throw err;
+    console.warn(`[hh-b2b] ${id} place timed out — checking the document before another submit`);
+  }
+
+  const fresh = await fetchPlaceDocument(config, cookie, id, 'confirm');
+  const freshState = documentSubmitState(fresh);
+  if (freshState === 'submitted') {
+    console.log(`[hh-b2b] ${id} is submitted after the place timeout`);
+    return;
+  }
+  if (freshState !== 'draft') {
+    throw new HhB2bDraftError(HH_B2B_PLACE_UNCONFIRMED_MESSAGE);
+  }
+
+  console.warn(`[hh-b2b] ${id} is still a draft — submitting once more`);
+  try {
+    await putPlaceOrder(config, cookie, id, fresh);
+  } catch (err) {
+    if (!isHhB2bRequestTimeout(err)) throw err;
+    console.warn(`[hh-b2b] ${id} follow-up place timed out — checking the document`);
+    const confirmed = await fetchPlaceDocument(config, cookie, id, 'confirm');
+    const confirmedState = documentSubmitState(confirmed);
+    if (confirmedState === 'submitted') {
+      console.log(`[hh-b2b] ${id} is submitted after the follow-up place`);
+      return;
+    }
+    throw new HhB2bDraftError(
+      confirmedState === 'draft' ? HH_B2B_PLACE_STILL_DRAFT_MESSAGE : HH_B2B_PLACE_UNCONFIRMED_MESSAGE
+    );
+  }
 }
 
 function skuLabel(item: HhB2bDraftItem): string {

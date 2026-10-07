@@ -6,7 +6,7 @@ import HHOrderGroup, {
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { hhBrandId, isOrderDetailsDraftId } from '../lib/hhBrand';
-import { fetchHhB2bDocument, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { fetchHhB2bDocument, isHhB2bRequestTimeout, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
 import {
   alignResolvedThorogoodSnapshots,
   fetchThorogoodOrder,
@@ -247,6 +247,7 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     return;
   }
 
+  let readTimedOut = false;
   for (const child of liveTargets) {
     verifyCurrentOrderId = child.orderId;
     const documentId = (child.b2bDraftId ?? '').trim();
@@ -274,13 +275,19 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
         await stopVerifyForSession(groupId, liveTargets.slice(Math.max(0, start)), message, 'Live Helly Hansen cart');
         return;
       }
+      if (isHhB2bRequestTimeout(err)) {
+        readTimedOut = true;
+        lastError = `${child.orderId}: B2B timed out reading the cart. Verification was left unchanged.`.slice(0, 1000);
+        console.warn(`${LOG} ${child.orderId} ${message} — left verification unchanged`);
+        continue;
+      }
       await persistVerification(groupId, String(child._id), 'review', [
         sessionIssue(message, 'Live Helly Hansen cart'),
       ]);
       console.warn(`${LOG} ${child.orderId} ${message}`);
     }
   }
-  if (!sessionStopped) lastError = null;
+  if (!sessionStopped && !readTimedOut) lastError = null;
 }
 
 async function drainQueue(): Promise<void> {
@@ -583,6 +590,21 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof HhB2bAuthError) {
         throw err;
+      }
+      if (isHhB2bRequestTimeout(err)) {
+        console.warn(`${LOG} ${child.orderId} ${message} — left verification unchanged`);
+        results.push({
+          id: String(child._id),
+          orderId: child.orderId,
+          cartStatus: child.cartStatus,
+          error: message.slice(0, 240),
+          rows: [],
+          details,
+          cart: emptySnapshot(),
+          canPlace: false,
+          verifiedAt: isoDate(child.verifiedAt),
+        });
+        continue;
       }
       if (childCanVerify(child)) {
         await persistVerification(groupId, String(child._id), 'review', [
