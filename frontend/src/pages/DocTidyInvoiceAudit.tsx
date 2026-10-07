@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -40,6 +41,7 @@ import {
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
+  type DocTidyEmailSource,
   type DocTidyOrganization,
   type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
@@ -736,6 +738,48 @@ function WorkspaceEditorDialog({
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
+  /* ── Email sources (only for existing workspaces) ── */
+  const [emailSources, setEmailSources] = useState<DocTidyEmailSource[]>([])
+  const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourcesError, setSourcesError] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!initial) return
+    setSourcesLoading(true)
+    authApi
+      .get<{ data: DocTidyEmailSource[] }>(`/doc-tidy/workspaces/${initial._id}/email-sources`)
+      .then((res) => setEmailSources(res.data))
+      .catch((err) => setSourcesError(err instanceof Error ? err.message : 'Failed to load email sources'))
+      .finally(() => setSourcesLoading(false))
+  }, [initial])
+
+  const handleConnectEmailSource = async () => {
+    if (!initial) return
+    setConnecting(true)
+    try {
+      const res = await authApi.get<{ url: string }>(`/auth/doc-tidy/workspaces/${initial._id}/connect`)
+      window.location.href = res.url
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : 'Failed to initiate connection')
+      setConnecting(false)
+    }
+  }
+
+  const handleDisconnectSource = async (sourceId: string) => {
+    if (!initial) return
+    setDeletingSourceId(sourceId)
+    try {
+      await authApi.delete(`/doc-tidy/workspaces/${initial._id}/email-sources/${sourceId}`)
+      setEmailSources((prev) => prev.filter((s) => s._id !== sourceId))
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : 'Failed to remove email source')
+    } finally {
+      setDeletingSourceId(null)
+    }
+  }
+
   useEffect(() => {
     nameRef.current?.focus()
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -854,6 +898,123 @@ function WorkspaceEditorDialog({
               </p>
             )}
           </div>
+
+          {/* Email Sources — only shown when editing an existing workspace */}
+          {initial && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                  Email sources
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleConnectEmailSource()}
+                  disabled={connecting}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-xs font-medium text-[var(--text-100)] hover:bg-[var(--bg-200)] disabled:opacity-60 shadow-sm transition-colors"
+                >
+                  {connecting ? (
+                    <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" />
+                  ) : (
+                    /* Google "G" colour-dot icon */
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                  )}
+                  {connecting ? 'Redirecting…' : 'Connect with Google'}
+                </button>
+              </div>
+              <p className="mb-2 text-[10px] text-[var(--text-200)] leading-relaxed">
+                Connect the Gmail account that receives this workspace's invoices.
+                Group emails (e.g. <span className="font-medium">invoices@brand.com</span>) can't be connected directly — connect a member's Gmail account instead, then set the group address in the rule's <span className="font-medium">Delivered to</span> field.
+              </p>
+
+              {sourcesLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
+                  <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" />
+                  Loading…
+                </div>
+              ) : emailSources.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[var(--bg-300)] px-4 py-4 text-center">
+                  {/* Gmail icon */}
+                  <svg className="mx-auto mb-2 h-7 w-7 opacity-30" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
+                  </svg>
+                  <p className="text-xs text-[var(--text-200)]">No Gmail account connected yet.</p>
+                  <p className="mt-0.5 text-[10px] text-[var(--text-200)] opacity-70">Click "Connect email account" above to link one.</p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {emailSources.map((src) => (
+                    <li
+                      key={src._id}
+                      className="flex items-center gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 shadow-sm"
+                    >
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        {src.gmailAccountPicture ? (
+                          <img
+                            src={src.gmailAccountPicture}
+                            alt={src.emailAddress ?? 'Connected account'}
+                            className="h-9 w-9 rounded-full object-cover ring-2 ring-[var(--bg-300)]"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-300)] text-sm font-semibold text-[var(--text-100)] ring-2 ring-[var(--bg-300)]">
+                            {(src.emailAddress ?? '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                        {/* Gmail badge */}
+                        <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[var(--bg-100)] shadow">
+                          <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
+                          </svg>
+                        </span>
+                      </div>
+
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-[var(--text-100)]">
+                          {src.emailAddress ?? '(unknown address)'}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
+                          {src.gmailConnectedAt
+                            ? `Connected ${new Date(src.gmailConnectedAt).toLocaleDateString()}${src.gmailConnectedByName ? ` · ${src.gmailConnectedByName}` : ''}`
+                            : 'Connected'}
+                        </p>
+                      </div>
+
+                      {/* Disconnect */}
+                      <button
+                        type="button"
+                        onClick={() => void handleDisconnectSource(src._id)}
+                        disabled={deletingSourceId === src._id}
+                        title="Disconnect"
+                        className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-2.5 py-1.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 disabled:opacity-60 transition-colors"
+                      >
+                        {deletingSourceId === src._id ? (
+                          <Spinner className="h-3 w-3 text-rose-500" />
+                        ) : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                        )}
+                        Disconnect
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {sourcesError && (
+                <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2 text-xs text-rose-600 dark:text-rose-400">
+                  {sourcesError}
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
@@ -2434,6 +2595,12 @@ const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
 export default function DocTidyInvoiceAudit() {
   const { user: currentUser } = useAuth()
   const isAdmin = currentUser?.role === 'admin'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const { orgId: urlOrgId, workspaceId: urlWorkspaceId } = useParams<{ orgId?: string; workspaceId?: string }>()
+
+  /* ── Global success banner (e.g. after OAuth redirects back) ── */
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null)
 
   /* ── View state ── */
   type View = 'organizations' | 'workspaces' | 'audit'
@@ -2553,6 +2720,8 @@ export default function DocTidyInvoiceAudit() {
   /* Fetch Emails button state */
   const [emailFetching, setEmailFetching] = useState(false)
   const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
+  /** Non-error informational notice (e.g. "poller already running") — shown as info blue. */
+  const [emailFetchInfo, setEmailFetchInfo] = useState<string | null>(null)
 
   /* Background poller / manual-fetch SSE status chips */
   const [pollerRunning, setPollerRunning] = useState(false)
@@ -2564,6 +2733,13 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => {
     return () => { if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current) }
   }, [])
+
+  // Auto-dismiss the info notice after 6 s.
+  useEffect(() => {
+    if (!emailFetchInfo) return
+    const t = setTimeout(() => setEmailFetchInfo(null), 6_000)
+    return () => clearTimeout(t)
+  }, [emailFetchInfo])
 
   /* Countdown to next automated poll */
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
@@ -2584,6 +2760,34 @@ export default function DocTidyInvoiceAudit() {
       const base = res.data.lastPollAt ? new Date(res.data.lastPollAt).getTime() : Date.now()
       setNextSyncAt(new Date(base + intervalMs))
     })
+  }, [])
+
+  /* ── Handle redirect back from per-workspace email source OAuth ── */
+  useEffect(() => {
+    const wsSource = searchParams.get('ws_source')
+    const wsSourceError = searchParams.get('ws_source_error')
+    const wsId = searchParams.get('workspaceId')
+
+    if (wsSource === 'connected') {
+      setGlobalSuccess('Email account connected successfully.')
+      // Auto-open the workspace editor so the user can see the new source.
+      if (wsId) {
+        setWorkspaces((prev) => {
+          const ws = prev.find((w) => w._id === wsId)
+          if (ws) setEditTarget(ws)
+          return prev
+        })
+      }
+      setSearchParams({}, { replace: true })
+    } else if (wsSourceError) {
+      setWsError(
+        wsSourceError === 'no_refresh_token'
+          ? 'Email connection failed: no refresh token returned. Try reconnecting and ensure you grant all requested permissions.'
+          : 'Email connection failed. Please try again.'
+      )
+      setSearchParams({}, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ── PDF Imports tab ── */
@@ -3058,6 +3262,67 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadOrganizations() }, [loadOrganizations])
 
+  /* ── Restore navigation state from URL on page load / refresh ── */
+  const urlRestoredRef = useRef(false)
+  useEffect(() => {
+    // Only execute once — after both orgs and workspaces finish their initial fetch.
+    if (orgLoading || wsLoading || urlRestoredRef.current) return
+    urlRestoredRef.current = true
+
+    if (urlWorkspaceId) {
+      const ws = workspaces.find((w) => w._id === urlWorkspaceId)
+      if (!ws) return
+      // Restore org context if the URL includes an org segment.
+      if (urlOrgId) {
+        const org = organizations.find((o) => o._id === urlOrgId)
+        if (org && org.hasAccess !== false) setActiveOrg(org)
+      }
+      // Mirror enterWorkspace initialisation without calling navigate() (URL already correct).
+      setActiveWorkspace(ws)
+      setView('audit')
+      setWorkspaceTab('audit')
+      setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
+      setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+      setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+      setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
+      authApi
+        .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>(
+          `/doc-tidy/ui-prefs?workspaceId=${ws._id}`
+        )
+        .then((res) => {
+          const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
+          if (auditColumnOrder?.length) {
+            const valid = auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
+            setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
+          }
+          if (wsEmailColumnOrder?.length) {
+            const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+            )
+            setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
+          }
+          if (pdfImportColOrder?.length) {
+            const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+              PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+            )
+            setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
+          }
+        })
+        .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+    } else if (urlOrgId) {
+      const org = organizations.find((o) => o._id === urlOrgId)
+      if (org && org.hasAccess !== false) {
+        setActiveOrg(org)
+        setView('workspaces')
+      }
+    }
+  // This effect intentionally runs only once (after initial data load). The ref
+  // guard prevents re-execution when workspaces / orgs lists update later.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgLoading, wsLoading])
+
   // Column orders are now loaded per-workspace inside enterWorkspace().
   // The old global-singleton fetch on mount has been removed.
 
@@ -3096,6 +3361,7 @@ export default function DocTidyInvoiceAudit() {
   const handleFetchEmails = async () => {
     setEmailFetching(true)
     setEmailFetchNotice(null)
+    setEmailFetchInfo(null)
     setEmailError(null)
     try {
       const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
@@ -3112,7 +3378,13 @@ export default function DocTidyInvoiceAudit() {
       // Refresh the table so newly imported emails appear immediately.
       void fetchEmails(true)
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Failed to fetch emails')
+      const msg = err instanceof Error ? err.message : 'Failed to fetch emails'
+      // "Already running" responses from the server aren't real errors — show them as info.
+      if (/already.{0,30}running|poller.*running|running.*poller|currently.{0,30}fetch|fetch.*in.{0,10}progress/i.test(msg)) {
+        setEmailFetchInfo('Email extraction is already in progress — new emails will appear here shortly once it completes.')
+      } else {
+        setEmailError(msg)
+      }
     } finally {
       setEmailFetching(false)
     }
@@ -3500,14 +3772,22 @@ export default function DocTidyInvoiceAudit() {
         }
       })
       .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+    // Push the workspace URL so the browser address bar and history stay in sync.
+    if (ws.organizationId) {
+      navigate(`/doc-tidy/invoice-audit/orgs/${ws.organizationId}/workspaces/${ws._id}`)
+    } else {
+      navigate(`/doc-tidy/invoice-audit/workspaces/${ws._id}`)
+    }
   }
 
   const leaveWorkspace = () => {
     // Go back to the org's workspace list if we came from one, else org landing
     if (activeOrg) {
       setView('workspaces')
+      navigate(`/doc-tidy/invoice-audit/orgs/${activeOrg._id}`)
     } else {
       setView('organizations')
+      navigate('/doc-tidy/invoice-audit')
     }
     setActiveWorkspace(null)
     setJobs([])
@@ -3545,11 +3825,13 @@ export default function DocTidyInvoiceAudit() {
     if (org.hasAccess === false) return   // safety guard — locked orgs must not be opened
     setActiveOrg(org)
     setView('workspaces')
+    navigate(`/doc-tidy/invoice-audit/orgs/${org._id}`)
   }
 
   const leaveOrg = () => {
     setActiveOrg(null)
     setView('organizations')
+    navigate('/doc-tidy/invoice-audit')
   }
 
   const openEditor = (target: DocTidyWorkspace | 'new') => {
@@ -4202,6 +4484,7 @@ export default function DocTidyInvoiceAudit() {
       {/* ── Global error banners ── */}
       {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
       {orgError && <Banner kind="error" onDismiss={() => setOrgError(null)}>{orgError}</Banner>}
+      {globalSuccess && <Banner kind="success" onDismiss={() => setGlobalSuccess(null)}>{globalSuccess}</Banner>}
 
       {/* ══════════════════════════ ORGANIZATIONS LANDING ══════════════════════════ */}
       {view === 'organizations' && (
@@ -4315,11 +4598,21 @@ export default function DocTidyInvoiceAudit() {
 
               {wsLoading ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
-                      <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
-                      <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
-                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                      <div className="flex-1 px-5 pt-5 pb-4">
+                        <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                        <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="mt-1.5 h-4 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="mt-2 h-3 w-full animate-pulse rounded bg-[var(--bg-300)]" />
+                      </div>
+                      <div className="border-t border-[var(--bg-300)] px-5 py-3 flex items-center justify-between">
+                        <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                          <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -4395,15 +4688,21 @@ export default function DocTidyInvoiceAudit() {
 
           {wsLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
-                  <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
-                  <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
-                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
-                  <div className="mt-4 h-px bg-[var(--bg-300)]" />
-                  <div className="mt-3 flex justify-end gap-2">
-                    <div className="h-6 w-10 animate-pulse rounded bg-[var(--bg-300)]" />
-                    <div className="h-6 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                  <div className="flex-1 px-5 pt-5 pb-4">
+                    <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                    <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="mt-1.5 h-4 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="mt-2 h-3 w-full animate-pulse rounded bg-[var(--bg-300)]" />
+                  </div>
+                  <div className="border-t border-[var(--bg-300)] px-5 py-3 flex items-center justify-between">
+                    <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -4529,6 +4828,24 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'emails' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
+              {emailFetchInfo && (
+                <div className="flex items-center gap-2.5 rounded-xl border border-sky-200 dark:border-sky-700/50 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-900/25 dark:to-blue-900/20 px-3.5 py-2.5 text-[11px] text-sky-800 dark:text-sky-300 shadow-sm">
+                  {/* Info icon */}
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-700/40">
+                    <svg className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                  <span className="flex-1 leading-relaxed">{emailFetchInfo}</span>
+                  {/* Dismiss */}
+                  <button onClick={() => setEmailFetchInfo(null)} aria-label="Dismiss"
+                    className="ml-1 shrink-0 rounded p-0.5 opacity-40 transition-opacity hover:opacity-80 cursor-pointer">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
@@ -4780,17 +5097,17 @@ export default function DocTidyInvoiceAudit() {
                     </thead>
                     <tbody>
                       {emailLoading && emailMessages.length === 0 ? (
-                        Array.from({ length: 8 }).map((_, i) => (
-                          <tr key={i} className="border-b border-[var(--bg-300)]">
-                            <td className="px-3 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                            <td className="px-3 py-px">
+                        Array.from({ length: 20 }).map((_, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                            <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1.5">
                               <div className="flex justify-center gap-1">
                                 <div className="h-4 w-6 animate-pulse rounded bg-[var(--bg-300)]" />
                                 <div className="h-4 w-4 animate-pulse rounded bg-[var(--bg-300)]" />
                               </div>
                             </td>
                             {orderedEmailCols.map((col) => (
-                              <td key={col.id} className="px-3 py-px">
+                              <td key={col.id} className="px-3 py-1.5">
                                 {col.id === 'from' ? (
                                   <div className="flex items-center gap-2">
                                     <div className="h-6 w-6 animate-pulse rounded-full bg-[var(--bg-300)]" />
@@ -4801,8 +5118,10 @@ export default function DocTidyInvoiceAudit() {
                                   </div>
                                 ) : col.id === 'documentType' || col.id === 'rule' ? (
                                   <div className="h-5 w-24 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                ) : col.id === 'subject' ? (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]" style={{ width: `${5 + (i % 5) * 2}rem` }} />
                                 ) : (
-                                  <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                  <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
                                 )}
                               </td>
                             ))}
@@ -5213,10 +5532,34 @@ export default function DocTidyInvoiceAudit() {
                     }
                   `}</style>
                   {pdfImportsLoading && pdfImports.length === 0 ? (
-                    <div className="flex items-center justify-center gap-2 py-16 text-[var(--text-200)]">
-                      <Spinner className="h-4 w-4" />
-                      <span className="text-sm">Loading…</span>
-                    </div>
+                    <table className="w-full text-[10px] border-separate border-spacing-0">
+                      <tbody>
+                        {Array.from({ length: 20 }).map((_, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
+                            <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            {orderedPdfCols.map((col, ci) => (
+                              <td key={col.id} className="px-3 py-1.5">
+                                {col.id === 'status' ? (
+                                  <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--bg-300)]" />
+                                ) : col.id === 'filename' ? (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                    style={{ width: `${6 + ((i + ci) % 5) * 2}rem` }} />
+                                ) : (
+                                  <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                    style={{ width: `${3 + ((i + ci) % 4) * 1.5}rem` }} />
+                                )}
+                              </td>
+                            ))}
+                            <td className="px-3 py-1.5">
+                              <div className="flex justify-center gap-2">
+                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   ) : pdfImports.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 py-16 text-center">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-200)]">
@@ -5833,13 +6176,14 @@ export default function DocTidyInvoiceAudit() {
                           OR while jobs haven't arrived yet on first load (prevents a flash
                           where rows render with "—" matched-invoice cells before jobs load) */}
                     {(isHeaderOnly ? (loading && jobs.length === 0) : ((orderLoading && orderImports.length === 0) || (loading && jobs.length === 0))) ? (
-                      Array.from({ length: 12 }).map((_, i) => (
+                      Array.from({ length: 25 }).map((_, i) => (
                         <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
-                          <td className="px-2.5 py-px"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
-                          <td className="px-2.5 py-px" />
-                          {visibleCols.map((col) => (
-                            <td key={col.id} className="px-2.5 py-px">
-                              <div className="h-3 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+                          <td className="px-2.5 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                          <td className="px-2.5 py-1.5" />
+                          {visibleCols.map((col, ci) => (
+                            <td key={col.id} className="px-2.5 py-1.5">
+                              <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
+                                style={{ width: `${3 + ((i + ci) % 4) * 1.5}rem` }} />
                             </td>
                           ))}
                         </tr>
@@ -6020,8 +6364,8 @@ export default function DocTidyInvoiceAudit() {
                             })
                           }
                           const groupHeader = (
-                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
-                              <td className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-2 border-l-[3px] border-l-[var(--accent-200)]"
+                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10 drop-shadow-[0_2px_6px_rgba(0,0,0,0.10)] dark:drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]">
+                              <td className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-1 border-l-[3px] border-l-[var(--accent-200)]"
                                 onClick={(e) => e.stopPropagation()}>
                                 <input type="checkbox" checked={allGroupSelected}
                                   ref={(el) => { if (el) el.indeterminate = someGroupSelected && !allGroupSelected }}
@@ -6030,7 +6374,7 @@ export default function DocTidyInvoiceAudit() {
                                   className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                               </td>
                               <td colSpan={totalCols - 1} onClick={toggleWeek}
-                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-2">
+                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-1">
                                 <div className="flex items-center gap-2">
                                   <svg className={`h-3 w-3 shrink-0 text-[var(--accent-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -6049,7 +6393,7 @@ export default function DocTidyInvoiceAudit() {
                             </tr>
                           )
                           if (isCollapsed) return [groupHeader]
-                          const dataRows = groupOrders.map((order) => {
+                          const dataRows = groupOrders.map((order, orderIdx) => {
                             const matches = invoiceMatchMap.get(order._id) ?? []
                             // Resolve the matched parse job for vendorNeedsSetup detection.
                             const matchedJob = matches[0]?.job
@@ -6058,18 +6402,22 @@ export default function DocTidyInvoiceAudit() {
                             const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
+                            const isLastInGroup = orderIdx === groupOrders.length - 1
+                            /** Bottom border that closes each week group visually. */
+                            const groupEndBorder = isLastInGroup ? 'border-b-2 border-b-[var(--bg-300)]' : ''
                             rowIdx++
                             return (
                               <tr key={order._id}
-                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
-                                <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
+                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--primary-100)]/15 hover:bg-[var(--primary-100)]/40' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/40'}`}>
+                                {/* Checkbox — carries the left accent stripe that ties rows to their week header */}
+                                <td className={`px-2.5 py-0.5 border-l-2 border-l-[var(--accent-200)]/25 ${groupEndBorder}`} onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
                                     aria-label={`Select order ${order.poNumber}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
                                 {/* Per-row actions — always visible, second column */}
-                                <td className="px-1.5 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <td className={`px-1.5 py-0.5 text-center ${groupEndBorder}`} onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
                                     {vendorNeedsSetup && matchedJob && (
                                       <button
@@ -6096,7 +6444,7 @@ export default function DocTidyInvoiceAudit() {
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
                                     className={[
-                                      'px-2.5 py-0.5 text-[10px] whitespace-nowrap',
+                                      `px-2.5 py-0.5 text-[10px] whitespace-nowrap ${groupEndBorder}`,
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
