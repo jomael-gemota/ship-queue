@@ -2734,6 +2734,13 @@ export default function DocTidyInvoiceAudit() {
     return () => { if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current) }
   }, [])
 
+  // Auto-dismiss the info notice after 6 s.
+  useEffect(() => {
+    if (!emailFetchInfo) return
+    const t = setTimeout(() => setEmailFetchInfo(null), 6_000)
+    return () => clearTimeout(t)
+  }, [emailFetchInfo])
+
   /* Countdown to next automated poll */
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
   const pollerIntervalMsRef = useRef<number>(30_000)
@@ -4821,7 +4828,24 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'emails' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
-              {emailFetchInfo && <Banner kind="info" onDismiss={() => setEmailFetchInfo(null)}>{emailFetchInfo}</Banner>}
+              {emailFetchInfo && (
+                <div className="flex items-center gap-2.5 rounded-xl border border-sky-200 dark:border-sky-700/50 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-900/25 dark:to-blue-900/20 px-3.5 py-2.5 text-[11px] text-sky-800 dark:text-sky-300 shadow-sm">
+                  {/* Info icon */}
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-700/40">
+                    <svg className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                  <span className="flex-1 leading-relaxed">{emailFetchInfo}</span>
+                  {/* Dismiss */}
+                  <button onClick={() => setEmailFetchInfo(null)} aria-label="Dismiss"
+                    className="ml-1 shrink-0 rounded p-0.5 opacity-40 transition-opacity hover:opacity-80 cursor-pointer">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
