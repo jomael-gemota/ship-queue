@@ -902,7 +902,7 @@ function WorkspaceEditorDialog({
           {/* Email Sources — only shown when editing an existing workspace */}
           {initial && (
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1">
                 <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
                   Email sources
                 </label>
@@ -922,6 +922,10 @@ function WorkspaceEditorDialog({
                   {connecting ? 'Redirecting…' : 'Connect email account'}
                 </button>
               </div>
+              <p className="mb-2 text-[10px] text-[var(--text-200)] leading-relaxed">
+                Connect the Gmail account that receives this workspace's invoices.
+                Group emails (e.g. <span className="font-medium">invoices@brand.com</span>) can't be connected directly — connect a member's Gmail account instead, then set the group address in the rule's <span className="font-medium">Delivered to</span> field.
+              </p>
 
               {sourcesLoading ? (
                 <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
