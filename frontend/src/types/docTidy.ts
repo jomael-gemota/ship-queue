@@ -346,6 +346,7 @@ export interface DocTidyEmailSource {
   /** Optional friendly label, e.g. "Brand A mailbox". */
   label?: string
   emailAddress?: string
+  gmailAccountPicture?: string
   gmailConnectedAt?: string
   gmailConnectedByName?: string
   createdAt: string
