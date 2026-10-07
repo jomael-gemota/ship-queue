@@ -5539,7 +5539,7 @@ export default function DocTidyInvoiceAudit() {
                             <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
                             {orderedPdfCols.map((col, ci) => (
                               <td key={col.id} className="px-3 py-1.5">
-                                {col.id === 'status' ? (
+                                {col.id === 'parseStatus' ? (
                                   <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--bg-300)]" />
                                 ) : col.id === 'filename' ? (
                                   <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
