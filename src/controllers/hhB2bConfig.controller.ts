@@ -3,7 +3,12 @@ import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import type { IHHB2bConfig } from '../models/HHB2bConfig';
 import { hhBrand, hhBrandFromRequest, hhBrandId, HH_BRANDS, type HHBrandId } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
-import { normalizeHhB2bAccountId, parseHhB2bBaseUrl } from '../lib/hhB2bConfig';
+import {
+  normalizeHhB2bAccountId,
+  parseHhB2bBaseUrl,
+  resolveHhB2bCookie,
+  type HhB2bCookieSource,
+} from '../lib/hhB2bConfig';
 import { effectiveThorogoodSkuInitials, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
 import {
   effectiveHhSkuPrefixes,
@@ -43,6 +48,8 @@ export interface HhB2bConfigDto {
   skuPrefixes: string[];
   skuSuffixes: string[];
   hasCookie: boolean;
+  /** Live session source. `config` is the pasted override. `jar` is Cookie Jar after that override is cleared. */
+  cookieSource: HhB2bCookieSource;
   cookieUpdatedAt: string | null;
   placeOrderEnabled: boolean;
   alertWebhookUrl: string;
@@ -68,7 +75,8 @@ function alertEvent(value: string | undefined): HhB2bLastAlertDto['event'] {
   return null;
 }
 
-function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
+async function serializeConfig(doc: IHHB2bConfig): Promise<HhB2bConfigDto> {
+  const cookieSource = (await resolveHhB2bCookie(brandFromConfigKey(doc.key), doc.cookie ?? '')).source;
   return {
     baseUrl: doc.baseUrl,
     catalog: doc.catalog,
@@ -84,6 +92,7 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
       ? effectiveHhSkuSuffixes(doc.skuSuffixes, Boolean(doc.skuSuffixesSet))
       : [],
     hasCookie: Boolean(normalizeCookieHeader(doc.cookie ?? '')),
+    cookieSource,
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
     placeOrderEnabled: Boolean(doc.placeOrderEnabled),
     alertWebhookUrl: doc.alertWebhookUrl || '',
@@ -106,7 +115,7 @@ function serializeConfig(doc: IHHB2bConfig): HhB2bConfigDto {
 
 export async function getHhB2bConfig(req: Request, res: Response): Promise<void> {
   const doc = await getOrCreateHhB2bConfig(hhBrandFromRequest(req), true);
-  res.json({ data: serializeConfig(doc) });
+  res.json({ data: await serializeConfig(doc) });
 }
 
 export async function updateHhB2bConfig(req: Request, res: Response): Promise<void> {
@@ -243,7 +252,7 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
   } catch (err) {
     console.error('[hh-b2b-health] Failed to apply check times', err);
   }
-  res.json({ data: serializeConfig(doc) });
+  res.json({ data: await serializeConfig(doc) });
 }
 
 export async function checkHhB2bSession(req: Request, res: Response): Promise<void> {
@@ -260,7 +269,7 @@ export async function checkHhB2bSession(req: Request, res: Response): Promise<vo
     return;
   }
   const doc = await getOrCreateHhB2bConfig(brand, true);
-  res.json({ data: serializeConfig(doc) });
+  res.json({ data: await serializeConfig(doc) });
 }
 
 export async function testHhB2bWebhook(req: Request, res: Response): Promise<void> {
@@ -277,5 +286,5 @@ export async function testHhB2bWebhook(req: Request, res: Response): Promise<voi
     return;
   }
   const doc = await getOrCreateHhB2bConfig(brand, true);
-  res.json({ data: serializeConfig(doc) });
+  res.json({ data: await serializeConfig(doc) });
 }

@@ -54,20 +54,55 @@ function sessionLabel(status: HHSessionCheck['status']): string {
   return 'Not checked yet'
 }
 
+function cookieSourceOf(data: HHB2bConfig | null): HHB2bConfig['cookieSource'] {
+  if (!data) return 'none'
+  if (data.cookieSource) return data.cookieSource
+  return data.hasCookie ? 'config' : 'none'
+}
+
 function sessionNeedsAttention(data: HHB2bConfig): boolean {
-  if (!data.hasCookie) return true
+  const source = cookieSourceOf(data)
+  if (source === 'none' || source === 'jar-empty') return true
   return data.sessionCheck.status === 'auth' || data.sessionCheck.status === 'down'
 }
 
 function sessionSummary(data: HHB2bConfig | null): string {
-  if (!data?.hasCookie) {
-    if (data?.sessionCheck.status === 'auth' || data?.sessionCheck.status === 'down') {
-      return sessionLabel(data.sessionCheck.status)
-    }
-    return 'No cookie'
+  const source = cookieSourceOf(data)
+  const failed = data?.sessionCheck.status === 'auth' || data?.sessionCheck.status === 'down'
+  if (source === 'none' || source === 'jar-empty') {
+    if (failed && data) return sessionLabel(data.sessionCheck.status)
+    return source === 'jar-empty' ? 'Cookie Jar empty' : 'No cookie'
   }
-  if (!data.cookieUpdatedAt) return `${sessionLabel(data.sessionCheck.status)} · Cookie stored`
-  return `${sessionLabel(data.sessionCheck.status)} · Cookie updated ${formatCreatedAt(data.cookieUpdatedAt)}`
+  if (source === 'config' && data?.cookieUpdatedAt) {
+    return `${sessionLabel(data.sessionCheck.status)} · Cookie updated ${formatCreatedAt(data.cookieUpdatedAt)}`
+  }
+  const sourceLabel = source === 'jar' ? 'Cookie Jar' : source === 'env' ? 'Server cookie' : 'Cookie stored'
+  return `${sessionLabel(data?.sessionCheck.status ?? null)} · ${sourceLabel}`
+}
+
+function cookieBadge(data: HHB2bConfig | null): { label: string; className: string } {
+  const ready = 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+  const missing = 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
+  const source = cookieSourceOf(data)
+  if (source === 'jar') return { label: 'Cookie Jar', className: ready }
+  if (source === 'env') return { label: 'Server cookie', className: ready }
+  if (source === 'config') return { label: 'Cookie stored', className: ready }
+  if (source === 'jar-empty') return { label: 'Cookie Jar empty', className: missing }
+  return { label: 'No cookie', className: missing }
+}
+
+function SessionCookieBadge({ saved }: { saved: HHB2bConfig | null }) {
+  const badge = cookieBadge(saved)
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+  )
+}
+
+function cookieFieldPlaceholder(data: HHB2bConfig | null, emptyExample: string): string {
+  if (data?.hasCookie) return 'Leave blank to keep the stored session'
+  if (cookieSourceOf(data) === 'jar' || cookieSourceOf(data) === 'jar-empty') return 'Paste to override Cookie Jar'
+  if (cookieSourceOf(data) === 'env') return 'Paste to override the server session'
+  return emptyExample
 }
 
 function portalSummary(url: string, enabled: boolean): string {
@@ -364,6 +399,7 @@ export default function HHSportswearConfig() {
           ? {
               ...current,
               hasCookie: res.data.hasCookie,
+              cookieSource: res.data.cookieSource,
               cookieUpdatedAt: res.data.cookieUpdatedAt,
               sessionCheck: res.data.sessionCheck,
               lastAlert: res.data.lastAlert,
@@ -697,15 +733,7 @@ export default function HHSportswearConfig() {
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sessionPillClass(saved?.sessionCheck.status ?? null)}`}>
                 {sessionLabel(saved?.sessionCheck.status ?? null)}
               </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  saved?.hasCookie
-                    ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                    : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
-                }`}
-              >
-                {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
-              </span>
+              <SessionCookieBadge saved={saved} />
             </div>
             <button
               type="button"
@@ -750,7 +778,7 @@ export default function HHSportswearConfig() {
               setCookie(event.target.value)
               if (event.target.value.trim()) setClearCookie(false)
             }}
-            placeholder={saved?.hasCookie ? 'Leave blank to keep the stored session' : 'thorogood-prod-na-cf_SESSION=…'}
+            placeholder={cookieFieldPlaceholder(saved, 'thorogood-prod-na-cf_SESSION=…')}
             autoComplete="off"
             spellCheck={false}
             disabled={clearCookie || busy}
@@ -1117,15 +1145,7 @@ export default function HHSportswearConfig() {
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sessionPillClass(saved?.sessionCheck.status ?? null)}`}>
               {sessionLabel(saved?.sessionCheck.status ?? null)}
             </span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                saved?.hasCookie
-                  ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
-                  : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
-              }`}
-            >
-              {saved?.hasCookie ? 'Cookie stored' : 'No cookie'}
-            </span>
+            <SessionCookieBadge saved={saved} />
           </div>
           <button
             type="button"
@@ -1169,7 +1189,7 @@ export default function HHSportswearConfig() {
             setCookie(event.target.value)
             if (event.target.value.trim()) setClearCookie(false)
           }}
-          placeholder={saved?.hasCookie ? 'Leave blank to keep the stored session' : 'sessionid=…; csrftoken=…'}
+          placeholder={cookieFieldPlaceholder(saved, 'sessionid=…; csrftoken=…')}
           autoComplete="off"
           spellCheck={false}
           disabled={clearCookie || busy}

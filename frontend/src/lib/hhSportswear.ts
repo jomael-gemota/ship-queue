@@ -800,6 +800,8 @@ export interface HHB2bConfig {
   skuPrefixes: string[]
   skuSuffixes: string[]
   hasCookie: boolean
+  /** Live session. `config` is a pasted override. `jar` is Cookie Jar once that override is cleared. */
+  cookieSource: 'env' | 'config' | 'jar' | 'jar-empty' | 'none'
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
   alertWebhookUrl: string

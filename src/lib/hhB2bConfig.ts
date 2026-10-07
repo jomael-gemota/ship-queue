@@ -99,26 +99,46 @@ export async function isHhPlaceOrderEnabled(brand: HHBrandId = HH_DEFAULT_BRAND)
   return Boolean(stored.placeOrderEnabled);
 }
 
+/** Where the live B2B session comes from. A pasted config cookie, or Sportswear `HH_B2B_COOKIE`, overrides the jar. */
+export type HhB2bCookieSource = 'env' | 'config' | 'jar' | 'jar-empty' | 'none';
+
+/**
+ * Same order as the cookie drafts and session checks actually use.
+ * `jar-empty` means the brand jar is enabled but has not stored a session yet.
+ */
+export async function resolveHhB2bCookie(
+  brand: HHBrandId,
+  storedCookie: string,
+): Promise<{ source: HhB2bCookieSource; cookie: string }> {
+  const fromEnv = normalizeCookieHeader(envOverrides(brand).cookie || '');
+  if (fromEnv) return { source: 'env', cookie: fromEnv };
+
+  const fromConfig = normalizeCookieHeader(storedCookie);
+  if (fromConfig) return { source: 'config', cookie: fromConfig };
+
+  const key = hhBrand(brand).cookieJarKey;
+  if (key) {
+    const jar = await CookieJar.findOne({ key }).select('+cookie');
+    if (jar?.enabled) {
+      const fromJar = normalizeCookieHeader(jar.cookie ?? '');
+      if (fromJar) return { source: 'jar', cookie: fromJar };
+      return { source: 'jar-empty', cookie: '' };
+    }
+  }
+
+  return { source: 'none', cookie: '' };
+}
+
 export async function loadHhB2bCookie(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<string> {
   const def = hhBrand(brand);
-  const env = envOverrides(brand);
-  const fromEnv = normalizeCookieHeader(env.cookie || '');
-  if (fromEnv) return fromEnv;
-
   const stored = await getOrCreateHhB2bConfig(brand, true);
-  const fromConfig = normalizeCookieHeader(stored.cookie ?? '');
-  if (fromConfig) return fromConfig;
+  const resolved = await resolveHhB2bCookie(brand, stored.cookie ?? '');
+  if (resolved.cookie) return resolved.cookie;
 
   if (!def.cookieJarKey) {
     throw new HhB2bAuthError(
       `${def.cookieJarName} cookie is empty — paste a session on Dropship (B2B) → ${def.name} → Configurations`
     );
-  }
-
-  const jar = await CookieJar.findOne({ key: def.cookieJarKey }).select('+cookie');
-  if (jar?.enabled) {
-    const fromJar = normalizeCookieHeader(jar.cookie ?? '');
-    if (fromJar) return fromJar;
   }
 
   throw new HhB2bAuthError(
