@@ -46,6 +46,10 @@ import {
   deleteWorkspace,
 } from '../controllers/docTidyWorkspace.controller';
 import {
+  listEmailSources,
+  deleteEmailSource,
+} from '../controllers/docTidyEmailSource.controller';
+import {
   listOrganizations,
   createOrganization,
   updateOrganization,
@@ -121,6 +125,12 @@ router.get('/workspaces', listWorkspaces);
 router.post('/workspaces', createWorkspace);
 router.put('/workspaces/:id', updateWorkspace);
 router.delete('/workspaces/:id', deleteWorkspace);
+
+// Per-workspace email sources — list is accessible to all authenticated users;
+// connect is handled in auth.routes.ts (any authenticated user);
+// delete is open to any authenticated user (they manage their own workspace sources).
+router.get('/workspaces/:workspaceId/email-sources', listEmailSources);
+router.delete('/workspaces/:workspaceId/email-sources/:sourceId', deleteEmailSource);
 
 // Organizations — any auth user may list; only admins may create/modify/delete.
 router.get('/organizations', listOrganizations);
