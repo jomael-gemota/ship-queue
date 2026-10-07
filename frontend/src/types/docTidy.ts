@@ -145,8 +145,14 @@ export interface DocTidyConfig {
   driveFolderName: string | null
   /** How often the background poller checks the mailbox (seconds). */
   pollerIntervalSeconds?: number | null
+  /** Whether the background poller is actively fetching emails right now. */
+  pollerRunning?: boolean
   /** ISO timestamp of the last completed poll cycle on the server. */
   lastPollAt?: string | null
+  /** ISO timestamp of the last time the poller successfully imported messages. */
+  lastImportAt?: string | null
+  /** Error message from the last failed poll, or null if the last poll succeeded. */
+  lastPollError?: string | null
 }
 
 /** Result of running a single rule. */
@@ -178,8 +184,15 @@ export interface DocTidyEvent {
     | 'parse_status'
     | 'parse_progress'
     | 'worker_status'
+    | 'poll_status'
     | 'ui_prefs'
   imported?: number
+  /** For `poll_status`: whether the background poller is actively fetching. */
+  pollerRunning?: boolean
+  /** For `poll_status`: last poll error message, or null on success. */
+  pollError?: string | null
+  /** For `poll_status`: ISO timestamp of the last successful import. */
+  lastImportAt?: string | null
   /** For `parse_status`, so a table can move one chip without refetching.
    *  For `parse_progress`, which running job `step`/`snippet` describe. */
   parseJobId?: string
@@ -358,6 +371,8 @@ export interface DocTidyOrganization {
   createdByName?: string
   createdAt: string
   updatedAt: string
+  /** Computed by the API: true when the current user is an admin or a listed member. */
+  hasAccess?: boolean
 }
 
 /* ──────────────────────────────── Workspace Emails column types ── */
@@ -737,7 +752,19 @@ export interface DocTidyOrderImport {
    * parse job completes.  When present the audit table reads these fields
    * directly instead of loading all parse jobs for client-side matching.
    */
+  /**
+   * Cached invoice match (legacy singular field — kept for backward compat).
+   * Prefer `matchedInvoices` when present.
+   * @deprecated Read `matchedInvoices` instead; this field is only present on
+   * rows cached before the split-invoice aggregation feature.
+   */
   matchedInvoice?: MatchedInvoiceCache | null
+  /**
+   * All invoice matches for this order line — one entry per distinct parse job
+   * whose PO # + SKU matched.  Written by the server cache service; populated
+   * by a Resync for legacy rows that only have `matchedInvoice`.
+   */
+  matchedInvoices?: MatchedInvoiceCache[]
   createdAt: string
   updatedAt: string
 }

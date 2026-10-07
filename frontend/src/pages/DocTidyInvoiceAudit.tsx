@@ -13,6 +13,7 @@ import {
 } from '../components/docTidy/docTidyUi'
 import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
 import AttachmentIcons from '../components/docTidy/AttachmentIcons'
+import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import VendorSetup from '../components/docTidy/VendorSetup'
@@ -52,9 +53,11 @@ import {
   PDF_IMPORT_COLUMNS,
   DEFAULT_PDF_IMPORT_COL_ORDER,
   isParseRunning,
+  type ParseJobStatus,
   type DocTidyOrderImport,
   type OrderImportsResponse,
   type RunAllResult,
+  type DocTidyConfig,
 } from '../types/docTidy'
 
 /**
@@ -96,6 +99,24 @@ function normForMatch(s: string): string {
 }
 
 /**
+ * Normalise a SKU for matching.
+ *
+ * On top of the standard normForMatch transforms, strips warehouse/variant
+ * decorations that appear on order-import SKUs but not on supplier invoices:
+ *  • Leading  "DUP-" or "DUP_"  prefix (case-insensitive)
+ *  • Trailing "-V2"  or "_V2"   suffix (case-insensitive)
+ *
+ * This lets "DUP-ABC123-V2" match the invoice SKU "ABC123" without changing
+ * the values that are displayed in the discrepancy tooltip.
+ */
+function normSkuForMatch(s: string): string {
+  const stripped = (s ?? '').trim()
+    .replace(/^DUP[-_]/i, '')   // strip leading DUP- / DUP_
+    .replace(/[-_]V2$/i, '')    // strip trailing -V2 / _V2
+  return normForMatch(stripped)
+}
+
+/**
  * The result of matching one `DocTidyOrderImport` row to a parsed invoice.
  * `item` is `null` when the invoice has no line items (document-level only).
  */
@@ -105,7 +126,7 @@ interface InvoiceMatch {
 }
 
 /**
- * Find the best matching parse job + line item for a given order import.
+ * Find **all** parse jobs that match a given order import (PO # + SKU).
  *
  * Matching strategy:
  *  1. PO # from the job's `jsonOutput` normalises equal to `order.poNumber`.
@@ -114,14 +135,19 @@ interface InvoiceMatch {
  *  3. If `order.orderSku` is blank (PO-only import), a PO match alone is
  *     sufficient even when the invoice has line items. Document-level fields
  *     are used; line-item fields will be empty.
+ *
+ * Returns all matching jobs so split-shipment invoices are all represented.
+ * The caller aggregates the array for display (summed qty, joined invoice #s).
  */
-function findInvoiceMatch(
+function findAllInvoiceMatches(
   order: DocTidyOrderImport,
   jobs: ParseJobListItem[]
-): InvoiceMatch | null {
+): InvoiceMatch[] {
   const normPo  = normForMatch(order.poNumber)
-  const normSku = normForMatch(order.orderSku)
-  if (!normPo) return null
+  const normSku = normSkuForMatch(order.orderSku)
+  if (!normPo) return []
+
+  const matches: InvoiceMatch[] = []
 
   for (const job of jobs) {
     const json = job.jsonOutput ?? null
@@ -140,25 +166,31 @@ function findInvoiceMatch(
 
     if (lineItems.length === 0) {
       // No line items — PO match alone is sufficient
-      return { job, item: null }
+      matches.push({ job, item: null })
+      continue
+    }
+
+    if (!normSku) {
+      // PO-only import — accept a PO match regardless of line items
+      matches.push({ job, item: null })
+      continue
     }
 
     for (const item of lineItems) {
-      const itemSku = normForMatch(
+      const itemSku = normSkuForMatch(
         extractJsonField(item,
           'sku', 'part_number', 'part_no', 'item_code',
           'product_code', 'sku_number'
         )
       )
-      if (normSku && itemSku === normSku) return { job, item }
+      if (itemSku === normSku) {
+        matches.push({ job, item })
+        break   // one match per job (same SKU won't appear twice in one invoice)
+      }
     }
-
-    // If the order has no SKU (PO-only import), a PO match alone is sufficient
-    // regardless of whether the invoice has line items. Use document-level fields.
-    if (!normSku) return { job, item: null }
   }
 
-  return null
+  return matches
 }
 
 function formatBytes(bytes: number): string {
@@ -922,6 +954,7 @@ function OrgCard({
   onEdit,
   onDelete,
   isAdmin = false,
+  hasAccess = true,
 }: {
   org: DocTidyOrganization
   workspaceCount: number
@@ -929,52 +962,78 @@ function OrgCard({
   onEdit: () => void
   onDelete: () => void
   isAdmin?: boolean
+  hasAccess?: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
     <div
-      onClick={onOpen}
-      className="group relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] overflow-hidden"
+      onClick={hasAccess ? onOpen : undefined}
+      className={`group relative flex items-center gap-4 rounded-xl border bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden transition-all ${
+        hasAccess
+          ? 'border-[var(--bg-300)] cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]'
+          : 'border-[var(--bg-300)] cursor-not-allowed opacity-50 select-none'
+      }`}
     >
-      {/* Violet left accent stripe */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-violet-500 dark:bg-violet-600 rounded-l-xl" />
+      {/* Left accent stripe — violet when accessible, gray when locked */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${hasAccess ? 'bg-violet-500 dark:bg-violet-600' : 'bg-[var(--bg-300)]'}`} />
 
       {/* Icon */}
-      <div className="ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
+      <div className={`ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${hasAccess ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400' : 'bg-[var(--bg-200)] dark:bg-[var(--bg-300)] text-[var(--text-200)]'}`}>
+        {hasAccess ? (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        )}
       </div>
 
       {/* Main content */}
       <div className="flex-1 min-w-0 py-4 pr-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+          <h3 className={`text-sm font-semibold transition-colors ${hasAccess ? 'text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400' : 'text-[var(--text-200)]'}`}>
             {org.name}
           </h3>
-          {/* Badge pills */}
-          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
-            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
-            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
-          </span>
+          {/* No-access badge */}
+          {!hasAccess && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              No access
+            </span>
+          )}
+          {/* Badge pills — only shown to members/admins */}
+          {hasAccess && (
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
+                <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {org.memberUserIds.length} member{org.memberUserIds.length !== 1 ? 's' : ''}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-200)]">
+                <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                {workspaceCount} workspace{workspaceCount !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Workspace name previews removed — keeps all rows uniform height */}
       </div>
 
-      {/* Actions */}
+      {/* Actions — only shown when the user has access (or is admin) */}
       <div
         className="flex items-center gap-1 pr-4 shrink-0"
         onClick={(e) => e.stopPropagation()}
@@ -1013,12 +1072,14 @@ function OrgCard({
                 </button>
               </>
             )}
-            <button
-              onClick={onOpen}
-              className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[10px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
-            >
-              Open →
-            </button>
+            {hasAccess && (
+              <button
+                onClick={onOpen}
+                className="cursor-pointer rounded-lg bg-violet-600 dark:bg-violet-700 px-3 py-1.5 text-[10px] font-semibold text-white hover:opacity-80 transition-opacity whitespace-nowrap"
+              >
+                Open →
+              </button>
+            )}
           </>
         )}
       </div>
@@ -1673,10 +1734,10 @@ function hasDiscount(inv: DiscountFields): boolean {
  */
 function discrepancyCell(
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ): React.ReactNode {
-  // Use cached invoice data first; fall back to client-side match.
-  const inv = resolveInvoiceFields(order, match)
+  // Use cached invoice data first; fall back to client-side matches.
+  const inv = resolveInvoiceFields(order, matches)
   if (!inv.hasMatch) {
     return (
       <Tooltip trigger="click" richContent={
@@ -1703,7 +1764,7 @@ function discrepancyCell(
   // invoices don't produce false ✗ COGS mismatches.
   const effectiveCostRaw = resolveEffectiveCost(inv)
 
-  const skuMatch  = normForMatch(order.orderSku) === normForMatch(invoiceSku)
+  const skuMatch  = normSkuForMatch(order.orderSku) === normSkuForMatch(invoiceSku)
   const qtyMatch  = normForMatch(order.orderQty) === normForMatch(invoiceQtyRaw)
 
   // COGS comparison: compare as floats (rounded to 2 dp) to handle minor formatting differences.
@@ -1922,30 +1983,172 @@ function discrepancyCell(
 /** Return the plain-string value for a column (used by Excel export). */
 /**
  * Resolve invoice field values for a row, preferring the server-written
- * `matchedInvoice` cache and falling back to client-side matching.
+/**
+ * Sum a list of numeric strings, ignoring blanks.
+ * Returns '' if nothing is summable, otherwise a string rounded to 2dp.
+ */
+function sumNumericStrings(values: string[]): string {
+  let total = 0
+  let anyValid = false
+  for (const v of values) {
+    const n = parseFloat(v)
+    if (!isNaN(n)) { total += n; anyValid = true }
+  }
+  if (!anyValid) return ''
+  // Round to 2 decimal places; strip trailing zeros
+  const rounded = Math.round(total * 100) / 100
+  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(2)
+}
+
+/**
+ * Return the lexicographically earliest non-empty date string.
+ * ISO/partial-ISO strings sort correctly as strings.
+ */
+function earliestDateStr(values: string[]): string {
+  let earliest = ''
+  for (const v of values) {
+    if (!v) continue
+    if (!earliest || v < earliest) earliest = v
+  }
+  return earliest
+}
+
+/**
+ * Resolve invoice field values for a row, aggregating across ALL matched
+ * invoices (supports split-shipment: same PO+SKU across multiple PDFs).
+ *
+ * Priority order:
+ *   1. `order.matchedInvoices[]` — server-written cache (fast path, multiple)
+ *   2. `order.matchedInvoice`   — legacy singular cache (backward compat)
+ *   3. `matches` array          — client-side fallback (when cache is absent)
  */
 function resolveInvoiceFields(
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ) {
-  const c = order.matchedInvoice   // cached (fast path)
-  const json  = match?.job.jsonOutput ?? null
-  const item  = match?.item ?? null
+  // ── Build a unified list of "per-invoice" value sets ──────────────────────
+  // Each entry in `perInvoice` has all fields for one matched invoice.
+  type PerInvoice = {
+    driveFileId: string
+    invoiceSku: string
+    invoiceDate: string
+    invoiceNumber: string
+    terms: string
+    itemCost: string
+    invoiceQty: string
+    discountedPrice: string
+    discountPct: string
+    dropshipFee: string
+    miscCharges: string
+    totalCost: string
+    jobId?: string
+  }
+
+  let perInvoice: PerInvoice[] = []
+
+  // Fast path: server-written matchedInvoices[] array (new field)
+  if (order.matchedInvoices && order.matchedInvoices.length > 0) {
+    perInvoice = order.matchedInvoices.map((c) => ({
+      driveFileId:     c.driveFileId     ?? '',
+      invoiceSku:      c.invoiceSku      ?? '',
+      invoiceDate:     c.invoiceDate     ?? '',
+      invoiceNumber:   c.invoiceNumber   ?? '',
+      terms:           c.terms           ?? '',
+      itemCost:        c.itemCost        ?? '',
+      invoiceQty:      c.invoiceQty      ?? '',
+      discountedPrice: c.discountedPrice ?? '',
+      discountPct:     c.discountPct     ?? '',
+      dropshipFee:     c.dropshipFee     ?? '',
+      miscCharges:     c.miscCharges     ?? '',
+      totalCost:       c.totalCost       ?? '',
+      jobId:           c.jobId,
+    }))
+  } else if (order.matchedInvoice) {
+    // Backward compat: legacy singular cache
+    const c = order.matchedInvoice
+    perInvoice = [{
+      driveFileId:     c.driveFileId     ?? '',
+      invoiceSku:      c.invoiceSku      ?? '',
+      invoiceDate:     c.invoiceDate     ?? '',
+      invoiceNumber:   c.invoiceNumber   ?? '',
+      terms:           c.terms           ?? '',
+      itemCost:        c.itemCost        ?? '',
+      invoiceQty:      c.invoiceQty      ?? '',
+      discountedPrice: c.discountedPrice ?? '',
+      discountPct:     c.discountPct     ?? '',
+      dropshipFee:     c.dropshipFee     ?? '',
+      miscCharges:     c.miscCharges     ?? '',
+      totalCost:       c.totalCost       ?? '',
+      jobId:           c.jobId,
+    }]
+  } else if (matches.length > 0) {
+    // Client-side fallback (no server cache yet)
+    perInvoice = matches.map((m) => {
+      const json = m.job.jsonOutput ?? null
+      const item = m.item ?? null
+      return {
+        driveFileId:     m.job.driveFileId ?? '',
+        invoiceSku:      liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'),
+        invoiceDate:     extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'),
+        invoiceNumber:   extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'),
+        terms:           extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'),
+        itemCost:        liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'),
+        invoiceQty:      liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'),
+        discountedPrice: liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'),
+        discountPct:     liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
+        dropshipFee:     liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship'),
+        miscCharges:     liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous'),
+        totalCost:       liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
+        jobId:           String(m.job._id),
+      }
+    })
+  }
+
+  if (perInvoice.length === 0) {
+    return {
+      hasMatch:        false,
+      matchCount:      0,
+      driveFileId:     undefined as string | undefined,
+      primaryJobId:    undefined as string | undefined,
+      invoiceSku:      '',
+      invoiceDate:     '',
+      invoiceNumber:   '',
+      terms:           '',
+      itemCost:        '',
+      invoiceQty:      '',
+      discountedPrice: '',
+      discountPct:     '',
+      dropshipFee:     '',
+      miscCharges:     '',
+      totalCost:       '',
+    }
+  }
+
+  // ── Aggregate across all matched invoices ─────────────────────────────────
+  const first = perInvoice[0]
+
+  // Invoice # — unique values joined (preserves order)
+  const uniqueInvNums = [...new Set(perInvoice.map((p) => p.invoiceNumber).filter(Boolean))]
+  const invoiceNumber = uniqueInvNums.join(', ')
 
   return {
-    hasMatch:        !!(c ?? match),
-    driveFileId:     c?.driveFileId ?? match?.job.driveFileId,
-    invoiceSku:      c?.invoiceSku   ?? liVal(item, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'),
-    invoiceDate:     c?.invoiceDate  ?? extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'),
-    invoiceNumber:   c?.invoiceNumber ?? extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice'),
-    terms:           c?.terms        ?? extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'),
-    itemCost:        c?.itemCost     ?? liVal(item, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price'),
-    invoiceQty:      c?.invoiceQty   ?? liVal(item, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty'),
-    discountedPrice: c?.discountedPrice ?? liVal(item, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price'),
-    discountPct:     c?.discountPct  ?? liVal(item, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc'),
-    dropshipFee:     c?.dropshipFee  ?? (liVal(item, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') || extractJsonField(json, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship')),
-    miscCharges:     c?.miscCharges  ?? (liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous')),
-    totalCost:       c?.totalCost    ?? (liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice')),
+    hasMatch:        true,
+    matchCount:      perInvoice.length,
+    driveFileId:     first.driveFileId || undefined,
+    primaryJobId:    first.jobId,
+    invoiceSku:      first.invoiceSku,
+    invoiceDate:     earliestDateStr(perInvoice.map((p) => p.invoiceDate)),
+    invoiceNumber,
+    terms:           first.terms,
+    // Pricing fields from first match (same SKU → same price across invoices)
+    itemCost:        first.itemCost,
+    discountedPrice: first.discountedPrice,
+    discountPct:     first.discountPct,
+    // Quantities and charges sum across all invoices
+    invoiceQty:      sumNumericStrings(perInvoice.map((p) => p.invoiceQty)),
+    dropshipFee:     sumNumericStrings(perInvoice.map((p) => p.dropshipFee)),
+    miscCharges:     sumNumericStrings(perInvoice.map((p) => p.miscCharges)),
+    totalCost:       sumNumericStrings(perInvoice.map((p) => p.totalCost)),
   }
 }
 
@@ -1980,7 +2183,7 @@ function headerOnlyColStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): s
 function auditColStr(
   colId: InvoiceAuditColumnId,
   order: DocTidyOrderImport,
-  match: InvoiceMatch | null
+  matches: InvoiceMatch[]
 ): string {
   switch (colId) {
     case 'poNumber':      return order.poNumber
@@ -1993,7 +2196,7 @@ function auditColStr(
     case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     default: break
   }
-  const inv = resolveInvoiceFields(order, match)
+  const inv = resolveInvoiceFields(order, matches)
   switch (colId) {
     case 'invoiceSku':        return inv.invoiceSku
     case 'invoiceDate':       return inv.invoiceDate
@@ -2009,11 +2212,22 @@ function auditColStr(
     case 'dropshipFee':       return inv.dropshipFee
     case 'miscCharges':       return inv.miscCharges
     case 'totalCost':         return inv.totalCost
-    case 'parsedAt':          return order.matchedInvoice?.cachedAt ? formatDate(order.matchedInvoice.cachedAt) : ''
+    case 'parsedAt': {
+      // Show the earliest cachedAt across all matched invoices
+      const cachedDates = [
+        ...(order.matchedInvoices?.map((c) => c.cachedAt).filter(Boolean) ?? []),
+        ...(order.matchedInvoice?.cachedAt ? [order.matchedInvoice.cachedAt] : []),
+      ]
+      const earliest = cachedDates.reduce<string | undefined>((acc, d) => {
+        const s = typeof d === 'string' ? d : (d as Date).toISOString()
+        return !acc || s < acc ? s : acc
+      }, undefined)
+      return earliest ? formatDate(earliest) : ''
+    }
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
-      if (inv.invoiceSku && normForMatch(order.orderSku) !== normForMatch(inv.invoiceSku)) issues.push('✗ SKU')
+      if (inv.invoiceSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
       if (inv.invoiceQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
       if (order.dcCogs == null) {
         issues.push('COGS pending')
@@ -2045,6 +2259,20 @@ function emailColStr(colId: WorkspaceEmailColumnId, msg: DocTidyMessage): string
     case 'attachments':  return msg.attachments?.map((a) => a.filename).join(', ') ?? ''
     default:             return ''
   }
+}
+
+/**
+ * Derive the single most-urgent parse status across all of a message's parse
+ * jobs, for use in the parse-status filter.
+ * Priority: processing > pending > failed > completed > none (no jobs at all).
+ */
+function emailEffectiveParseStatus(msg: DocTidyMessage): ParseJobStatus | 'none' {
+  const jobs = msg.parseJobs ?? []
+  if (jobs.length === 0) return 'none'
+  if (jobs.some((j) => j.status === 'processing')) return 'processing'
+  if (jobs.some((j) => j.status === 'pending'))    return 'pending'
+  if (jobs.some((j) => j.status === 'failed'))     return 'failed'
+  return 'completed'
 }
 
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
@@ -2313,6 +2541,7 @@ export default function DocTidyInvoiceAudit() {
   const [emailDebouncedSearch, setEmailDebouncedSearch] = useState('')
   const [emailDateFrom, setEmailDateFrom] = useState('')
   const [emailDateTo, setEmailDateTo] = useState('')
+  const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
@@ -2325,6 +2554,38 @@ export default function DocTidyInvoiceAudit() {
   const [emailFetching, setEmailFetching] = useState(false)
   const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
 
+  /* Background poller / manual-fetch SSE status chips */
+  const [pollerRunning, setPollerRunning] = useState(false)
+  const [pollError, setPollError] = useState<string | null>(null)
+  const [showFetchDone, setShowFetchDone] = useState(false)
+  const fetchDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up fetch-done timer on unmount.
+  useEffect(() => {
+    return () => { if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current) }
+  }, [])
+
+  /* Countdown to next automated poll */
+  const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
+  const pollerIntervalMsRef = useRef<number>(30_000)
+  // 1-second tick to keep the countdown display fresh.
+  const [, setCountdownTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setCountdownTick((n) => n + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Fetch the poller config once to seed the initial countdown.
+  useEffect(() => {
+    authApi.get<{ data: DocTidyConfig }>('/doc-tidy/config').catch(() => null).then((res) => {
+      if (!res) return
+      const intervalMs = (res.data.pollerIntervalSeconds ?? 30) * 1_000
+      pollerIntervalMsRef.current = intervalMs
+      const base = res.data.lastPollAt ? new Date(res.data.lastPollAt).getTime() : Date.now()
+      setNextSyncAt(new Date(base + intervalMs))
+    })
+  }, [])
+
   /* ── PDF Imports tab ── */
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
   const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
@@ -2336,6 +2597,7 @@ export default function DocTidyInvoiceAudit() {
   const [pdfDebouncedSearch, setPdfDebouncedSearch] = useState('')
   const [pdfDateFrom, setPdfDateFrom] = useState('')
   const [pdfDateTo, setPdfDateTo] = useState('')
+  const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -2366,6 +2628,12 @@ export default function DocTidyInvoiceAudit() {
   const [confirmBulkDeletePdfs, setConfirmBulkDeletePdfs] = useState(false)
   const [pdfBulkDeleting, setPdfBulkDeleting] = useState(false)
 
+  /* ── Bulk parse: emails and PDFs ── */
+  const [emailBulkSending, setEmailBulkSending] = useState(false)
+  const [emailBulkAborting, setEmailBulkAborting] = useState(false)
+  const [pdfBulkSending, setPdfBulkSending] = useState(false)
+  const [pdfBulkAborting, setPdfBulkAborting] = useState(false)
+
   /* ── Audit table delete (full-import mode) ── */
   const [confirmDeleteAuditRow, setConfirmDeleteAuditRow] = useState<DocTidyOrderImport | null>(null)
   const [auditRowDeleting, setAuditRowDeleting] = useState(false)
@@ -2384,29 +2652,38 @@ export default function DocTidyInvoiceAudit() {
     const activeEntries = Object.entries(emailColFilters).filter(
       (entry): entry is [WorkspaceEmailColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return emailMessages
-    return emailMessages.filter((msg) =>
-      activeEntries.every(([colId, allowed]) => {
+    return emailMessages.filter((msg) => {
+      // Parse-status filter
+      if (emailParseStatusFilter) {
+        if (emailEffectiveParseStatus(msg) !== emailParseStatusFilter) return false
+      }
+      // Column filters
+      return activeEntries.every(([colId, allowed]) => {
         const val = emailColStr(colId, msg).trim()
         if (!val) return allowed.has(BLANK_SENTINEL)
         return allowed.has(val)
       })
-    )
-  }, [emailMessages, emailColFilters])
+    })
+  }, [emailMessages, emailColFilters, emailParseStatusFilter])
 
   const filteredPdfImports = useMemo(() => {
     const activeEntries = Object.entries(pdfColFilters).filter(
       (entry): entry is [PdfImportColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
-    if (activeEntries.length === 0) return pdfImports
-    return pdfImports.filter((imp) =>
-      activeEntries.every(([colId, allowed]) => {
+    return pdfImports.filter((imp) => {
+      // Parse-status filter
+      if (pdfParseStatusFilter) {
+        const impStatus: ParseJobStatus | 'none' = imp.parseJob?.status ?? 'none'
+        if (impStatus !== pdfParseStatusFilter) return false
+      }
+      // Column filters
+      return activeEntries.every(([colId, allowed]) => {
         const val = pdfColStr(colId, imp).trim()
         if (!val) return allowed.has(BLANK_SENTINEL)
         return allowed.has(val)
       })
-    )
-  }, [pdfImports, pdfColFilters])
+    })
+  }, [pdfImports, pdfColFilters, pdfParseStatusFilter])
 
   /* Debounce search */
   useEffect(() => {
@@ -2415,7 +2692,7 @@ export default function DocTidyInvoiceAudit() {
   }, [pdfSearch])
 
   /* Reset page + selection when filters change */
-  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize])
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter])
 
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
   const pdfFetchGenRef = useRef(0)
@@ -2591,9 +2868,133 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
+  /* ── Emails: bulk send selected messages to Tidy Agent for parsing ── */
+  const handleBulkSendEmailsToAgent = async () => {
+    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    const tasks: Array<{ msgId: string; index: number }> = []
+    for (const msg of selectedMsgs) {
+      for (let i = 0; i < msg.attachments.length; i++) {
+        const att = msg.attachments[i]
+        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
+        if (job && (job.status === 'pending' || job.status === 'processing')) continue
+        tasks.push({ msgId: msg._id, index: i })
+      }
+    }
+    if (tasks.length === 0) return
+    setEmailBulkSending(true)
+    try {
+      await Promise.allSettled(
+        tasks.map(({ msgId, index }) =>
+          authApi.post(`/doc-tidy/messages/${msgId}/attachments/${index}/parse`)
+        )
+      )
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkSending(false)
+    }
+  }
+
+  /** Send all selected PDF imports to the Tidy Agent (skips actively running/pending jobs). */
+  const handleBulkSendPdfsToAgent = async () => {
+    const selected = pdfImports.filter(
+      (imp) =>
+        pdfSelectedIds.has(imp._id) &&
+        imp.parseJob?.status !== 'pending' &&
+        imp.parseJob?.status !== 'processing'
+    )
+    if (selected.length === 0) return
+    setPdfBulkSending(true)
+    try {
+      await Promise.allSettled(
+        selected.map((imp) => authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`))
+      )
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkSending(false)
+    }
+  }
+
+  /** Abort all running/pending parse jobs across selected email rows. */
+  const handleBulkAbortEmails = async () => {
+    const jobIds: string[] = []
+    for (const msg of emailMessages) {
+      if (!selectedEmailIds.has(msg._id)) continue
+      for (const job of msg.parseJobs ?? []) {
+        if (job.status === 'pending' || job.status === 'processing') jobIds.push(job._id)
+      }
+    }
+    if (jobIds.length === 0) return
+    setEmailBulkAborting(true)
+    try {
+      await Promise.allSettled(jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`)))
+      void fetchEmails(true)
+    } finally {
+      setEmailBulkAborting(false)
+    }
+  }
+
+  /** Abort all running/pending parse jobs across selected PDF imports. */
+  const handleBulkAbortPdfs = async () => {
+    const jobIds = pdfImports
+      .filter(
+        (imp) =>
+          pdfSelectedIds.has(imp._id) &&
+          imp.parseJob != null &&
+          (imp.parseJob.status === 'pending' || imp.parseJob.status === 'processing')
+      )
+      .map((imp) => imp.parseJob!._id)
+    if (jobIds.length === 0) return
+    setPdfBulkAborting(true)
+    try {
+      await Promise.allSettled(jobIds.map((id) => authApi.post(`/doc-tidy/parse-jobs/${id}/abort`)))
+      void fetchPdfImports()
+    } finally {
+      setPdfBulkAborting(false)
+    }
+  }
+
   /* Selection helpers */
   const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
+
+  /** True when every parseable attachment across all selected emails already has a completed parse job. */
+  const allSelectedEmailsCompleted =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .every((m) => {
+        let hasParseable = false
+        for (let i = 0; i < m.attachments.length; i++) {
+          const att = m.attachments[i]
+          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+          hasParseable = true
+          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
+          if (!job || job.status !== 'completed') return false
+        }
+        return hasParseable
+      })
+
+  /** True when at least one selected email has a running (pending/processing) parse job. */
+  const anySelectedEmailRunning =
+    selectedEmailIds.size > 0 &&
+    emailMessages
+      .filter((m) => selectedEmailIds.has(m._id))
+      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
+
+  /** True when at least one selected PDF import has a running parse job. */
+  const anySelectedPdfRunning =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .some((imp) => imp.parseJob?.status === 'pending' || imp.parseJob?.status === 'processing')
+
+  /** True when every selected PDF import already has a completed parse job. */
+  const allSelectedPdfsCompleted =
+    pdfSelectedIds.size > 0 &&
+    pdfImports
+      .filter((imp) => pdfSelectedIds.has(imp._id))
+      .every((imp) => imp.parseJob?.status === 'completed')
 
 
   useEffect(() => {
@@ -2620,7 +3021,7 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || Object.values(pdfColFilters).some((s) => s?.size))
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || Object.values(pdfColFilters).some((s) => s?.size))
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
     .filter((c): c is PdfImportColumn => Boolean(c))
@@ -2689,7 +3090,7 @@ export default function DocTidyInvoiceAudit() {
   }, [emailSearch])
 
   /* Reset email page when filters change */
-  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize])
+  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter])
 
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
@@ -2771,6 +3172,19 @@ export default function DocTidyInvoiceAudit() {
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
+        }
+        if (event.type === 'poll_status') {
+          setPollerRunning(event.pollerRunning ?? false)
+          setPollError(event.pollError ?? null)
+          if (!event.pollerRunning) {
+            // Reset the countdown whenever a poll finishes (success or error).
+            setNextSyncAt(new Date(Date.now() + pollerIntervalMsRef.current))
+            if (!event.pollError) {
+              setShowFetchDone(true)
+              if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current)
+              fetchDoneTimerRef.current = setTimeout(() => setShowFetchDone(false), 8_000)
+            }
+          }
         }
         if (event.type === 'ui_prefs' && event.workspaceId === activeWorkspace?._id) {
           if (event.auditColumnOrder && event.auditColumnOrder.length > 0) {
@@ -2920,9 +3334,9 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Fetch all parse jobs (for invoice matching — fallback for uncached rows) ──
    *
-   * Once every row in the workspace has a `matchedInvoice` cache written by the
-   * server, this call is skipped entirely so the table stays fast even as the
-   * parse-job collection grows into the thousands.
+   * Once every row in the workspace has a `matchedInvoices[]` cache written by
+   * the server, this call is skipped entirely so the table stays fast even as
+   * the parse-job collection grows into the thousands.
    */
   const fetchAllJobs = useCallback(async () => {
     if (!activeWorkspace) return
@@ -2949,8 +3363,12 @@ export default function DocTidyInvoiceAudit() {
     // Header-only workspaces use jobs as the primary display data source —
     // always fetch them regardless of the orderImports cache state.
     // For full-mode workspaces, skip the fetch if every row already has a
-    // server-written matchedInvoice cache so the table stays fast.
-    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every((o) => o.matchedInvoice != null)) {
+    // server-written matchedInvoices[] cache so the table stays fast.
+    // A row is considered cached when it has at least one entry in
+    // matchedInvoices[] (new) OR a legacy matchedInvoice (singular) set.
+    if (!isHeaderOnly && orderImports.length > 0 && orderImports.every(
+      (o) => (o.matchedInvoices != null && o.matchedInvoices.length > 0) || o.matchedInvoice != null
+    )) {
       setJobs([])   // clear any stale jobs from a previous workspace
       setLoading(false)
       return
@@ -3104,6 +3522,18 @@ export default function DocTidyInvoiceAudit() {
     setFilterAnchorRect(null)
     setEmailMessages([])
     setEmailPagination({ total: 0, pages: 1, parsedCount: 0 })
+    setEmailSearch('')
+    setEmailDateFrom('')
+    setEmailDateTo('')
+    setEmailParseStatusFilter('')
+    setEmailColFilters({})
+    setPdfImports([])
+    setPdfImportsPagination({ total: 0, pages: 1, parsedCount: 0 })
+    setPdfSearch('')
+    setPdfDateFrom('')
+    setPdfDateTo('')
+    setPdfParseStatusFilter('')
+    setPdfColFilters({})
     // Reset column orders so no stale workspace layout bleeds into the next open.
     setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
     setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
@@ -3112,6 +3542,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Organization navigation ── */
   const enterOrg = (org: DocTidyOrganization) => {
+    if (org.hasAccess === false) return   // safety guard — locked orgs must not be opened
     setActiveOrg(org)
     setView('workspaces')
   }
@@ -3189,13 +3620,15 @@ export default function DocTidyInvoiceAudit() {
   }, [collapsedWeeks])
 
   /**
-   * Pre-compute the invoice match for every loaded order import row.
+   * Pre-compute all invoice matches for every loaded order import row.
    * Keyed by order._id for O(1) lookup in the render loop.
+   * Each value is an array — multiple entries when a vendor splits delivery
+   * across more than one invoice / PDF.
    */
-  const invoiceMatchMap = useMemo<Map<string, InvoiceMatch | null>>(() => {
-    const map = new Map<string, InvoiceMatch | null>()
+  const invoiceMatchMap = useMemo<Map<string, InvoiceMatch[]>>(() => {
+    const map = new Map<string, InvoiceMatch[]>()
     for (const order of orderImports) {
-      map.set(order._id, findInvoiceMatch(order, jobs))
+      map.set(order._id, findAllInvoiceMatches(order, jobs))
     }
     return map
   }, [orderImports, jobs])
@@ -3222,8 +3655,8 @@ export default function DocTidyInvoiceAudit() {
       }
     } else {
       for (const order of orderImports) {
-        const match = invoiceMatchMap.get(order._id) ?? null
-        const val = auditColStr(colId, order, match).trim()
+        const matches = invoiceMatchMap.get(order._id) ?? []
+        const val = auditColStr(colId, order, matches).trim()
         vals.set(val, (vals.get(val) ?? 0) + 1)
       }
     }
@@ -3249,9 +3682,9 @@ export default function DocTidyInvoiceAudit() {
     return orderImports.filter((order) => {
       // ── Column filters ──
       if (activeEntries.length > 0) {
-        const match = invoiceMatchMap.get(order._id) ?? null
+        const matches = invoiceMatchMap.get(order._id) ?? []
         const passesCol = activeEntries.every(([colId, allowed]) => {
-          const val = auditColStr(colId, order, match).trim()
+          const val = auditColStr(colId, order, matches).trim()
           if (!val) return allowed.has(BLANK_SENTINEL)
           return allowed.has(val)
         })
@@ -3336,7 +3769,7 @@ export default function DocTidyInvoiceAudit() {
     return vals
   }, [emailMessages])
 
-  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length
+  const emailActiveFilterCount = Object.values(emailColFilters).filter((s) => s != null && s.size > 0).length + (emailParseStatusFilter ? 1 : 0)
 
   /* ── PDF import column filter helpers ── */
   const getPdfColUniqueValues = useCallback((colId: PdfImportColumnId): Map<string, number> => {
@@ -3373,6 +3806,9 @@ export default function DocTidyInvoiceAudit() {
   const pageRowKeys = useMemo(() => filteredOrderImports.map((o) => o._id), [filteredOrderImports])
   const allPageSelected = pageRowKeys.length > 0 && pageRowKeys.every((k) => selectedRowKeys.has(k))
   const somePageSelected = pageRowKeys.some((k) => selectedRowKeys.has(k))
+  // Reserved for pagination display (not yet wired to JSX)
+  void (orderPagination.total === 0 ? 0 : (orderPage - 1) * orderPageSize + 1)  // auditStartItem
+  void Math.min(orderPage * orderPageSize, orderPagination.total)                // auditEndItem
   const auditSelectAllRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (auditSelectAllRef.current) {
@@ -3495,10 +3931,10 @@ export default function DocTidyInvoiceAudit() {
 
       const rows: Record<string, string>[] = []
       for (const order of exportOrders) {
-        const match = invoiceMatchMap.get(order._id) ?? findInvoiceMatch(order, jobs)
+        const matches = invoiceMatchMap.get(order._id) ?? findAllInvoiceMatches(order, jobs)
         const row: Record<string, string> = {}
         for (const col of visibleCols) {
-          row[col.label] = auditColStr(col.id, order, match ?? null)
+          row[col.label] = auditColStr(col.id, order, matches)
         }
         rows.push(row)
       }
@@ -3521,7 +3957,7 @@ export default function DocTidyInvoiceAudit() {
   const auditCellFor = (
     colId: InvoiceAuditColumnId,
     order: DocTidyOrderImport,
-    match: InvoiceMatch | null
+    matches: InvoiceMatch[]
   ): React.ReactNode => {
     // ── Order import fields (always from the DB row directly) ──
     switch (colId) {
@@ -3552,8 +3988,8 @@ export default function DocTidyInvoiceAudit() {
       default: break
     }
 
-    // ── Invoice fields — prefer matchedInvoice cache, fall back to client match ──
-    const inv = resolveInvoiceFields(order, match)
+    // ── Invoice fields — prefer matchedInvoices cache, fall back to client matches ──
+    const inv = resolveInvoiceFields(order, matches)
 
     switch (colId) {
       case 'invoiceSku':    return monoCell(inv.invoiceSku)
@@ -3562,18 +3998,38 @@ export default function DocTidyInvoiceAudit() {
         if (!inv.invoiceNumber) return emDash
         if (inv.driveFileId) {
           return (
-            <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
-              target="_blank" rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
-              <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-              </svg>
-              {inv.invoiceNumber}
-            </a>
+            <span className="inline-flex items-center gap-1 flex-wrap">
+              <a href={`https://drive.google.com/file/d/${inv.driveFileId}/view`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-[10px] text-[var(--accent-200)] hover:underline">
+                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                </svg>
+                {inv.invoiceNumber}
+              </a>
+              {inv.matchCount > 1 && (
+                <Tooltip content={`${inv.matchCount} invoices matched for this PO+SKU`}>
+                  <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 cursor-default select-none">
+                    +{inv.matchCount - 1}
+                  </span>
+                </Tooltip>
+              )}
+            </span>
           )
         }
-        return monoCell(inv.invoiceNumber)
+        return (
+          <span className="inline-flex items-center gap-1">
+            {monoCell(inv.invoiceNumber)}
+            {inv.matchCount > 1 && (
+              <Tooltip content={`${inv.matchCount} invoices matched for this PO+SKU`}>
+                <span className="rounded px-1 py-0.5 text-[9px] font-semibold leading-none bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400 cursor-default select-none">
+                  +{inv.matchCount - 1}
+                </span>
+              </Tooltip>
+            )}
+          </span>
+        )
       }
       case 'terms':       return textCell(inv.terms)
       case 'itemCost': {
@@ -3666,17 +4122,25 @@ export default function DocTidyInvoiceAudit() {
       case 'miscCharges': return numCell(inv.miscCharges)
       case 'totalCost':   return numCell(inv.totalCost)
       case 'parsedAt': {
-        const cachedAt = order.matchedInvoice?.cachedAt
-        if (!cachedAt) return emDash
+        // Show the earliest cachedAt across all matched invoices
+        const cachedDates = [
+          ...(order.matchedInvoices?.map((c) => c.cachedAt).filter(Boolean) ?? []),
+          ...(order.matchedInvoice?.cachedAt ? [order.matchedInvoice.cachedAt] : []),
+        ]
+        const earliest = cachedDates.reduce<string | undefined>((acc, d) => {
+          const s = typeof d === 'string' ? d : (d as Date).toISOString()
+          return !acc || s < acc ? s : acc
+        }, undefined)
+        if (!earliest) return emDash
         return (
-          <span title={formatDateTime(cachedAt)} className="text-[var(--text-200)]">
-            {formatDate(cachedAt)}
+          <span title={formatDateTime(earliest)} className="text-[var(--text-200)]">
+            {formatDate(earliest)}
           </span>
         )
       }
 
       // ── Computed ──
-      case 'discrepancy': return discrepancyCell(order, match)
+      case 'discrepancy': return discrepancyCell(order, matches)
 
       default: return null
     }
@@ -3788,7 +4252,7 @@ export default function DocTidyInvoiceAudit() {
                 <p className="mt-1.5 max-w-sm text-xs text-[var(--text-200)]">
                   {isAdmin
                     ? 'Create an organization to group workspaces and control who can access them.'
-                    : 'You have not been added to any organizations yet. Contact an admin.'}
+                    : 'No organizations have been created yet. Contact an admin.'}
                 </p>
                 {isAdmin && (
                   <button type="button" onClick={() => openOrgEditor('new')}
@@ -3811,6 +4275,7 @@ export default function DocTidyInvoiceAudit() {
                     onEdit={() => openOrgEditor(org)}
                     onDelete={() => void handleDeleteOrg(org)}
                     isAdmin={isAdmin}
+                    hasAccess={org.hasAccess ?? true}
                   />
                 ))}
               </div>
@@ -4075,7 +4540,7 @@ export default function DocTidyInvoiceAudit() {
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
                     <input type="text" value={emailSearch} onChange={(e) => setEmailSearch(e.target.value)}
-                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                     {emailSearch && (
                       <button onClick={() => setEmailSearch('')} aria-label="Clear search"
                         className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -4087,8 +4552,22 @@ export default function DocTidyInvoiceAudit() {
                   <input type="date" value={emailDateFrom} onChange={(e) => setEmailDateFrom(e.target.value)} className={inputClass} />
                   <span>–</span>
                   <input type="date" value={emailDateTo} onChange={(e) => setEmailDateTo(e.target.value)} className={inputClass} />
-                  {(emailSearch || emailDateFrom || emailDateTo) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
+                  {/* Parse status filter */}
+                  <select
+                    value={emailParseStatusFilter}
+                    onChange={(e) => setEmailParseStatusFilter(e.target.value as '' | 'none' | ParseJobStatus)}
+                    className={`${inputClass} cursor-pointer`}
+                    aria-label="Filter by parse status"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="none">Unparsed</option>
+                    <option value="pending">Queued</option>
+                    <option value="processing">Parsing</option>
+                    <option value="completed">Parsed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter) && (
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -4102,8 +4581,128 @@ export default function DocTidyInvoiceAudit() {
                       </svg>
                     )}
                   </button>
-                  {/* Right: rows per page + range + pagination */}
+                  {/* Fetch status chips */}
+                  {pollerRunning && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                      title="Fetching emails from the mailbox — new messages will appear shortly"
+                    >
+                      <svg className="h-3.5 w-3.5 shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                      </svg>
+                      Fetching emails…
+                    </span>
+                  )}
+                  {!pollerRunning && pollError && (
+                    <span
+                      className="inline-flex cursor-help items-center gap-1.5 rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
+                      title={`Last email fetch failed: ${pollError}`}
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      Fetch error
+                    </span>
+                  )}
+                  {!pollerRunning && !pollError && showFetchDone && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      title="Mailbox checked — all matched emails are now imported"
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Fetched
+                    </span>
+                  )}
+                  {/* Next poll countdown */}
+                  {nextSyncAt && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[var(--text-200)]"
+                      title="Estimated time until the next automated email fetch"
+                    >
+                      <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {pollerRunning
+                        ? 'syncing…'
+                        : (() => {
+                            const s = Math.max(0, Math.round((nextSyncAt.getTime() - Date.now()) / 1_000))
+                            return s > 0 ? `next in ${s}s` : 'syncing…'
+                          })()
+                      }
+                    </span>
+                  )}
+                  {/* Right: stats + bulk actions + rows per page + pagination */}
                   <div className="ml-auto flex items-center gap-2">
+                    {/* Stats: parsed / total emails */}
+                    {emailPagination.total > 0 && (
+                      <span className="text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
+                        <span className="opacity-50">/</span>
+                        <span>{emailPagination.total.toLocaleString()}</span>
+                        {' '}email{emailPagination.total === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {/* Abort Jobs */}
+                    {anySelectedEmailRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortEmails()}
+                        disabled={emailBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
+                    )}
+                    {/* Send to Tidy Agent */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedEmailsCompleted
+                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
+                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendEmailsToAgent()}
+                        disabled={emailBulkSending || workerOnline === false}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedEmailsCompleted
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
+                      >
+                        {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        {allSelectedEmailsCompleted
+                          ? `Rerun ${selectedEmailIds.size}`
+                          : `Send ${selectedEmailIds.size} to Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete emails */}
+                    {selectedEmailIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeleteEmails(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {selectedEmailIds.size}
+                      </button>
+                    )}
                     <span className="whitespace-nowrap">Rows per page:</span>
                     <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
                       className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -4229,7 +4828,7 @@ export default function DocTidyInvoiceAudit() {
                                 </p>
                               </div>
                               {(emailSearch || emailDateFrom || emailDateTo) && (
-                                <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo('') }}
+                                <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
                                   className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">
                                   Clear filters
                                 </button>
@@ -4474,7 +5073,7 @@ export default function DocTidyInvoiceAudit() {
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                     </span>
                     <input type="text" value={pdfSearch} onChange={(e) => setPdfSearch(e.target.value)}
-                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                      placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                     {pdfSearch && (
                       <button onClick={() => setPdfSearch('')} aria-label="Clear search"
                         className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -4486,8 +5085,22 @@ export default function DocTidyInvoiceAudit() {
                   <input type="date" value={pdfDateFrom} onChange={(e) => setPdfDateFrom(e.target.value)} className={inputClass} />
                   <span>–</span>
                   <input type="date" value={pdfDateTo} onChange={(e) => setPdfDateTo(e.target.value)} className={inputClass} />
+                  {/* Parse status filter */}
+                  <select
+                    value={pdfParseStatusFilter}
+                    onChange={(e) => setPdfParseStatusFilter(e.target.value as '' | 'none' | ParseJobStatus)}
+                    className={`${inputClass} cursor-pointer`}
+                    aria-label="Filter by parse status"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="none">Unparsed</option>
+                    <option value="pending">Queued</option>
+                    <option value="processing">Parsing</option>
+                    <option value="completed">Parsed</option>
+                    <option value="failed">Failed</option>
+                  </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -4499,8 +5112,77 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
-                  {/* Right: rows per page + range + pagination */}
+                  {/* Right: stats + bulk actions + rows per page + pagination */}
                   <div className="ml-auto flex items-center gap-2">
+                    {/* Stats: total / parsed / pending */}
+                    {pdfImportsPagination.total > 0 && (
+                      <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
+                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
+                        <span className="opacity-30">·</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
+                        <span className="opacity-30">·</span>
+                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
+                      </span>
+                    )}
+                    {/* Abort Jobs */}
+                    {anySelectedPdfRunning && (
+                      <button
+                        type="button"
+                        title={`Abort running parse jobs for ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'}`}
+                        onClick={() => void handleBulkAbortPdfs()}
+                        disabled={pdfBulkAborting}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                      >
+                        {pdfBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Abort Jobs
+                      </button>
+                    )}
+                    {/* Send to Tidy Agent */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        title={
+                          !workerOnline
+                            ? 'Tidy Agent is offline'
+                            : allSelectedPdfsCompleted
+                              ? `Rerun Tidy Agent on ${pdfSelectedIds.size} already-parsed file${pdfSelectedIds.size === 1 ? '' : 's'}`
+                              : `Send ${pdfSelectedIds.size} selected file${pdfSelectedIds.size === 1 ? '' : 's'} to Tidy Agent`
+                        }
+                        onClick={() => void handleBulkSendPdfsToAgent()}
+                        disabled={pdfBulkSending || workerOnline === false}
+                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          allSelectedPdfsCompleted
+                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                        }`}
+                      >
+                        {pdfBulkSending ? <Spinner className="h-3 w-3" /> : (
+                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                          </svg>
+                        )}
+                        {allSelectedPdfsCompleted
+                          ? `Rerun ${pdfSelectedIds.size}`
+                          : `Send ${pdfSelectedIds.size} to Agent`}
+                      </button>
+                    )}
+                    {/* Bulk delete PDF imports */}
+                    {pdfSelectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkDeletePdfs(true)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete {pdfSelectedIds.size}
+                      </button>
+                    )}
                     <span className="whitespace-nowrap">Rows per page:</span>
                     <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
                       className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -4555,7 +5237,7 @@ export default function DocTidyInvoiceAudit() {
                       </div>
                       {pdfHasActiveFilters && (
                         <button
-                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo('') }}
+                          onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
                           className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer"
                         >
                           Clear filters
@@ -4939,7 +5621,7 @@ export default function DocTidyInvoiceAudit() {
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" /></svg>
                   </span>
                   <input type="text" value={auditSearch} onChange={(e) => setAuditSearch(e.target.value)}
-                    placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[22rem]`} />
+                    placeholder="Search…" className={`${inputClass} pl-6 pr-6 w-[17.5rem]`} />
                   {auditSearch && (
                     <button onClick={() => setAuditSearch('')} aria-label="Clear search"
                       className="absolute inset-y-0 right-0 flex items-center pr-2 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer">
@@ -5004,8 +5686,55 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   )}
                 </button>
-                {/* Right: rows per page + range + pagination */}
+                {/* Right: row count + bulk delete + rows per page + pagination */}
                 <div className="ml-auto flex items-center gap-2">
+                  {/* Row count / filter count / selection count */}
+                  {orderPagination.total > 0 && (
+                    <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
+                      {activeFilterCount > 0 && (
+                        <>
+                          <span className="opacity-30">·</span>
+                          <span className="flex items-center gap-0.5 text-[var(--accent-200)] font-medium">
+                            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                              <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.707 1.707L13 9.414V15a1 1 0 01-.553.894l-4 2A1 1 0 017 17v-7.586L3.293 5.707A1 1 0 013 5V3z" clipRule="evenodd" />
+                            </svg>
+                            {filteredOrderImports.length} shown
+                          </span>
+                        </>
+                      )}
+                      {selectedRowKeys.size > 0 && (
+                        <>
+                          <span className="opacity-30">·</span>
+                          <span className="flex items-center gap-1">
+                            <span className="rounded-full bg-[var(--primary-100)] px-1.5 py-0.5 text-[10px] text-[var(--accent-200)]">
+                              {selectedRowKeys.size} selected
+                            </span>
+                            <button onClick={() => setSelectedRowKeys(new Set())} className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer">Clear</button>
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  )}
+                  {/* Bulk delete — full-import mode */}
+                  {!isHeaderOnly && selectedRowKeys.size > 0 && (
+                    <button type="button" onClick={() => setConfirmBulkDeleteAudit(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete {selectedRowKeys.size}
+                    </button>
+                  )}
+                  {/* Bulk delete — header-only mode */}
+                  {isHeaderOnly && selectedJobIds.size > 0 && (
+                    <button type="button" onClick={() => setConfirmBulkDeleteJobs(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete {selectedJobIds.size}
+                    </button>
+                  )}
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
                     className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -5321,10 +6050,11 @@ export default function DocTidyInvoiceAudit() {
                           )
                           if (isCollapsed) return [groupHeader]
                           const dataRows = groupOrders.map((order) => {
-                            const match = invoiceMatchMap.get(order._id) ?? null
+                            const matches = invoiceMatchMap.get(order._id) ?? []
                             // Resolve the matched parse job for vendorNeedsSetup detection.
-                            const matchedJob = match?.job
+                            const matchedJob = matches[0]?.job
                               ?? (order.matchedInvoice?.jobId ? jobsById.get(order.matchedInvoice.jobId) : undefined)
+                              ?? (order.matchedInvoices?.[0]?.jobId ? jobsById.get(order.matchedInvoices[0].jobId) : undefined)
                             const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
@@ -5371,7 +6101,7 @@ export default function DocTidyInvoiceAudit() {
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
                                     ].join(' ')}>
-                                    {auditCellFor(col.id, order, match)}
+                                    {auditCellFor(col.id, order, matches)}
                                   </td>
                                 ))}
                               </tr>

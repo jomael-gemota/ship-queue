@@ -275,13 +275,14 @@ function ChipInput({
           {values.map((value, i) => (
             <span
               key={`${value}-${i}`}
-              className="inline-flex items-center gap-1 rounded-full bg-[var(--primary-100)] py-1 pl-2.5 pr-1.5 text-xs font-medium text-[var(--accent-200)]"
+              title={value}
+              className="inline-flex max-w-[220px] items-center gap-1 rounded-full bg-[var(--primary-100)] py-1 pl-2.5 pr-1.5 text-xs font-medium text-[var(--accent-200)]"
             >
-              {value}
+              <span className="truncate">{value}</span>
               <button
                 type="button"
                 onClick={() => onChange(values.filter((_, idx) => idx !== i))}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full opacity-60 hover:bg-[var(--accent-200)]/15 hover:opacity-100 cursor-pointer"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full opacity-60 hover:bg-[var(--accent-200)]/15 hover:opacity-100 cursor-pointer"
                 aria-label={`Remove ${value}`}
               >
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
