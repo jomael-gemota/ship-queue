@@ -6,7 +6,7 @@ import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { Tooltip } from '../components/Tooltip'
 import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhImportSource, hhPlaceActionTitle, hhPlaceableOrders, hhProgressActivity, shortHhBatchId } from '../lib/hhSportswear'
-import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
   ClipboardIcon,
   ClockIcon,
@@ -323,10 +323,10 @@ export default function HHSportswear() {
                         busy={cartDraftBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
-                      {!orderDetails && hhPlaceableOrders(group.children).length > 0 ? (
+                      {hhPlaceableOrders(group.children).length > 0 ? (
                         <HHPlaceButton
                           size="sm"
-                          title={hhPlaceActionTitle(placeOrderEnabled)}
+                          title={hhPlaceActionTitle(placeOrderEnabled, hhBrand(brand).supplier, brand !== 'thorogood')}
                           busy={placeBusyId === group.id}
                           onClick={() => setPendingAction({ type: 'place', target: 'group', group })}
                         />

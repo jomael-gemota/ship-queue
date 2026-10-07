@@ -435,13 +435,8 @@ function requestBrand(req: Request): HHBrandId {
   return hhBrandFromRequest(req);
 }
 
-function rejectOrderDetailsPlace(req: Request, res: Response): boolean {
-  if (hhDraftMode(requestBrand(req)) !== 'order-details') return false;
-  const name = hhBrand(requestBrand(req)).name;
-  res.status(400).json({
-    message: `${name} drafts are saved on the portal and are not submitted.`,
-  });
-  return true;
+function placeSupplierName(req: Request): string {
+  return hhBrand(requestBrand(req)).supplier;
 }
 
 function isBrandGroup(group: { brand?: string } | null | undefined, req: Request): group is NonNullable<typeof group> {
@@ -956,10 +951,9 @@ export const placeGroupCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Group not found' });
       return;
     }
-    if (rejectOrderDetailsPlace(req, res)) return;
     if (!group.children.some(childCanPlace)) {
       res.status(400).json({
-        message: 'No Ready orders to place. Cart must match the live Helly Hansen draft.',
+        message: `No Ready orders to place. Cart must match the live ${placeSupplierName(req)} draft.`,
       });
       return;
     }
@@ -994,14 +988,13 @@ export const placeOrderCart = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ message: 'Order not found' });
       return;
     }
-    if (rejectOrderDetailsPlace(req, res)) return;
     if (isHhPlaced(order)) {
       res.status(409).json({ message: 'This order is already placed.' });
       return;
     }
     if (!childCanPlace(order)) {
       res.status(400).json({
-        message: 'This order is not Ready to place. Match the live Helly Hansen cart first.',
+        message: `This order is not Ready to place. Match the live ${placeSupplierName(req)} cart first.`,
       });
       return;
     }

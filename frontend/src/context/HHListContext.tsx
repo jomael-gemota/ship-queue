@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
-import { hhBrand, hhBrandFromPath, hhUsesOrderDetailsDraft, type HHBrandId } from '../lib/hhBrand'
+import { hhBrand, hhBrandFromPath, type HHBrandId } from '../lib/hhBrand'
 import { flashHHGroupRow } from '../components/hh/hhUi'
 import {
   hhGroupMatchesQuery,
@@ -251,19 +251,17 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
-    const orderDetails = hhUsesOrderDetailsDraft(brand)
     if (sessionBrandRef.current !== brand) {
       sessionBrandRef.current = brand
       setSessionCheck(null)
       setSyncStatus(null)
       setSkuRules(null)
-      if (orderDetails) setPlaceOrderEnabled(false)
     }
     const load = () => {
       getHHB2bConfig(brand)
         .then((res) => {
           if (cancelled) return
-          setPlaceOrderEnabled(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
+          setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
           setSessionCheck(res.data.sessionCheck)
           setSkuRules({
             prefixes: res.data.skuPrefixes ?? [],

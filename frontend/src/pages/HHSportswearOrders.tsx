@@ -6,7 +6,7 @@ import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifyCompare, HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import { deleteHHGroup, deleteHHOrder, downloadHHGroupExport, formatCreatedAt, hhCartCanVerify, hhDraftableOrders, hhExcludedItems, hhFilterSummary, hhGroupAllPlaced, hhGroupHasPlaced, hhHasCartDraft, hhHasSyncedDetails, hhOrderCanDraft, hhOrderCanPlace, hhOrderDetailsTitle, hhOrderDraftTitle, hhOrderIsLocked, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
 import {
   DeleteBatchButton,
@@ -208,10 +208,10 @@ export default function HHSportswearOrders() {
               orders={group.children}
             />
           ) : null}
-          {!orderDetails && hhPlaceableOrders(group.children).length > 0 ? (
+          {hhPlaceableOrders(group.children).length > 0 ? (
             <HHPlaceButton
               size="md"
-              title={hhPlaceActionTitle(placeOrderEnabled)}
+              title={hhPlaceActionTitle(placeOrderEnabled, hhBrand(brand).supplier, brand !== 'thorogood')}
               busy={placeBusyId === group.id}
               onClick={() => setPendingAction({ type: 'place', target: 'group', group })}
             />
@@ -398,10 +398,10 @@ export default function HHSportswearOrders() {
                         busy={cartDraftBusyId === order.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
                       />
-                      {!orderDetails && hhOrderCanPlace(order) ? (
+                      {hhOrderCanPlace(order) ? (
                         <HHPlaceButton
                           size="sm"
-                          title={hhPlaceActionTitle(placeOrderEnabled)}
+                          title={hhPlaceActionTitle(placeOrderEnabled, hhBrand(brand).supplier, brand !== 'thorogood')}
                           busy={placeBusyId === order.id}
                           onClick={() => setPendingAction({ type: 'place', target: 'order', order })}
                         />

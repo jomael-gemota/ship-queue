@@ -70,9 +70,9 @@ function sessionSummary(data: HHB2bConfig | null): string {
   return `${sessionLabel(data.sessionCheck.status)} · Cookie updated ${formatCreatedAt(data.cookieUpdatedAt)}`
 }
 
-function portalSummary(url: string): string {
-  const host = url.trim().replace(/^https?:\/\//, '')
-  return host || 'No portal address'
+function portalSummary(url: string, enabled: boolean): string {
+  const host = url.trim().replace(/^https?:\/\//, '') || 'No portal address'
+  return `${host} · Place Order ${enabled ? 'on' : 'off'}`
 }
 
 function accountSummary(catalogValue: string, accountValue: string, enabled: boolean): string {
@@ -401,17 +401,21 @@ export default function HHSportswearConfig() {
     (baseUrl !== saved.baseUrl ||
       alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
       !sameCheckTimes(checkTimes, savedTimes) ||
+      placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
       (!orderDetails &&
         (catalog !== saved.catalog ||
           accountId !== saved.accountId ||
-          placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
           !sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
           !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings'))) ||
       cookie.trim().length > 0 ||
       clearCookie ||
       (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
 
-  const portalDirty = Boolean(orderDetails && saved && baseUrl !== saved.baseUrl)
+  const portalDirty = Boolean(
+    orderDetails &&
+      saved &&
+      (baseUrl !== saved.baseUrl || placeOrderEnabled !== Boolean(saved.placeOrderEnabled)),
+  )
   const accountDirty = Boolean(
     !orderDetails &&
       saved &&
@@ -504,6 +508,7 @@ export default function HHSportswearConfig() {
       const patch: HHB2bConfigPatch = orderDetails
         ? {
             baseUrl,
+            placeOrderEnabled,
             skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [],
             alertWebhookUrl,
             sessionCheckTimes: checkTimes,
@@ -522,7 +527,7 @@ export default function HHSportswearConfig() {
       else if (cookie.trim()) patch.cookie = cookie
       const res = await updateHHB2bConfig(brand, patch)
       applySaved(res.data)
-      setPlaceOrderEnabledContext(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
+      setPlaceOrderEnabledContext(Boolean(res.data.placeOrderEnabled))
       setSaveNotice('Saved.')
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : 'Failed to save configurations')
@@ -567,7 +572,7 @@ export default function HHSportswearConfig() {
           </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
             Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session. Cart
-            drafts are created on Thorogood and are not submitted. Place Order stays off.
+            drafts are created on Thorogood and stay drafts. Place Order starts off.
           </p>
         </div>
 
@@ -575,7 +580,7 @@ export default function HHSportswearConfig() {
         <ConfigSection
           title="Portal"
           description="The signed-in site Ship Queue calls when it drafts a cart."
-          summary={portalSummary(baseUrl)}
+          summary={portalSummary(baseUrl, placeOrderEnabled)}
           open={isOpen('portal')}
           dirty={portalDirty}
           canEdit={canEdit}
@@ -595,6 +600,33 @@ export default function HHSportswearConfig() {
               disabled={busy}
             />
             <p className={hintClass}>Envoy portal, e.g. {brandDef.baseUrl}</p>
+          </div>
+          <div className="flex items-start gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
+            <div className="min-w-0 flex-1">
+              <p className={labelClass}>Place Order</p>
+              <p className={`mt-0.5 ${hintClass}`}>
+                {placeOrderEnabled
+                  ? 'On. Place Order re-checks the live cart. Portal submit is not connected yet, so the order is not sent.'
+                  : 'Off. Place Order still re-checks the live cart, but nothing is submitted.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={placeOrderEnabled}
+              aria-label="Place Order enabled"
+              disabled={busy || !canEdit}
+              onClick={() => setPlaceOrderEnabled((current) => !current)}
+              className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                busy || !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              } ${placeOrderEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  placeOrderEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
           </div>
         </ConfigSection>
 

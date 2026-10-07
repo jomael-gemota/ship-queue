@@ -341,11 +341,9 @@ function DetailBody({
             </p>
             <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
               {matchedCount} matched
-              {orderDetails
-                ? ' · Place Order stays off'
-                : mismatchCount > 0
-                  ? ' · Place Order blocked until this matches'
-                  : ' · Place Order will re-check first'}
+              {mismatchCount > 0
+                ? ' · Place Order blocked until this matches'
+                : ' · Place Order will re-check first'}
             </p>
           </div>
           <div className="overflow-x-auto px-1 pb-1">

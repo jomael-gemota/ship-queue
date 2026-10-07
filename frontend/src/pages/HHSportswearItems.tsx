@@ -7,7 +7,7 @@ import { Tooltip } from '../components/Tooltip'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
-import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
+import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
   getHHB2bConfig,
   hhCartErrorMentionsSku,
@@ -503,10 +503,10 @@ export default function HHSportswearItems() {
               busy={cartDraftBusyId === order.id}
               onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
             />
-            {!orderDetails && hhOrderCanPlace(order) ? (
+            {hhOrderCanPlace(order) ? (
               <HHPlaceButton
                 size="sm"
-                title={hhPlaceActionTitle(placeOrderEnabled)}
+                title={hhPlaceActionTitle(placeOrderEnabled, hhBrand(brand).supplier, brand !== 'thorogood')}
                 busy={placeBusyId === order.id}
                 onClick={() => setPendingAction({ type: 'place', target: 'order', order })}
               />

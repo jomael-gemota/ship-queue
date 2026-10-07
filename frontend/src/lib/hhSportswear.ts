@@ -190,10 +190,10 @@ export function hhPlacePlan<T extends Pick<HHChildOrder, 'orderId' | 'cartStatus
   }
 }
 
-export function hhPlaceActionTitle(enabled: boolean): string {
-  return enabled
-    ? 'Place matching orders on Helly Hansen'
-    : 'Place Order is off in Configurations — re-checks the live cart only'
+export function hhPlaceActionTitle(enabled: boolean, supplier = 'Helly Hansen', submits = enabled): string {
+  if (!enabled) return 'Place Order is off in Configurations — re-checks the live cart only'
+  if (!submits) return `${supplier} Place Order is on, but submit is not connected — re-checks the live cart only`
+  return `Place matching orders on ${supplier}`
 }
 
 export function hhCartIsPlaced(status: HHCartStatus): boolean {

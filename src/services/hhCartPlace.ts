@@ -147,11 +147,15 @@ async function placeChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
 
   const brand = hhBrandId(group.brand);
   const enabled = await isHhPlaceOrderEnabled(brand);
-  if (!enabled) {
+  if (!enabled || brand === 'thorogood') {
     run.preview += 1;
     lastSuccessAt = new Date();
     lastError = null;
-    console.log(`${LOG} Place Order is off — re-checked ${child.orderId}, did not submit`);
+    console.log(
+      brand === 'thorogood' && enabled
+        ? `${LOG} Thorogood Place Order is on — submit is not connected, re-checked ${child.orderId}, did not submit`
+        : `${LOG} Place Order is off — re-checked ${child.orderId}, did not submit`
+    );
     return;
   }
 

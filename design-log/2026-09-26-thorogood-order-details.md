@@ -23,7 +23,7 @@ Thorogood is a third brand on the same screens and `HHOrderGroup` model
 | API | `/api/thorogood` |
 | Draft | Order details sync. No supplier HTTP call. |
 | Reference Number | The PO, until an API returns an order number |
-| Place Order | Off. The action is hidden and the API refuses it. |
+| Place Order | Switch on Configurations, default off. Off re-checks and does not submit. On is saved, and still does not submit until the portal place call exists. |
 
 After details are Synced, the cart draft stores `b2bDraftId` as `details:<child id>`
 and copies the order details into the cart snapshot. The check compares that
@@ -36,4 +36,4 @@ overrides that jar. See `design-log/2026-10-07-b2b-thorogood-cookie.md`.
 
 - A later Thorogood API replaces `draftMode: 'order-details'` with a live
   draft client. Existing `details:` rows are not live documents.
-- Place Order must stay refused until that client can submit.
+- Place Order is a saved switch and defaults to off. Turning it on does not submit until the portal place call exists.

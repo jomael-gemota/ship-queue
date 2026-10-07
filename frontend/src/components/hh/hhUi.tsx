@@ -1503,6 +1503,8 @@ function confirmCopy(
   placeOrderEnabled: boolean,
   orderDetails: boolean,
   brandName: string,
+  supplier: string,
+  placeSubmits: boolean,
 ) {
   const isGroup = pending.target === 'group'
   const orderId = pending.target === 'order' ? pending.order.orderId : null
@@ -1524,21 +1526,23 @@ function confirmCopy(
       title,
       body: (
         <>
-          {placeOrderEnabled ? (
+          {placeSubmits ? (
             isGroup ? (
               <span>
-                Only verified orders are placed. Helly Hansen is checked again first; a cart that no
+                Only verified orders are placed. {supplier} is checked again first; a cart that no
                 longer matches is skipped.
               </span>
             ) : (
               <span>
-                This will re-check the live Helly Hansen cart, then place order{' '}
+                This will re-check the live {supplier} cart, then place order{' '}
                 <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
               </span>
             )
           ) : (
             <span>
-              Place Order is off in Configurations. This re-checks the live Helly Hansen cart
+              {placeOrderEnabled
+                ? `${supplier} Place Order is on, but submit is not connected. This re-checks the live cart`
+                : `Place Order is off in Configurations. This re-checks the live ${supplier} cart`}
               {isGroup ? (
                 ' for the verified orders below.'
               ) : (
@@ -1550,8 +1554,8 @@ function confirmCopy(
             </span>
           )}
           {isGroup ? <PlaceOrderPlan placingIds={plan.placingIds} skipGroups={plan.skipGroups} /> : null}
-          {placeOrderEnabled ? null : (
-            <span className="mt-3 block">Helly Hansen will not receive Place Order.</span>
+          {placeSubmits ? null : (
+            <span className="mt-3 block">{supplier} will not receive Place Order.</span>
           )}
         </>
       ),
@@ -1740,7 +1744,14 @@ export function HHConfirmModal({
 }) {
   const orderingBrand = useOrderingBrand()
   const orderDetails = orderingBrand.draftMode === 'order-details'
-  const copy = confirmCopy(pending, placeOrderEnabled, orderDetails, orderingBrand.name)
+  const copy = confirmCopy(
+    pending,
+    placeOrderEnabled,
+    orderDetails,
+    orderingBrand.name,
+    orderingBrand.supplier,
+    placeOrderEnabled && orderingBrand.id !== 'thorogood',
+  )
   const [draftCart, setDraftCart] = useState(true)
   const [stampSellerNotes, setStampSellerNotes] = useState(true)
   const isResync = pending.type === 'resync'

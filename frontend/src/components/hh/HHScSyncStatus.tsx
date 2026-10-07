@@ -195,7 +195,7 @@ export function HHScSyncStatus() {
   const title = [
     ago ? `Last success ${ago}` : null,
     orderDetails
-      ? 'Fills details after upload, then drafts a cart on the portal and checks it against those details. Place Order stays off.'
+      ? 'Fills details after upload, then drafts a cart on the portal and checks it against those details. Place Order re-checks first and stays off until Configurations turns it on.'
       : 'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
   ]
     .filter(Boolean)
