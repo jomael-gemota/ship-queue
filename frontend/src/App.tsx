@@ -38,7 +38,11 @@ function App() {
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
                 <Route path="/doc-tidy" element={<Navigate to="/doc-tidy/invoice-audit" replace />} />
+                {/* Invoice Audit — addressable routes so refresh / deep-links restore position */}
                 <Route path="/doc-tidy/invoice-audit" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/orgs/:orgId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
                 {['/ordering/hh-sportswear', '/ordering/hh-workwear'].map((path) => (
                   <Route key={path} path={path} element={<HHSportswearLayout />}>

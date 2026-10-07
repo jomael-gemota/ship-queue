@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -2596,6 +2596,8 @@ export default function DocTidyInvoiceAudit() {
   const { user: currentUser } = useAuth()
   const isAdmin = currentUser?.role === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const { orgId: urlOrgId, workspaceId: urlWorkspaceId } = useParams<{ orgId?: string; workspaceId?: string }>()
 
   /* ── Global success banner (e.g. after OAuth redirects back) ── */
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null)
@@ -3251,6 +3253,67 @@ export default function DocTidyInvoiceAudit() {
 
   useEffect(() => { void loadOrganizations() }, [loadOrganizations])
 
+  /* ── Restore navigation state from URL on page load / refresh ── */
+  const urlRestoredRef = useRef(false)
+  useEffect(() => {
+    // Only execute once — after both orgs and workspaces finish their initial fetch.
+    if (orgLoading || wsLoading || urlRestoredRef.current) return
+    urlRestoredRef.current = true
+
+    if (urlWorkspaceId) {
+      const ws = workspaces.find((w) => w._id === urlWorkspaceId)
+      if (!ws) return
+      // Restore org context if the URL includes an org segment.
+      if (urlOrgId) {
+        const org = organizations.find((o) => o._id === urlOrgId)
+        if (org && org.hasAccess !== false) setActiveOrg(org)
+      }
+      // Mirror enterWorkspace initialisation without calling navigate() (URL already correct).
+      setActiveWorkspace(ws)
+      setView('audit')
+      setWorkspaceTab('audit')
+      setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
+      setAuditColOrder(DEFAULT_AUDIT_COL_ORDER)
+      setEmailColOrder(DEFAULT_EMAIL_COL_ORDER)
+      setPdfColOrder(DEFAULT_PDF_IMPORT_COL_ORDER)
+      authApi
+        .get<{ data: { auditColumnOrder?: string[]; wsEmailColumnOrder?: string[]; pdfImportColOrder?: string[] } }>(
+          `/doc-tidy/ui-prefs?workspaceId=${ws._id}`
+        )
+        .then((res) => {
+          const { auditColumnOrder, wsEmailColumnOrder, pdfImportColOrder } = res.data
+          if (auditColumnOrder?.length) {
+            const valid = auditColumnOrder.filter(
+              (id) => INVOICE_AUDIT_COLUMNS.some((c) => c.id === id) || /^dyn_(doc|li)_/.test(id)
+            )
+            setAuditColOrder(mergeColOrder(valid, DEFAULT_AUDIT_COL_ORDER))
+          }
+          if (wsEmailColumnOrder?.length) {
+            const valid = wsEmailColumnOrder.filter((id): id is WorkspaceEmailColumnId =>
+              WORKSPACE_EMAIL_COLUMNS.some((c) => c.id === id)
+            )
+            setEmailColOrder(mergeColOrder(valid, DEFAULT_EMAIL_COL_ORDER) as WorkspaceEmailColumnId[])
+          }
+          if (pdfImportColOrder?.length) {
+            const valid = pdfImportColOrder.filter((id): id is PdfImportColumnId =>
+              PDF_IMPORT_COLUMNS.some((c) => c.id === id)
+            )
+            setPdfColOrder(mergeColOrder(valid, DEFAULT_PDF_IMPORT_COL_ORDER) as PdfImportColumnId[])
+          }
+        })
+        .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+    } else if (urlOrgId) {
+      const org = organizations.find((o) => o._id === urlOrgId)
+      if (org && org.hasAccess !== false) {
+        setActiveOrg(org)
+        setView('workspaces')
+      }
+    }
+  // This effect intentionally runs only once (after initial data load). The ref
+  // guard prevents re-execution when workspaces / orgs lists update later.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgLoading, wsLoading])
+
   // Column orders are now loaded per-workspace inside enterWorkspace().
   // The old global-singleton fetch on mount has been removed.
 
@@ -3693,14 +3756,22 @@ export default function DocTidyInvoiceAudit() {
         }
       })
       .catch(() => { /* Non-critical — silently fall back to defaults. */ })
+    // Push the workspace URL so the browser address bar and history stay in sync.
+    if (ws.organizationId) {
+      navigate(`/doc-tidy/invoice-audit/orgs/${ws.organizationId}/workspaces/${ws._id}`)
+    } else {
+      navigate(`/doc-tidy/invoice-audit/workspaces/${ws._id}`)
+    }
   }
 
   const leaveWorkspace = () => {
     // Go back to the org's workspace list if we came from one, else org landing
     if (activeOrg) {
       setView('workspaces')
+      navigate(`/doc-tidy/invoice-audit/orgs/${activeOrg._id}`)
     } else {
       setView('organizations')
+      navigate('/doc-tidy/invoice-audit')
     }
     setActiveWorkspace(null)
     setJobs([])
@@ -3738,11 +3809,13 @@ export default function DocTidyInvoiceAudit() {
     if (org.hasAccess === false) return   // safety guard — locked orgs must not be opened
     setActiveOrg(org)
     setView('workspaces')
+    navigate(`/doc-tidy/invoice-audit/orgs/${org._id}`)
   }
 
   const leaveOrg = () => {
     setActiveOrg(null)
     setView('organizations')
+    navigate('/doc-tidy/invoice-audit')
   }
 
   const openEditor = (target: DocTidyWorkspace | 'new') => {
