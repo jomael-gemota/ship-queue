@@ -2720,6 +2720,8 @@ export default function DocTidyInvoiceAudit() {
   /* Fetch Emails button state */
   const [emailFetching, setEmailFetching] = useState(false)
   const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
+  /** Non-error informational notice (e.g. "poller already running") — shown as info blue. */
+  const [emailFetchInfo, setEmailFetchInfo] = useState<string | null>(null)
 
   /* Background poller / manual-fetch SSE status chips */
   const [pollerRunning, setPollerRunning] = useState(false)
@@ -3352,6 +3354,7 @@ export default function DocTidyInvoiceAudit() {
   const handleFetchEmails = async () => {
     setEmailFetching(true)
     setEmailFetchNotice(null)
+    setEmailFetchInfo(null)
     setEmailError(null)
     try {
       const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
@@ -3368,7 +3371,13 @@ export default function DocTidyInvoiceAudit() {
       // Refresh the table so newly imported emails appear immediately.
       void fetchEmails(true)
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Failed to fetch emails')
+      const msg = err instanceof Error ? err.message : 'Failed to fetch emails'
+      // "Already running" responses from the server aren't real errors — show them as info.
+      if (/already.{0,30}running|poller.*running|running.*poller|currently.{0,30}fetch|fetch.*in.{0,10}progress/i.test(msg)) {
+        setEmailFetchInfo('Email extraction is already in progress — new emails will appear here shortly once it completes.')
+      } else {
+        setEmailError(msg)
+      }
     } finally {
       setEmailFetching(false)
     }
@@ -4812,6 +4821,7 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'emails' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
+              {emailFetchInfo && <Banner kind="info" onDismiss={() => setEmailFetchInfo(null)}>{emailFetchInfo}</Banner>}
               {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
 
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
