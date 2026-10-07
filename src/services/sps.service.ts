@@ -221,15 +221,18 @@ function tryParseJson(text: string): unknown {
  * Normalise a directory-listing response into a flat SpsDocumentRecord array.
  * Handles string[], object[] (name/href/size), or a root wrapper object.
  */
-function normaliseDocumentList(data: unknown, docType: string): SpsDocumentRecord[] {
-  const baseUrl = `${SPS_DATA_OUT_BASE}/${docType}/`;
+function normaliseDocumentList(data: unknown, docType: string | undefined): SpsDocumentRecord[] {
+  const baseUrl    = docType ? `${SPS_DATA_OUT_BASE}/${docType}/` : `${SPS_DATA_OUT_BASE}/`;
+  const docTypeStr = docType ?? 'unknown';
 
   function toRecord(item: unknown, idx: number): SpsDocumentRecord {
     if (typeof item === 'string') {
+      // Could be a filename ("PO584615.xml") or a directory name ("PO", "IN")
+      const isDir = !item.includes('.')
       return {
         filename:    item,
-        downloadUrl: `${baseUrl}${encodeURIComponent(item)}`,
-        docType,
+        downloadUrl: isDir ? `${SPS_DATA_OUT_BASE}/${item}/` : `${baseUrl}${encodeURIComponent(item)}`,
+        docType:     isDir ? item : docTypeStr,
         rawData:     item,
       };
     }
@@ -239,7 +242,7 @@ function normaliseDocumentList(data: unknown, docType: string): SpsDocumentRecor
       return {
         filename,
         downloadUrl: String(obj.href ?? obj.url ?? `${baseUrl}${encodeURIComponent(filename)}`),
-        docType,
+        docType:     docTypeStr,
         size:        typeof obj.size === 'number' ? obj.size : undefined,
         createdAt:   (obj.lastModified ?? obj.createdAt ?? obj.timestamp)
           ? String(obj.lastModified ?? obj.createdAt ?? obj.timestamp)
@@ -247,7 +250,7 @@ function normaliseDocumentList(data: unknown, docType: string): SpsDocumentRecor
         rawData:     item,
       };
     }
-    return { filename: `document-${idx}`, downloadUrl: baseUrl, docType, rawData: item };
+    return { filename: `document-${idx}`, downloadUrl: baseUrl, docType: docTypeStr, rawData: item };
   }
 
   if (Array.isArray(data)) {
@@ -269,17 +272,20 @@ function normaliseDocumentList(data: unknown, docType: string): SpsDocumentRecor
 /**
  * Lists available document files in the SPS Transaction API v5 out-directory.
  *
- * `GET /transactions/v5/data/out/{docType}/`
+ * Without `params.docType`: lists the root `GET /transactions/v5/data/out/`
+ *   to discover what sub-directories / document types are available.
+ * With `params.docType` (e.g. "PO"): lists `GET /transactions/v5/data/out/PO/`
  *
- * @param params.docType         — Sub-directory to list (default: SPS_DOC_TYPE env var, fallback "PO")
+ * @param params.docType         — Sub-directory to list (omit for root listing)
  * @param params.poNumberFilter  — Client-side filter: only return files whose filename contains this string
  */
 export async function fetchSpsDocuments(
   accessToken: string,
   params: { docType?: string; poNumberFilter?: string; cursor?: string },
 ): Promise<SpsDocumentsPage> {
-  const docType = (params.docType ?? SPS_DOC_TYPE).toUpperCase();
-  const listUrl = new URL(`${SPS_DATA_OUT_BASE}/${docType}/`);
+  const docType  = params.docType?.toUpperCase();
+  const listPath = docType ? `${SPS_DATA_OUT_BASE}/${docType}/` : `${SPS_DATA_OUT_BASE}/`;
+  const listUrl  = new URL(listPath);
   if (params.cursor) listUrl.searchParams.set('cursor', params.cursor);
 
   const res = await fetch(listUrl.toString(), {

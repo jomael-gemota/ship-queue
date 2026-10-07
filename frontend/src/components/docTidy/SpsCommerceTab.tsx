@@ -22,10 +22,14 @@ interface Props {
 
 type DocTypeOption = { label: string; value: string }
 const DOC_TYPE_OPTIONS: DocTypeOption[] = [
-  { label: 'Purchase Orders (PO)', value: 'PO' },
-  { label: 'Invoices (IN)',        value: 'IN' },
-  { label: 'ASN / Ship Notice (SN)', value: 'SN' },
-  { label: 'Other…',              value: '' },
+  { label: '(root) — discover available directories', value: '__root__' },
+  { label: 'PO — Purchase Orders',           value: 'PO'  },
+  { label: '850 — Purchase Orders (EDI)',     value: '850' },
+  { label: 'IN — Invoices',                  value: 'IN'  },
+  { label: '810 — Invoices (EDI)',            value: '810' },
+  { label: 'SN / 856 — Ship Notices (ASN)',  value: 'SN'  },
+  { label: '856 — Ship Notices (EDI)',        value: '856' },
+  { label: 'Other (type manually)…',         value: ''    },
 ]
 
 export default function SpsCommerceTab({ workspaceId }: Props) {
@@ -75,11 +79,12 @@ export default function SpsCommerceTab({ workspaceId }: Props) {
   const effectiveDocType = docType === '' ? customDocType.trim().toUpperCase() : docType
 
   const fetchDocuments = useCallback(async (sourceId: string) => {
-    if (!effectiveDocType) return
+    if (docType !== '__root__' && !effectiveDocType) return
     setFetchLoading(true)
     setFetchError(null)
     try {
-      const params = new URLSearchParams({ docType: effectiveDocType })
+      const params = new URLSearchParams()
+      if (docType !== '__root__') params.set('docType', effectiveDocType)
       if (poFilter.trim()) params.set('poNumber', poFilter.trim())
 
       const res = await authApi.get<SpsDocumentsResponse>(
@@ -310,8 +315,8 @@ export default function SpsCommerceTab({ workspaceId }: Props) {
       {records.length > 0 && (
         <div className="flex flex-col min-h-0 gap-2">
           <p className="text-xs text-[var(--text-200)]">
-            {records.length} document{records.length !== 1 ? 's' : ''} in{' '}
-            <code className="font-mono">out/{effectiveDocType}/</code>
+            {records.length} {docType === '__root__' ? 'director' : 'document'}{records.length !== 1 ? (docType === '__root__' ? 'ies' : 's') : (docType === '__root__' ? 'y' : '')} in{' '}
+            <code className="font-mono">out/{docType === '__root__' ? '' : effectiveDocType + '/'}</code>
             {poFilter.trim() && (
               <> · filtered by <span className="font-mono font-medium text-[var(--text-100)]">{poFilter.trim()}</span></>
             )}
@@ -366,7 +371,7 @@ export default function SpsCommerceTab({ workspaceId }: Props) {
           </svg>
           <p className="text-sm font-medium text-[var(--text-200)]">No documents found</p>
           <p className="text-xs text-[var(--text-200)]">
-            The <code className="font-mono">out/{effectiveDocType}/</code> directory is empty
+            The <code className="font-mono">out/{docType === '__root__' ? '' : effectiveDocType + '/'}</code> directory is empty
             {poFilter.trim() && <>, or no filename contains "{poFilter.trim()}"</>}.
           </p>
         </div>
