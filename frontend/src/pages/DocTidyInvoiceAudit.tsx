@@ -4582,11 +4582,21 @@ export default function DocTidyInvoiceAudit() {
 
               {wsLoading ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
-                      <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
-                      <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
-                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                      <div className="flex-1 px-5 pt-5 pb-4">
+                        <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                        <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="mt-1.5 h-4 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="mt-2 h-3 w-full animate-pulse rounded bg-[var(--bg-300)]" />
+                      </div>
+                      <div className="border-t border-[var(--bg-300)] px-5 py-3 flex items-center justify-between">
+                        <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                          <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -4662,15 +4672,21 @@ export default function DocTidyInvoiceAudit() {
 
           {wsLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
-                  <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
-                  <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
-                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
-                  <div className="mt-4 h-px bg-[var(--bg-300)]" />
-                  <div className="mt-3 flex justify-end gap-2">
-                    <div className="h-6 w-10 animate-pulse rounded bg-[var(--bg-300)]" />
-                    <div className="h-6 w-16 animate-pulse rounded bg-[var(--bg-300)]" />
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                  <div className="flex-1 px-5 pt-5 pb-4">
+                    <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
+                    <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="mt-1.5 h-4 w-1/2 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="mt-2 h-3 w-full animate-pulse rounded bg-[var(--bg-300)]" />
+                  </div>
+                  <div className="border-t border-[var(--bg-300)] px-5 py-3 flex items-center justify-between">
+                    <div className="h-3 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-5 w-8 animate-pulse rounded bg-[var(--bg-300)]" />
+                      <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                    </div>
                   </div>
                 </div>
               ))}
