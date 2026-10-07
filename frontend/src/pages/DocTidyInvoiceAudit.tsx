@@ -6393,7 +6393,7 @@ export default function DocTidyInvoiceAudit() {
                             </tr>
                           )
                           if (isCollapsed) return [groupHeader]
-                          const dataRows = groupOrders.map((order) => {
+                          const dataRows = groupOrders.map((order, orderIdx) => {
                             const matches = invoiceMatchMap.get(order._id) ?? []
                             // Resolve the matched parse job for vendorNeedsSetup detection.
                             const matchedJob = matches[0]?.job
@@ -6402,18 +6402,22 @@ export default function DocTidyInvoiceAudit() {
                             const vendorNeedsSetup = matchedJob?.vendorNeedsSetup === true
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedRowKeys.has(order._id)
+                            const isLastInGroup = orderIdx === groupOrders.length - 1
+                            /** Bottom border that closes each week group visually. */
+                            const groupEndBorder = isLastInGroup ? 'border-b-2 border-b-[var(--bg-300)]' : ''
                             rowIdx++
                             return (
                               <tr key={order._id}
-                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
-                                <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
+                                className={`transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--primary-100)]/15 hover:bg-[var(--primary-100)]/40' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/40'}`}>
+                                {/* Checkbox — carries the left accent stripe that ties rows to their week header */}
+                                <td className={`px-2.5 py-0.5 border-l-2 border-l-[var(--accent-200)]/25 ${groupEndBorder}`} onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
                                     onChange={() => toggleAuditRow(order._id)}
                                     aria-label={`Select order ${order.poNumber}`}
                                     className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                                 </td>
                                 {/* Per-row actions — always visible, second column */}
-                                <td className="px-1.5 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <td className={`px-1.5 py-0.5 text-center ${groupEndBorder}`} onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
                                     {vendorNeedsSetup && matchedJob && (
                                       <button
@@ -6440,7 +6444,7 @@ export default function DocTidyInvoiceAudit() {
                                 {visibleCols.map((col) => (
                                   <td key={col.id}
                                     className={[
-                                      'px-2.5 py-0.5 text-[10px] whitespace-nowrap',
+                                      `px-2.5 py-0.5 text-[10px] whitespace-nowrap ${groupEndBorder}`,
                                       col.center ? 'text-center tabular-nums' : col.numeric ? 'text-right tabular-nums' : '',
                                       auditDragSrc === col.id ? 'bg-sky-100/70 dark:bg-sky-500/15' :
                                         auditDragTarget === col.id ? 'bg-sky-50 dark:bg-sky-500/10 border-l-[3px] border-l-sky-400' : '',
