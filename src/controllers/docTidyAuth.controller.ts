@@ -126,6 +126,7 @@ export const handleDocTidyCallback = async (req: Request, res: Response): Promis
           $set: {
             workspaceId: payload.workspaceId,
             emailAddress: profile.email ?? undefined,
+            gmailAccountPicture: profile.picture ?? undefined,
             gmailRefreshToken: tokens.refresh_token,
             gmailConnectedAt: new Date(),
             gmailConnectedByUserId: payload.userId,

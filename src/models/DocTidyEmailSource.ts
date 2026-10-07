@@ -21,6 +21,9 @@ export interface IDocTidyEmailSource extends Document {
   /** The Gmail address that was authorised; shown in the workspace settings UI. */
   emailAddress?: string;
 
+  /** Google profile picture URL for the connected account. */
+  gmailAccountPicture?: string;
+
   /** OAuth2 refresh token — never returned by API queries (select: false). */
   gmailRefreshToken?: string;
 
@@ -37,6 +40,7 @@ const DocTidyEmailSourceSchema = new Schema<IDocTidyEmailSource>(
     workspaceId: { type: String, required: true },
     label: { type: String, trim: true },
     emailAddress: { type: String },
+    gmailAccountPicture: { type: String },
     gmailRefreshToken: { type: String, select: false },
     gmailConnectedAt: { type: Date },
     gmailConnectedByUserId: { type: String },
