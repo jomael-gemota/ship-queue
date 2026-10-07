@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -40,6 +41,7 @@ import {
   type DocTidyMessage,
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
+  type DocTidyEmailSource,
   type DocTidyOrganization,
   type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
@@ -736,6 +738,48 @@ function WorkspaceEditorDialog({
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
+  /* ── Email sources (only for existing workspaces) ── */
+  const [emailSources, setEmailSources] = useState<DocTidyEmailSource[]>([])
+  const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourcesError, setSourcesError] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!initial) return
+    setSourcesLoading(true)
+    authApi
+      .get<{ data: DocTidyEmailSource[] }>(`/doc-tidy/workspaces/${initial._id}/email-sources`)
+      .then((res) => setEmailSources(res.data))
+      .catch((err) => setSourcesError(err instanceof Error ? err.message : 'Failed to load email sources'))
+      .finally(() => setSourcesLoading(false))
+  }, [initial])
+
+  const handleConnectEmailSource = async () => {
+    if (!initial) return
+    setConnecting(true)
+    try {
+      const res = await authApi.get<{ url: string }>(`/auth/doc-tidy/workspaces/${initial._id}/connect`)
+      window.location.href = res.url
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : 'Failed to initiate connection')
+      setConnecting(false)
+    }
+  }
+
+  const handleDisconnectSource = async (sourceId: string) => {
+    if (!initial) return
+    setDeletingSourceId(sourceId)
+    try {
+      await authApi.delete(`/doc-tidy/workspaces/${initial._id}/email-sources/${sourceId}`)
+      setEmailSources((prev) => prev.filter((s) => s._id !== sourceId))
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : 'Failed to remove email source')
+    } finally {
+      setDeletingSourceId(null)
+    }
+  }
+
   useEffect(() => {
     nameRef.current?.focus()
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -854,6 +898,85 @@ function WorkspaceEditorDialog({
               </p>
             )}
           </div>
+
+          {/* Email Sources — only shown when editing an existing workspace */}
+          {initial && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
+                  Email sources
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleConnectEmailSource()}
+                  disabled={connecting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-xs text-[var(--text-100)] hover:bg-[var(--bg-200)] disabled:opacity-60"
+                >
+                  {connecting ? (
+                    <Spinner className="h-3 w-3 text-[var(--text-200)]" />
+                  ) : (
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                  {connecting ? 'Redirecting…' : 'Connect email account'}
+                </button>
+              </div>
+
+              {sourcesLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
+                  <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" />
+                  Loading…
+                </div>
+              ) : emailSources.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[var(--bg-300)] px-3.5 py-3 text-xs text-[var(--text-200)]">
+                  {'No email account connected. Click "Connect email account" to link a Gmail mailbox to this workspace. Rules in this workspace will not run until a source is connected.'}
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {emailSources.map((src) => (
+                    <li
+                      key={src._id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-[var(--text-100)]">
+                          {src.emailAddress ?? '(unknown address)'}
+                        </p>
+                        {src.gmailConnectedAt && (
+                          <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
+                            Connected {new Date(src.gmailConnectedAt).toLocaleDateString()}
+                            {src.gmailConnectedByName ? ` by ${src.gmailConnectedByName}` : ''}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleDisconnectSource(src._id)}
+                        disabled={deletingSourceId === src._id}
+                        className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-1 text-[10px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-60"
+                      >
+                        {deletingSourceId === src._id ? (
+                          <Spinner className="h-3 w-3 text-rose-500" />
+                        ) : (
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        Disconnect
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {sourcesError && (
+                <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2 text-xs text-rose-600 dark:text-rose-400">
+                  {sourcesError}
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2.5 text-xs text-rose-600 dark:text-rose-400">
@@ -2434,6 +2557,10 @@ const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
 export default function DocTidyInvoiceAudit() {
   const { user: currentUser } = useAuth()
   const isAdmin = currentUser?.role === 'admin'
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  /* ── Global success banner (e.g. after OAuth redirects back) ── */
+  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null)
 
   /* ── View state ── */
   type View = 'organizations' | 'workspaces' | 'audit'
@@ -2584,6 +2711,34 @@ export default function DocTidyInvoiceAudit() {
       const base = res.data.lastPollAt ? new Date(res.data.lastPollAt).getTime() : Date.now()
       setNextSyncAt(new Date(base + intervalMs))
     })
+  }, [])
+
+  /* ── Handle redirect back from per-workspace email source OAuth ── */
+  useEffect(() => {
+    const wsSource = searchParams.get('ws_source')
+    const wsSourceError = searchParams.get('ws_source_error')
+    const wsId = searchParams.get('workspaceId')
+
+    if (wsSource === 'connected') {
+      setGlobalSuccess('Email account connected successfully.')
+      // Auto-open the workspace editor so the user can see the new source.
+      if (wsId) {
+        setWorkspaces((prev) => {
+          const ws = prev.find((w) => w._id === wsId)
+          if (ws) setEditTarget(ws)
+          return prev
+        })
+      }
+      setSearchParams({}, { replace: true })
+    } else if (wsSourceError) {
+      setWsError(
+        wsSourceError === 'no_refresh_token'
+          ? 'Email connection failed: no refresh token returned. Try reconnecting and ensure you grant all requested permissions.'
+          : 'Email connection failed. Please try again.'
+      )
+      setSearchParams({}, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ── PDF Imports tab ── */
@@ -4202,6 +4357,7 @@ export default function DocTidyInvoiceAudit() {
       {/* ── Global error banners ── */}
       {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
       {orgError && <Banner kind="error" onDismiss={() => setOrgError(null)}>{orgError}</Banner>}
+      {globalSuccess && <Banner kind="success" onDismiss={() => setGlobalSuccess(null)}>{globalSuccess}</Banner>}
 
       {/* ══════════════════════════ ORGANIZATIONS LANDING ══════════════════════════ */}
       {view === 'organizations' && (

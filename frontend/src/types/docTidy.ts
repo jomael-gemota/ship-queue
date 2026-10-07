@@ -337,6 +337,22 @@ export function normalizeVendorName(name: string): string {
 /* ──────────────────────────────────────────── Invoice Workspaces ── */
 
 /**
+ * A Gmail OAuth source connected to a specific workspace.
+ * Refresh tokens are never included by the API.
+ */
+export interface DocTidyEmailSource {
+  _id: string
+  workspaceId: string
+  /** Optional friendly label, e.g. "Brand A mailbox". */
+  label?: string
+  emailAddress?: string
+  gmailConnectedAt?: string
+  gmailConnectedByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
  * A named workspace that owns a set of filter rules (one-to-many via
  * `rule.workspaceId`). Rules are managed from within the workspace.
  */
@@ -352,6 +368,8 @@ export interface DocTidyWorkspace {
    * `header-only`    — only PO # is required; PO-level matching; line-item columns hidden.
    */
   importMode?: 'full' | 'header-only'
+  /** Per-workspace Gmail sources. Populated on demand by fetching /email-sources. */
+  emailSources?: DocTidyEmailSource[]
   createdAt: string
   updatedAt: string
 }
