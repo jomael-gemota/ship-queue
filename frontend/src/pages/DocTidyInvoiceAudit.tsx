@@ -6364,8 +6364,8 @@ export default function DocTidyInvoiceAudit() {
                             })
                           }
                           const groupHeader = (
-                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10">
-                              <td className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-2 border-l-[3px] border-l-[var(--accent-200)]"
+                            <tr key={`week-${weekKey}`} className="sticky top-[33px] z-10 drop-shadow-[0_2px_6px_rgba(0,0,0,0.10)] dark:drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]">
+                              <td className="border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-2.5 py-1 border-l-[3px] border-l-[var(--accent-200)]"
                                 onClick={(e) => e.stopPropagation()}>
                                 <input type="checkbox" checked={allGroupSelected}
                                   ref={(el) => { if (el) el.indeterminate = someGroupSelected && !allGroupSelected }}
@@ -6374,7 +6374,7 @@ export default function DocTidyInvoiceAudit() {
                                   className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent-200)]" />
                               </td>
                               <td colSpan={totalCols - 1} onClick={toggleWeek}
-                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-2">
+                                className="cursor-pointer select-none border-y border-[var(--primary-200)] bg-[var(--primary-100)] dark:border-[var(--primary-200)]/60 px-3 py-1">
                                 <div className="flex items-center gap-2">
                                   <svg className={`h-3 w-3 shrink-0 text-[var(--accent-200)] transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
