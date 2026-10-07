@@ -3,7 +3,11 @@ import passport from 'passport';
 import { googleCallback, getMe, logout } from '../controllers/auth.controller';
 import { getDriveAuthUrl, handleDriveCallback } from '../controllers/driveAuth.controller';
 import { getDropboxAuthUrl, handleDropboxCallback } from '../controllers/dropboxAuth.controller';
-import { getDocTidyAuthUrl, handleDocTidyCallback } from '../controllers/docTidyAuth.controller';
+import {
+  getDocTidyAuthUrl,
+  getWorkspaceEmailSourceAuthUrl,
+  handleDocTidyCallback,
+} from '../controllers/docTidyAuth.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -78,6 +82,14 @@ router.get('/dropbox/callback', handleDropboxCallback);
 // write) that extraction rules run against. Admin-only.
 router.get('/doc-tidy/connect', requireAuth, requireAdmin, getDocTidyAuthUrl);
 router.get('/doc-tidy/callback', handleDocTidyCallback);
+// Per-workspace email source connect — allows each workspace to use its own
+// Gmail account instead of the shared global mailbox. Any authenticated user
+// may connect a source for a workspace they have access to.
+router.get(
+  '/doc-tidy/workspaces/:workspaceId/connect',
+  requireAuth,
+  getWorkspaceEmailSourceAuthUrl
+);
 
 // Protected — returns the currently authenticated user
 router.get('/me', requireAuth, getMe);

@@ -2,6 +2,20 @@ import DocTidyMessage from '../models/DocTidyMessage';
 import type { IDocTidyAttachment } from '../models/DocTidyMessage';
 import DocTidyRule, { type IDocTidyRule } from '../models/DocTidyRule';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
+import DocTidyEmailSource from '../models/DocTidyEmailSource';
+
+/**
+ * Thrown when a rule cannot run because its workspace has no connected email
+ * source. Treated as a configuration skip rather than an extraction failure —
+ * it is recorded on the rule for diagnostics but excluded from the global
+ * poll-error banner so other workspaces' results are unaffected.
+ */
+export class NoEmailSourceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoEmailSourceError';
+  }
+}
 import { broadcast } from './docTidyEvents';
 import {
   buildGmailQuery,
@@ -39,6 +53,8 @@ export interface RunAllRulesResult {
     matched?: number;
     imported?: number;
     error?: string;
+    /** True when the rule was skipped due to a missing email source (not a real extraction failure). */
+    configSkip?: boolean;
   }[];
   imported: number;
 }
@@ -115,6 +131,33 @@ function filterAttachments(msg: ParsedGmailMessage, rule: IDocTidyRule) {
 }
 
 /**
+ * Resolves the Gmail refresh token to use for a given workspace.
+ *
+ * - If a workspaceId is supplied, only workspace-level sources are checked.
+ *   No fallback to the global config is performed; if the workspace has no
+ *   connected source, `undefined` is returned and the caller should surface
+ *   an appropriate error.
+ * - If no workspaceId is supplied (e.g. an unassigned rule), the global
+ *   `DocTidyConfig.gmailRefreshToken` is used instead.
+ *
+ * Returns `undefined` if no token is available.
+ */
+export async function resolveWorkspaceRefreshToken(
+  workspaceId?: string
+): Promise<string | undefined> {
+  if (workspaceId) {
+    const source = await DocTidyEmailSource.findOne({ workspaceId })
+      .select('+gmailRefreshToken')
+      .sort({ gmailConnectedAt: -1 })
+      .lean();
+    return source?.gmailRefreshToken ?? undefined;
+  }
+
+  const config = await getDocTidyConfigDoc(true);
+  return config.gmailRefreshToken ?? undefined;
+}
+
+/**
  * Runs one rule end to end: query Gmail, verify each hit locally, copy
  * attachments into the configured Drive folder, and upsert the results.
  *
@@ -123,12 +166,18 @@ function filterAttachments(msg: ParsedGmailMessage, rule: IDocTidyRule) {
  * attachments are not re-uploaded.
  */
 export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}): Promise<RunRuleResult> {
-  const config = await getDocTidyConfigDoc(true);
-  const refreshToken = config.gmailRefreshToken;
+  const refreshToken = await resolveWorkspaceRefreshToken(rule.workspaceId?.toString());
 
   if (!refreshToken) {
-    throw new Error('The Doc Tidy mailbox is not connected. An admin can connect it in Settings.');
+    throw new NoEmailSourceError(
+      rule.workspaceId
+        ? 'No email source is connected for this workspace. An admin can connect one in the workspace settings.'
+        : 'The Doc Tidy mailbox is not connected. An admin can connect it in Settings.'
+    );
   }
+
+  // Drive destination is always read from the global config (no per-workspace override yet).
+  const config = await getDocTidyConfigDoc(false);
 
   const query = buildGmailQuery({
     fromAddresses: rule.fromAddresses,
@@ -296,11 +345,17 @@ export async function runEnabledRules(options: RunRuleOptions = {}): Promise<Run
       } catch (error) {
         // One failing rule should not stop the rest of the batch.
         const message = (error as Error).message || 'Extraction failed';
+        const isConfigSkip = error instanceof NoEmailSourceError;
         rule.lastRunAt = new Date();
         rule.lastRunError = message;
         await rule.save();
 
-        result.results.push({ ruleId: String(rule._id), name: rule.name, error: message });
+        result.results.push({
+          ruleId: String(rule._id),
+          name: rule.name,
+          error: message,
+          ...(isConfigSkip && { configSkip: true }),
+        });
       }
     }
 
@@ -311,8 +366,12 @@ export async function runEnabledRules(options: RunRuleOptions = {}): Promise<Run
       broadcast({ type: 'imported', imported: result.imported });
     }
 
-    const failed = result.results.filter((r) => r.error);
-    lastExtractionError = failed.length ? failed.map((f) => `${f.name}: ${f.error}`).join(' · ') : null;
+    // Configuration skips (no email source) are excluded from the global
+    // error so they don't surface as a fetch failure for the whole run.
+    const extractionFailed = result.results.filter((r) => r.error && !r.configSkip);
+    lastExtractionError = extractionFailed.length
+      ? extractionFailed.map((f) => `${f.name}: ${f.error}`).join(' · ')
+      : null;
 
     return result;
   } catch (err) {
