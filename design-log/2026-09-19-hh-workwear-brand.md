@@ -1,7 +1,7 @@
 # HH Workwear as a second Helly Hansen B2B brand
 
 **Date:** 2026-09-19
-**Updated:** 2026-09-21
+**Updated:** 2026-10-07
 **Status:** accepted
 **Author:** collaborative
 
@@ -27,7 +27,7 @@ Sportswear, scoped by path and `HHOrderGroup.brand`.
 | Catalog | `ASAPSPORT` | `ASAPWW` |
 | Account | `9014876` | `9062220` |
 | Config key | `helly-hansen-sports` | `helly-hansen-work` |
-| Cookie jar | `helly-hansen-sports-b2b` (Sphere id `b2b-hhsportswear`) | `helly-hansen-work-b2b` (manual) |
+| Cookie jar | `helly-hansen-sports-b2b` (Sphere id `b2b-hhsportswear`) | `helly-hansen-work-b2b` (Sphere id `b2b-hhworkwear`) |
 
 SKU parse (`style_color-size`), HTTP (`/api/products/`, `/api/documents/`),
 ship-via `"-"`, and drop-ship `address1` are shared. Seller Central fill is
@@ -41,9 +41,9 @@ stays off per brand until Configurations is toggled.
 
 - Dropship (B2B) lists both brands. Workwear reuses the Sportswear pages; it
   is not a second copy of the UI.
-- Paste the Work B2B cookie on **HH Workwear → Configurations** (or the
-  Helly Hansen Work B2B jar in Settings). Sphere does not refresh Workwear.
+- Workwear’s jar (`helly-hansen-work-b2b`) calls Sphere id `b2b-hhworkwear`.
   Sportswear’s jar (`helly-hansen-sports-b2b`) calls Sphere id `b2b-hhsportswear`.
+  A cookie saved on that brand’s Configurations page still overrides the jar.
 - Batch export of Order ID / PO / B2B order # is on the batch
   (`GET /api/hh-*/:groupId/export`). See
   `design-log/2026-09-12-hh-sportswear-automated-ordering.md`.

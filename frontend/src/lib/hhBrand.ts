@@ -63,7 +63,7 @@ export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
     logo: '/brands/thorogood.jpg',
     logoFit: 'contain',
     logoScale: 1.42,
-    cookieJarKey: '',
+    cookieJarKey: 'thorogood-b2b',
     draftMode: 'order-details',
   },
 }

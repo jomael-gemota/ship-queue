@@ -121,14 +121,8 @@ export async function loadHhB2bCookie(brand: HHBrandId = HH_DEFAULT_BRAND): Prom
     if (fromJar) return fromJar;
   }
 
-  if (brand === 'sportswear') {
-    throw new HhB2bAuthError(
-      `${def.cookieJarName} cookie is empty — wait for Cookie Jar to refresh, or paste a session on Dropship (B2B) → ${def.name} → Configurations`
-    );
-  }
-
   throw new HhB2bAuthError(
-    `${def.cookieJarName} cookie is empty — paste a session on Dropship (B2B) → ${def.name} → Configurations`
+    `${def.cookieJarName} cookie is empty — wait for Cookie Jar to refresh, or paste a session on Dropship (B2B) → ${def.name} → Configurations`
   );
 }
 

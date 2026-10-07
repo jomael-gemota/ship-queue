@@ -1,7 +1,7 @@
 # Cookie Jar worker
 
 **Date:** 2026-09-11
-**Updated:** 2026-10-02
+**Updated:** 2026-10-07
 **Status:** accepted
 **Author:** collaborative
 
@@ -47,12 +47,13 @@ Admins should be able to change name / enabled / cron from a UI later. Adding a
 - Railway needs a second service with start command `npm run cookie-jar`
   (after `npm run build`), sharing `MONGODB_URI`.
 - Settings **Cookie Jar** card is the admin UI. Adding a *fetched* jar type is
-  still a new fetcher + a new seed row. Helly Hansen Work B2B is a **manual**
-  jar (`helly-hansen-work-b2b`): seeded and listed, not refreshed by Sphere.
-  Prefer Dropship (B2B) → HH Workwear → Configurations for that cookie.
-  Helly Hansen Sports B2B (`helly-hansen-sports-b2b`) calls Sphere provider
-  id `b2b-hhsportswear`. That id is not its own jar. A stray row with that
-  key is removed on seed. The job stays off until Enabled is turned on.
+  still a new fetcher + a new seed row. Helly Hansen Sports B2B
+  (`helly-hansen-sports-b2b`) calls Sphere provider id `b2b-hhsportswear`.
+  Helly Hansen Work B2B (`helly-hansen-work-b2b`) calls Sphere provider id
+  `b2b-hhworkwear`. Thorogood B2B (`thorogood-b2b`) calls Sphere provider id
+  `b2b-thorogood`. Those ids are not their own jars. A stray row with one of
+  those keys is removed on seed. The Helly Hansen and Thorogood jobs stay off
+  until Enabled is turned on.
 - Cron is Philippines time (`Asia/Manila`). A start or restart waits for the
   next matching clock time. Set the schedule shorter than the cookie’s real TTL.
 - Seller Central Outdoor Equipped US GETs Sphere
@@ -64,3 +65,12 @@ Admins should be able to change name / enabled / cron from a UI later. Adding a
   `COOKIE_JAR_HH_SPORTSWEAR_TOKEN`, or `COOKIE_JAR_OE_US_TOKEN` when that is
   unset. Same default cron, seeded disabled. A cookie saved on HH Sportswear →
   Configurations still overrides the jar.
+- Helly Hansen Work B2B GETs Sphere `/api/v1/cookie/provide/b2b-hhworkwear`
+  the same way. The jar key stays `helly-hansen-work-b2b`. Token is
+  `COOKIE_JAR_HH_WORKWEAR_TOKEN`, or `COOKIE_JAR_OE_US_TOKEN` when that is
+  unset. Same default cron, seeded disabled. A cookie saved on HH Workwear →
+  Configurations still overrides the jar.
+- Thorogood B2B GETs Sphere `/api/v1/cookie/provide/b2b-thorogood` the same
+  way. The jar key stays `thorogood-b2b`. Token is `COOKIE_JAR_THOROGOOD_TOKEN`,
+  or `COOKIE_JAR_OE_US_TOKEN` when that is unset. Same default cron, seeded
+  disabled. A cookie saved on Thorogood → Configurations still overrides the jar.

@@ -1,5 +1,5 @@
 import { Cron } from 'croner';
-import CookieJar, { COOKIE_JAR_TIMEZONE, isManualCookieJar } from '../models/CookieJar';
+import CookieJar, { COOKIE_JAR_TIMEZONE } from '../models/CookieJar';
 import { getFetcher } from './registry';
 import { executeCookieJar, markUnknownFetcher, truncateError } from './run';
 
@@ -74,9 +74,7 @@ export async function reconcileCookieJars(): Promise<void> {
 
     if (!getFetcher(row.key)) {
       stopJob(row.key);
-      if (!isManualCookieJar(row.key)) {
-        await markUnknownFetcher(row.key);
-      }
+      await markUnknownFetcher(row.key);
       continue;
     }
 

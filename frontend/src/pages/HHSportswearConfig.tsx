@@ -566,8 +566,8 @@ export default function HHSportswearConfig() {
             {canEdit ? null : <ReadOnlyBadge />}
           </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
-            Save the portal address and a session cookie from a logged-in browser. Cart drafts are created on
-            Thorogood and are not submitted. Place Order stays off.
+            Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session. Cart
+            drafts are created on Thorogood and are not submitted. Place Order stays off.
           </p>
         </div>
 
@@ -652,7 +652,7 @@ export default function HHSportswearConfig() {
 
         <ConfigSection
           title="Session"
-          description="Paste the cookie from a logged-in browser. Check session reads the customer record only."
+          description="Cookie Jar refreshes this from Sphere. A cookie pasted here overrides that session. Check session reads the customer record only."
           summary={sessionSummary(saved)}
           open={isOpen('session')}
           dirty={sessionDirty}
@@ -704,8 +704,8 @@ export default function HHSportswearConfig() {
               Session cookie
             </label>
             <p className={hintClass}>
-              Paste the Cookie header from a logged-in {sessionHost} tab, including{' '}
-              <span className="font-mono">thorogood-prod-na-cf_SESSION</span>. Add{' '}
+              Optional. Paste the Cookie header from a logged-in {sessionHost} tab to override the Sphere session,
+              including <span className="font-mono">thorogood-prod-na-cf_SESSION</span>. Add{' '}
               <span className="font-mono">XSRF-TOKEN</span> when the browser shows it. The value is not shown again
               after you save.
             </p>
@@ -901,7 +901,7 @@ export default function HHSportswearConfig() {
           {canEdit ? null : <ReadOnlyBadge />}
         </div>
         <p className="max-w-2xl text-sm text-slate-500 dark:text-[var(--text-200)]">
-          {brand === 'sportswear'
+          {brandDef.cookieJarKey
             ? `Cart drafts go to this ${brandDef.supplier} account. Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session.`
             : `Cart drafts go to this ${brandDef.supplier} account. The session is a cookie you paste from a logged-in browser. Sphere does not refresh it.`}
         </p>
@@ -1069,7 +1069,7 @@ export default function HHSportswearConfig() {
       <ConfigSection
         title="Session"
         description={
-          brand === 'sportswear'
+          brandDef.cookieJarKey
             ? 'Cookie Jar refreshes this from Sphere. A cookie pasted here overrides that session. Check session reads the catalog only.'
             : 'Paste a cookie from a logged-in browser. Check session reads the catalog only.'
         }
@@ -1124,7 +1124,7 @@ export default function HHSportswearConfig() {
             Session cookie
           </label>
           <p className={hintClass}>
-            {brand === 'sportswear'
+            {brandDef.cookieJarKey
               ? `Optional. Paste the Cookie header from a logged-in ${sessionHost} tab to override the Sphere session. It is not shown again after you save.`
               : `Paste the Cookie header from a logged-in ${sessionHost} tab. It is not shown again after you save.`}
           </p>
