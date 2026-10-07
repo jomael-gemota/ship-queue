@@ -354,6 +354,44 @@ export interface DocTidyEmailSource {
 }
 
 /**
+ * An SPS Commerce OAuth source connected to a specific workspace.
+ * Refresh / access tokens are never included by the API.
+ */
+export interface DocTidySpsSource {
+  _id: string
+  workspaceId: string
+  /** Optional friendly label, e.g. "Brand A SPS account". */
+  label?: string
+  spsAccountId?: string
+  spsAccountEmail?: string
+  spsConnectedAt?: string
+  spsConnectedByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** A normalised EDI-810 (Invoice) record returned by the SPS Fulfillment API. */
+export interface SpsInvoiceRecord {
+  id: string
+  purchaseOrderNumber?: string
+  invoiceNumber?: string
+  invoiceDate?: string
+  totalAmount?: number
+  currency?: string
+  tradingPartner?: string
+  tradingPartnerId?: string
+  documentType?: string
+  createdAt?: string
+  status?: string
+  rawData?: Record<string, unknown>
+}
+
+export interface SpsInvoicesResponse {
+  data: SpsInvoiceRecord[]
+  nextCursor?: string | null
+}
+
+/**
  * A named workspace that owns a set of filter rules (one-to-many via
  * `rule.workspaceId`). Rules are managed from within the workspace.
  */
@@ -371,6 +409,8 @@ export interface DocTidyWorkspace {
   importMode?: 'full' | 'header-only'
   /** Per-workspace Gmail sources. Populated on demand by fetching /email-sources. */
   emailSources?: DocTidyEmailSource[]
+  /** Per-workspace SPS Commerce sources. Populated on demand by fetching /sps-sources. */
+  spsSources?: DocTidySpsSource[]
   createdAt: string
   updatedAt: string
 }

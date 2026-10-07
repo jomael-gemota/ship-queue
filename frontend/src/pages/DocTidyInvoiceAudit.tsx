@@ -20,6 +20,7 @@ import ParseJobPanel from '../components/docTidy/ParseJobPanel'
 import VendorSetup from '../components/docTidy/VendorSetup'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
+import SpsCommerceTab from '../components/docTidy/SpsCommerceTab'
 import { formatDate, formatDateTime } from '../lib/format'
 import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
@@ -42,6 +43,7 @@ import {
   type DocTidyMessagesResponse,
   type DocTidyWorkspace,
   type DocTidyEmailSource,
+  type DocTidySpsSource,
   type DocTidyOrganization,
   type InvoiceAuditColumn,
   type InvoiceAuditColumnId,
@@ -559,7 +561,7 @@ function ColumnFilterDropdown({
           <button
             type="button"
             onClick={apply}
-            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-2.5 py-1 text-[10px] font-medium text-white"
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-2.5 py-1 text-[10px] font-medium text-white"
           >
             OK
           </button>
@@ -707,7 +709,7 @@ function ColumnSettingsDrawer({
             Reset to defaults
           </button>
           <button type="button" onClick={onClose}
-            className="cursor-pointer rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white">
+            className="cursor-pointer rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3.5 py-2 text-sm font-medium text-white">
             Done
           </button>
         </div>
@@ -777,6 +779,56 @@ function WorkspaceEditorDialog({
       setSourcesError(err instanceof Error ? err.message : 'Failed to remove email source')
     } finally {
       setDeletingSourceId(null)
+    }
+  }
+
+  /* ── SPS Commerce sources (only for existing workspaces) ── */
+  const [spsSources, setSpsSources] = useState<DocTidySpsSource[]>([])
+  const [spsLoading, setSpsLoading] = useState(false)
+  const [spsError, setSpsError] = useState<string | null>(null)
+  const [spsConnecting, setSpsConnecting] = useState(false)
+  const [deletingSpsId, setDeletingSpsId] = useState<string | null>(null)
+
+  /* ── Active invoice source type (mutually exclusive) ── */
+  const [selectedSourceType, setSelectedSourceType] = useState<'email' | 'sps'>('email')
+  // Auto-select the type that already has a connection once sources load.
+  useEffect(() => {
+    if (spsSources.length > 0 && emailSources.length === 0) setSelectedSourceType('sps')
+    else if (emailSources.length > 0) setSelectedSourceType('email')
+  }, [spsSources.length, emailSources.length])
+
+  useEffect(() => {
+    if (!initial) return
+    setSpsLoading(true)
+    authApi
+      .get<{ data: DocTidySpsSource[] }>(`/doc-tidy/workspaces/${initial._id}/sps-sources`)
+      .then((res) => setSpsSources(res.data))
+      .catch((err) => setSpsError(err instanceof Error ? err.message : 'Failed to load SPS Commerce sources'))
+      .finally(() => setSpsLoading(false))
+  }, [initial])
+
+  const handleConnectSpsSource = async () => {
+    if (!initial) return
+    setSpsConnecting(true)
+    try {
+      const res = await authApi.get<{ url: string }>(`/auth/sps/workspaces/${initial._id}/connect`)
+      window.location.href = res.url
+    } catch (err) {
+      setSpsError(err instanceof Error ? err.message : 'Failed to initiate SPS Commerce connection')
+      setSpsConnecting(false)
+    }
+  }
+
+  const handleDisconnectSpsSource = async (sourceId: string) => {
+    if (!initial) return
+    setDeletingSpsId(sourceId)
+    try {
+      await authApi.delete(`/doc-tidy/workspaces/${initial._id}/sps-sources/${sourceId}`)
+      setSpsSources((prev) => prev.filter((s) => s._id !== sourceId))
+    } catch (err) {
+      setSpsError(err instanceof Error ? err.message : 'Failed to remove SPS Commerce source')
+    } finally {
+      setDeletingSpsId(null)
     }
   }
 
@@ -868,7 +920,7 @@ function WorkspaceEditorDialog({
                 onClick={() => setImportMode('full')}
                 className={`flex-1 px-4 py-2.5 text-left transition-colors cursor-pointer ${
                   importMode === 'full'
-                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    ? 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white font-medium'
                     : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
                 }`}
               >
@@ -882,7 +934,7 @@ function WorkspaceEditorDialog({
                 onClick={() => setImportMode('header-only')}
                 className={`flex-1 px-4 py-2.5 text-left border-l border-[var(--bg-300)] transition-colors cursor-pointer ${
                   importMode === 'header-only'
-                    ? 'bg-[var(--accent-200)] text-white font-medium'
+                    ? 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white font-medium'
                     : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)]'
                 }`}
               >
@@ -899,119 +951,239 @@ function WorkspaceEditorDialog({
             )}
           </div>
 
-          {/* Email Sources — only shown when editing an existing workspace */}
+          {/* Invoice source — only shown when editing an existing workspace */}
           {initial && (
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
-                  Email sources
-                </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                Invoice source
+              </label>
+
+              {/* Source type picker — mutually exclusive; locked once one type is connected */}
+              <div className="flex rounded-lg border border-[var(--bg-300)] overflow-hidden text-xs mb-3">
+                {/* Gmail tab */}
                 <button
                   type="button"
-                  onClick={() => void handleConnectEmailSource()}
-                  disabled={connecting}
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-xs font-medium text-[var(--text-100)] hover:bg-[var(--bg-200)] disabled:opacity-60 shadow-sm transition-colors"
+                  onClick={() => setSelectedSourceType('email')}
+                  disabled={spsSources.length > 0}
+                  title={spsSources.length > 0 ? 'Disconnect SPS Commerce first to switch source type' : undefined}
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 font-medium transition-colors ${
+                    spsSources.length > 0
+                      ? 'cursor-not-allowed opacity-40 bg-[var(--bg-100)] text-[var(--text-100)]'
+                      : selectedSourceType === 'email'
+                        ? 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white cursor-pointer'
+                        : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)] cursor-pointer'
+                  }`}
                 >
-                  {connecting ? (
-                    <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" />
-                  ) : (
-                    /* Google "G" colour-dot icon */
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24">
+                    <path fill={selectedSourceType === 'email' && spsSources.length === 0 ? '#fff' : '#4285F4'} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill={selectedSourceType === 'email' && spsSources.length === 0 ? '#fff' : '#34A853'} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill={selectedSourceType === 'email' && spsSources.length === 0 ? '#fff' : '#FBBC05'} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                    <path fill={selectedSourceType === 'email' && spsSources.length === 0 ? '#fff' : '#EA4335'} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Gmail
+                  {spsSources.length > 0 && (
+                    <svg className="h-2.5 w-2.5 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                     </svg>
                   )}
-                  {connecting ? 'Redirecting…' : 'Connect with Google'}
+                </button>
+
+                <span className="w-px bg-[var(--bg-300)]" />
+
+                {/* SPS Commerce tab */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedSourceType('sps')}
+                  disabled={emailSources.length > 0}
+                  title={emailSources.length > 0 ? 'Disconnect email source first to switch source type' : undefined}
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 font-medium transition-colors ${
+                    emailSources.length > 0
+                      ? 'cursor-not-allowed opacity-40 bg-[var(--bg-100)] text-[var(--text-100)]'
+                      : selectedSourceType === 'sps'
+                        ? 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white cursor-pointer'
+                        : 'bg-[var(--bg-100)] text-[var(--text-100)] hover:bg-[var(--bg-200)] cursor-pointer'
+                  }`}
+                >
+                  <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="2" width="9" height="9" rx="1.5" fill={selectedSourceType === 'sps' && emailSources.length === 0 ? '#fff' : '#F97316'}/>
+                    <rect x="13" y="2" width="9" height="9" rx="1.5" fill={selectedSourceType === 'sps' && emailSources.length === 0 ? '#fff' : '#F97316'} opacity=".7"/>
+                    <rect x="2" y="13" width="9" height="9" rx="1.5" fill={selectedSourceType === 'sps' && emailSources.length === 0 ? '#fff' : '#F97316'} opacity=".7"/>
+                    <rect x="13" y="13" width="9" height="9" rx="1.5" fill={selectedSourceType === 'sps' && emailSources.length === 0 ? '#fff' : '#F97316'} opacity=".4"/>
+                  </svg>
+                  SPS Commerce
+                  {emailSources.length > 0 && (
+                    <svg className="h-2.5 w-2.5 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                  )}
                 </button>
               </div>
-              <p className="mb-2 text-[10px] text-[var(--text-200)] leading-relaxed">
-                Connect the Gmail account that receives this workspace's invoices.
-                Group emails (e.g. <span className="font-medium">invoices@brand.com</span>) can't be connected directly — connect a member's Gmail account instead, then set the group address in the rule's <span className="font-medium">Delivered to</span> field.
-              </p>
 
-              {sourcesLoading ? (
-                <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
-                  <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" />
-                  Loading…
-                </div>
-              ) : emailSources.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-[var(--bg-300)] px-4 py-4 text-center">
-                  {/* Gmail icon */}
-                  <svg className="mx-auto mb-2 h-7 w-7 opacity-30" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
-                  </svg>
-                  <p className="text-xs text-[var(--text-200)]">No Gmail account connected yet.</p>
-                  <p className="mt-0.5 text-[10px] text-[var(--text-200)] opacity-70">Click "Connect email account" above to link one.</p>
-                </div>
-              ) : (
-                <ul className="space-y-2">
-                  {emailSources.map((src) => (
-                    <li
-                      key={src._id}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 shadow-sm"
+              {/* ── Gmail tab panel ── */}
+              {selectedSourceType === 'email' && (
+                <div>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <p className="text-[10px] text-[var(--text-200)] leading-relaxed">
+                      Connect the Gmail account that receives this workspace's invoices. Group addresses (e.g.&nbsp;
+                      <span className="font-medium">invoices@brand.com</span>) can't be connected directly — connect a member's account, then set the group address in the rule's <span className="font-medium">Delivered to</span> field.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectEmailSource()}
+                      disabled={connecting}
+                      className="shrink-0 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-xs font-medium text-[var(--text-100)] hover:bg-[var(--bg-200)] disabled:opacity-60 shadow-sm transition-colors"
                     >
-                      {/* Avatar */}
-                      <div className="relative shrink-0">
-                        {src.gmailAccountPicture ? (
-                          <img
-                            src={src.gmailAccountPicture}
-                            alt={src.emailAddress ?? 'Connected account'}
-                            className="h-9 w-9 rounded-full object-cover ring-2 ring-[var(--bg-300)]"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-300)] text-sm font-semibold text-[var(--text-100)] ring-2 ring-[var(--bg-300)]">
-                            {(src.emailAddress ?? '?')[0].toUpperCase()}
+                      {connecting ? <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" /> : (
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                      )}
+                      {connecting ? 'Redirecting…' : 'Connect'}
+                    </button>
+                  </div>
+
+                  {sourcesLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
+                      <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]" /> Loading…
+                    </div>
+                  ) : emailSources.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-[var(--bg-300)] px-4 py-4 text-center">
+                      <svg className="mx-auto mb-2 h-7 w-7 opacity-30" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
+                      </svg>
+                      <p className="text-xs text-[var(--text-200)]">No Gmail account connected yet.</p>
+                      <p className="mt-0.5 text-[10px] text-[var(--text-200)] opacity-70">Click "Connect" above to link one.</p>
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {emailSources.map((src) => (
+                        <li key={src._id} className="flex items-center gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 shadow-sm">
+                          <div className="relative shrink-0">
+                            {src.gmailAccountPicture ? (
+                              <img src={src.gmailAccountPicture} alt={src.emailAddress ?? 'Connected account'} className="h-9 w-9 rounded-full object-cover ring-2 ring-[var(--bg-300)]" referrerPolicy="no-referrer"/>
+                            ) : (
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-300)] text-sm font-semibold text-[var(--text-100)] ring-2 ring-[var(--bg-300)]">
+                                {(src.emailAddress ?? '?')[0].toUpperCase()}
+                              </div>
+                            )}
+                            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[var(--bg-100)] shadow">
+                              <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
+                              </svg>
+                            </span>
                           </div>
-                        )}
-                        {/* Gmail badge */}
-                        <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[var(--bg-100)] shadow">
-                          <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.907 1.528-1.148C21.69 2.28 24 3.434 24 5.457z"/>
-                          </svg>
-                        </span>
-                      </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-[var(--text-100)]">{src.emailAddress ?? '(unknown address)'}</p>
+                            <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
+                              {src.gmailConnectedAt ? `Connected ${new Date(src.gmailConnectedAt).toLocaleDateString()}${src.gmailConnectedByName ? ` · ${src.gmailConnectedByName}` : ''}` : 'Connected'}
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => void handleDisconnectSource(src._id)} disabled={deletingSourceId === src._id} title="Disconnect" className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-2.5 py-1.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 disabled:opacity-60 transition-colors">
+                            {deletingSourceId === src._id ? <Spinner className="h-3 w-3 text-rose-500"/> : (
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                              </svg>
+                            )}
+                            Disconnect
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-                      {/* Info */}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-[var(--text-100)]">
-                          {src.emailAddress ?? '(unknown address)'}
-                        </p>
-                        <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
-                          {src.gmailConnectedAt
-                            ? `Connected ${new Date(src.gmailConnectedAt).toLocaleDateString()}${src.gmailConnectedByName ? ` · ${src.gmailConnectedByName}` : ''}`
-                            : 'Connected'}
-                        </p>
-                      </div>
-
-                      {/* Disconnect */}
-                      <button
-                        type="button"
-                        onClick={() => void handleDisconnectSource(src._id)}
-                        disabled={deletingSourceId === src._id}
-                        title="Disconnect"
-                        className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-2.5 py-1.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 disabled:opacity-60 transition-colors"
-                      >
-                        {deletingSourceId === src._id ? (
-                          <Spinner className="h-3 w-3 text-rose-500" />
-                        ) : (
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                          </svg>
-                        )}
-                        Disconnect
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                  {sourcesError && (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2 text-xs text-rose-600 dark:text-rose-400">
+                      {sourcesError}
+                    </p>
+                  )}
+                </div>
               )}
 
-              {sourcesError && (
-                <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2 text-xs text-rose-600 dark:text-rose-400">
-                  {sourcesError}
-                </p>
+              {/* ── SPS Commerce tab panel ── */}
+              {selectedSourceType === 'sps' && (
+                <div>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <p className="text-[10px] text-[var(--text-200)] leading-relaxed">
+                      Connect an SPS Commerce account to pull invoices for this workspace via the SPS API instead of email.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectSpsSource()}
+                      disabled={spsConnecting}
+                      className="shrink-0 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-xs font-medium text-[var(--text-100)] hover:bg-[var(--bg-200)] disabled:opacity-60 shadow-sm transition-colors"
+                    >
+                      {spsConnecting ? <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]"/> : (
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                          <rect x="2" y="2" width="9" height="9" rx="1.5" fill="#F97316"/>
+                          <rect x="13" y="2" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                          <rect x="2" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                          <rect x="13" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".4"/>
+                        </svg>
+                      )}
+                      {spsConnecting ? 'Redirecting…' : 'Connect'}
+                    </button>
+                  </div>
+
+                  {spsLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 text-xs text-[var(--text-200)]">
+                      <Spinner className="h-3.5 w-3.5 text-[var(--text-200)]"/> Loading…
+                    </div>
+                  ) : spsSources.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-[var(--bg-300)] px-4 py-4 text-center">
+                      <svg className="mx-auto mb-2 h-7 w-7 opacity-30" viewBox="0 0 24 24" fill="none">
+                        <rect x="2" y="2" width="9" height="9" rx="1.5" fill="currentColor"/>
+                        <rect x="13" y="2" width="9" height="9" rx="1.5" fill="currentColor" opacity=".7"/>
+                        <rect x="2" y="13" width="9" height="9" rx="1.5" fill="currentColor" opacity=".7"/>
+                        <rect x="13" y="13" width="9" height="9" rx="1.5" fill="currentColor" opacity=".4"/>
+                      </svg>
+                      <p className="text-xs text-[var(--text-200)]">No SPS Commerce account connected yet.</p>
+                      <p className="mt-0.5 text-[10px] text-[var(--text-200)] opacity-70">Click "Connect" above to link one.</p>
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {spsSources.map((src) => (
+                        <li key={src._id} className="flex items-center gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-3 shadow-sm">
+                          <div className="relative shrink-0">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30 text-sm font-semibold text-orange-600 dark:text-orange-400 ring-2 ring-[var(--bg-300)]">
+                              {(src.spsAccountEmail ?? 'S')[0].toUpperCase()}
+                            </div>
+                            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[var(--bg-100)] shadow">
+                              <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none">
+                                <rect x="2" y="2" width="9" height="9" rx="1.5" fill="#F97316"/>
+                                <rect x="13" y="2" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                                <rect x="2" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                                <rect x="13" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".4"/>
+                              </svg>
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-[var(--text-100)]">{src.spsAccountEmail ?? src.spsAccountId ?? '(unknown account)'}</p>
+                            <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
+                              {src.spsConnectedAt ? `Connected ${new Date(src.spsConnectedAt).toLocaleDateString()}${src.spsConnectedByName ? ` · ${src.spsConnectedByName}` : ''}` : 'Connected'}
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => void handleDisconnectSpsSource(src._id)} disabled={deletingSpsId === src._id} title="Disconnect" className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-2.5 py-1.5 text-[10px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 disabled:opacity-60 transition-colors">
+                            {deletingSpsId === src._id ? <Spinner className="h-3 w-3 text-rose-500"/> : (
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                              </svg>
+                            )}
+                            Disconnect
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {spsError && (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 px-3.5 py-2 text-xs text-rose-600 dark:text-rose-400">
+                      {spsError}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1030,7 +1202,7 @@ function WorkspaceEditorDialog({
             Cancel
           </button>
           <button type="button" onClick={() => void submit()} disabled={saving}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
             {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
             {saving ? 'Saving…' : initial ? 'Save changes' : 'Create workspace'}
           </button>
@@ -1816,7 +1988,7 @@ function MoveWorkspaceDialog({
             Cancel
           </button>
           <button type="button" onClick={() => void submit()} disabled={saving}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
             {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
             {saving ? 'Moving…' : 'Move workspace'}
           </button>
@@ -2610,7 +2782,7 @@ export default function DocTidyInvoiceAudit() {
   /** True while a header-only mode workspace is active. Drives several UI branches. */
   const isHeaderOnly = activeWorkspace?.importMode === 'header-only'
   /** Which sub-tab is active inside a workspace detail page. */
-  type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports'
+  type WorkspaceTab = 'audit' | 'emails' | 'rules' | 'vendors' | 'pdf-imports' | 'sps-commerce'
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('audit')
 
   /* ── Organizations ── */
@@ -2631,6 +2803,8 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
+  /** Workspace ID returned from an OAuth redirect; opened once workspaces finish loading. */
+  const [pendingOpenWsId, setPendingOpenWsId] = useState<string | null>(null)
 
   /* ── Tidy Agent worker status ── */const [workerOnline, setWorkerOnline] = useState<boolean | null>(null)
 
@@ -2766,24 +2940,36 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => {
     const wsSource = searchParams.get('ws_source')
     const wsSourceError = searchParams.get('ws_source_error')
-    const wsId = searchParams.get('workspaceId')
 
     if (wsSource === 'connected') {
       setGlobalSuccess('Email account connected successfully.')
-      // Auto-open the workspace editor so the user can see the new source.
-      if (wsId) {
-        setWorkspaces((prev) => {
-          const ws = prev.find((w) => w._id === wsId)
-          if (ws) setEditTarget(ws)
-          return prev
-        })
-      }
+      if (urlWorkspaceId) setPendingOpenWsId(urlWorkspaceId)
       setSearchParams({}, { replace: true })
     } else if (wsSourceError) {
       setWsError(
         wsSourceError === 'no_refresh_token'
           ? 'Email connection failed: no refresh token returned. Try reconnecting and ensure you grant all requested permissions.'
           : 'Email connection failed. Please try again.'
+      )
+      setSearchParams({}, { replace: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ── Handle redirect back from per-workspace SPS Commerce OAuth ── */
+  useEffect(() => {
+    const wsSps = searchParams.get('ws_sps')
+    const wsSpsError = searchParams.get('ws_sps_error')
+
+    if (wsSps === 'connected') {
+      setGlobalSuccess('SPS Commerce account connected successfully.')
+      if (urlWorkspaceId) setPendingOpenWsId(urlWorkspaceId)
+      setSearchParams({}, { replace: true })
+    } else if (wsSpsError) {
+      setWsError(
+        wsSpsError === 'no_refresh_token'
+          ? 'SPS Commerce connection failed: no refresh token returned. Ensure your SPS Dev Center app has "Allow Offline Access" enabled, then try reconnecting.'
+          : 'SPS Commerce connection failed. Please try again.'
       )
       setSearchParams({}, { replace: true })
     }
@@ -3245,6 +3431,19 @@ export default function DocTidyInvoiceAudit() {
   }, [])
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
+
+  /* ── Open editor for workspace returned from an OAuth redirect ── */
+  // The redirect handlers fire on mount before workspaces are fetched; this
+  // effect fires again whenever workspaces arrive, picks up the pending ID,
+  // and opens the editor at the right time.
+  useEffect(() => {
+    if (!pendingOpenWsId || workspaces.length === 0) return
+    const ws = workspaces.find((w) => w._id === pendingOpenWsId)
+    if (ws) {
+      setEditTarget(ws)
+      setPendingOpenWsId(null)
+    }
+  }, [workspaces, pendingOpenWsId])
 
   /* ── Load organizations on mount ── */
   const loadOrganizations = useCallback(async () => {
@@ -4800,6 +4999,29 @@ export default function DocTidyInvoiceAudit() {
               </button>
             ))}
 
+            {/* ── SPS Commerce tab ─ separate because it uses a custom icon shape ── */}
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('sps-commerce')}
+              className={`inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
+                workspaceTab === 'sps-commerce'
+                  ? 'border-[var(--accent-200)] text-[var(--accent-200)]'
+                  : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)]'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="2" width="9" height="9" rx="1.5"
+                  className={workspaceTab === 'sps-commerce' ? 'fill-[var(--accent-200)]' : 'fill-[var(--text-200)]'} />
+                <rect x="13" y="2" width="9" height="9" rx="1.5"
+                  className={workspaceTab === 'sps-commerce' ? 'fill-[var(--accent-200)]' : 'fill-[var(--text-200)]'} />
+                <rect x="2" y="13" width="9" height="9" rx="1.5"
+                  className={workspaceTab === 'sps-commerce' ? 'fill-[var(--accent-200)]' : 'fill-[var(--text-200)]'} />
+                <rect x="13" y="13" width="9" height="9" rx="1.5"
+                  className={workspaceTab === 'sps-commerce' ? 'fill-[var(--accent-200)]' : 'fill-[var(--text-200)]'} />
+              </svg>
+              SPS Commerce
+            </button>
+
             {/* ── Tidy Agent status badge ── */}
             <div className="ml-auto flex items-center gap-1.5 pr-4 pb-px shrink-0">
               <span
@@ -4944,6 +5166,7 @@ export default function DocTidyInvoiceAudit() {
                       {pollerRunning
                         ? 'syncing…'
                         : (() => {
+                            // eslint-disable-next-line react-hooks/purity -- Date.now() intentionally called per-render for countdown display
                             const s = Math.max(0, Math.round((nextSyncAt.getTime() - Date.now()) / 1_000))
                             return s > 0 ? `next in ${s}s` : 'syncing…'
                           })()
@@ -5944,6 +6167,11 @@ export default function DocTidyInvoiceAudit() {
             </div>
           )}
 
+          {/* ══════════════ SPS COMMERCE TAB ══════════════ */}
+          {workspaceTab === 'sps-commerce' && activeWorkspace && (
+            <SpsCommerceTab workspaceId={activeWorkspace._id} />
+          )}
+
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
           {workspaceTab === 'audit' && (
             <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -6289,7 +6517,7 @@ export default function DocTidyInvoiceAudit() {
                             )}
                             {!debouncedAuditSearch && (
                               <button onClick={() => { setShowImportModal(true); setImportSuccess(null); setImportError(null) }}
-                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-[10px] font-medium text-white">
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-[10px] font-medium text-white">
                                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                 </svg>
