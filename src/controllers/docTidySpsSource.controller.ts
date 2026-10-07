@@ -3,7 +3,8 @@ import { isValidObjectId } from 'mongoose';
 import DocTidySpsSource from '../models/DocTidySpsSource';
 import {
   ensureAccessToken,
-  fetchSpsInvoices,
+  fetchSpsDocuments,
+  fetchSpsDocumentContent,
   SpsAuthError,
   SpsApiError,
 } from '../services/sps.service';
@@ -64,18 +65,17 @@ export const deleteSpsSource = async (req: Request, res: Response): Promise<void
 };
 
 /**
- * Queries EDI-810 (Invoice) records from SPS Commerce for a specific source,
- * optionally filtered by PO number.
+ * Lists SPS document files for a workspace source.
  *
- * GET /workspaces/:workspaceId/sps-sources/:sourceId/invoices
- *   ?poNumber=PO-12345   — optional PO number filter
- *   &limit=50            — optional page size (default 50)
- *   &cursor=<token>      — optional cursor for pagination
+ * GET /workspaces/:workspaceId/sps-sources/:sourceId/documents
+ *   ?docType=PO          — sub-directory to list (default: PO)
+ *   &poNumber=584615     — optional client-side filter (substring match in filename)
+ *   &cursor=<token>      — optional pagination cursor
  */
-export const querySpsInvoices = async (req: Request, res: Response): Promise<void> => {
+export const querySpsDocuments = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId, sourceId } = req.params;
-    const { poNumber, limit, cursor } = req.query as Record<string, string | undefined>;
+    const { docType, poNumber, cursor } = req.query as Record<string, string | undefined>;
 
     if (!isValidObjectId(sourceId)) {
       res.status(400).json({ message: 'Invalid source id' });
@@ -91,9 +91,9 @@ export const querySpsInvoices = async (req: Request, res: Response): Promise<voi
     }
 
     const accessToken = await ensureAccessToken(source);
-    const page = await fetchSpsInvoices(accessToken, {
-      poNumber,
-      limit: limit ? Number(limit) : 50,
+    const page = await fetchSpsDocuments(accessToken, {
+      docType,
+      poNumberFilter: poNumber,
       cursor,
     });
 
@@ -107,6 +107,53 @@ export const querySpsInvoices = async (req: Request, res: Response): Promise<voi
       res.status(502).json({ message: error.message });
       return;
     }
-    fail(res, error, 'Failed to query SPS invoices');
+    fail(res, error, 'Failed to list SPS documents');
+  }
+};
+
+/** @deprecated Alias — use querySpsDocuments instead. */
+export const querySpsInvoices = querySpsDocuments;
+
+/**
+ * Downloads the raw EDI XML content of a single SPS document.
+ *
+ * GET /workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename
+ */
+export const getSpsDocumentContent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId, sourceId, docType, filename } = req.params;
+
+    if (!isValidObjectId(sourceId)) {
+      res.status(400).json({ message: 'Invalid source id' });
+      return;
+    }
+    if (!docType || !filename) {
+      res.status(400).json({ message: 'docType and filename are required' });
+      return;
+    }
+
+    const source = await DocTidySpsSource.findOne({ _id: sourceId, workspaceId })
+      .select('+spsRefreshToken +spsAccessToken +spsTokenExpiry');
+
+    if (!source) {
+      res.status(404).json({ message: 'SPS Commerce source not found' });
+      return;
+    }
+
+    const accessToken = await ensureAccessToken(source);
+    const content     = await fetchSpsDocumentContent(accessToken, docType, filename);
+
+    // Return wrapped JSON so the frontend authApi (which always parses JSON) works correctly.
+    res.json({ data: content });
+  } catch (error) {
+    if (error instanceof SpsAuthError) {
+      res.status(401).json({ message: error.message });
+      return;
+    }
+    if (error instanceof SpsApiError) {
+      res.status(502).json({ message: error.message });
+      return;
+    }
+    fail(res, error, 'Failed to download SPS document');
   }
 };

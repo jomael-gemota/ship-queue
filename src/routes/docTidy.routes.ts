@@ -52,7 +52,8 @@ import {
 import {
   listSpsSources,
   deleteSpsSource,
-  querySpsInvoices,
+  querySpsDocuments,
+  getSpsDocumentContent,
 } from '../controllers/docTidySpsSource.controller';
 import {
   listOrganizations,
@@ -141,8 +142,9 @@ router.delete('/workspaces/:workspaceId/email-sources/:sourceId', deleteEmailSou
 // Connect is handled in auth.routes.ts (GET /auth/sps/workspaces/:workspaceId/connect).
 router.get('/workspaces/:workspaceId/sps-sources', listSpsSources);
 router.delete('/workspaces/:workspaceId/sps-sources/:sourceId', deleteSpsSource);
-// Invoice lookup via the SPS Fulfillment API (EDI 810).
-router.get('/workspaces/:workspaceId/sps-sources/:sourceId/invoices', querySpsInvoices);
+// Transaction API v5 document queue: list files + download individual EDI XML.
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents', querySpsDocuments);
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename', getSpsDocumentContent);
 
 // Organizations — any auth user may list; only admins may create/modify/delete.
 router.get('/organizations', listOrganizations);

@@ -370,26 +370,30 @@ export interface DocTidySpsSource {
   updatedAt: string
 }
 
-/** A normalised EDI-810 (Invoice) record returned by the SPS Fulfillment API. */
-export interface SpsInvoiceRecord {
-  id: string
-  purchaseOrderNumber?: string
-  invoiceNumber?: string
-  invoiceDate?: string
-  totalAmount?: number
-  currency?: string
-  tradingPartner?: string
-  tradingPartnerId?: string
-  documentType?: string
+/** A document file entry from the SPS Transaction API v5 directory listing. */
+export interface SpsDocumentRecord {
+  /** Filename, e.g. "PO584615-1-v7.7-BulkImport.xml" */
+  filename: string
+  /** Full download URL */
+  downloadUrl: string
+  /** Document-type directory (PO, IN, etc.) */
+  docType: string
+  /** File size in bytes (when provided) */
+  size?: number
+  /** ISO timestamp when the file appeared in the queue (when provided) */
   createdAt?: string
-  status?: string
-  rawData?: Record<string, unknown>
+  rawData?: unknown
 }
 
-export interface SpsInvoicesResponse {
-  data: SpsInvoiceRecord[]
+export interface SpsDocumentsResponse {
+  data: SpsDocumentRecord[]
   nextCursor?: string | null
 }
+
+/** @deprecated Renamed to SpsDocumentRecord */
+export type SpsInvoiceRecord = SpsDocumentRecord
+/** @deprecated Renamed to SpsDocumentsResponse */
+export type SpsInvoicesResponse = SpsDocumentsResponse
 
 /**
  * A named workspace that owns a set of filter rules (one-to-many via

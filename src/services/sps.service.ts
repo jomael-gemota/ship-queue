@@ -157,101 +157,191 @@ export async function getSpsUserInfo(accessToken: string): Promise<SpsUserInfo> 
   }
 }
 
-/* ─────────────────────────────────────── SPS Fulfillment / Invoice API ── */
+/* ─────────────────────────────── SPS Transaction API v5 — document queue ── */
 
-const SPS_API_BASE = 'https://api.spscommerce.com';
+const SPS_API_BASE      = process.env.SPS_API_BASE ?? 'https://api.spscommerce.com';
+/** Default document-type sub-directory.  Override via SPS_DOC_TYPE env var (e.g. "IN"). */
+const SPS_DOC_TYPE      = process.env.SPS_DOC_TYPE ?? 'PO';
+const SPS_DATA_OUT_BASE = `${SPS_API_BASE}/transactions/v5/data/out`;
 
 /**
- * A normalised EDI-810 (Invoice) record returned by the SPS Fulfillment API.
- * Fields are mapped from the RSX 7.7.7 JSON envelope on a best-effort basis;
- * the full raw envelope is preserved in `rawData` for debugging.
+ * A document entry returned by the SPS Transaction API v5 directory listing.
+ *
+ * The Transaction API v5 is a file-queue system, not a queryable database.
+ * Each entry in `GET /transactions/v5/data/out/{docType}/` is a file (EDI XML)
+ * whose filename typically contains the PO number, e.g.:
+ *   "PO584615-1-v7.7-BulkImport.xml"
+ *
+ * Filtering by PO number is done client-side by searching the filename.
  */
-export interface SpsInvoiceRecord {
-  id: string;
-  purchaseOrderNumber?: string;
-  invoiceNumber?: string;
-  invoiceDate?: string;
-  totalAmount?: number;
-  currency?: string;
-  tradingPartner?: string;
-  tradingPartnerId?: string;
-  documentType?: string;
+export interface SpsDocumentRecord {
+  /** Filename as returned by SPS, e.g. "PO584615-1-v7.7-BulkImport.xml" */
+  filename: string;
+  /** Full download URL: /transactions/v5/data/out/{docType}/{filename} */
+  downloadUrl: string;
+  /** Document-type directory (PO, IN, etc.) */
+  docType: string;
+  /** File size in bytes (when provided by the API) */
+  size?: number;
+  /** ISO timestamp when the file appeared in the queue (when provided) */
   createdAt?: string;
-  status?: string;
-  rawData?: Record<string, unknown>;
+  /** Raw API response item for debugging */
+  rawData?: unknown;
 }
 
-export interface SpsInvoicesPage {
-  records: SpsInvoiceRecord[];
+export interface SpsDocumentsPage {
+  records: SpsDocumentRecord[];
   nextCursor?: string | null;
 }
 
-/**
- * Fetches EDI 810 (Invoice) records from the SPS Fulfillment API for a given
- * access token, optionally filtered by PO number.
- *
- * NOTE: The exact endpoint path depends on your SPS account provisioning.
- * If this returns 404/403, check your SPS Dev Center API documentation.
- * Alternative endpoint: /transactions/v5/data/out?documentType=810
- */
-export async function fetchSpsInvoices(
-  accessToken: string,
-  params: { poNumber?: string; limit?: number; cursor?: string },
-): Promise<SpsInvoicesPage> {
-  const url = new URL(`${SPS_API_BASE}/fulfillment/v1/invoices`);
-  if (params.poNumber) url.searchParams.set('purchaseOrderNumber', params.poNumber);
-  if (params.limit)    url.searchParams.set('limit', String(params.limit));
-  if (params.cursor)   url.searchParams.set('cursor', params.cursor);
+/** @deprecated Renamed to SpsDocumentRecord — kept for backward compat. */
+export type SpsInvoiceRecord = SpsDocumentRecord;
+/** @deprecated Renamed to SpsDocumentsPage — kept for backward compat. */
+export type SpsInvoicesPage  = SpsDocumentsPage;
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
+function extractSpsError(data: Record<string, unknown>, status: number, statusText: string): string {
+  // Transaction API v5 shape: { "error": { "errorDescription": "…", "error": "…" }, "status": "error" }
+  const errObj  = data.error && typeof data.error === 'object'
+    ? (data.error as Record<string, unknown>)
+    : null;
+  const msgStr  = typeof data.message === 'string' ? data.message : null;
+  const errStr  = typeof data.error   === 'string' ? data.error   : null;
+  const errDesc = errObj
+    ? String(errObj.errorDescription ?? errObj.error ?? JSON.stringify(errObj))
+    : null;
+  return msgStr || errDesc || errStr
+    || `SPS API returned ${status}: ${statusText} — ${JSON.stringify(data).slice(0, 400)}`;
+}
+
+function tryParseJson(text: string): unknown {
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+/**
+ * Normalise a directory-listing response into a flat SpsDocumentRecord array.
+ * Handles string[], object[] (name/href/size), or a root wrapper object.
+ */
+function normaliseDocumentList(data: unknown, docType: string): SpsDocumentRecord[] {
+  const baseUrl = `${SPS_DATA_OUT_BASE}/${docType}/`;
+
+  function toRecord(item: unknown, idx: number): SpsDocumentRecord {
+    if (typeof item === 'string') {
+      return {
+        filename:    item,
+        downloadUrl: `${baseUrl}${encodeURIComponent(item)}`,
+        docType,
+        rawData:     item,
+      };
+    }
+    if (item && typeof item === 'object') {
+      const obj      = item as Record<string, unknown>;
+      const filename = String(obj.name ?? obj.filename ?? obj.id ?? `document-${idx}`);
+      return {
+        filename,
+        downloadUrl: String(obj.href ?? obj.url ?? `${baseUrl}${encodeURIComponent(filename)}`),
+        docType,
+        size:        typeof obj.size === 'number' ? obj.size : undefined,
+        createdAt:   (obj.lastModified ?? obj.createdAt ?? obj.timestamp)
+          ? String(obj.lastModified ?? obj.createdAt ?? obj.timestamp)
+          : undefined,
+        rawData:     item,
+      };
+    }
+    return { filename: `document-${idx}`, downloadUrl: baseUrl, docType, rawData: item };
+  }
+
+  if (Array.isArray(data)) {
+    return (data as unknown[]).map(toRecord);
+  }
+  if (data && typeof data === 'object') {
+    const obj    = data as Record<string, unknown>;
+    const nested =
+      (obj.results as unknown[]) ??
+      (obj.data    as unknown[]) ??
+      (obj.items   as unknown[]) ??
+      (obj.files   as unknown[]) ??
+      null;
+    if (Array.isArray(nested)) return nested.map(toRecord);
+  }
+  return [];
+}
+
+/**
+ * Lists available document files in the SPS Transaction API v5 out-directory.
+ *
+ * `GET /transactions/v5/data/out/{docType}/`
+ *
+ * @param params.docType         — Sub-directory to list (default: SPS_DOC_TYPE env var, fallback "PO")
+ * @param params.poNumberFilter  — Client-side filter: only return files whose filename contains this string
+ */
+export async function fetchSpsDocuments(
+  accessToken: string,
+  params: { docType?: string; poNumberFilter?: string; cursor?: string },
+): Promise<SpsDocumentsPage> {
+  const docType = (params.docType ?? SPS_DOC_TYPE).toUpperCase();
+  const listUrl = new URL(`${SPS_DATA_OUT_BASE}/${docType}/`);
+  if (params.cursor) listUrl.searchParams.set('cursor', params.cursor);
+
+  const res = await fetch(listUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
   });
 
   if (res.status === 401 || res.status === 403) {
-    throw new SpsAuthError('SPS token revoked or insufficient permissions to read invoices.');
+    throw new SpsAuthError('SPS token revoked or insufficient permissions to list documents.');
   }
 
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawText = await res.text();
+  const data    = tryParseJson(rawText);
 
   if (!res.ok) {
-    throw new SpsApiError(
-      (data.message as string) ||
-      (data.error as string) ||
-      `SPS API returned ${res.status}: ${res.statusText}`,
-    );
+    const errData = (data ?? {}) as Record<string, unknown>;
+    throw new SpsApiError(extractSpsError(errData, res.status, res.statusText));
   }
 
-  // Normalise response — SPS may return results under `results`, `data`, or `items`.
-  const items = (
-    (data.results as unknown[]) ||
-    (data.data as unknown[]) ||
-    (data.items as unknown[]) ||
-    []
-  ) as Record<string, unknown>[];
+  const allRecords = normaliseDocumentList(data, docType);
 
-  const records: SpsInvoiceRecord[] = items.map((item) => ({
-    id:                  String(item.id ?? item.transactionId ?? ''),
-    purchaseOrderNumber: item.purchaseOrderNumber as string | undefined,
-    invoiceNumber:       item.invoiceNumber as string | undefined,
-    invoiceDate:         item.invoiceDate as string | undefined,
-    totalAmount:         typeof item.totalAmount === 'number' ? item.totalAmount : undefined,
-    currency:            item.currency as string | undefined,
-    tradingPartner:      (item.tradingPartner ?? item.tradingPartnerName) as string | undefined,
-    tradingPartnerId:    item.tradingPartnerId as string | undefined,
-    documentType:        item.documentType as string | undefined,
-    createdAt:           (item.createdAt ?? item.receivedAt) as string | undefined,
-    status:              item.status as string | undefined,
-    rawData:             item,
-  }));
+  // Client-side PO number filter (Transaction API v5 has no server-side filter).
+  const filter   = params.poNumberFilter?.trim().toLowerCase();
+  const filtered = filter
+    ? allRecords.filter((r) => r.filename.toLowerCase().includes(filter))
+    : allRecords;
 
-  return {
-    records,
-    nextCursor: (data.nextCursor ?? data.cursor ?? null) as string | null | undefined,
-  };
+  return { records: filtered, nextCursor: null };
 }
+
+/**
+ * Downloads the raw EDI XML content of a single document from the SPS queue.
+ * Returns the raw text so the caller can display or parse it.
+ *
+ * `GET /transactions/v5/data/out/{docType}/{filename}`
+ */
+export async function fetchSpsDocumentContent(
+  accessToken: string,
+  docType: string,
+  filename: string,
+): Promise<string> {
+  const url = `${SPS_DATA_OUT_BASE}/${docType.toUpperCase()}/${encodeURIComponent(filename)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: '*/*' },
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new SpsAuthError('SPS token revoked or insufficient permissions to download this document.');
+  }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    const errData = (tryParseJson(errText) ?? {}) as Record<string, unknown>;
+    throw new SpsApiError(extractSpsError(errData, res.status, res.statusText));
+  }
+  return res.text();
+}
+
+/** Alias so existing controller code compiles unchanged. */
+export const fetchSpsInvoices = (
+  accessToken: string,
+  params: { poNumber?: string; limit?: number; cursor?: string },
+): Promise<SpsDocumentsPage> =>
+  fetchSpsDocuments(accessToken, { poNumberFilter: params.poNumber, cursor: params.cursor });
 
 /* ─────────────────────────────────────────────────────── Token helper ── */
 
