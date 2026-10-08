@@ -354,6 +354,48 @@ export interface DocTidyEmailSource {
 }
 
 /**
+ * An SPS Commerce OAuth source connected to a specific workspace.
+ * Refresh / access tokens are never included by the API.
+ */
+export interface DocTidySpsSource {
+  _id: string
+  workspaceId: string
+  /** Optional friendly label, e.g. "Brand A SPS account". */
+  label?: string
+  spsAccountId?: string
+  spsAccountEmail?: string
+  spsConnectedAt?: string
+  spsConnectedByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** A document file entry from the SPS Transaction API v5 directory listing. */
+export interface SpsDocumentRecord {
+  /** Filename, e.g. "PO584615-1-v7.7-BulkImport.xml" */
+  filename: string
+  /** Full download URL */
+  downloadUrl: string
+  /** Document-type directory (PO, IN, etc.) */
+  docType: string
+  /** File size in bytes (when provided) */
+  size?: number
+  /** ISO timestamp when the file appeared in the queue (when provided) */
+  createdAt?: string
+  rawData?: unknown
+}
+
+export interface SpsDocumentsResponse {
+  data: SpsDocumentRecord[]
+  nextCursor?: string | null
+}
+
+/** @deprecated Renamed to SpsDocumentRecord */
+export type SpsInvoiceRecord = SpsDocumentRecord
+/** @deprecated Renamed to SpsDocumentsResponse */
+export type SpsInvoicesResponse = SpsDocumentsResponse
+
+/**
  * A named workspace that owns a set of filter rules (one-to-many via
  * `rule.workspaceId`). Rules are managed from within the workspace.
  */
@@ -371,6 +413,8 @@ export interface DocTidyWorkspace {
   importMode?: 'full' | 'header-only'
   /** Per-workspace Gmail sources. Populated on demand by fetching /email-sources. */
   emailSources?: DocTidyEmailSource[]
+  /** Per-workspace SPS Commerce sources. Populated on demand by fetching /sps-sources. */
+  spsSources?: DocTidySpsSource[]
   createdAt: string
   updatedAt: string
 }

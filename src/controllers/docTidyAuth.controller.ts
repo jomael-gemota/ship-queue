@@ -104,7 +104,7 @@ export const handleDocTidyCallback = async (req: Request, res: Response): Promis
       // Without a refresh token the connection would silently die in an hour.
       const errorParam = 'doc_tidy_error=no_refresh_token';
       if (payload.target === 'workspace' && payload.workspaceId) {
-        res.redirect(`${CLIENT_URL}/doc-tidy?ws_source_error=no_refresh_token&workspaceId=${payload.workspaceId}`);
+        res.redirect(`${CLIENT_URL}/doc-tidy/invoice-audit/workspaces/${payload.workspaceId}?ws_source_error=no_refresh_token`);
       } else {
         res.redirect(`${CLIENT_URL}/settings?${errorParam}`);
       }
@@ -137,7 +137,7 @@ export const handleDocTidyCallback = async (req: Request, res: Response): Promis
       );
 
       res.redirect(
-        `${CLIENT_URL}/doc-tidy?ws_source=connected&workspaceId=${payload.workspaceId}`
+        `${CLIENT_URL}/doc-tidy/invoice-audit/workspaces/${payload.workspaceId}?ws_source=connected`
       );
     } else {
       // ── Global singleton ──────────────────────────────────────────────────

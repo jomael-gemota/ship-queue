@@ -50,6 +50,12 @@ import {
   deleteEmailSource,
 } from '../controllers/docTidyEmailSource.controller';
 import {
+  listSpsSources,
+  deleteSpsSource,
+  querySpsDocuments,
+  getSpsDocumentContent,
+} from '../controllers/docTidySpsSource.controller';
+import {
   listOrganizations,
   createOrganization,
   updateOrganization,
@@ -131,6 +137,14 @@ router.delete('/workspaces/:id', deleteWorkspace);
 // delete is open to any authenticated user (they manage their own workspace sources).
 router.get('/workspaces/:workspaceId/email-sources', listEmailSources);
 router.delete('/workspaces/:workspaceId/email-sources/:sourceId', deleteEmailSource);
+
+// Per-workspace SPS Commerce sources — same access-control pattern as email sources.
+// Connect is handled in auth.routes.ts (GET /auth/sps/workspaces/:workspaceId/connect).
+router.get('/workspaces/:workspaceId/sps-sources', listSpsSources);
+router.delete('/workspaces/:workspaceId/sps-sources/:sourceId', deleteSpsSource);
+// Transaction API v5 document queue: list files + download individual EDI XML.
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents', querySpsDocuments);
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename', getSpsDocumentContent);
 
 // Organizations — any auth user may list; only admins may create/modify/delete.
 router.get('/organizations', listOrganizations);
