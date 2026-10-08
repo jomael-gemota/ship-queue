@@ -4385,45 +4385,76 @@ export default function DocTidyInvoiceAudit() {
     try {
       const XLSX = await import('xlsx')
 
-      let exportOrders: DocTidyOrderImport[]
-      if (mode === 'selection') {
-        exportOrders = orderImports.filter((o) => selectedRowKeys.has(o._id))
+      if (isHeaderOnly) {
+        // ── Header-only workspaces: rows are parse jobs, not order imports ──
+        let exportJobs: ParseJobListItem[]
+        if (mode === 'selection') {
+          exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+        } else {
+          // 'all' — use the already-filtered in-memory list so the export
+          // matches exactly what the user sees in the table (filters, date range).
+          // jobs is already loaded at up to 5,000 records by fetchAllJobs.
+          exportJobs = filteredHeaderOnlyJobs
+        }
+
+        const rows: Record<string, string>[] = []
+        for (const job of exportJobs) {
+          // Skip rows where every visible column is empty (null / no jsonOutput).
+          const hasData = visibleCols.some((col) => headerOnlyColStr(col.id, job).trim() !== '')
+          if (!hasData) continue
+          const row: Record<string, string> = {}
+          for (const col of visibleCols) {
+            row[col.label] = headerOnlyColStr(col.id, job).trim()
+          }
+          rows.push(row)
+        }
+
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Invoice Audit')
+        XLSX.writeFile(wb, `invoice-audit-${new Date().toISOString().slice(0, 10)}.xlsx`)
       } else {
-        // Fetch all order imports (search is server-side; date filter is client-side below)
-        const params = new URLSearchParams({
-          workspaceId: activeWorkspace._id,
-          page: '1',
-          pageSize: '5000',
-        })
-        if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
-        const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
-        exportOrders = res.data
-        // Apply the same client-side date filter used by the table.
-        if (auditDateFrom || auditDateTo) {
-          exportOrders = exportOrders.filter((o) => {
-            const ds = toISODateStr(o.matchedInvoice?.invoiceDate ?? o.processedDate ?? o.purchasedDate ?? '')
-            if (!ds) return false
-            if (auditDateFrom && ds < auditDateFrom) return false
-            if (auditDateTo && ds > auditDateTo) return false
-            return true
+        // ── Full workspaces: rows are order imports ──
+        let exportOrders: DocTidyOrderImport[]
+        if (mode === 'selection') {
+          exportOrders = orderImports.filter((o) => selectedRowKeys.has(o._id))
+        } else {
+          // Fetch all order imports (search is server-side; date filter is client-side below)
+          const params = new URLSearchParams({
+            workspaceId: activeWorkspace._id,
+            page: '1',
+            pageSize: '5000',
           })
+          if (debouncedAuditSearch) params.set('search', debouncedAuditSearch)
+          const res = await authApi.get<OrderImportsResponse>(`/doc-tidy/order-imports?${params.toString()}`)
+          exportOrders = res.data
+          // Apply the same client-side date filter used by the table.
+          if (auditDateFrom || auditDateTo) {
+            exportOrders = exportOrders.filter((o) => {
+              const ds = toISODateStr(o.matchedInvoice?.invoiceDate ?? o.processedDate ?? o.purchasedDate ?? '')
+              if (!ds) return false
+              if (auditDateFrom && ds < auditDateFrom) return false
+              if (auditDateTo && ds > auditDateTo) return false
+              return true
+            })
+          }
         }
-      }
 
-      const rows: Record<string, string>[] = []
-      for (const order of exportOrders) {
-        const matches = invoiceMatchMap.get(order._id) ?? findAllInvoiceMatches(order, jobs)
-        const row: Record<string, string> = {}
-        for (const col of visibleCols) {
-          row[col.label] = auditColStr(col.id, order, matches)
+        const rows: Record<string, string>[] = []
+        for (const order of exportOrders) {
+          const matches = invoiceMatchMap.get(order._id) ?? findAllInvoiceMatches(order, jobs)
+          const row: Record<string, string> = {}
+          for (const col of visibleCols) {
+            row[col.label] = auditColStr(col.id, order, matches)
+          }
+          rows.push(row)
         }
-        rows.push(row)
-      }
 
-      const ws = XLSX.utils.json_to_sheet(rows)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Invoice Audit')
-      XLSX.writeFile(wb, `invoice-audit-${new Date().toISOString().slice(0, 10)}.xlsx`)
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Invoice Audit')
+        XLSX.writeFile(wb, `invoice-audit-${new Date().toISOString().slice(0, 10)}.xlsx`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
     } finally {
@@ -6247,9 +6278,17 @@ export default function DocTidyInvoiceAudit() {
                 </button>
                 {/* Export icon button */}
                 <button type="button"
-                  onClick={() => void exportToExcel(selectedRowKeys.size > 0 ? 'selection' : 'all')}
+                  onClick={() => {
+                    const selectionSize = isHeaderOnly ? selectedJobIds.size : selectedRowKeys.size
+                    void exportToExcel(selectionSize > 0 ? 'selection' : 'all')
+                  }}
                   disabled={exporting}
-                  title={selectedRowKeys.size > 0 ? `Export ${selectedRowKeys.size} selected rows` : 'Export all rows to Excel'}
+                  title={(() => {
+                    const selectionSize = isHeaderOnly ? selectedJobIds.size : selectedRowKeys.size
+                    return selectionSize > 0
+                      ? `Export ${selectionSize} selected rows`
+                      : 'Export all rows to Excel'
+                  })()}
                   className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-emerald-600 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {exporting ? <Spinner className="h-3.5 w-3.5" /> : (
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
