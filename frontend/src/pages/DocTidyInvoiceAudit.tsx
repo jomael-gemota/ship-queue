@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import {
-  Banner,
   DocumentTypeBadge,
   PaginationArrows,
   ParseProgressBadge,
@@ -736,6 +736,8 @@ function WorkspaceEditorDialog({
   const [importMode, setImportMode] = useState<'full' | 'header-only'>(
     initial?.importMode ?? 'full'
   )
+  /** Source type chosen during new-workspace creation only. */
+  const [newSourceType, setNewSourceType] = useState<'none' | 'email' | 'sps'>('none')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -846,15 +848,28 @@ function WorkspaceEditorDialog({
     try {
       const body: Record<string, unknown> = { name: name.trim() }
       if (!initial && initialOrgId) body.organizationId = initialOrgId
-      // importMode is editable by all users, both when creating and editing a workspace.
       body.importMode = importMode
       let result: { data: DocTidyWorkspace }
       if (initial) {
         result = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${initial._id}`, body)
+        onSave(result.data)
       } else {
         result = await authApi.post<{ data: DocTidyWorkspace }>('/doc-tidy/workspaces', body)
+        const ws = result.data
+        // If the user chose a source type, kick off the OAuth redirect immediately
+        // after workspace creation. The callback already handles redirecting back
+        // and displaying the success toast.
+        if (newSourceType === 'email') {
+          const res = await authApi.get<{ url: string }>(`/auth/doc-tidy/workspaces/${ws._id}/connect`)
+          window.location.href = res.url
+          return // navigation imminent; skip onSave
+        } else if (newSourceType === 'sps') {
+          const res = await authApi.get<{ url: string }>(`/auth/sps/workspaces/${ws._id}/connect`)
+          window.location.href = res.url
+          return // navigation imminent; skip onSave
+        }
+        onSave(ws)
       }
-      onSave(result.data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save workspace')
     } finally {
@@ -880,7 +895,7 @@ function WorkspaceEditorDialog({
             <p className="mt-0.5 text-xs text-[var(--text-200)]">
               {initial
                 ? 'Rename this workspace. Rules are managed from the Rules tab inside the workspace.'
-                : 'Give your workspace a name. You\'ll add rules from inside the workspace.'}
+                : 'Set up your workspace. You can add rules and change these settings later.'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
@@ -909,7 +924,7 @@ function WorkspaceEditorDialog({
             />
           </div>
 
-          {/* Import mode — visible for all users, both when creating and editing */}
+          {/* Import mode — all users may change this when creating or editing */}
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-1.5">
               Import mode
@@ -950,6 +965,91 @@ function WorkspaceEditorDialog({
               </p>
             )}
           </div>
+
+          {/* Invoice source picker — shown when creating a new workspace */}
+          {!initial && (
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] mb-2">
+                Invoice source
+              </label>
+              <p className="mb-3 text-[10px] text-[var(--text-200)] leading-relaxed">
+                Choose how this workspace receives invoices. You'll be redirected to connect your account right after the workspace is created.
+              </p>
+              <div className="space-y-2">
+                {/* None / Set up later */}
+                <button
+                  type="button"
+                  onClick={() => setNewSourceType('none')}
+                  className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors cursor-pointer ${
+                    newSourceType === 'none'
+                      ? 'border-[var(--accent-200)] bg-[var(--accent-200)]/5 ring-1 ring-[var(--accent-200)]'
+                      : 'border-[var(--bg-300)] bg-[var(--bg-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${newSourceType === 'none' ? 'bg-[var(--accent-200)]/15' : 'bg-[var(--bg-300)]'}`}>
+                    <svg className={`h-4 w-4 ${newSourceType === 'none' ? 'text-[var(--accent-200)]' : 'text-[var(--text-200)]'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xs font-semibold ${newSourceType === 'none' ? 'text-[var(--accent-200)]' : 'text-[var(--text-100)]'}`}>Set up later</p>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Skip for now — connect a source from the workspace settings.</p>
+                  </div>
+                  <span className={`h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${newSourceType === 'none' ? 'border-[var(--accent-200)] bg-[var(--accent-200)]' : 'border-[var(--bg-300)]'}`} />
+                </button>
+
+                {/* Gmail */}
+                <button
+                  type="button"
+                  onClick={() => setNewSourceType('email')}
+                  className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors cursor-pointer ${
+                    newSourceType === 'email'
+                      ? 'border-[var(--accent-200)] bg-[var(--accent-200)]/5 ring-1 ring-[var(--accent-200)]'
+                      : 'border-[var(--bg-300)] bg-[var(--bg-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${newSourceType === 'email' ? 'bg-[var(--accent-200)]/15' : 'bg-[var(--bg-300)]'}`}>
+                    <svg className="h-4 w-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xs font-semibold ${newSourceType === 'email' ? 'text-[var(--accent-200)]' : 'text-[var(--text-100)]'}`}>Gmail</p>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Connect a Gmail account that receives this workspace's invoices.</p>
+                  </div>
+                  <span className={`h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${newSourceType === 'email' ? 'border-[var(--accent-200)] bg-[var(--accent-200)]' : 'border-[var(--bg-300)]'}`} />
+                </button>
+
+                {/* SPS Commerce */}
+                <button
+                  type="button"
+                  onClick={() => setNewSourceType('sps')}
+                  className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors cursor-pointer ${
+                    newSourceType === 'sps'
+                      ? 'border-[var(--accent-200)] bg-[var(--accent-200)]/5 ring-1 ring-[var(--accent-200)]'
+                      : 'border-[var(--bg-300)] bg-[var(--bg-100)] hover:bg-[var(--bg-200)]'
+                  }`}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${newSourceType === 'sps' ? 'bg-[var(--accent-200)]/15' : 'bg-[var(--bg-300)]'}`}>
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <rect x="2" y="2" width="9" height="9" rx="1.5" fill="#F97316"/>
+                      <rect x="13" y="2" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                      <rect x="2" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".7"/>
+                      <rect x="13" y="13" width="9" height="9" rx="1.5" fill="#F97316" opacity=".4"/>
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xs font-semibold ${newSourceType === 'sps' ? 'text-[var(--accent-200)]' : 'text-[var(--text-100)]'}`}>SPS Commerce</p>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-200)]">Pull invoices via the SPS Commerce EDI/API instead of email.</p>
+                  </div>
+                  <span className={`h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${newSourceType === 'sps' ? 'border-[var(--accent-200)] bg-[var(--accent-200)]' : 'border-[var(--bg-300)]'}`} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Invoice source — only shown when editing an existing workspace */}
           {initial && (
@@ -1204,7 +1304,13 @@ function WorkspaceEditorDialog({
           <button type="button" onClick={() => void submit()} disabled={saving}
             className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
             {saving && <Spinner className="h-3.5 w-3.5 text-white" />}
-            {saving ? 'Saving…' : initial ? 'Save changes' : 'Create workspace'}
+            {saving
+              ? (!initial && newSourceType !== 'none' ? 'Creating…' : 'Saving…')
+              : initial
+                ? 'Save changes'
+                : newSourceType !== 'none'
+                  ? 'Create & connect'
+                  : 'Create workspace'}
           </button>
         </div>
       </div>
@@ -1213,6 +1319,62 @@ function WorkspaceEditorDialog({
 }
 
 /* ──────────────────────────────────────── Workspace card ── */
+
+/**
+ * Source indicator icons shown in the workspace card.
+ *
+ * - Gmail multicolor logo when emailSourceCount > 0
+ * - SPS Commerce logo (brand blue #0092DA) when spsSourceCount > 0
+ * - "No source" icon when neither is connected
+ */
+function WorkspaceSourceIcon({ emailSourceCount = 0, spsSourceCount = 0 }: { emailSourceCount?: number; spsSourceCount?: number }) {
+  const hasEmail = emailSourceCount > 0
+  const hasSps   = spsSourceCount   > 0
+
+  if (!hasEmail && !hasSps) {
+    // No source connected yet — original folder icon
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] dark:bg-[var(--bg-300)] text-[var(--accent-200)] dark:text-[var(--primary-300)]" title="No source connected">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+        </svg>
+      </div>
+    )
+  }
+
+  // One or both sources — show them side by side
+  return (
+    <div className="flex items-center gap-2">
+      {hasEmail && (
+        /* Gmail — official multicolor M-envelope (Google brand colors, Apache-2.0) */
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-white/10 shadow-sm ring-1 ring-black/5 dark:ring-white/10" title="Gmail source connected">
+          <svg className="h-6 w-6" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-label="Gmail">
+            <path d="M34.9 448h81.5V250.2L0 163v250.2C0 432.5 15.7 448 34.9 448" fill="#4285F4"/>
+            <path d="M395.6 448h81.5c19.3 0 34.9-15.7 34.9-34.9V163l-116.4 87.3" fill="#34A853"/>
+            <path d="M395.6 99v151.3L512 163v-46.5c0-43.2-49.3-67.8-83.8-41.9" fill="#FBBC04"/>
+            <path d="M116.4 250.2V99L256 203.7 395.6 99v151.3L256 355" fill="#EA4335"/>
+            <path d="M0 116.4V163l116.4 87.3V99L83.8 74.5C49.2 48.6 0 73.2 0 116.4" fill="#C5221F"/>
+          </svg>
+        </div>
+      )}
+      {hasSps && (
+        /* SPS Commerce — official icon-only logo from spscommerce.com */
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-white/10 shadow-sm ring-1 ring-black/5 dark:ring-white/10 overflow-hidden"
+          title="SPS Commerce source connected"
+        >
+          <img
+            src="https://www.spscommerce.com/wp-content/uploads/2019/03/sps_logo_only.png"
+            alt="SPS Commerce"
+            className="h-7 w-7 object-contain"
+            loading="lazy"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 function WorkspaceCard({
   workspace,
@@ -1236,11 +1398,11 @@ function WorkspaceCard({
       className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-100)] dark:bg-[var(--bg-300)] text-[var(--accent-200)] dark:text-[var(--primary-300)]">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-          </svg>
+        <div className="mb-4">
+          <WorkspaceSourceIcon
+            emailSourceCount={workspace.emailSourceCount}
+            spsSourceCount={workspace.spsSourceCount}
+          />
         </div>
         <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
           {workspace.name}
@@ -2770,9 +2932,7 @@ export default function DocTidyInvoiceAudit() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { orgId: urlOrgId, workspaceId: urlWorkspaceId } = useParams<{ orgId?: string; workspaceId?: string }>()
-
-  /* ── Global success banner (e.g. after OAuth redirects back) ── */
-  const [globalSuccess, setGlobalSuccess] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   /* ── View state ── */
   type View = 'organizations' | 'workspaces' | 'audit'
@@ -2788,7 +2948,6 @@ export default function DocTidyInvoiceAudit() {
   /* ── Organizations ── */
   const [organizations, setOrganizations] = useState<DocTidyOrganization[]>([])
   const [orgLoading, setOrgLoading] = useState(true)
-  const [orgError, setOrgError] = useState<string | null>(null)
 
   /* ── Organization editor ── */
   const [editOrgTarget, setEditOrgTarget] = useState<DocTidyOrganization | 'new' | null>(null)
@@ -2799,7 +2958,6 @@ export default function DocTidyInvoiceAudit() {
   /* ── Workspaces ── */
   const [workspaces, setWorkspaces] = useState<DocTidyWorkspace[]>([])
   const [wsLoading, setWsLoading] = useState(true)
-  const [wsError, setWsError] = useState<string | null>(null)
 
   /* ── Workspace editor ── */
   const [editTarget, setEditTarget] = useState<DocTidyWorkspace | 'new' | null>(null)
@@ -2812,7 +2970,6 @@ export default function DocTidyInvoiceAudit() {
   const [orderImports, setOrderImports] = useState<DocTidyOrderImport[]>([])
   const [orderPagination, setOrderPagination] = useState({ total: 0, pages: 1 })
   const [orderLoading, setOrderLoading] = useState(false)
-  const [orderError, setOrderError] = useState<string | null>(null)
   const [orderPage, setOrderPage] = useState(1)
   const [orderPageSize, setOrderPageSize] = useState(500)
   const [auditSearch, setAuditSearch] = useState('')
@@ -2852,7 +3009,6 @@ export default function DocTidyInvoiceAudit() {
   /* ── All parse jobs for matching (fetched silently per workspace open) ── */
   const [jobs, setJobs] = useState<ParseJobListItem[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   /* ── Order import file upload ── */
   const [showImportModal, setShowImportModal] = useState(false)
@@ -2875,7 +3031,6 @@ export default function DocTidyInvoiceAudit() {
   const [emailMessages, setEmailMessages] = useState<DocTidyMessage[]>([])
   const [emailPagination, setEmailPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
   const [emailLoading, setEmailLoading] = useState(false)
-  const [emailError, setEmailError] = useState<string | null>(null)
   const [emailPage, setEmailPage] = useState(1)
   const [emailPageSize, setEmailPageSize] = useState(PAGE_SIZE_OPTIONS[0])
   const [emailSearch, setEmailSearch] = useState('')
@@ -2893,9 +3048,6 @@ export default function DocTidyInvoiceAudit() {
 
   /* Fetch Emails button state */
   const [emailFetching, setEmailFetching] = useState(false)
-  const [emailFetchNotice, setEmailFetchNotice] = useState<string | null>(null)
-  /** Non-error informational notice (e.g. "poller already running") — shown as info blue. */
-  const [emailFetchInfo, setEmailFetchInfo] = useState<string | null>(null)
 
   /* Background poller / manual-fetch SSE status chips */
   const [pollerRunning, setPollerRunning] = useState(false)
@@ -2907,13 +3059,6 @@ export default function DocTidyInvoiceAudit() {
   useEffect(() => {
     return () => { if (fetchDoneTimerRef.current) clearTimeout(fetchDoneTimerRef.current) }
   }, [])
-
-  // Auto-dismiss the info notice after 6 s.
-  useEffect(() => {
-    if (!emailFetchInfo) return
-    const t = setTimeout(() => setEmailFetchInfo(null), 6_000)
-    return () => clearTimeout(t)
-  }, [emailFetchInfo])
 
   /* Countdown to next automated poll */
   const [nextSyncAt, setNextSyncAt] = useState<Date | null>(null)
@@ -2942,14 +3087,15 @@ export default function DocTidyInvoiceAudit() {
     const wsSourceError = searchParams.get('ws_source_error')
 
     if (wsSource === 'connected') {
-      setGlobalSuccess('Email account connected successfully.')
+      addToast('Email account connected successfully.', 'success')
       if (urlWorkspaceId) setPendingOpenWsId(urlWorkspaceId)
       setSearchParams({}, { replace: true })
     } else if (wsSourceError) {
-      setWsError(
+      addToast(
         wsSourceError === 'no_refresh_token'
           ? 'Email connection failed: no refresh token returned. Try reconnecting and ensure you grant all requested permissions.'
-          : 'Email connection failed. Please try again.'
+          : 'Email connection failed. Please try again.',
+        'error',
       )
       setSearchParams({}, { replace: true })
     }
@@ -2962,14 +3108,15 @@ export default function DocTidyInvoiceAudit() {
     const wsSpsError = searchParams.get('ws_sps_error')
 
     if (wsSps === 'connected') {
-      setGlobalSuccess('SPS Commerce account connected successfully.')
+      addToast('SPS Commerce account connected successfully.', 'success')
       if (urlWorkspaceId) setPendingOpenWsId(urlWorkspaceId)
       setSearchParams({}, { replace: true })
     } else if (wsSpsError) {
-      setWsError(
+      addToast(
         wsSpsError === 'no_refresh_token'
           ? 'SPS Commerce connection failed: no refresh token returned. Ensure your SPS Dev Center app has "Allow Offline Access" enabled, then try reconnecting.'
-          : 'SPS Commerce connection failed. Please try again.'
+          : 'SPS Commerce connection failed. Please try again.',
+        'error',
       )
       setSearchParams({}, { replace: true })
     }
@@ -2980,7 +3127,6 @@ export default function DocTidyInvoiceAudit() {
   const [pdfImports, setPdfImports] = useState<PdfImport[]>([])
   const [pdfImportsPagination, setPdfImportsPagination] = useState({ total: 0, pages: 1, parsedCount: 0 })
   const [pdfImportsLoading, setPdfImportsLoading] = useState(false)
-  const [pdfImportsError, setPdfImportsError] = useState<string | null>(null)
   const [pdfPage, setPdfPage] = useState(1)
   const [pdfPageSize, setPdfPageSize] = useState(PAGE_SIZE_OPTIONS[0])
   const [pdfSearch, setPdfSearch] = useState('')
@@ -3091,7 +3237,6 @@ export default function DocTidyInvoiceAudit() {
     if (!activeWorkspace) return
     const gen = ++pdfFetchGenRef.current
     setPdfImportsLoading(true)
-    setPdfImportsError(null)
     try {
       const params = new URLSearchParams({
         workspaceId: activeWorkspace._id,
@@ -3109,7 +3254,7 @@ export default function DocTidyInvoiceAudit() {
       setPdfImportsPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
       if (gen !== pdfFetchGenRef.current) return
-      setPdfImportsError(err instanceof Error ? err.message : 'Failed to load PDF imports')
+      addToast(err instanceof Error ? err.message : 'Failed to load PDF imports', 'error')
     } finally {
       if (gen === pdfFetchGenRef.current) setPdfImportsLoading(false)
     }
@@ -3145,12 +3290,11 @@ export default function DocTidyInvoiceAudit() {
 
   const handleSendToAgent = async (imp: PdfImport) => {
     setPdfSendingIds((prev) => new Set(prev).add(imp._id))
-    setPdfImportsError(null)
     try {
       await authApi.post(`/doc-tidy/pdf-imports/${imp._id}/parse`)
       void fetchPdfImports()
     } catch (err) {
-      setPdfImportsError(err instanceof Error ? err.message : 'Failed to send to Tidy Agent')
+      addToast(err instanceof Error ? err.message : 'Failed to send to Tidy Agent', 'error')
     } finally {
       setPdfSendingIds((prev) => { const next = new Set(prev); next.delete(imp._id); return next })
     }
@@ -3165,7 +3309,7 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeletePdf(null)
       void fetchPdfImports()
     } catch (err) {
-      setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete import')
+      addToast(err instanceof Error ? err.message : 'Failed to delete import', 'error')
       setConfirmDeletePdf(null)
     } finally {
       setPdfDeleting(false)
@@ -3180,7 +3324,7 @@ export default function DocTidyInvoiceAudit() {
       setConfirmDeleteEmail(null)
       void fetchEmails(true)
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Failed to delete message')
+      addToast(err instanceof Error ? err.message : 'Failed to delete message', 'error')
       setConfirmDeleteEmail(null)
     } finally {
       setEmailDeleting(false)
@@ -3198,7 +3342,7 @@ export default function DocTidyInvoiceAudit() {
       setSelectedEmailIds(new Set())
       setConfirmBulkDeleteEmails(false)
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Failed to delete selected messages')
+      addToast(err instanceof Error ? err.message : 'Failed to delete selected messages', 'error')
       setConfirmBulkDeleteEmails(false)
     } finally {
       setEmailBulkDeleting(false)
@@ -3216,7 +3360,7 @@ export default function DocTidyInvoiceAudit() {
       setPdfSelectedIds(new Set())
       setConfirmBulkDeletePdfs(false)
     } catch (err) {
-      setPdfImportsError(err instanceof Error ? err.message : 'Failed to delete selected PDF imports')
+      addToast(err instanceof Error ? err.message : 'Failed to delete selected PDF imports', 'error')
       setConfirmBulkDeletePdfs(false)
     } finally {
       setPdfBulkDeleting(false)
@@ -3233,7 +3377,7 @@ export default function DocTidyInvoiceAudit() {
       setOrderPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - 1) }))
       setConfirmDeleteAuditRow(null)
     } catch (err) {
-      setOrderError(err instanceof Error ? err.message : 'Failed to delete order')
+      addToast(err instanceof Error ? err.message : 'Failed to delete order', 'error')
       setConfirmDeleteAuditRow(null)
     } finally {
       setAuditRowDeleting(false)
@@ -3251,7 +3395,7 @@ export default function DocTidyInvoiceAudit() {
       setSelectedRowKeys(new Set())
       setConfirmBulkDeleteAudit(false)
     } catch (err) {
-      setOrderError(err instanceof Error ? err.message : 'Failed to delete selected orders')
+      addToast(err instanceof Error ? err.message : 'Failed to delete selected orders', 'error')
       setConfirmBulkDeleteAudit(false)
     } finally {
       setAuditBulkDeleting(false)
@@ -3419,16 +3563,15 @@ export default function DocTidyInvoiceAudit() {
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
     setWsLoading(true)
-    setWsError(null)
     try {
       const res = await authApi.get<{ data: DocTidyWorkspace[] }>('/doc-tidy/workspaces')
       setWorkspaces(res.data)
     } catch (err) {
-      setWsError(err instanceof Error ? err.message : 'Failed to load workspaces')
+      addToast(err instanceof Error ? err.message : 'Failed to load workspaces', 'error')
     } finally {
       setWsLoading(false)
     }
-  }, [])
+  }, [addToast])
 
   useEffect(() => { void loadWorkspaces() }, [loadWorkspaces])
 
@@ -3448,16 +3591,15 @@ export default function DocTidyInvoiceAudit() {
   /* ── Load organizations on mount ── */
   const loadOrganizations = useCallback(async () => {
     setOrgLoading(true)
-    setOrgError(null)
     try {
       const res = await authApi.get<{ data: DocTidyOrganization[] }>('/doc-tidy/organizations')
       setOrganizations(res.data)
     } catch (err) {
-      setOrgError(err instanceof Error ? err.message : 'Failed to load organizations')
+      addToast(err instanceof Error ? err.message : 'Failed to load organizations', 'error')
     } finally {
       setOrgLoading(false)
     }
-  }, [])
+  }, [addToast])
 
   useEffect(() => { void loadOrganizations() }, [loadOrganizations])
 
@@ -3559,20 +3701,17 @@ export default function DocTidyInvoiceAudit() {
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
     setEmailFetching(true)
-    setEmailFetchNotice(null)
-    setEmailFetchInfo(null)
-    setEmailError(null)
     try {
       const res = await authApi.post<{ data: RunAllResult }>('/doc-tidy/run')
       const totalImported = res.data.results.reduce((sum, r) => sum + (r.imported ?? 0), 0)
       const totalMatched = res.data.results.reduce((sum, r) => sum + (r.matched ?? 0), 0)
       const errors = res.data.results.filter((r) => r.error)
       if (errors.length > 0) {
-        setEmailError(`${errors.length} rule${errors.length === 1 ? '' : 's'} failed: ${errors.map((e) => e.error).join('; ')}`)
+        addToast(`${errors.length} rule${errors.length === 1 ? '' : 's'} failed: ${errors.map((e) => e.error).join('; ')}`, 'error')
       } else if (totalImported > 0) {
-        setEmailFetchNotice(`Fetched ${totalImported} new email${totalImported === 1 ? '' : 's'} (${totalMatched} matched).`)
+        addToast(`Fetched ${totalImported} new email${totalImported === 1 ? '' : 's'} (${totalMatched} matched).`, 'success')
       } else {
-        setEmailFetchNotice(`No new emails — ${totalMatched} message${totalMatched === 1 ? '' : 's'} matched, none were new.`)
+        addToast(`No new emails — ${totalMatched} message${totalMatched === 1 ? '' : 's'} matched, none were new.`, 'info')
       }
       // Refresh the table so newly imported emails appear immediately.
       void fetchEmails(true)
@@ -3580,9 +3719,9 @@ export default function DocTidyInvoiceAudit() {
       const msg = err instanceof Error ? err.message : 'Failed to fetch emails'
       // "Already running" responses from the server aren't real errors — show them as info.
       if (/already.{0,30}running|poller.*running|running.*poller|currently.{0,30}fetch|fetch.*in.{0,10}progress/i.test(msg)) {
-        setEmailFetchInfo('Email extraction is already in progress — new emails will appear here shortly once it completes.')
+        addToast('Email extraction is already in progress — new emails will appear here shortly once it completes.', 'info')
       } else {
-        setEmailError(msg)
+        addToast(msg, 'error')
       }
     } finally {
       setEmailFetching(false)
@@ -3597,7 +3736,6 @@ export default function DocTidyInvoiceAudit() {
     if (!activeWorkspace) return
     const gen = ++emailFetchGenRef.current
     if (!silent) setEmailLoading(true)
-    setEmailError(null)
     try {
       const params = new URLSearchParams({
         workspaceId: activeWorkspace._id,
@@ -3613,7 +3751,7 @@ export default function DocTidyInvoiceAudit() {
       setEmailPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages), parsedCount: res.pagination.parsedCount ?? 0 })
     } catch (err) {
       if (gen !== emailFetchGenRef.current) return
-      setEmailError(err instanceof Error ? err.message : 'Failed to load messages')
+      addToast(err instanceof Error ? err.message : 'Failed to load messages', 'error')
     } finally {
       if (gen === emailFetchGenRef.current && !silent) setEmailLoading(false)
     }
@@ -3779,7 +3917,6 @@ export default function DocTidyInvoiceAudit() {
     if (!activeWorkspace) return
     const gen = ++orderFetchGenRef.current
     setOrderLoading(true)
-    setOrderError(null)
     try {
       const params = new URLSearchParams({
         workspaceId: activeWorkspace._id,
@@ -3793,7 +3930,7 @@ export default function DocTidyInvoiceAudit() {
       setOrderPagination({ total: res.pagination.total, pages: Math.max(1, res.pagination.pages) })
     } catch (err) {
       if (gen !== orderFetchGenRef.current) return
-      setOrderError(err instanceof Error ? err.message : 'Failed to load order imports')
+      addToast(err instanceof Error ? err.message : 'Failed to load order imports', 'error')
     } finally {
       if (gen === orderFetchGenRef.current) setOrderLoading(false)
     }
@@ -3812,7 +3949,6 @@ export default function DocTidyInvoiceAudit() {
   const fetchAllJobs = useCallback(async () => {
     if (!activeWorkspace) return
     setLoading(true)
-    setError(null)
     try {
       const params = new URLSearchParams({
         status: 'completed',
@@ -3823,7 +3959,7 @@ export default function DocTidyInvoiceAudit() {
       const res = await authApi.get<ParseJobsResponse>(`/doc-tidy/parse-jobs?${params.toString()}`)
       setJobs(res.data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invoice data for matching')
+      addToast(err instanceof Error ? err.message : 'Failed to load invoice data for matching', 'error')
     } finally {
       setLoading(false)
     }
@@ -3924,8 +4060,6 @@ export default function DocTidyInvoiceAudit() {
     setColFilters({})
     setFilterOpenColId(null)
     setFilterAnchorRect(null)
-    setError(null)
-    setOrderError(null)
     setImportSuccess(null)
     // Reset email sub-view state
     setEmailPage(1)
@@ -3933,7 +4067,6 @@ export default function DocTidyInvoiceAudit() {
     setEmailDebouncedSearch('')
     setEmailDateFrom('')
     setEmailDateTo('')
-    setEmailError(null)
     setEmailMessages([])
     setSelectedEmailIds(new Set())
 
@@ -4071,7 +4204,7 @@ export default function DocTidyInvoiceAudit() {
       setWorkspaces((prev) => prev.filter((w) => w._id !== ws._id))
       if (activeWorkspace?._id === ws._id) leaveWorkspace()
     } catch (err) {
-      setWsError(err instanceof Error ? err.message : 'Failed to delete workspace')
+      addToast(err instanceof Error ? err.message : 'Failed to delete workspace', 'error')
     }
   }
 
@@ -4085,7 +4218,7 @@ export default function DocTidyInvoiceAudit() {
       )
       if (activeOrg?._id === org._id) leaveOrg()
     } catch (err) {
-      setOrgError(err instanceof Error ? err.message : 'Failed to delete organization')
+      addToast(err instanceof Error ? err.message : 'Failed to delete organization', 'error')
     }
   }
 
@@ -4354,7 +4487,7 @@ export default function DocTidyInvoiceAudit() {
       setSelectedJobIds((prev) => { const next = new Set(prev); next.delete(job._id); return next })
       setConfirmDeleteJob(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete parse job')
+      addToast(err instanceof Error ? err.message : 'Failed to delete parse job', 'error')
       setConfirmDeleteJob(null)
     } finally {
       setJobDeleting(false)
@@ -4370,7 +4503,7 @@ export default function DocTidyInvoiceAudit() {
       setSelectedJobIds(new Set())
       setConfirmBulkDeleteJobs(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete parse jobs')
+      addToast(err instanceof Error ? err.message : 'Failed to delete parse jobs', 'error')
       setConfirmBulkDeleteJobs(false)
     } finally {
       setJobBulkDeleting(false)
@@ -4381,7 +4514,6 @@ export default function DocTidyInvoiceAudit() {
   const exportToExcel = async (mode: 'selection' | 'all') => {
     if (!activeWorkspace) return
     setExporting(true)
-    setError(null)
     try {
       const XLSX = await import('xlsx')
 
@@ -4456,7 +4588,7 @@ export default function DocTidyInvoiceAudit() {
         XLSX.writeFile(wb, `invoice-audit-${new Date().toISOString().slice(0, 10)}.xlsx`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed')
+      addToast(err instanceof Error ? err.message : 'Export failed', 'error')
     } finally {
       setExporting(false)
     }
@@ -4711,10 +4843,7 @@ export default function DocTidyInvoiceAudit() {
   /* ── Render ── */
   return (
     <div className="space-y-4">
-      {/* ── Global error banners ── */}
-      {wsError && <Banner kind="error" onDismiss={() => setWsError(null)}>{wsError}</Banner>}
-      {orgError && <Banner kind="error" onDismiss={() => setOrgError(null)}>{orgError}</Banner>}
-      {globalSuccess && <Banner kind="success" onDismiss={() => setGlobalSuccess(null)}>{globalSuccess}</Banner>}
+      {/* Global notifications are now delivered via floating toasts (see ToastContext). */}
 
       {/* ══════════════════════════ ORGANIZATIONS LANDING ══════════════════════════ */}
       {view === 'organizations' && (
@@ -5080,27 +5209,6 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ EMAILS TAB ══════════════ */}
           {workspaceTab === 'emails' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              {emailError && <Banner kind="error" onDismiss={() => setEmailError(null)}>{emailError}</Banner>}
-              {emailFetchInfo && (
-                <div className="flex items-center gap-2.5 rounded-xl border border-sky-200 dark:border-sky-700/50 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-sky-900/25 dark:to-blue-900/20 px-3.5 py-2.5 text-[11px] text-sky-800 dark:text-sky-300 shadow-sm">
-                  {/* Info icon */}
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-700/40">
-                    <svg className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </span>
-                  <span className="flex-1 leading-relaxed">{emailFetchInfo}</span>
-                  {/* Dismiss */}
-                  <button onClick={() => setEmailFetchInfo(null)} aria-label="Dismiss"
-                    className="ml-1 shrink-0 rounded p-0.5 opacity-40 transition-opacity hover:opacity-80 cursor-pointer">
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              {emailFetchNotice && <Banner kind="success" onDismiss={() => setEmailFetchNotice(null)}>{emailFetchNotice}</Banner>}
-
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
                 {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
@@ -5632,10 +5740,6 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ PDF IMPORTS TAB ══════════════ */}
           {workspaceTab === 'pdf-imports' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              {pdfImportsError && (
-                <Banner kind="error" onDismiss={() => setPdfImportsError(null)}>{pdfImportsError}</Banner>
-              )}
-
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
                 {/* Toolbar */}
@@ -6206,12 +6310,6 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ AUDIT RESULTS TAB ══════════════ */}
           {workspaceTab === 'audit' && (
             <div className="flex-1 min-h-0 flex flex-col gap-4">
-            {(orderError || error) && (
-              <Banner kind="error" onDismiss={() => { setOrderError(null); setError(null) }}>
-                {orderError || error}
-              </Banner>
-            )}
-
             {/* Table card */}
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
