@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { BULK_ORDER_PATH, isBulkOrderPath, isDropshipPath } from '../lib/bulkOrder'
 
 const MENU_ITEMS = [
   {
@@ -61,8 +62,9 @@ const INVOICE_AUDIT_ITEMS = [
 
 const ORDERING_ITEMS = [
   {
-    label: 'Dropship (B2B)',
+    label: 'Dropship',
     to: '/ordering',
+    active: isDropshipPath,
     icon: (
       <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -70,6 +72,21 @@ const ORDERING_ITEMS = [
           strokeLinejoin="round"
           strokeWidth={2}
           d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+        />
+      </svg>
+    ),
+  },
+  {
+    label: 'Bulk Order',
+    to: BULK_ORDER_PATH,
+    active: isBulkOrderPath,
+    icon: (
+      <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
         />
       </svg>
     ),
@@ -108,6 +125,7 @@ const ADMIN_ITEMS = [
 
 export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
   const { user, logout } = useAuth()
+  const { pathname } = useLocation()
 
   return (
     <aside className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
@@ -179,23 +197,25 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
           ) : (
             <div className="border-t border-[var(--bg-300)] my-1" />
           )}
-          {ORDERING_ITEMS.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              title={item.label}
-              className={({ isActive }) =>
-                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                  isActive
+          {ORDERING_ITEMS.map((item) => {
+            const active = item.active(pathname)
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                title={item.label}
+                aria-current={active ? 'page' : undefined}
+                className={`flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
+                  active
                     ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
                     : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                }`
-              }
-            >
-              {item.icon}
-              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
-            </NavLink>
-          ))}
+                }`}
+              >
+                {item.icon}
+                {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
+              </Link>
+            )
+          })}
 
           {isOpen ? (
             <div className="pt-2 pb-0.5 px-1">

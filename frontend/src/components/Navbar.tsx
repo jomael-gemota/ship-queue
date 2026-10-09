@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { bulkOrderTitle } from '../lib/bulkOrder'
 import { HH_BRAND_IDS, HH_BRANDS, hhBrand, hhBrandFromPath } from '../lib/hhBrand'
 import { hhBreadcrumbPage } from '../lib/hhNav'
 
@@ -22,6 +23,8 @@ export default function Navbar({
     if (pathname === '/create-label') return 'Create Shipping Label'
     if (pathname === '/dropbox-fetcher') return 'Dropbox Fetcher'
     if (pathname.startsWith('/doc-tidy')) return 'Doc Tidy'
+    const bulkTitle = bulkOrderTitle(pathname)
+    if (bulkTitle) return bulkTitle
     if (HH_BRAND_IDS.some((id) => pathname.includes(`/${HH_BRANDS[id].slug}`))) {
       const name = hhBrand(hhBrandFromPath(pathname)).name
       const page = hhBreadcrumbPage(pathname)

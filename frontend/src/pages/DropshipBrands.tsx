@@ -4,11 +4,9 @@ import { DROPSHIP_BRANDS, type DropshipBrand } from '../lib/dropship'
 
 type BrandView = 'list' | 'grid'
 
-const VIEW_KEY = 'sq_ordering_brand_view'
-
-function readBrandView(): BrandView {
+function readBrandView(viewKey: string): BrandView {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list'
+    return localStorage.getItem(viewKey) === 'grid' ? 'grid' : 'list'
   } catch {
     return 'list'
   }
@@ -143,13 +141,21 @@ function BrandCard({ brand }: { brand: DropshipBrand }) {
   )
 }
 
-export default function DropshipBrands() {
-  const [view, setView] = useState<BrandView>(readBrandView)
+export function OrderingBrandList({
+  brands,
+  description,
+  viewKey,
+}: {
+  brands: DropshipBrand[]
+  description: string
+  viewKey: string
+}) {
+  const [view, setView] = useState<BrandView>(() => readBrandView(viewKey))
 
   const chooseView = (next: BrandView) => {
     setView(next)
     try {
-      localStorage.setItem(VIEW_KEY, next)
+      localStorage.setItem(viewKey, next)
     } catch {
       /* ignore */
     }
@@ -168,9 +174,7 @@ export default function DropshipBrands() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Brands</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-            Open a supplier to import Amazon orders, fill details, and draft carts.
-          </p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">{description}</p>
         </div>
         <button
           type="button"
@@ -195,13 +199,13 @@ export default function DropshipBrands() {
 
       {view === 'grid' ? (
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-          {DROPSHIP_BRANDS.map((brand) => (
+          {brands.map((brand) => (
             <BrandCard key={brand.id} brand={brand} />
           ))}
         </div>
       ) : (
         <ul className="space-y-3">
-          {DROPSHIP_BRANDS.map((brand) => (
+          {brands.map((brand) => (
             <li key={brand.id}>
               <Link
                 to={brand.path}
@@ -232,5 +236,15 @@ export default function DropshipBrands() {
         </ul>
       )}
     </div>
+  )
+}
+
+export default function DropshipBrands() {
+  return (
+    <OrderingBrandList
+      brands={DROPSHIP_BRANDS}
+      description="Open a supplier to import Amazon orders, fill details, and draft carts."
+      viewKey="sq_ordering_brand_view"
+    />
   )
 }

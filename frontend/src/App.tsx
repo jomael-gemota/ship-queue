@@ -17,7 +17,14 @@ import HHSportswearOrders from './pages/HHSportswearOrders'
 import HHSportswearItems from './pages/HHSportswearItems'
 import HHSportswearConfig from './pages/HHSportswearConfig'
 import DropshipBrands from './pages/DropshipBrands'
+import BulkOrder from './pages/BulkOrder'
+import BulkOrderConfig from './pages/BulkOrderConfig'
+import BulkOrderLayout from './pages/BulkOrderLayout'
+import BulkOrderOrders from './pages/BulkOrderOrders'
+import BulkOrderShipments from './pages/BulkOrderShipments'
+import BulkOrderItems from './pages/BulkOrderItems'
 import AdminUsers from './pages/AdminUsers'
+import { BULK_ORDER_BRANDS } from './lib/bulkOrder'
 import { HH_BRANDS, HH_BRAND_IDS } from './lib/hhBrand'
 
 function App() {
@@ -45,6 +52,15 @@ function App() {
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
+                <Route path="/ordering/bulk" element={<BulkOrder />} />
+                {BULK_ORDER_BRANDS.map((brand) => (
+                  <Route key={brand.path} path={brand.path} element={<BulkOrderLayout />}>
+                    <Route index element={<BulkOrderOrders />} />
+                    <Route path="configurations" element={<BulkOrderConfig />} />
+                    <Route path=":orderId" element={<BulkOrderShipments />} />
+                    <Route path=":orderId/shipments/:shipmentIndex" element={<BulkOrderItems />} />
+                  </Route>
+                ))}
                 {HH_BRAND_IDS.map((id) => HH_BRANDS[id].path).map((path) => (
                   <Route key={path} path={path} element={<HHSportswearLayout />}>
                     <Route index element={<HHSportswear />} />

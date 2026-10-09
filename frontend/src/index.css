@@ -211,10 +211,287 @@ body {
   }
 }
 
+.bulk-items-swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.bulk-items-pane {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.bulk-items-pane--exit-forward,
+.bulk-items-pane--exit-back {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bulk-items-pane--enter-forward,
+.bulk-items-pane--enter-back {
+  z-index: 1;
+}
+
+.bulk-items-pane--exit-forward {
+  animation: bulk-items-out-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--enter-forward {
+  animation: bulk-items-in-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--exit-back {
+  animation: bulk-items-out-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--enter-back {
+  animation: bulk-items-in-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes bulk-items-out-left {
+  to {
+    transform: translateX(-14px);
+    opacity: 0;
+  }
+}
+
+@keyframes bulk-items-in-right {
+  from {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bulk-items-out-right {
+  to {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+}
+
+@keyframes bulk-items-in-left {
+  from {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-items-pane--exit-forward,
+  .bulk-items-pane--enter-forward,
+  .bulk-items-pane--exit-back,
+  .bulk-items-pane--enter-back {
+    animation: none;
+  }
+}
+
+/* Full-width sheet. Closed tracks share the row; opening shrinks both sides so the seam parts. Durations match DOOR_SLIDE_MS / DOOR_FADE_MS. */
+.bulk-sheet {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  grid-template-columns:
+    minmax(5.5rem, 0.75fr)
+    minmax(10rem, 1.55fr)
+    minmax(7.5rem, 1.05fr)
+    minmax(9.5rem, 2.5fr)
+    minmax(0px, 0fr)
+    minmax(0px, 0fr)
+    minmax(0px, 0fr)
+    minmax(7.75rem, 0.68fr)
+    minmax(5.75rem, 0.85fr)
+    minmax(5.75rem, 0.9fr);
+  transition: grid-template-columns 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bulk-sheet.is-wide {
+  grid-template-columns:
+    minmax(5.5rem, 0.6fr)
+    minmax(10rem, 1.5fr)
+    minmax(7.5rem, 0.85fr)
+    minmax(9.5rem, 1.6fr)
+    minmax(7.75rem, 0.8fr)
+    minmax(4.75rem, 0.5fr)
+    minmax(5.5rem, 0.55fr)
+    minmax(7.75rem, 0.55fr)
+    minmax(5.75rem, 0.7fr)
+    minmax(5.75rem, 0.75fr);
+}
+
+.bulk-sheet.is-style {
+  grid-template-columns:
+    minmax(5.5rem, 0.8fr)
+    minmax(9.5rem, 3.2fr)
+    minmax(0px, 0fr)
+    minmax(7.75rem, 0.68fr)
+    minmax(5.75rem, 1fr);
+}
+
+.bulk-sheet.is-style.is-wide {
+  grid-template-columns:
+    minmax(5.5rem, 0.65fr)
+    minmax(9.5rem, 2fr)
+    minmax(9.25rem, 1.4fr)
+    minmax(7.75rem, 0.55fr)
+    minmax(5.75rem, 0.85fr);
+}
+
+.bulk-sheet-head,
+.bulk-sheet-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: stretch;
+}
+
+.bulk-sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--bg-200);
+  box-shadow: inset 0 -1px 0 var(--bg-300);
+}
+
+.bulk-sheet-row {
+  --hh-row-bg: var(--bg-100);
+  background-color: var(--hh-row-bg);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.bulk-sheet-row.is-alt {
+  --hh-row-bg: var(--bg-200);
+}
+
+.dark .bulk-sheet-row {
+  border-bottom-color: var(--bg-300);
+}
+
+.bulk-sheet-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 4.25rem;
+  padding: 0.5rem 0.75rem;
+  overflow: hidden;
+}
+
+.bulk-sheet-head .bulk-sheet-cell {
+  min-height: 0;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  font-weight: 500;
+}
+
+.bulk-sheet-cell.is-center {
+  justify-content: center;
+  text-align: center;
+}
+
+.bulk-sheet-cell.is-end {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.bulk-sheet-cell[data-col='qty'] {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.bulk-sheet-cell[data-col='total'] {
+  padding-right: 1.5rem;
+}
+
+.bulk-sheet-cell[data-col='size'] .bulk-sheet-detail-inner,
+.bulk-sheet-cell[data-col='width'] .bulk-sheet-detail-inner {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.bulk-sheet-cell.is-strong {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.dark .bulk-sheet-cell.is-strong {
+  color: var(--text-100);
+}
+
+.bulk-sheet-cell.is-clip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-sheet-detail {
+  padding: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease, visibility 0s linear 160ms;
+}
+
+.bulk-sheet.is-shown .bulk-sheet-detail {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 200ms ease, visibility 0s linear 0s;
+}
+
+.bulk-sheet-detail-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.bulk-sheet-head .bulk-sheet-detail-inner {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.bulk-sheet-message {
+  grid-column: 1 / -1;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bulk-sheet-row:hover:not(.is-message) {
+    background-color: var(--primary-100);
+  }
+
+  .bulk-sheet-row:hover:not(.is-message) .bulk-sheet-cell:first-child {
+    box-shadow: inset 3px 0 0 var(--accent-200);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-sheet,
+  .bulk-sheet-detail {
+    transition: none;
+  }
+}
+
 .hh-table-scroll {
   overflow-x: auto;
   overflow-y: auto;
   max-height: calc(100vh - 22rem);
+}
+
+.bulk-items-scroll {
+  max-height: calc(100vh - 16rem);
 }
 
 .hh-table-scroll table {
@@ -235,6 +512,16 @@ body {
   --hh-peek-hot: 36px;
   --hh-action-shift: 11.5rem;
   isolation: isolate;
+}
+
+.hh-action-row.hh-actions-compact {
+  --hh-action-shift: 6.5rem;
+}
+
+/* Keep the shipment hover menu inside the card when the row is wider than the table. */
+.bulk-shipment-table .hh-row-actions {
+  position: sticky;
+  right: 0;
 }
 
 .hh-table-row {
