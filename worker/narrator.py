@@ -17,6 +17,8 @@ import os
 
 from openai import AsyncOpenAI
 
+from usage import report_usage
+
 logger = logging.getLogger(__name__)
 
 NARRATION_ENABLED = os.environ.get("NARRATION_ENABLED", "true").lower() not in (
@@ -100,6 +102,14 @@ class Narrator:
         except Exception as exc:
             logger.warning("Narration call failed (%s); using fallback", exc)
             return None
+
+        await report_usage(
+            purpose="narration",
+            provider="openai",
+            model=getattr(resp, "model", None) or NARRATION_MODEL,
+            usage=getattr(resp, "usage", None),
+            service_tier=getattr(resp, "service_tier", None),
+        )
 
         if not resp.choices:
             return None
