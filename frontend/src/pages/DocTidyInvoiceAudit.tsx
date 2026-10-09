@@ -4,6 +4,7 @@ import { authApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import {
+  Banner,
   DocumentTypeBadge,
   PaginationArrows,
   ParseProgressBadge,
