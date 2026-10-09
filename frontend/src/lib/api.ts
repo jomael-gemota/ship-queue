@@ -48,6 +48,11 @@ async function authRequest<T>(endpoint: string, options?: RequestInit): Promise<
   return res.json()
 }
 
+/** authRequest wrapper that accepts an AbortSignal so callers can cancel in-flight requests. */
+async function authRequestWithSignal<T>(endpoint: string, signal: AbortSignal): Promise<T> {
+  return authRequest<T>(endpoint, { signal })
+}
+
 async function authFormRequest<T>(endpoint: string, body: FormData): Promise<T> {
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     method: 'POST',
@@ -220,6 +225,8 @@ async function authUpload<T>(endpoint: string, formData: FormData): Promise<T> {
 
 export const authApi = {
   get: <T>(endpoint: string) => authRequest<T>(endpoint),
+  /** GET with an AbortSignal — aborts the underlying fetch when the signal fires. */
+  getAbortable: <T>(endpoint: string, signal: AbortSignal) => authRequestWithSignal<T>(endpoint, signal),
   postStream: authPostStream,
   eventStream: authEventStream,
   post: <T>(endpoint: string, body?: unknown) =>

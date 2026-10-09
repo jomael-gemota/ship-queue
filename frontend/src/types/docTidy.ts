@@ -388,12 +388,50 @@ export interface SpsDocumentRecord {
 export interface SpsDocumentsResponse {
   data: SpsDocumentRecord[]
   nextCursor?: string | null
+  /** Mailbox folder that was listed ("out", "testout", …); null for a top-level listing. */
+  dataDir?: string | null
 }
 
 /** @deprecated Renamed to SpsDocumentRecord */
 export type SpsInvoiceRecord = SpsDocumentRecord
 /** @deprecated Renamed to SpsDocumentsResponse */
 export type SpsInvoicesResponse = SpsDocumentsResponse
+
+/**
+ * A structured EDI transaction record, parsed from a raw Transaction API file.
+ * All the same fields that the SPS Fulfillment Monitor shows — extracted from
+ * the EDI file content rather than from a proprietary internal API.
+ */
+export interface SpsTransaction {
+  filename: string
+  downloadUrl: string
+  /** EDI transaction set code: "810", "856", "850", etc. */
+  transactionSet: string
+  /** Human-readable label: "Invoice (810)", "Ship Notice / ASN (856)", etc. */
+  transactionLabel: string
+  /** Invoice #, ASN #, or PO # (the primary document identifier) */
+  documentNumber: string
+  /** Purchase order number */
+  poNumber: string
+  /** Trading partner / vendor name */
+  senderName: string
+  /** EDI interchange sender ID */
+  senderId: string
+  /** Buyer / receiver name */
+  receiverName: string
+  /** Document date as YYYY-MM-DD */
+  documentDate: string
+  size?: number
+  createdAt?: string
+  /** Set when the file content could not be fully parsed */
+  parseError?: string
+}
+
+export interface SpsTransactionsResponse {
+  data: SpsTransaction[]
+  nextCursor?: string | null
+  dataDir?: string | null
+}
 
 /**
  * A named workspace that owns a set of filter rules (one-to-many via
@@ -415,6 +453,16 @@ export interface DocTidyWorkspace {
   emailSources?: DocTidyEmailSource[]
   /** Per-workspace SPS Commerce sources. Populated on demand by fetching /sps-sources. */
   spsSources?: DocTidySpsSource[]
+  /**
+   * Number of Gmail OAuth sources connected to this workspace.
+   * Injected by the list endpoint; absent on individually-fetched workspaces.
+   */
+  emailSourceCount?: number
+  /**
+   * Number of SPS Commerce OAuth sources connected to this workspace.
+   * Injected by the list endpoint; absent on individually-fetched workspaces.
+   */
+  spsSourceCount?: number
   createdAt: string
   updatedAt: string
 }
