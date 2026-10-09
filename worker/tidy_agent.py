@@ -51,6 +51,11 @@ Rules:
 - The JSON should be well-structured and comprehensive — extract all meaningful fields.
 - Do not include explanatory text outside the <thinking> block or the JSON object.
 
+Output shape:
+- Keep document fields (invoice/PO/order numbers, dates, terms, totals) as top-level
+  keys, and addresses/parties as nested objects (e.g. "billTo", "shipTo").
+- Never wrap fields in a "tables" array — display tables are generated separately.
+
 Vendor identification:
 - Include a top-level "vendorName" field with the vendor/brand/supplier name exactly
   as printed on the document (used to look up vendor-specific rules downstream).
@@ -258,12 +263,18 @@ def _build_example_messages(examples) -> list[dict]:
         sample = (ex.document_text_sample or "").strip()
         if not sample:
             continue
+        # Older table-view corrections were stored as {"tables": [...]}; replaying
+        # that shape teaches the model to emit it. Their note still applies via
+        # _build_correction_rules.
+        corrected_output = {k: v for k, v in (ex.corrected_output or {}).items() if k != "tables"}
+        if not corrected_output:
+            continue
         note_hint = (
             f"\n\nThe user's instruction with this correction: {ex.note}"
             if getattr(ex, "note", None)
             else ""
         )
-        corrected = json.dumps(ex.corrected_output, ensure_ascii=False)
+        corrected = json.dumps(corrected_output, ensure_ascii=False)
         messages.append(
             {
                 "role": "user",
