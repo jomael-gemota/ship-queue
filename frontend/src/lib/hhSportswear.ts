@@ -829,6 +829,18 @@ export function getHHB2bConfig(brand: HHBrandId) {
   return authApi.get<{ data: HHB2bConfig }>(hhPath(brand, '/config'))
 }
 
+export function getThorogoodSoldTos() {
+  return authApi.get<{ data: { code: string; name: string; label: string }[]; source: 'portal' | 'fallback'; message?: string }>(
+    hhPath('thorogood', '/config/sold-tos'),
+  )
+}
+
+export function getThorogoodCatalogs() {
+  return authApi.get<{ data: { code: string; name: string }[]; source: 'portal' | 'fallback'; message?: string }>(
+    hhPath('thorogood', '/config/catalogs'),
+  )
+}
+
 export function updateHHB2bConfig(brand: HHBrandId, patch: HHB2bConfigPatch) {
   return authApi.patch<{ data: HHB2bConfig }>(hhPath(brand, '/config'), patch)
 }

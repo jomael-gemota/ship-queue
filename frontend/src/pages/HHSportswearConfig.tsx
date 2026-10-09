@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
+import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, getThorogoodCatalogs, getThorogoodSoldTos, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
 import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
@@ -103,11 +103,6 @@ function cookieFieldPlaceholder(data: HHB2bConfig | null, emptyExample: string):
   if (cookieSourceOf(data) === 'jar' || cookieSourceOf(data) === 'jar-empty') return 'Paste to override Cookie Jar'
   if (cookieSourceOf(data) === 'env') return 'Paste to override the server session'
   return emptyExample
-}
-
-function portalSummary(url: string, enabled: boolean): string {
-  const host = url.trim().replace(/^https?:\/\//, '') || 'No portal address'
-  return `${host} · Place Order ${enabled ? 'on' : 'off'}`
 }
 
 function accountSummary(catalogValue: string, accountValue: string, enabled: boolean): string {
@@ -323,6 +318,38 @@ function sessionPillClass(status: HHSessionCheck['status']): string {
   return 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
 }
 
+function ConfigChoice({
+  id,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  id: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  const known = options.some((option) => option.value === value)
+  const choices = known || !value ? options : [{ value, label: value }, ...options]
+  return (
+    <select
+      id={id}
+      className={`${inputClass} cursor-pointer`}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      disabled={disabled}
+    >
+      {choices.map((option) => (
+        <option key={`${option.value}-${option.label}`} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export default function HHSportswearConfig() {
   const { user } = useAuth()
   const canEdit = user?.role === 'admin'
@@ -335,6 +362,10 @@ export default function HHSportswearConfig() {
   const [baseUrl, setBaseUrl] = useState('')
   const [catalog, setCatalog] = useState('')
   const [accountId, setAccountId] = useState('')
+  const [soldToOptions, setSoldToOptions] = useState<{ code: string; label: string }[]>([])
+  const [catalogOptions, setCatalogOptions] = useState<{ name: string }[]>([])
+  const [soldToNote, setSoldToNote] = useState<string | null>(null)
+  const [catalogNote, setCatalogNote] = useState<string | null>(null)
   const [cookie, setCookie] = useState('')
   const [skuInitialsText, setSkuInitialsText] = useState('')
   const [skuPrefixesText, setSkuPrefixesText] = useState('')
@@ -388,6 +419,34 @@ export default function HHSportswearConfig() {
     }
   }, [brand])
 
+  useEffect(() => {
+    if (!orderDetails || loadState !== 'ready') return
+    let cancelled = false
+    getThorogoodSoldTos()
+      .then((res) => {
+        if (cancelled) return
+        setSoldToOptions(res.data.map((option) => ({ code: option.code, label: option.label })))
+        setSoldToNote(res.source === 'fallback' ? res.message || 'Showing 23550 - OUTDOOR EQUIPPED only.' : null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSoldToNote('Could not load customers. Showing the saved account only.')
+      })
+    getThorogoodCatalogs()
+      .then((res) => {
+        if (cancelled) return
+        setCatalogOptions(res.data.map((option) => ({ name: option.name })))
+        setCatalogNote(res.source === 'fallback' ? res.message || 'Showing Thorogood Boots only.' : null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCatalogNote('Could not load catalogs. Showing the saved catalog only.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [orderDetails, loadState])
+
   const checkSession = async () => {
     if (!canEdit || checking) return
     setChecking(true)
@@ -438,6 +497,7 @@ export default function HHSportswearConfig() {
       alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
       !sameCheckTimes(checkTimes, savedTimes) ||
       placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
+      (orderDetails && (catalog !== saved.catalog || accountId !== saved.accountId)) ||
       (!orderDetails &&
         (catalog !== saved.catalog ||
           accountId !== saved.accountId ||
@@ -450,7 +510,10 @@ export default function HHSportswearConfig() {
   const portalDirty = Boolean(
     orderDetails &&
       saved &&
-      (baseUrl !== saved.baseUrl || placeOrderEnabled !== Boolean(saved.placeOrderEnabled)),
+      (baseUrl !== saved.baseUrl ||
+        catalog !== saved.catalog ||
+        accountId !== saved.accountId ||
+        placeOrderEnabled !== Boolean(saved.placeOrderEnabled)),
   )
   const accountDirty = Boolean(
     !orderDetails &&
@@ -544,6 +607,8 @@ export default function HHSportswearConfig() {
       const patch: HHB2bConfigPatch = orderDetails
         ? {
             baseUrl,
+            catalog,
+            accountId,
             placeOrderEnabled,
             skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [],
             alertWebhookUrl,
@@ -614,28 +679,59 @@ export default function HHSportswearConfig() {
 
         <div className="space-y-3">
         <ConfigSection
-          title="Portal"
-          description="The signed-in site Ship Queue calls when it drafts a cart."
-          summary={portalSummary(baseUrl, placeOrderEnabled)}
+          title="Account"
+          description="Where drafts are sent, and whether Place Order is allowed to submit."
+          summary={accountSummary(catalog, accountId, placeOrderEnabled)}
           open={isOpen('portal')}
           dirty={portalDirty}
           canEdit={canEdit}
           onToggle={() => toggleSection('portal')}
         >
-          <div className="space-y-1.5">
-            <label className={labelClass} htmlFor="hh-b2b-base-url">
-              Base URL
-            </label>
-            <input
-              id="hh-b2b-base-url"
-              className={inputClass}
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy}
-            />
-            <p className={hintClass}>Envoy portal, e.g. {brandDef.baseUrl}</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className={labelClass} htmlFor="hh-b2b-base-url">
+                Base URL
+              </label>
+              <input
+                id="hh-b2b-base-url"
+                className={inputClass}
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+              />
+              <p className={hintClass}>Envoy portal, e.g. {brandDef.baseUrl}</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className={labelClass} htmlFor="hh-b2b-catalog">
+                Catalog
+              </label>
+              <ConfigChoice
+                id="hh-b2b-catalog"
+                value={catalog}
+                options={catalogOptions.map((option) => ({ value: option.name, label: option.name }))}
+                onChange={setCatalog}
+                disabled={busy}
+              />
+              {catalogNote ? <p className={hintClass}>{catalogNote}</p> : null}
+            </div>
+            <div className="space-y-1.5">
+              <label className={labelClass} htmlFor="hh-b2b-account-id">
+                Account ID
+              </label>
+              <ConfigChoice
+                id="hh-b2b-account-id"
+                value={accountId}
+                options={soldToOptions.map((option) => ({ value: option.code, label: option.label }))}
+                onChange={setAccountId}
+                disabled={busy}
+              />
+              <p className={hintClass}>
+                B2B customer number sent as <span className="font-mono">customer</span>.
+              </p>
+              {soldToNote ? <p className={hintClass}>{soldToNote}</p> : null}
+            </div>
           </div>
           <div className="flex items-start gap-3 border-t border-[var(--bg-300)] pt-4 dark:border-[var(--bg-300)]">
             <div className="min-w-0 flex-1">

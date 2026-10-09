@@ -4,12 +4,19 @@ import type { IHHB2bConfig } from '../models/HHB2bConfig';
 import { hhBrand, hhBrandFromRequest, hhBrandId, HH_BRANDS, type HHBrandId } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
 import {
+  HhB2bDraftError,
   normalizeHhB2bAccountId,
   parseHhB2bBaseUrl,
   resolveHhB2bCookie,
   type HhB2bCookieSource,
 } from '../lib/hhB2bConfig';
 import { effectiveThorogoodSkuInitials, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
+import {
+  listThorogoodCatalogs,
+  listThorogoodCustomers,
+  THOROGOOD_DEFAULT_CATALOG,
+  THOROGOOD_DEFAULT_SOLD_TO,
+} from '../lib/hhB2bThorogood';
 import {
   effectiveHhSkuPrefixes,
   effectiveHhSkuSuffixes,
@@ -116,6 +123,59 @@ async function serializeConfig(doc: IHHB2bConfig): Promise<HhB2bConfigDto> {
 export async function getHhB2bConfig(req: Request, res: Response): Promise<void> {
   const doc = await getOrCreateHhB2bConfig(hhBrandFromRequest(req), true);
   res.json({ data: await serializeConfig(doc) });
+}
+
+export async function getHhB2bSoldTos(req: Request, res: Response): Promise<void> {
+  if (hhBrandFromRequest(req) !== 'thorogood') {
+    res.status(404).json({ message: 'Not found.' });
+    return;
+  }
+  const doc = await getOrCreateHhB2bConfig('thorogood', true);
+  const fallback = [THOROGOOD_DEFAULT_SOLD_TO];
+  const resolved = await resolveHhB2bCookie('thorogood', doc.cookie ?? '');
+  if (!resolved.cookie) {
+    res.json({
+      data: fallback,
+      source: 'fallback',
+      message: 'Thorogood session cookie is missing. Account ID is limited to 23550 - OUTDOOR EQUIPPED.',
+    });
+    return;
+  }
+  try {
+    const data = await listThorogoodCustomers(doc.baseUrl, resolved.cookie);
+    const withDefault = data.some((option) => option.code === THOROGOOD_DEFAULT_SOLD_TO.code)
+      ? data
+      : [THOROGOOD_DEFAULT_SOLD_TO, ...data];
+    res.json({ data: withDefault, source: 'portal' });
+  } catch (err) {
+    const message = err instanceof HhB2bDraftError ? err.message : 'Could not load Thorogood customers.';
+    res.json({ data: fallback, source: 'fallback', message });
+  }
+}
+
+export async function getHhB2bCatalogs(req: Request, res: Response): Promise<void> {
+  if (hhBrandFromRequest(req) !== 'thorogood') {
+    res.status(404).json({ message: 'Not found.' });
+    return;
+  }
+  const doc = await getOrCreateHhB2bConfig('thorogood', true);
+  const fallback = [THOROGOOD_DEFAULT_CATALOG];
+  const resolved = await resolveHhB2bCookie('thorogood', doc.cookie ?? '');
+  if (!resolved.cookie) {
+    res.json({
+      data: fallback,
+      source: 'fallback',
+      message: 'Thorogood session cookie is missing. Catalog is limited to Thorogood Boots.',
+    });
+    return;
+  }
+  try {
+    const data = await listThorogoodCatalogs(doc.baseUrl, resolved.cookie);
+    res.json({ data, source: 'portal' });
+  } catch (err) {
+    const message = err instanceof HhB2bDraftError ? err.message : 'Could not load Thorogood catalogs.';
+    res.json({ data: fallback, source: 'fallback', message });
+  }
 }
 
 export async function updateHhB2bConfig(req: Request, res: Response): Promise<void> {

@@ -84,7 +84,7 @@ export async function getOrCreateHhB2bConfig(brand: HHBrandId, withCookie = fals
   if (withCookie) query.select('+cookie');
   const existing = await query;
   if (existing) {
-    const patch: { baseUrl?: string; accountId?: string } = {};
+    const patch: { baseUrl?: string; accountId?: string; catalog?: string } = {};
     if (existing.baseUrl === 'https://order-details.invalid' && def.baseUrl !== existing.baseUrl) {
       existing.baseUrl = def.baseUrl;
       patch.baseUrl = def.baseUrl;
@@ -93,7 +93,11 @@ export async function getOrCreateHhB2bConfig(brand: HHBrandId, withCookie = fals
       existing.accountId = def.accountId;
       patch.accountId = def.accountId;
     }
-    if (patch.baseUrl || patch.accountId) {
+    if (brand === 'thorogood' && existing.catalog === 'Order details sync') {
+      existing.catalog = def.catalog;
+      patch.catalog = def.catalog;
+    }
+    if (patch.baseUrl || patch.accountId || patch.catalog) {
       await HHB2bConfig.updateOne({ _id: existing._id }, { $set: patch });
     }
     return existing;

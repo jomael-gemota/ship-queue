@@ -57,7 +57,7 @@ export const HH_BRANDS: Record<HHBrandId, HhBrandDefinition> = {
     cookieJarKey: 'thorogood-b2b',
     cookieJarName: 'Thorogood B2B',
     baseUrl: 'https://thorogood.thorogoodb2b.com',
-    catalog: 'Order details sync',
+    catalog: 'Thorogood Boots',
     accountId: '23550',
     draftMode: 'order-details',
   },

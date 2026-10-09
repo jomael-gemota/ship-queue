@@ -55,7 +55,7 @@ export const HH_BRANDS: Record<HHBrandId, HHBrandDefinition> = {
     slug: 'thorogood',
     name: 'Thorogood',
     supplier: 'Thorogood',
-    catalog: 'Order details sync',
+    catalog: 'Thorogood Boots',
     baseUrl: 'https://thorogood.thorogoodb2b.com',
     accountId: '23550',
     path: '/ordering/thorogood',
