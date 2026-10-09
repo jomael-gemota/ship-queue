@@ -17,6 +17,8 @@ export const USAGE_PURPOSES: UsagePurpose[] = [
 
 export type UsageProvider = 'openai' | 'hermes';
 
+export type CostBasis = 'exact' | 'estimated' | 'billed';
+
 /**
  * One billed LLM call, with the token counts the provider reported and the cost
  * computed from the price row that applied at the time.
@@ -44,6 +46,14 @@ export interface IDocTidyUsageEvent {
   reasoningTokens: number;
   usageSource: 'reported' | 'missing';
   costUsd: number;
+  /**
+   * `exact` — priced from the call's own usage. `estimated` — an alias such as
+   * `hermes-agent` that hides the cache split: list cost × calibration factor.
+   * `billed` — replaced by its share of OpenAI's actual bill for that day.
+   */
+  costBasis: CostBasis;
+  /** Every input token at the full input rate; the weight used to split a day's bill. */
+  listCostUsd: number;
   priced: boolean;
   priceId?: Types.ObjectId | null;
   createdAt: Date;
@@ -67,6 +77,8 @@ const DocTidyUsageEventSchema = new Schema<IDocTidyUsageEvent>(
     reasoningTokens: tokenCount,
     usageSource: { type: String, enum: ['reported', 'missing'], default: 'reported' },
     costUsd: { type: Number, default: 0 },
+    costBasis: { type: String, enum: ['exact', 'estimated', 'billed'], default: 'exact' },
+    listCostUsd: { type: Number, default: 0 },
     priced: { type: Boolean, default: false },
     priceId: { type: Schema.Types.ObjectId, ref: 'DocTidyModelPrice', default: null },
   },

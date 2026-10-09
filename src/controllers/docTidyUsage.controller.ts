@@ -4,7 +4,16 @@ import DocTidyUsageEvent from '../models/DocTidyUsageEvent';
 import DocTidyModelPrice, { SERVICE_TIERS, type ServiceTier } from '../models/DocTidyModelPrice';
 import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import DocTidyOrganization from '../models/DocTidyOrganization';
+import DocTidyBilledRemainder from '../models/DocTidyBilledRemainder';
 import { invalidatePriceCache, repriceRange } from '../services/docTidyUsage.service';
+import { lastTrueUp, runTrueUp } from '../services/docTidyTrueUp.service';
+import {
+  DAY_MS,
+  OpenAIAdminError,
+  adminKey,
+  fetchDailyCosts,
+  usageApiKeyIds,
+} from '../lib/openaiAdmin';
 
 /**
  * Admin-only token usage & cost reporting. Every route here is mounted behind
@@ -15,7 +24,6 @@ function fail(res: Response, error: unknown, fallback: string): void {
   res.status(500).json({ message: fallback, error: (error as Error).message });
 }
 
-const DAY_MS = 86_400_000;
 const MAX_RANGE_DAYS = 180;
 
 /** `from` inclusive, `to` exclusive; defaults to the last 30 days. */
@@ -30,6 +38,7 @@ function parseRange(input: Record<string, unknown>): { from: Date; to: Date } | 
 
 const TOKEN_SUMS = {
   costUsd: { $sum: '$costUsd' },
+  estimatedCostUsd: { $sum: { $cond: [{ $eq: ['$costBasis', 'estimated'] }, '$costUsd', 0] } },
   inputTokens: { $sum: '$inputTokens' },
   cachedInputTokens: { $sum: '$cachedInputTokens' },
   cacheWriteTokens: { $sum: '$cacheWriteTokens' },
@@ -42,6 +51,8 @@ const TOKEN_SUMS = {
 
 interface Sums {
   costUsd: number;
+  /** The part of `costUsd` that is a calibrated estimate, not yet trued up. */
+  estimatedCostUsd: number;
   inputTokens: number;
   cachedInputTokens: number;
   cacheWriteTokens: number;
@@ -55,6 +66,7 @@ interface Sums {
 
 const zeroSums = (): Sums => ({
   costUsd: 0,
+  estimatedCostUsd: 0,
   inputTokens: 0,
   cachedInputTokens: 0,
   cacheWriteTokens: 0,
@@ -90,7 +102,7 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
     }
     const match = { $match: { createdAt: { $gte: range.from, $lt: range.to } } };
 
-    const [byWorkspace, totalsRows, breakdown, daily, organizations, workspaces] =
+    const [byWorkspace, totalsRows, breakdown, daily, organizations, workspaces, remainders] =
       await Promise.all([
         DocTidyUsageEvent.aggregate([
           match,
@@ -130,6 +142,10 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
         ]),
         DocTidyOrganization.find({}).select('name').sort({ name: 1 }).lean(),
         DocTidyWorkspace.find({}).select('name organizationId').sort({ name: 1 }).lean(),
+        DocTidyBilledRemainder.find({
+          day: { $gte: new Date(Math.floor(range.from.getTime() / DAY_MS) * DAY_MS), $lt: range.to },
+          untrackedUsd: { $gt: 0 },
+        }).lean(),
       ]);
 
     const usageByWorkspace = new Map<string, Sums>();
@@ -139,7 +155,12 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
     }
 
     const orgName = new Map(organizations.map((o) => [String(o._id), o.name]));
-    type WorkspaceRow = Sums & { workspaceId: string | null; name: string; deleted?: boolean };
+    type WorkspaceRow = Sums & {
+      workspaceId: string | null;
+      name: string;
+      deleted?: boolean;
+      untracked?: boolean;
+    };
     type OrgRow = Sums & { organizationId: string | null; name: string; workspaces: WorkspaceRow[] };
 
     const orgRows = new Map<string, OrgRow>();
@@ -177,9 +198,33 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
       addSums(target, sums);
     }
 
+    // Billed spend the true-up couldn't match to any tracked call. A day is
+    // counted whole when the range starts mid-day, as the bill is per day.
+    const untrackedUsd = remainders.reduce((sum, r) => sum + r.untrackedUsd, 0);
+    if (untrackedUsd > 0) {
+      const target = orgRow(null, 'Unassigned');
+      const sums = { ...zeroSums(), costUsd: untrackedUsd };
+      target.workspaces.push({ workspaceId: null, name: 'Untracked Hermes usage', untracked: true, ...sums });
+      addSums(target, sums);
+    }
+
     const totals = zeroSums();
     for (const sums of usageByWorkspace.values()) addSums(totals, sums);
+    totals.costUsd += untrackedUsd;
     totals.jobs = ((totalsRows[0]?.jobIds ?? []) as Array<Types.ObjectId | null>).filter(Boolean).length;
+
+    const dailyRows = daily.map(({ _id, ...rest }) => ({ date: _id as string, untrackedUsd: 0, ...rest }));
+    for (const remainder of remainders) {
+      const date = remainder.day.toISOString().slice(0, 10);
+      let row = dailyRows.find((d) => d.date === date);
+      if (!row) {
+        row = { date, untrackedUsd: 0, costUsd: 0, tokens: 0, calls: 0 };
+        dailyRows.push(row);
+      }
+      row.untrackedUsd += remainder.untrackedUsd;
+      row.costUsd += remainder.untrackedUsd;
+    }
+    dailyRows.sort((a, b) => a.date.localeCompare(b.date));
 
     const orgList = [...orgRows.values()]
       .map((org) => ({ ...org, workspaces: org.workspaces.sort((a, b) => b.costUsd - a.costUsd) }))
@@ -193,7 +238,8 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
         totals,
         organizations: orgList,
         breakdown: breakdown.map(({ _id, ...sums }) => ({ ..._id, ...sums })),
-        daily: daily.map(({ _id, ...rest }) => ({ date: _id, ...rest })),
+        daily: dailyRows,
+        untrackedUsd,
       },
     });
   } catch (error) {
@@ -218,6 +264,7 @@ const RATE_FIELDS = [
 type PriceBody = Partial<Record<(typeof RATE_FIELDS)[number], number | null>> & {
   model?: string;
   serviceTier?: ServiceTier;
+  upstreamModel?: string | null;
   notes?: string;
 };
 
@@ -246,6 +293,12 @@ function readPriceBody(body: Record<string, unknown>, requireAll: boolean): Pric
     out[field] = n;
   }
   if (requireAll && out.inputPer1M === undefined) return 'inputPer1M is required';
+  if (body.upstreamModel !== undefined) {
+    if (body.upstreamModel !== null && typeof body.upstreamModel !== 'string') {
+      return 'upstreamModel must be a string';
+    }
+    out.upstreamModel = (body.upstreamModel as string | null)?.trim() || null;
+  }
   if (typeof body.notes === 'string') out.notes = body.notes.trim();
   return out;
 }
@@ -344,27 +397,34 @@ export const repriceUsage = async (req: Request, res: Response): Promise<void> =
 
 /* ------------------------------------------------------- reconciliation */
 
-interface CostsPage {
-  data?: Array<{
-    start_time: number;
-    results?: Array<{ amount?: { value?: number; currency?: string }; line_item?: string | null }>;
-  }>;
-  has_more?: boolean;
-  next_page?: string | null;
+const RECONCILE_TTL_MS = 10 * 60_000;
+const reconcileCache = new Map<string, { at: number; body: Record<string, unknown> }>();
+
+/** Calibration state changes on every true-up, so it is never cached. */
+async function calibrationState() {
+  const aliases = await DocTidyModelPrice.find({ upstreamModel: { $nin: [null, ''] } })
+    .select('model upstreamModel calibrationFactor calibratedAt')
+    .lean();
+  return {
+    calibrations: aliases.map((a) => ({
+      model: a.model,
+      upstreamModel: a.upstreamModel,
+      calibrationFactor: a.calibrationFactor ?? null,
+      calibratedAt: a.calibratedAt ?? null,
+    })),
+    lastTrueUp: lastTrueUp(),
+  };
 }
 
-const RECONCILE_TTL_MS = 10 * 60_000;
-const reconcileCache = new Map<string, { at: number; body: unknown }>();
-
 /**
- * OpenAI's own billed cost (Costs API, admin key) next to what we recorded for
- * `provider: 'openai'` over the same whole UTC days. The Costs API only has
- * daily buckets, so the range is widened to day boundaries on both sides.
+ * OpenAI's own billed cost (Costs API, admin key) next to what we recorded over
+ * the same whole UTC days. Hermes calls are included: its upstream calls bill
+ * to the same key. The Costs API only has daily buckets, so the range is
+ * widened to day boundaries on both sides.
  */
 export const getReconciliation = async (req: Request, res: Response): Promise<void> => {
   try {
-    const adminKey = process.env.OPENAI_ADMIN_KEY;
-    if (!adminKey) {
+    if (!adminKey()) {
       res.json({ data: { configured: false } });
       return;
     }
@@ -376,73 +436,42 @@ export const getReconciliation = async (req: Request, res: Response): Promise<vo
 
     const startMs = Math.floor(range.from.getTime() / DAY_MS) * DAY_MS;
     const endMs = Math.ceil(range.to.getTime() / DAY_MS) * DAY_MS;
-    const apiKeyIds = (process.env.OPENAI_USAGE_API_KEY_IDS ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
     const cacheKey = `${startMs}:${endMs}`;
     const cached = reconcileCache.get(cacheKey);
     if (cached && Date.now() - cached.at < RECONCILE_TTL_MS && req.query.refresh !== '1') {
-      res.json({ data: cached.body });
+      res.json({ data: { ...cached.body, ...(await calibrationState()) } });
       return;
     }
 
+    const lines = await fetchDailyCosts(startMs, endMs);
     const lineItems = new Map<string, number>();
     let billedUsd = 0;
-    let currency = 'usd';
-    let page: string | null | undefined;
-    do {
-      const params = new URLSearchParams({
-        start_time: String(startMs / 1000),
-        end_time: String(endMs / 1000),
-        bucket_width: '1d',
-        limit: String(Math.min(MAX_RANGE_DAYS, Math.ceil((endMs - startMs) / DAY_MS))),
-      });
-      params.append('group_by', 'line_item');
-      for (const id of apiKeyIds) params.append('api_key_ids', id);
-      if (page) params.set('page', page);
+    for (const line of lines) {
+      billedUsd += line.amount;
+      lineItems.set(line.lineItem, (lineItems.get(line.lineItem) ?? 0) + line.amount);
+    }
 
-      const response = await fetch(`https://api.openai.com/v1/organization/costs?${params}`, {
-        headers: { Authorization: `Bearer ${adminKey}` },
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        res.status(502).json({ message: `OpenAI Costs API returned ${response.status}`, error: text });
-        return;
-      }
-      const body = (await response.json()) as CostsPage;
-      for (const bucket of body.data ?? []) {
-        for (const result of bucket.results ?? []) {
-          const value = Number(result.amount?.value ?? 0);
-          if (!Number.isFinite(value)) continue;
-          billedUsd += value;
-          currency = result.amount?.currency ?? currency;
-          const item = result.line_item ?? 'Other';
-          lineItems.set(item, (lineItems.get(item) ?? 0) + value);
-        }
-      }
-      page = body.has_more ? body.next_page : null;
-    } while (page);
-
-    const [recorded] = await DocTidyUsageEvent.aggregate([
-      {
-        $match: {
-          provider: 'openai',
-          createdAt: { $gte: new Date(startMs), $lt: new Date(endMs) },
-        },
-      },
-      { $group: { _id: null, costUsd: { $sum: '$costUsd' }, calls: { $sum: 1 } } },
+    const window = { $gte: new Date(startMs), $lt: new Date(endMs) };
+    const [[recorded], [untracked]] = await Promise.all([
+      DocTidyUsageEvent.aggregate([
+        { $match: { createdAt: window } },
+        { $group: { _id: null, costUsd: { $sum: '$costUsd' }, calls: { $sum: 1 } } },
+      ]),
+      DocTidyBilledRemainder.aggregate([
+        { $match: { day: window } },
+        { $group: { _id: null, untrackedUsd: { $sum: '$untrackedUsd' } } },
+      ]),
     ]);
 
     const result = {
       configured: true,
-      filteredByApiKey: apiKeyIds.length > 0,
+      filteredByApiKey: usageApiKeyIds().length > 0,
       from: new Date(startMs).toISOString(),
       to: new Date(endMs).toISOString(),
-      currency,
+      currency: lines[0]?.currency ?? 'usd',
       billedUsd,
-      recordedUsd: recorded?.costUsd ?? 0,
+      recordedUsd: (recorded?.costUsd ?? 0) + (untracked?.untrackedUsd ?? 0),
+      untrackedUsd: untracked?.untrackedUsd ?? 0,
       recordedCalls: recorded?.calls ?? 0,
       lineItems: [...lineItems.entries()]
         .map(([lineItem, amount]) => ({ lineItem, amount }))
@@ -450,8 +479,32 @@ export const getReconciliation = async (req: Request, res: Response): Promise<vo
       fetchedAt: new Date().toISOString(),
     };
     reconcileCache.set(cacheKey, { at: Date.now(), body: result });
-    res.json({ data: result });
+    res.json({ data: { ...result, ...(await calibrationState()) } });
   } catch (error) {
+    if (error instanceof OpenAIAdminError) {
+      res.status(502).json({ message: error.message, error: error.body });
+      return;
+    }
     fail(res, error, 'Failed to reconcile with OpenAI');
   }
 };
+
+/** Recalibrates alias models and trues up the last 7 complete UTC days. */
+export const trueUpUsage = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    if (!adminKey()) {
+      res.status(400).json({ message: 'OPENAI_ADMIN_KEY is not set' });
+      return;
+    }
+    const result = await runTrueUp();
+    reconcileCache.clear();
+    if (result.error) {
+      res.status(502).json({ message: 'True-up failed', error: result.error });
+      return;
+    }
+    res.json({ data: result });
+  } catch (error) {
+    fail(res, error, 'Failed to true up usage');
+  }
+};
+

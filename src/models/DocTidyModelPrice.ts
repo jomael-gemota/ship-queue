@@ -27,6 +27,16 @@ export interface IDocTidyModelPrice {
   longCachedInputPer1M?: number | null;
   longCacheWritePer1M?: number | null;
   longOutputPer1M?: number | null;
+  /**
+   * Set on an alias row such as `hermes-agent`: the OpenAI model the alias
+   * really calls. Calls priced by such a row are estimates (list cost ×
+   * `calibrationFactor`) until the daily true-up replaces them with the billed
+   * amount. See design-log/2026-10-10-hermes-cost-calibration-and-daily-true-up.md.
+   */
+  upstreamModel?: string | null;
+  /** Billed ÷ list cost of `upstreamModel` over recent days; null = not calibrated. */
+  calibrationFactor?: number | null;
+  calibratedAt?: Date | null;
   notes?: string;
   updatedByName?: string;
   createdAt: Date;
@@ -48,6 +58,9 @@ const DocTidyModelPriceSchema = new Schema<IDocTidyModelPrice>(
     longCachedInputPer1M: optionalRate,
     longCacheWritePer1M: optionalRate,
     longOutputPer1M: optionalRate,
+    upstreamModel: { type: String, default: null, trim: true },
+    calibrationFactor: { type: Number, default: null, min: 0 },
+    calibratedAt: { type: Date, default: null },
     notes: { type: String },
     updatedByName: { type: String },
   },
@@ -80,12 +93,40 @@ const SEED_PRICES: Array<Partial<IDocTidyModelPrice>> = [
   { model: 'gpt-5.5', serviceTier: 'fast', inputPer1M: 12.5, cachedInputPer1M: 1.25, outputPer1M: 75 },
 ];
 
+const GPT_56_SOL_RATES = {
+  inputPer1M: 4, cachedInputPer1M: 0.4, cacheWritePer1M: 5, outputPer1M: 20,
+  longContextThreshold: 272_000, longInputPer1M: 8, longCachedInputPer1M: 0.8,
+  longCacheWritePer1M: 10, longOutputPer1M: 30,
+};
+
+/**
+ * Rows added after the first seed, inserted only when missing so they reach
+ * databases that were seeded before they existed. Hermes reports its model as
+ * `hermes-agent` and calls gpt-5.6-sol upstream (verified 2026-10-10).
+ */
+const ENSURED_PRICES: Array<Partial<IDocTidyModelPrice>> = [
+  { model: 'gpt-5.6-sol', serviceTier: 'standard', ...GPT_56_SOL_RATES },
+  {
+    model: 'hermes-agent', serviceTier: 'standard', ...GPT_56_SOL_RATES,
+    upstreamModel: 'gpt-5.6-sol',
+  },
+];
+
+const SEED_NOTE = 'Seeded from openai.com/api/pricing (2026-10-10)';
+
 export async function seedModelPrices(): Promise<void> {
-  if ((await DocTidyModelPrice.estimatedDocumentCount()) > 0) return;
-  await DocTidyModelPrice.insertMany(
-    SEED_PRICES.map((p) => ({ ...p, notes: 'Seeded from openai.com/api/pricing (2026-10-10)' }))
-  );
-  console.log(`[doc-tidy usage] seeded ${SEED_PRICES.length} model price rows`);
+  if ((await DocTidyModelPrice.estimatedDocumentCount()) === 0) {
+    await DocTidyModelPrice.insertMany(SEED_PRICES.map((p) => ({ ...p, notes: SEED_NOTE })));
+    console.log(`[doc-tidy usage] seeded ${SEED_PRICES.length} model price rows`);
+  }
+  for (const price of ENSURED_PRICES) {
+    const result = await DocTidyModelPrice.updateOne(
+      { model: price.model, serviceTier: price.serviceTier },
+      { $setOnInsert: { ...price, notes: SEED_NOTE } },
+      { upsert: true }
+    );
+    if (result.upsertedCount) console.log(`[doc-tidy usage] added price row for ${price.model}`);
+  }
 }
 
 export default DocTidyModelPrice;
