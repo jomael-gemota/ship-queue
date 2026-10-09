@@ -11,7 +11,9 @@ import {
   type OrganizationUsage,
   type Reconciliation,
   type ServiceTier,
+  type TrueUpResult,
   type UsageSummary,
+  type UsageSums,
 } from '../types/docTidyUsage'
 
 /* ───────────────────────────────────────────────────────── formatting ── */
@@ -150,8 +152,15 @@ function OrganizationTable({ organizations }: { organizations: OrganizationUsage
                 </tr>
                 {isOpen &&
                   org.workspaces.map((ws) => (
-                    <tr key={ws.workspaceId ?? 'none'} className="bg-[var(--bg-200)]/40">
-                      <td className={`${cellClass} pl-10 text-[var(--text-100)]`}>
+                    <tr key={ws.untracked ? 'untracked' : (ws.workspaceId ?? 'none')} className="bg-[var(--bg-200)]/40">
+                      <td
+                        className={`${cellClass} pl-10 ${ws.untracked ? 'italic text-[var(--text-200)]' : 'text-[var(--text-100)]'}`}
+                        title={
+                          ws.untracked
+                            ? 'Billed by OpenAI for Hermes but not matched to any recorded call (e.g. jobs run by a worker that was not reporting usage). Not charged to any workspace.'
+                            : undefined
+                        }
+                      >
                         {ws.name}
                         {ws.deleted && <span className="ml-1 text-[var(--text-200)]">({ws.workspaceId})</span>}
                       </td>
@@ -167,7 +176,20 @@ function OrganizationTable({ organizations }: { organizations: OrganizationUsage
   )
 }
 
-function UsageCells({ sums, strong = false }: { sums: OrganizationUsage | OrganizationUsage['workspaces'][number]; strong?: boolean }) {
+/** `≈` marks a cost that is still partly a Hermes estimate. */
+function CostValue({ sums }: { sums: UsageSums }) {
+  if (sums.estimatedCostUsd <= 0) return <>{fmtUsd(sums.costUsd)}</>
+  return (
+    <span
+      className="cursor-help"
+      title={`Includes ${fmtUsd(sums.estimatedCostUsd)} of estimated Hermes cost, replaced by the actual OpenAI bill after the day ends (UTC).`}
+    >
+      ≈ {fmtUsd(sums.costUsd)}
+    </span>
+  )
+}
+
+function UsageCells({ sums, strong = false }: { sums: UsageSums; strong?: boolean }) {
   const num = `${cellClass} text-right tabular-nums text-[var(--text-100)]`
   return (
     <>
@@ -175,7 +197,9 @@ function UsageCells({ sums, strong = false }: { sums: OrganizationUsage | Organi
       <td className={num}>{fmtTokens(sums.inputTokens)}</td>
       <td className={num}>{fmtTokens(sums.cachedInputTokens)}</td>
       <td className={num}>{fmtTokens(sums.outputTokens)}</td>
-      <td className={`${num} ${strong ? 'font-semibold' : ''}`}>{fmtUsd(sums.costUsd)}</td>
+      <td className={`${num} ${strong ? 'font-semibold' : ''}`}>
+        <CostValue sums={sums} />
+      </td>
       <td className={num}>{sums.jobs > 0 ? fmtUsd(sums.costUsd / sums.jobs) : '—'}</td>
     </>
   )
@@ -193,11 +217,17 @@ function DailyTrend({ daily }: { daily: UsageSummary['daily'] }) {
       {daily.map((d) => (
         <div key={d.date} className="group relative flex h-full flex-1 flex-col justify-end">
           <div
-            className="w-full rounded-t bg-violet-500/80 group-hover:bg-violet-600"
+            className="flex w-full flex-col overflow-hidden rounded-t"
             style={{ height: `${max > 0 ? Math.max(2, (d.costUsd / max) * 100) : 2}%` }}
-          />
+          >
+            {d.untrackedUsd > 0 && (
+              <div className="w-full bg-slate-400/70" style={{ height: `${(d.untrackedUsd / d.costUsd) * 100}%` }} />
+            )}
+            <div className="w-full flex-1 bg-violet-500/80 group-hover:bg-violet-600" />
+          </div>
           <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">
             {d.date} · {fmtUsd(d.costUsd)} · {fmtCompact(d.tokens)} tokens
+            {d.untrackedUsd > 0 && ` · ${fmtUsd(d.untrackedUsd)} untracked`}
           </div>
         </div>
       ))}
@@ -207,7 +237,75 @@ function DailyTrend({ daily }: { daily: UsageSummary['daily'] }) {
 
 /* ───────────────────────────────────────────────── reconciliation ── */
 
-function ReconciliationCard({ range }: { range: RangeKey }) {
+function TrueUpStatus({
+  data,
+  onTrueUp,
+}: {
+  data: Extract<Reconciliation, { configured: true }>
+  onTrueUp: () => Promise<void>
+}) {
+  const [running, setRunning] = useState(false)
+  const last = data.lastTrueUp
+  const skipped = last?.days.filter((d) => d.status === 'skipped' && d.reason !== 'No usage') ?? []
+
+  if (data.calibrations.length === 0) return null
+  return (
+    <div className="space-y-2 rounded-lg border border-[var(--bg-300)] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="font-medium text-[var(--text-100)]">Hermes calibration</p>
+          {data.calibrations.map((c) => (
+            <p key={c.model} className="text-[11px] text-[var(--text-200)]">
+              <code>{c.model}</code> → <code>{c.upstreamModel}</code>:{' '}
+              {c.calibrationFactor === null ? (
+                <span className="text-amber-600 dark:text-amber-400">not calibrated yet, so estimates use list price</span>
+              ) : (
+                <>
+                  billed at <strong className="text-[var(--text-100)]">{(c.calibrationFactor * 100).toFixed(1)}%</strong> of list
+                  price over the last 7 days
+                  {c.calibratedAt && ` (as of ${formatDateTime(c.calibratedAt)})`}
+                </>
+              )}
+            </p>
+          ))}
+          <p className="text-[11px] text-[var(--text-200)]">
+            Hermes hides which input was cached, so today's Hermes costs are estimates. Each complete UTC day is trued up to
+            the actual bill about 6 hours after midnight UTC, then hourly.
+            {last && ` Last true-up: ${formatDateTime(last.ranAt)}.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={running}
+          onClick={async () => {
+            setRunning(true)
+            try {
+              await onTrueUp()
+            } finally {
+              setRunning(false)
+            }
+          }}
+        >
+          {running && <Spinner className="h-3 w-3" />} True up now
+        </button>
+      </div>
+      {last?.error && <Banner kind="error">Last true-up failed: {last.error}</Banner>}
+      {skipped.length > 0 && (
+        <Banner kind="warning">
+          {skipped.map((d) => (
+            <span key={`${d.day}:${d.model}`} className="block">
+              {d.day}: {d.reason}
+            </span>
+          ))}
+        </Banner>
+      )}
+    </div>
+  )
+}
+
+function ReconciliationCard({ range, onTrueUp }: { range: RangeKey; onTrueUp: () => void }) {
+  const { addToast } = useToast()
   const [data, setData] = useState<Reconciliation | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -234,13 +332,26 @@ function ReconciliationCard({ range }: { range: RangeKey }) {
     load()
   }, [load])
 
+  const trueUp = async () => {
+    try {
+      const res = await authApi.post<{ data: TrueUpResult }>('/doc-tidy/usage/true-up', {})
+      const trued = res.data.days.filter((d) => d.status === 'trued-up').length
+      addToast(`Trued up ${trued} day(s) and recalibrated today's estimates.`, 'success')
+      onTrueUp()
+      await load(true)
+    } catch (err) {
+      addToast((err as Error).message, 'error')
+      await load()
+    }
+  }
+
   return (
     <div className={cardClass}>
       <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold text-[var(--text-100)]">Recorded vs. billed by OpenAI</h3>
           <p className="text-[11px] text-[var(--text-200)]">
-            OpenAI's Costs API over whole UTC days. Covers only calls made with our OpenAI key.
+            OpenAI's Costs API over whole UTC days, including Hermes's upstream calls on the same key.
           </p>
         </div>
         {data?.configured && (
@@ -263,7 +374,11 @@ function ReconciliationCard({ range }: { range: RangeKey }) {
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
               <StatCard label="Billed by OpenAI" value={fmtUsd(data.billedUsd)} hint={data.filteredByApiKey ? 'Doc Tidy key(s) only' : 'Whole organization'} />
-              <StatCard label="Recorded here" value={fmtUsd(data.recordedUsd)} hint={`${fmtTokens(data.recordedCalls)} OpenAI calls`} />
+              <StatCard
+                label="Recorded here"
+                value={fmtUsd(data.recordedUsd)}
+                hint={`${fmtTokens(data.recordedCalls)} calls${data.untrackedUsd > 0 ? ` + ${fmtUsd(data.untrackedUsd)} untracked` : ''}`}
+              />
               <StatCard
                 label="Difference"
                 value={fmtUsd(data.billedUsd - data.recordedUsd)}
@@ -275,6 +390,7 @@ function ReconciliationCard({ range }: { range: RangeKey }) {
                 Not filtered by API key, so the billed figure includes every app in the OpenAI organization.
               </p>
             )}
+            <TrueUpStatus data={data} onTrueUp={trueUp} />
             {data.lineItems.length > 0 && (
               <table className="w-full border-separate border-spacing-0">
                 <thead>
@@ -317,6 +433,7 @@ type PriceDraft = Record<
   | 'longCachedInputPer1M'
   | 'longCacheWritePer1M'
   | 'longOutputPer1M'
+  | 'upstreamModel'
   | 'notes',
   string
 > & { serviceTier: ServiceTier }
@@ -336,6 +453,7 @@ const RATE_KEYS = [
 const toDraft = (price?: Partial<ModelPrice>): PriceDraft => ({
   model: price?.model ?? '',
   serviceTier: price?.serviceTier ?? 'standard',
+  upstreamModel: price?.upstreamModel ?? '',
   notes: price?.notes ?? '',
   ...(Object.fromEntries(
     RATE_KEYS.map((key) => [key, price?.[key] === null || price?.[key] === undefined ? '' : String(price[key])])
@@ -362,6 +480,7 @@ function PriceEditor({
       const body = {
         model: draft.model.trim(),
         serviceTier: draft.serviceTier,
+        upstreamModel: draft.upstreamModel.trim() || null,
         notes: draft.notes,
         ...Object.fromEntries(RATE_KEYS.map((key) => [key, draft[key].trim() === '' ? null : Number(draft[key])])),
       }
@@ -447,6 +566,19 @@ function PriceEditor({
             </div>
           </div>
         </details>
+        <label className="block">
+          <span className="text-[11px] text-[var(--text-200)]">Upstream model (aliases only)</span>
+          <input
+            value={draft.upstreamModel}
+            placeholder="e.g. gpt-5.6-sol for hermes-agent"
+            onChange={(e) => set('upstreamModel', e.target.value)}
+            className="mt-0.5 w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-xs text-[var(--text-100)]"
+          />
+          <span className="mt-0.5 block text-[10px] text-[var(--text-200)]">
+            For a model name that forwards to an OpenAI model without reporting cached tokens. Its costs are estimated,
+            then trued up daily to that model's line items on the OpenAI bill.
+          </span>
+        </label>
         <label className="block">
           <span className="text-[11px] text-[var(--text-200)]">Notes</span>
           <input
@@ -559,6 +691,12 @@ function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => 
                 <tr key={p._id}>
                   <td className={`${cellClass} font-medium text-[var(--text-100)]`} title={p.notes}>
                     {p.model}
+                    {p.upstreamModel && (
+                      <span className="ml-1 font-normal text-[var(--text-200)]">
+                        → {p.upstreamModel}
+                        {typeof p.calibrationFactor === 'number' && ` · ×${p.calibrationFactor.toFixed(3)}`}
+                      </span>
+                    )}
                   </td>
                   <td className={`${cellClass} text-[var(--text-200)]`}>{p.serviceTier}</td>
                   <td className={`${cellClass} text-right tabular-nums`}>{rate(p.inputPer1M)}</td>
@@ -658,7 +796,8 @@ export default function DocTidyUsage() {
           </div>
           <p className="mt-0.5 text-xs text-[var(--text-200)]">
             Tokens and cost of every Doc Tidy LLM call, by organization and workspace. Costs use each model's
-            per-token prices, the same way OpenAI bills them. Times are UTC.
+            per-token prices, the same way OpenAI bills them; Hermes costs marked ≈ are estimates until the day is
+            trued up to OpenAI's bill. Times are UTC.
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] p-1">
@@ -701,7 +840,17 @@ export default function DocTidyUsage() {
           )}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Total cost" value={fmtUsd(totals.costUsd)} hint={RANGE_LABELS[range]} />
+            <StatCard
+              label="Total cost"
+              value={totals.estimatedCostUsd > 0 ? `≈ ${fmtUsd(totals.costUsd)}` : fmtUsd(totals.costUsd)}
+              hint={
+                totals.estimatedCostUsd > 0
+                  ? `Includes ${fmtUsd(totals.estimatedCostUsd)} estimated (Hermes, not yet trued up)`
+                  : summary.untrackedUsd > 0
+                    ? `Includes ${fmtUsd(summary.untrackedUsd)} untracked Hermes usage`
+                    : RANGE_LABELS[range]
+              }
+            />
             <StatCard
               label="Total tokens"
               value={fmtCompact(totals.inputTokens + totals.outputTokens)}
@@ -778,7 +927,7 @@ export default function DocTidyUsage() {
             </div>
           </div>
 
-          <ReconciliationCard range={range} />
+          <ReconciliationCard range={range} onTrueUp={load} />
           <PricesCard range={range} onRepriced={load} />
         </>
       ) : null}
