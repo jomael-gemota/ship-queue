@@ -186,6 +186,8 @@ export interface DocTidyEvent {
     | 'worker_status'
     | 'poll_status'
     | 'ui_prefs'
+    /** Token usage was recorded; the admin usage dashboard refetches. */
+    | 'usage'
   imported?: number
   /** For `poll_status`: whether the background poller is actively fetching. */
   pollerRunning?: boolean
