@@ -1,10 +1,11 @@
 """Tidy Narrator — gives the processing pipeline a warm, first-person voice.
 
 Each pipeline stage is turned into a single short line spoken *as Tidy* to the
-user, generated dynamically with a small/fast OpenAI model so the phrasing varies
-run-to-run.  Every event ships a Tidy-voiced static fallback, so if no OpenAI key
-is configured, narration is disabled, or a call errors/times out, the pipeline
-still produces friendly text and never blocks or breaks.
+user.  By default every line is the Tidy-voiced static fallback; setting
+NARRATION_ENABLED=true generates the phrasing with a small/fast OpenAI model so it
+varies run-to-run, at the cost of 6–10 extra billed calls per job.  If no OpenAI
+key is configured, or a call errors/times out, the fallback is used, so the
+pipeline still produces friendly text and never blocks or breaks.
 
 Lines are emitted by the worker as `thinking` tokens, reusing the existing relay,
 persistence, and client rendering — the narrator only produces the text.
@@ -17,12 +18,14 @@ import os
 
 from openai import AsyncOpenAI
 
+from usage import report_usage
+
 logger = logging.getLogger(__name__)
 
-NARRATION_ENABLED = os.environ.get("NARRATION_ENABLED", "true").lower() not in (
-    "false",
-    "0",
-    "no",
+NARRATION_ENABLED = os.environ.get("NARRATION_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
 )
 NARRATION_MODEL = os.environ.get("NARRATION_MODEL", "gpt-4o-mini")
 NARRATION_TIMEOUT = float(os.environ.get("NARRATION_TIMEOUT", 15))
@@ -100,6 +103,14 @@ class Narrator:
         except Exception as exc:
             logger.warning("Narration call failed (%s); using fallback", exc)
             return None
+
+        await report_usage(
+            purpose="narration",
+            provider="openai",
+            model=getattr(resp, "model", None) or NARRATION_MODEL,
+            usage=getattr(resp, "usage", None),
+            service_tier=getattr(resp, "service_tier", None),
+        )
 
         if not resp.choices:
             return None

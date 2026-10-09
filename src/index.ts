@@ -20,6 +20,7 @@ import {
 } from './models/HHOrderGroup';
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
+import { seedModelPrices } from './models/DocTidyModelPrice';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
@@ -96,6 +97,7 @@ const start = async () => {
   await connectDB();
   await seedCookieJars();
   await seedHhB2bConfig();
+  await seedModelPrices();
   await migrateHhOrderGroupBrands();
   await migrateHhSplitStatuses();
   await migrateLocalHhCartDrafts();

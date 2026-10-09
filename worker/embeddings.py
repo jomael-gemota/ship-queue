@@ -13,6 +13,8 @@ import os
 
 from openai import AsyncOpenAI
 
+from usage import report_usage
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -32,6 +34,12 @@ async def embed_text(text: str) -> list[float] | None:
         response = await client.embeddings.create(
             model=EMBEDDING_MODEL,
             input=text[:EMBED_MAX_CHARS],
+        )
+        await report_usage(
+            purpose="embedding",
+            provider="openai",
+            model=getattr(response, "model", None) or EMBEDDING_MODEL,
+            usage=getattr(response, "usage", None),
         )
         return response.data[0].embedding
     except Exception as exc:

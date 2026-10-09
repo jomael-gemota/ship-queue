@@ -10,9 +10,12 @@
  * until it is re-embedded.
  */
 
+import { recordUsage } from '../services/docTidyUsage.service';
+
 const DEFAULT_MODEL = 'text-embedding-3-small';
 
-export async function embedText(text: string): Promise<number[] | null> {
+/** `jobId` attributes the call's token usage to that job's workspace. */
+export async function embedText(text: string, jobId?: string): Promise<number[] | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.warn('[embeddings] OPENAI_API_KEY is not set — storing without an embedding');
@@ -40,7 +43,19 @@ export async function embedText(text: string): Promise<number[] | null> {
       return null;
     }
 
-    const data = (await res.json()) as { data?: Array<{ embedding: number[] }> };
+    const data = (await res.json()) as {
+      data?: Array<{ embedding: number[] }>;
+      model?: string;
+      usage?: { prompt_tokens?: number };
+    };
+    recordUsage({
+      jobId,
+      purpose: 'correction-embedding',
+      provider: 'openai',
+      model: data.model ?? process.env.EMBEDDING_MODEL ?? DEFAULT_MODEL,
+      inputTokens: data.usage?.prompt_tokens,
+      usageSource: data.usage ? 'reported' : 'missing',
+    }).catch((err) => console.error('[embeddings] failed to record usage:', err));
     return data.data?.[0]?.embedding ?? null;
   } catch (error) {
     console.error('[embeddings] request failed:', error);
