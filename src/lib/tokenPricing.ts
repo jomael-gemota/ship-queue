@@ -61,6 +61,46 @@ export function computeCostUsd(usage: TokenUsage, price: PriceRates): number {
   return micros / 1_000_000;
 }
 
+/** The cost if no input had been cached: the weight a day's bill is split by. */
+export function computeListCostUsd(usage: TokenUsage, price: PriceRates): number {
+  return computeCostUsd({ ...usage, cachedInputTokens: 0, cacheWriteTokens: 0 }, price);
+}
+
+export interface CalibratedRates extends PriceRates {
+  upstreamModel?: string | null;
+  calibrationFactor?: number | null;
+}
+
+export interface EventCost {
+  costUsd: number;
+  listCostUsd: number;
+  costBasis: 'exact' | 'estimated';
+}
+
+/**
+ * An alias row (one with `upstreamModel`) hides the cache split, so its cost is
+ * list cost scaled by how far the bill has recently been below list price.
+ */
+export function priceEvent(usage: TokenUsage, price: CalibratedRates): EventCost {
+  const listCostUsd = computeListCostUsd(usage, price);
+  if (!price.upstreamModel) {
+    return { costUsd: computeCostUsd(usage, price), listCostUsd, costBasis: 'exact' };
+  }
+  const factor = isRate(price.calibrationFactor) ? price.calibrationFactor : 1;
+  return { costUsd: listCostUsd * factor, listCostUsd, costBasis: 'estimated' };
+}
+
+/**
+ * True for `base` itself or a dated snapshot of it. Also accepts OpenAI's
+ * Costs API line items, which read `"<model>, <slice>"` (e.g.
+ * `"gpt-5.6-sol, cached input"`).
+ */
+export function isModelOrSnapshot(name: string, base: string): boolean {
+  const model = name.split(',')[0].trim().toLowerCase();
+  const target = base.toLowerCase();
+  return model === target || (model.startsWith(target) && SNAPSHOT_SUFFIX.test(model.slice(target.length)));
+}
+
 /** Maps the `service_tier` a response echoes onto the pricing-page tier. */
 export function normalizeServiceTier(tier: unknown): ServiceTier {
   switch (typeof tier === 'string' ? tier.toLowerCase() : '') {

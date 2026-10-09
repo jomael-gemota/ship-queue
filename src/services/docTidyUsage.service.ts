@@ -8,7 +8,7 @@ import DocTidyUsageEvent, {
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import DocTidyMessage from '../models/DocTidyMessage';
 import DocTidyRule from '../models/DocTidyRule';
-import { computeCostUsd, findPrice, normalizeServiceTier } from '../lib/tokenPricing';
+import { findPrice, normalizeServiceTier, priceEvent } from '../lib/tokenPricing';
 import { broadcast } from './docTidyEvents';
 
 /**
@@ -29,13 +29,15 @@ type LeanPrice = Pick<
   | 'longCachedInputPer1M'
   | 'longCacheWritePer1M'
   | 'longOutputPer1M'
+  | 'upstreamModel'
+  | 'calibrationFactor'
 > & { _id: Types.ObjectId };
 
 /* ------------------------------------------------------------- prices */
 
 let priceCache: LeanPrice[] | null = null;
 
-async function loadPrices(): Promise<LeanPrice[]> {
+export async function loadPrices(): Promise<LeanPrice[]> {
   if (!priceCache) priceCache = (await DocTidyModelPrice.find({}).lean()) as LeanPrice[];
   return priceCache;
 }
@@ -81,7 +83,7 @@ const HINT_DEBOUNCE_MS = 1500;
 
 /** One data-free hint per burst: a job's calls arrive in quick succession and
  *  each dashboard refetch is an aggregation, so there is no point in one per call. */
-function announceUsage(): void {
+export function announceUsage(): void {
   if (hintTimer) return;
   hintTimer = setTimeout(() => {
     hintTimer = null;
@@ -106,6 +108,8 @@ export interface UsageInput {
   reasoningTokens?: number;
   usageSource?: 'reported' | 'missing';
 }
+
+const UNPRICED = { costUsd: 0, listCostUsd: 0, costBasis: 'exact' } as const;
 
 const count = (value: unknown): number => {
   const n = Number(value);
@@ -143,7 +147,7 @@ export async function recordUsage(input: UsageInput): Promise<void> {
     ...usage,
     reasoningTokens: count(input.reasoningTokens),
     usageSource: input.usageSource === 'missing' ? 'missing' : 'reported',
-    costUsd: price ? computeCostUsd(usage, price) : 0,
+    ...(price ? priceEvent(usage, price) : UNPRICED),
     priced: Boolean(price),
     priceId: price?._id ?? null,
   });
@@ -151,11 +155,17 @@ export async function recordUsage(input: UsageInput): Promise<void> {
   announceUsage();
 }
 
-/** Re-applies the current price table to every event in the range. */
+/**
+ * Re-applies the current price table to every event in the range, except
+ * events the daily true-up has already set to their share of the actual bill.
+ */
 export async function repriceRange(from: Date, to: Date): Promise<number> {
   invalidatePriceCache();
   const prices = await loadPrices();
-  const cursor = DocTidyUsageEvent.find({ createdAt: { $gte: from, $lt: to } })
+  const cursor = DocTidyUsageEvent.find({
+    createdAt: { $gte: from, $lt: to },
+    costBasis: { $ne: 'billed' },
+  })
     .select('model serviceTier inputTokens cachedInputTokens cacheWriteTokens outputTokens')
     .lean()
     .cursor();
@@ -177,7 +187,7 @@ export async function repriceRange(from: Date, to: Date): Promise<number> {
         filter: { _id: event._id },
         update: {
           $set: {
-            costUsd: price ? computeCostUsd(event, price) : 0,
+            ...(price ? priceEvent(event, price) : UNPRICED),
             priced: Boolean(price),
             priceId: price?._id ?? null,
           },
