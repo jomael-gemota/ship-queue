@@ -121,12 +121,23 @@ See `worker/README.md` for the Ubuntu setup, restart commands, and service
 management reference, and `design-log/2026-09-11-doc-tidy-agent-parsing.md` for
 why it is built this way.
 
-### Token usage & cost (admins only)
+### Token usage & cost
 
 **Token Usage** (`/doc-tidy/usage`, under *Invoice Auditing* in the sidebar) shows
-the tokens and cost of every LLM call Doc Tidy makes — extraction, table view,
-narration and embeddings — rolled up by organization and workspace, with a daily
-trend and a purpose/model breakdown. It updates live as jobs run.
+what every LLM call Doc Tidy makes costs: extraction, table view, narration and
+embeddings. Every signed-in user can view it, and it updates live as jobs run.
+It has two tabs:
+
+- **Overview**: the amount spent, documents processed, average per document
+  and tokens used. Below that, one table by organization and workspace with
+  documents, tokens, dollars and each one's share of the total, a daily chart,
+  and a breakdown by purpose and model.
+- **Billing & prices**: warnings about unpriced models or missing usage,
+  recorded vs. OpenAI's bill with its line items, the Hermes calibration, and
+  the model price table.
+
+Only admins can edit prices, **Re-price**, **True up now**, or force-refresh the
+OpenAI comparison.
 
 - Counts come from the `usage` object each API response returns, never from
   estimates. Cost follows OpenAI's billing: ordinary input, cached input and
@@ -364,11 +375,11 @@ attachment destination are admin-only.
 | GET/PUT | `/config`              | Get / set the Drive destination (PUT = admin)      |
 | DELETE | `/config/mailbox`       | Disconnect the mailbox (admin)                     |
 | GET    | `/config/folders`       | Drive folder picker for the mailbox account (admin) |
-| GET    | `/usage/summary`        | Token usage & cost by organization/workspace (admin) |
-| GET    | `/usage/reconciliation` | Recorded cost vs. OpenAI Costs API (admin)         |
+| GET    | `/usage/summary`        | Token usage & cost by organization/workspace      |
+| GET    | `/usage/reconciliation` | Recorded cost vs. OpenAI Costs API                 |
 | POST   | `/usage/reprice`        | Re-apply current prices to a date range (admin)    |
 | POST   | `/usage/true-up`        | Recalibrate and true up Hermes costs to the OpenAI bill (admin) |
-| GET/POST | `/usage/prices`       | List / add model prices (admin)                    |
+| GET/POST | `/usage/prices`       | List model prices / add one (POST = admin)         |
 | PUT/DELETE | `/usage/prices/:id` | Edit / delete a model price (admin)                |
 
 ### Shipments — `/api/shipments`
