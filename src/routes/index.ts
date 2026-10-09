@@ -8,6 +8,7 @@ import adminRoutes from './admin.routes';
 import dropboxRoutes from './dropbox.routes';
 import docTidyRoutes from './docTidy.routes';
 import hhSportswearRoutes from './hhSportswear.routes';
+import bulkOrderRoutes from './bulkOrder.routes';
 import { attachHhBrand } from '../lib/hhBrand';
 
 const router = Router();
@@ -23,5 +24,6 @@ router.use('/doc-tidy', docTidyRoutes);
 router.use('/hh-sportswear', attachHhBrand('sportswear'), hhSportswearRoutes);
 router.use('/hh-workwear', attachHhBrand('workwear'), hhSportswearRoutes);
 router.use('/thorogood', attachHhBrand('thorogood'), hhSportswearRoutes);
+router.use('/bulk-order/thorogood', bulkOrderRoutes);
 
 export default router;

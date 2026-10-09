@@ -12,6 +12,7 @@ import { startSyncScheduler } from './services/syncScheduler';
 import { startDocTidyPoller } from './services/docTidyPoller';
 import { startDocTidyWorkerServer, WORKER_WS_PATH } from './services/docTidyWorkerRegistry';
 import { startHhB2bHealthScheduler } from './services/hhB2bHealth';
+import { startBulkOrderHealthScheduler } from './services/bulkOrderHealth';
 import {
   migrateHhSplitStatuses,
   migrateLocalHhCartDrafts,
@@ -20,6 +21,7 @@ import {
 } from './models/HHOrderGroup';
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
+import { seedBulkOrderConfig } from './models/BulkOrderConfig';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
@@ -29,7 +31,7 @@ const HOST = '0.0.0.0';
 // Middleware
 const baseCspDirectives = {
   ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-  'img-src': ["'self'", 'data:', 'https:'],
+  'img-src': ["'self'", 'data:', 'blob:', 'https:'],
 };
 
 // Strict CSP for the app itself.
@@ -96,6 +98,7 @@ const start = async () => {
   await connectDB();
   await seedCookieJars();
   await seedHhB2bConfig();
+  await seedBulkOrderConfig();
   await migrateHhOrderGroupBrands();
   await migrateHhSplitStatuses();
   await migrateLocalHhCartDrafts();
@@ -110,6 +113,7 @@ const start = async () => {
   // Same for Doc Tidy: capture matching mail as it arrives, not on demand.
   startDocTidyPoller();
   startHhB2bHealthScheduler();
+  startBulkOrderHealthScheduler();
 };
 
 start();
