@@ -18,7 +18,9 @@ export interface DocTidyEvent {
     | 'parse_progress'
     | 'worker_status'
     | 'poll_status'
-    | 'ui_prefs';
+    | 'ui_prefs'
+    /** Token usage was recorded; the admin usage dashboard refetches. Carries no data. */
+    | 'usage';
   /** Number of newly stored messages, for `imported`. */
   imported?: number;
   /** For `poll_status`: whether the background poller is actively fetching. */

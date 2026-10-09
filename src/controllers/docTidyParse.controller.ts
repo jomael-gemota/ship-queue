@@ -430,7 +430,7 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
       0,
       CORRECTION_TEXT_SAMPLE_CHARS
     );
-    const embedding = documentTextSample ? await embedText(documentTextSample) : null;
+    const embedding = documentTextSample ? await embedText(documentTextSample, id) : null;
 
     const correction = await DocTidyCorrection.create({
       parseJobId: job._id,
