@@ -4,7 +4,19 @@ import type { IDocTidySpsSource } from '../models/DocTidySpsSource';
 const AUTHORIZE_URL  = 'https://auth.spscommerce.com/authorize';
 const TOKEN_URL      = 'https://auth.spscommerce.com/oauth/token';
 const USERINFO_URL   = 'https://auth.spscommerce.com/userinfo';
-const AUDIENCE       = 'api://api.spscommerce.com/';
+
+// SPS Dev Center OAuth audience.
+//
+// Two known audience values and what they unlock:
+//   api://api.spscommerce.com/ — Transaction API v5 file queue (Sandbox client)
+//   https://spscommerce.com    — Fulfillment Monitor (Production client, but blocked for Dev Center apps)
+//
+// The correct value depends entirely on which Dev Center app type is configured:
+//   Sandbox app  → always issues api://api.spscommerce.com/  → Transaction API works
+//   Production app → always issues https://spscommerce.com  → neither API works for us yet
+//
+// Default: api://api.spscommerce.com/ (requires Sandbox-type Dev Center credentials)
+const AUDIENCE = (process.env.SPS_AUDIENCE ?? 'api://api.spscommerce.com/') as string;
 
 /** Raised when stored SPS credentials have been revoked or are expired. */
 export class SpsAuthError extends Error {
@@ -159,16 +171,35 @@ export async function getSpsUserInfo(accessToken: string): Promise<SpsUserInfo> 
 
 /* ─────────────────────────────── SPS Transaction API v5 — document queue ── */
 
-const SPS_API_BASE      = process.env.SPS_API_BASE ?? 'https://api.spscommerce.com';
-/** Default document-type sub-directory.  Override via SPS_DOC_TYPE env var (e.g. "IN"). */
-const SPS_DOC_TYPE      = process.env.SPS_DOC_TYPE ?? 'PO';
-const SPS_DATA_OUT_BASE = `${SPS_API_BASE}/transactions/v5/data/out`;
+const SPS_API_BASE  = process.env.SPS_API_BASE ?? 'https://api.spscommerce.com';
+const SPS_DATA_BASE = `${SPS_API_BASE}/transactions/v5/data`;
+/** Mailbox folder under /data/ to browse. Accounts in testing often only have "testout". */
+const SPS_DATA_DIR  = process.env.SPS_DATA_DIR ?? 'out';
+
+const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+/** Resolves and validates a mailbox folder name (e.g. "out", "testout"). */
+function resolveDataDir(dataDir?: string): string {
+  const dir = dataDir?.trim() || SPS_DATA_DIR;
+  if (!SAFE_SEGMENT.test(dir)) {
+    throw new SpsApiError(`Invalid SPS mailbox folder '${dir}'.`);
+  }
+  return dir;
+}
+
+function resolveDocType(docType: string): string {
+  const type = docType.trim().toUpperCase();
+  if (!SAFE_SEGMENT.test(type)) {
+    throw new SpsApiError(`Invalid SPS document type '${docType}'.`);
+  }
+  return type;
+}
 
 /**
  * A document entry returned by the SPS Transaction API v5 directory listing.
  *
  * The Transaction API v5 is a file-queue system, not a queryable database.
- * Each entry in `GET /transactions/v5/data/out/{docType}/` is a file (EDI XML)
+ * Each entry in `GET /transactions/v5/data/{dataDir}/{docType}/` is a file (EDI XML)
  * whose filename typically contains the PO number, e.g.:
  *   "PO584615-1-v7.7-BulkImport.xml"
  *
@@ -177,7 +208,7 @@ const SPS_DATA_OUT_BASE = `${SPS_API_BASE}/transactions/v5/data/out`;
 export interface SpsDocumentRecord {
   /** Filename as returned by SPS, e.g. "PO584615-1-v7.7-BulkImport.xml" */
   filename: string;
-  /** Full download URL: /transactions/v5/data/out/{docType}/{filename} */
+  /** Full download URL: /transactions/v5/data/{dataDir}/{docType}/{filename} */
   downloadUrl: string;
   /** Document-type directory (PO, IN, etc.) */
   docType: string;
@@ -192,6 +223,8 @@ export interface SpsDocumentRecord {
 export interface SpsDocumentsPage {
   records: SpsDocumentRecord[];
   nextCursor?: string | null;
+  /** Mailbox folder that was listed ("out", "testout", …); null for a top-level listing. */
+  dataDir: string | null;
 }
 
 /** @deprecated Renamed to SpsDocumentRecord — kept for backward compat. */
@@ -219,35 +252,70 @@ function tryParseJson(text: string): unknown {
 
 /**
  * Normalise a directory-listing response into a flat SpsDocumentRecord array.
- * Handles string[], object[] (name/href/size), or a root wrapper object.
+ *
+ * The SPS Transaction API v5 wraps its listing in `{ "results": [...], "paging": { … } }`.
+ * Plain arrays and other common envelope keys are also accepted.
  */
-function normaliseDocumentList(data: unknown, docType: string | undefined): SpsDocumentRecord[] {
-  const baseUrl    = docType ? `${SPS_DATA_OUT_BASE}/${docType}/` : `${SPS_DATA_OUT_BASE}/`;
+function normaliseDocumentList(
+  data: unknown,
+  parentUrl: string,
+  docType: string | undefined,
+): SpsDocumentRecord[] {
+  const baseUrl    = docType ? `${parentUrl}${docType}/` : parentUrl;
   const docTypeStr = docType ?? 'unknown';
+
+  /** Resolve an href/url that SPS may return as a relative path ("/transactions/v5/…"). */
+  function toAbsoluteUrl(raw: string): string {
+    if (raw.startsWith('/')) return `${SPS_API_BASE}${raw}`;
+    return raw;
+  }
 
   function toRecord(item: unknown, idx: number): SpsDocumentRecord {
     if (typeof item === 'string') {
-      // Could be a filename ("PO584615.xml") or a directory name ("PO", "IN")
-      const isDir = !item.includes('.')
+      // Could be a filename ("PO584615.xml") or a directory name ("PO", "IN", "testout/")
+      const name  = item.replace(/\/$/, '');
+      const isDir = item.endsWith('/') || !name.includes('.');
       return {
-        filename:    item,
-        downloadUrl: isDir ? `${SPS_DATA_OUT_BASE}/${item}/` : `${baseUrl}${encodeURIComponent(item)}`,
-        docType:     isDir ? item : docTypeStr,
+        filename:    name,
+        downloadUrl: isDir ? `${parentUrl}${name}/` : `${baseUrl}${encodeURIComponent(name)}`,
+        docType:     isDir ? name : docTypeStr,
         rawData:     item,
       };
     }
     if (item && typeof item === 'object') {
-      const obj      = item as Record<string, unknown>;
-      const filename = String(obj.name ?? obj.filename ?? obj.id ?? `document-${idx}`);
+      const obj = item as Record<string, unknown>;
+
+      // SPS Transaction API v5 uses "path" (e.g. "/out/IN/") as the name field
+      // and "url" as the download/browse link.  Fall back to the other common
+      // field names so the normaliser handles any future schema variation.
+      const rawName = String(
+        obj.path ?? obj.name ?? obj.filename ?? obj.id ?? `document-${idx}`,
+      );
+      // Strip any leading directory segments from a full path so we display
+      // just the leaf name.  "/out/IN/" → "IN", "PO584615.xml" → "PO584615.xml"
+      const leafName = rawName.replace(/\/$/, '').split('/').filter(Boolean).pop() ?? rawName.replace(/\/$/, '');
+      const filename = leafName;
+
+      // A trailing slash on the raw name, or an explicit type field, signals a directory.
+      const isDir = rawName.endsWith('/') || (typeof obj.type === 'string' && obj.type === 'directory');
+
+      // Prefer the absolute url/href from the response; fall back to constructing one.
+      const rawHref = (obj.url ?? obj.href) ? String(obj.url ?? obj.href) : null;
+      const downloadUrl = rawHref
+        ? toAbsoluteUrl(rawHref)
+        : isDir
+          ? `${parentUrl}${filename}/`
+          : `${baseUrl}${encodeURIComponent(filename)}`;
+
       return {
         filename,
-        downloadUrl: String(obj.href ?? obj.url ?? `${baseUrl}${encodeURIComponent(filename)}`),
-        docType:     docTypeStr,
-        size:        typeof obj.size === 'number' ? obj.size : undefined,
-        createdAt:   (obj.lastModified ?? obj.createdAt ?? obj.timestamp)
+        downloadUrl,
+        docType:   isDir ? filename : docTypeStr,
+        size:      typeof obj.size === 'number' ? obj.size : undefined,
+        createdAt: (obj.lastModified ?? obj.createdAt ?? obj.timestamp)
           ? String(obj.lastModified ?? obj.createdAt ?? obj.timestamp)
           : undefined,
-        rawData:     item,
+        rawData: item,
       };
     }
     return { filename: `document-${idx}`, downloadUrl: baseUrl, docType: docTypeStr, rawData: item };
@@ -259,10 +327,12 @@ function normaliseDocumentList(data: unknown, docType: string | undefined): SpsD
   if (data && typeof data === 'object') {
     const obj    = data as Record<string, unknown>;
     const nested =
-      (obj.results as unknown[]) ??
-      (obj.data    as unknown[]) ??
-      (obj.items   as unknown[]) ??
-      (obj.files   as unknown[]) ??
+      (obj.results    as unknown[]) ??
+      (obj.entries    as unknown[]) ??
+      (obj.content    as unknown[]) ??
+      (obj.data       as unknown[]) ??
+      (obj.items      as unknown[]) ??
+      (obj.files      as unknown[]) ??
       null;
     if (Array.isArray(nested)) return nested.map(toRecord);
   }
@@ -270,22 +340,33 @@ function normaliseDocumentList(data: unknown, docType: string | undefined): SpsD
 }
 
 /**
- * Lists available document files in the SPS Transaction API v5 out-directory.
+ * Lists entries in the SPS Transaction API v5 mailbox.
  *
- * Without `params.docType`: lists the root `GET /transactions/v5/data/out/`
- *   to discover what sub-directories / document types are available.
- * With `params.docType` (e.g. "PO"): lists `GET /transactions/v5/data/out/PO/`
+ * With `params.topLevel`: lists `GET /transactions/v5/data/` to discover the
+ *   mailbox folders the account has (in, out, testin, testout, …).
+ * Without `params.docType`: lists `GET /transactions/v5/data/{dataDir}/`
+ *   to discover what document-type sub-directories are available.
+ * With `params.docType` (e.g. "PO"): lists `GET /transactions/v5/data/{dataDir}/PO/`
  *
- * @param params.docType         — Sub-directory to list (omit for root listing)
+ * @param params.dataDir         — Mailbox folder (default: SPS_DATA_DIR env, else "out")
+ * @param params.docType         — Sub-directory to list (omit for folder root listing)
  * @param params.poNumberFilter  — Client-side filter: only return files whose filename contains this string
  */
 export async function fetchSpsDocuments(
   accessToken: string,
-  params: { docType?: string; poNumberFilter?: string; cursor?: string },
+  params: {
+    topLevel?: boolean;
+    dataDir?: string;
+    docType?: string;
+    poNumberFilter?: string;
+    cursor?: string;
+  },
 ): Promise<SpsDocumentsPage> {
-  const docType  = params.docType?.toUpperCase();
-  const listPath = docType ? `${SPS_DATA_OUT_BASE}/${docType}/` : `${SPS_DATA_OUT_BASE}/`;
-  const listUrl  = new URL(listPath);
+  const dataDir   = params.topLevel ? null : resolveDataDir(params.dataDir);
+  const docType   = !dataDir || !params.docType ? undefined : resolveDocType(params.docType);
+  const parentUrl = dataDir ? `${SPS_DATA_BASE}/${dataDir}/` : `${SPS_DATA_BASE}/`;
+  const listPath  = docType ? `${parentUrl}${docType}/` : parentUrl;
+  const listUrl   = new URL(listPath);
   if (params.cursor) listUrl.searchParams.set('cursor', params.cursor);
 
   const res = await fetch(listUrl.toString(), {
@@ -304,7 +385,18 @@ export async function fetchSpsDocuments(
     throw new SpsApiError(extractSpsError(errData, res.status, res.statusText));
   }
 
-  const allRecords = normaliseDocumentList(data, docType);
+  const allRecords = normaliseDocumentList(data, parentUrl, docType);
+
+  // Extract the pagination cursor that SPS returns at the top level of the response.
+  // Shape: { "entries": [...], "cursor": "<opaque-string-or-null>" }
+  const nextCursor = (() => {
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>;
+      const c   = obj.cursor ?? obj.nextCursor ?? obj.next_cursor;
+      return typeof c === 'string' && c ? c : null;
+    }
+    return null;
+  })();
 
   // Client-side PO number filter (Transaction API v5 has no server-side filter).
   const filter   = params.poNumberFilter?.trim().toLowerCase();
@@ -312,21 +404,23 @@ export async function fetchSpsDocuments(
     ? allRecords.filter((r) => r.filename.toLowerCase().includes(filter))
     : allRecords;
 
-  return { records: filtered, nextCursor: null };
+  return { records: filtered, nextCursor, dataDir };
 }
 
 /**
  * Downloads the raw EDI XML content of a single document from the SPS queue.
  * Returns the raw text so the caller can display or parse it.
  *
- * `GET /transactions/v5/data/out/{docType}/{filename}`
+ * `GET /transactions/v5/data/{dataDir}/{docType}/{filename}`
  */
 export async function fetchSpsDocumentContent(
   accessToken: string,
   docType: string,
   filename: string,
+  dataDir?: string,
 ): Promise<string> {
-  const url = `${SPS_DATA_OUT_BASE}/${docType.toUpperCase()}/${encodeURIComponent(filename)}`;
+  const dir = resolveDataDir(dataDir);
+  const url = `${SPS_DATA_BASE}/${dir}/${resolveDocType(docType)}/${encodeURIComponent(filename)}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: '*/*' },
   });
@@ -340,6 +434,68 @@ export async function fetchSpsDocumentContent(
     throw new SpsApiError(extractSpsError(errData, res.status, res.statusText));
   }
   return res.text();
+}
+
+/* ──────────────────────────────────── Batch download + parse ── */
+
+import { parseSpsFile } from './spsEdi.service';
+export type { SpsTransaction } from './spsEdi.service';
+
+/**
+ * Lists EDI files in the specified mailbox folder+docType, downloads each one
+ * (up to `limit`), and returns structured SpsTransaction records parsed from
+ * the file content.
+ *
+ * Downloads are done with a concurrency of 5 to stay within SPS rate limits.
+ */
+export async function fetchAndParseTransactions(
+  accessToken: string,
+  params: {
+    dataDir?: string;
+    docType?: string;
+    limit?: number;
+    cursor?: string;
+  },
+): Promise<{ transactions: import('./spsEdi.service').SpsTransaction[]; nextCursor: string | null; dataDir: string | null }> {
+  const limit = Math.min(params.limit ?? 50, 200);
+
+  // 1. List files in the specified directory
+  const page = await fetchSpsDocuments(accessToken, {
+    dataDir: params.dataDir,
+    docType: params.docType,
+    cursor:  params.cursor,
+  });
+
+  // Only parse actual files (not directory entries)
+  const files = page.records.slice(0, limit);
+
+  // 2. Download & parse with concurrency = 5
+  const CONCURRENCY = 5;
+  const transactions: import('./spsEdi.service').SpsTransaction[] = [];
+
+  for (let i = 0; i < files.length; i += CONCURRENCY) {
+    const batch = files.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (rec) => {
+        try {
+          const res = await fetch(rec.downloadUrl, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: '*/*' },
+          });
+          if (!res.ok) {
+            // Return a stub record if the download fails
+            return parseSpsFile({ content: '', filename: rec.filename, downloadUrl: rec.downloadUrl, docTypeFolderHint: rec.docType, size: rec.size, createdAt: rec.createdAt });
+          }
+          const content = await res.text();
+          return parseSpsFile({ content, filename: rec.filename, downloadUrl: rec.downloadUrl, docTypeFolderHint: rec.docType, size: rec.size, createdAt: rec.createdAt });
+        } catch {
+          return parseSpsFile({ content: '', filename: rec.filename, downloadUrl: rec.downloadUrl, docTypeFolderHint: rec.docType, size: rec.size, createdAt: rec.createdAt });
+        }
+      }),
+    );
+    transactions.push(...results);
+  }
+
+  return { transactions, nextCursor: page.nextCursor ?? null, dataDir: page.dataDir };
 }
 
 /** Alias so existing controller code compiles unchanged. */

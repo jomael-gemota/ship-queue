@@ -5,6 +5,7 @@ import {
   ensureAccessToken,
   fetchSpsDocuments,
   fetchSpsDocumentContent,
+  fetchAndParseTransactions,
   SpsAuthError,
   SpsApiError,
 } from '../services/sps.service';
@@ -68,14 +69,16 @@ export const deleteSpsSource = async (req: Request, res: Response): Promise<void
  * Lists SPS document files for a workspace source.
  *
  * GET /workspaces/:workspaceId/sps-sources/:sourceId/documents
- *   ?docType=PO          — sub-directory to list (default: PO)
+ *   ?topLevel=1          — list the mailbox folders under /data/ (ignores dir/docType)
+ *   &dir=testout         — mailbox folder (default: SPS_DATA_DIR env, else "out")
+ *   &docType=PO          — sub-directory to list (omit to list the folder root)
  *   &poNumber=584615     — optional client-side filter (substring match in filename)
  *   &cursor=<token>      — optional pagination cursor
  */
 export const querySpsDocuments = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId, sourceId } = req.params;
-    const { docType, poNumber, cursor } = req.query as Record<string, string | undefined>;
+    const { topLevel, dir, docType, poNumber, cursor } = req.query as Record<string, string | undefined>;
 
     if (!isValidObjectId(sourceId)) {
       res.status(400).json({ message: 'Invalid source id' });
@@ -92,12 +95,14 @@ export const querySpsDocuments = async (req: Request, res: Response): Promise<vo
 
     const accessToken = await ensureAccessToken(source);
     const page = await fetchSpsDocuments(accessToken, {
+      topLevel: topLevel === '1' || topLevel === 'true',
+      dataDir: dir,
       docType,
       poNumberFilter: poNumber,
       cursor,
     });
 
-    res.json({ data: page.records, nextCursor: page.nextCursor ?? null });
+    res.json({ data: page.records, nextCursor: page.nextCursor ?? null, dataDir: page.dataDir });
   } catch (error) {
     if (error instanceof SpsAuthError) {
       res.status(401).json({ message: error.message });
@@ -115,13 +120,70 @@ export const querySpsDocuments = async (req: Request, res: Response): Promise<vo
 export const querySpsInvoices = querySpsDocuments;
 
 /**
+ * Downloads and parses EDI files from a Transaction API v5 directory,
+ * returning structured transaction records (doc type, PO #, invoice #,
+ * sender, receiver, date) extracted from the file content.
+ *
+ * GET /workspaces/:workspaceId/sps-sources/:sourceId/transactions
+ *   ?dir=in            — mailbox folder (default: SPS_DATA_DIR env, else "out")
+ *   &docType=PO        — sub-directory / document type
+ *   &limit=50          — max files to download and parse (default 50, max 200)
+ *   &cursor=<token>    — pagination cursor from a previous response
+ */
+export const queryTransactions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId, sourceId } = req.params;
+    const { dir, docType, limit, cursor } = req.query as Record<string, string | undefined>;
+
+    if (!isValidObjectId(sourceId)) {
+      res.status(400).json({ message: 'Invalid source id' });
+      return;
+    }
+
+    const source = await DocTidySpsSource.findOne({ _id: sourceId, workspaceId })
+      .select('+spsRefreshToken +spsAccessToken +spsTokenExpiry');
+
+    if (!source) {
+      res.status(404).json({ message: 'SPS Commerce source not found' });
+      return;
+    }
+
+    const accessToken = await ensureAccessToken(source);
+    const result = await fetchAndParseTransactions(accessToken, {
+      dataDir: dir,
+      docType,
+      limit:  limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50,
+      cursor,
+    });
+
+    res.json({
+      data:       result.transactions,
+      nextCursor: result.nextCursor ?? null,
+      dataDir:    result.dataDir,
+    });
+  } catch (error) {
+    if (error instanceof SpsAuthError) {
+      res.status(401).json({ message: (error as Error).message });
+      return;
+    }
+    if (error instanceof SpsApiError) {
+      res.status(502).json({ message: (error as Error).message });
+      return;
+    }
+    fail(res, error, 'Failed to fetch SPS transactions');
+  }
+};
+
+/**
  * Downloads the raw EDI XML content of a single SPS document.
  *
  * GET /workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename
+ *   ?dir=testout         — mailbox folder (default: SPS_DATA_DIR env, else "out")
  */
 export const getSpsDocumentContent = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId, sourceId, docType, filename } = req.params;
+    const dir = typeof req.query.dir === 'string' ? req.query.dir : undefined;
 
     if (!isValidObjectId(sourceId)) {
       res.status(400).json({ message: 'Invalid source id' });
@@ -141,7 +203,7 @@ export const getSpsDocumentContent = async (req: Request, res: Response): Promis
     }
 
     const accessToken = await ensureAccessToken(source);
-    const content     = await fetchSpsDocumentContent(accessToken, docType, filename);
+    const content     = await fetchSpsDocumentContent(accessToken, docType, filename, dir);
 
     // Return wrapped JSON so the frontend authApi (which always parses JSON) works correctly.
     res.json({ data: content });

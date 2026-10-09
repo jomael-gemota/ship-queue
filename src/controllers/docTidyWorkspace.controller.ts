@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { isValidObjectId } from 'mongoose';
 import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import DocTidyOrganization from '../models/DocTidyOrganization';
+import DocTidyEmailSource from '../models/DocTidyEmailSource';
+import DocTidySpsSource from '../models/DocTidySpsSource';
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -18,16 +20,45 @@ function fail(res: Response, error: unknown, fallback: string): void {
  * Regular user: returns workspaces in their accessible organizations
  *               plus workspaces with no organizationId (unassigned / legacy).
  */
+/** Enrich a workspace list with email/SPS source counts (single round-trip each). */
+async function enrichWithSourceCounts(
+  workspaces: Array<Record<string, unknown> & { _id: unknown }>
+): Promise<Array<Record<string, unknown>>> {
+  if (workspaces.length === 0) return workspaces;
+
+  const ids = workspaces.map((w) => String(w._id));
+
+  const [emailCounts, spsCounts] = await Promise.all([
+    DocTidyEmailSource.aggregate<{ _id: string; count: number }>([
+      { $match: { workspaceId: { $in: ids } } },
+      { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+    ]),
+    DocTidySpsSource.aggregate<{ _id: string; count: number }>([
+      { $match: { workspaceId: { $in: ids } } },
+      { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const emailMap = new Map(emailCounts.map((e) => [e._id, e.count]));
+  const spsMap   = new Map(spsCounts.map((e) => [e._id, e.count]));
+
+  return workspaces.map((ws) => ({
+    ...ws,
+    emailSourceCount: emailMap.get(String(ws._id)) ?? 0,
+    spsSourceCount:   spsMap.get(String(ws._id))   ?? 0,
+  }));
+}
+
 export const listWorkspaces = async (req: Request, res: Response): Promise<void> => {
   try {
     const isAdmin = req.user?.role === 'admin';
 
     if (isAdmin) {
       const workspaces = await DocTidyWorkspace.find().sort({ name: 1 }).lean();
-      res.json({ data: workspaces });
+      res.json({ data: await enrichWithSourceCounts(workspaces as Array<Record<string, unknown> & { _id: unknown }>) });
       return;
     }
-
+    
     // Find orgs this user belongs to.
     const accessibleOrgs = await DocTidyOrganization.find(
       { memberUserIds: req.user?.id },
@@ -52,7 +83,7 @@ export const listWorkspaces = async (req: Request, res: Response): Promise<void>
         };
 
     const workspaces = await DocTidyWorkspace.find(filter).sort({ name: 1 }).lean();
-    res.json({ data: workspaces });
+    res.json({ data: await enrichWithSourceCounts(workspaces as Array<Record<string, unknown> & { _id: unknown }>) });
   } catch (error) {
     fail(res, error, 'Failed to load workspaces');
   }
@@ -122,12 +153,8 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
       update.organizationId = organizationId === null ? null : String(organizationId);
     }
 
-    // importMode: only admins may change the workspace import mode.
+    // Any authenticated user may change the import mode of a workspace they can access.
     if (importMode !== undefined) {
-      if (req.user?.role !== 'admin') {
-        res.status(403).json({ message: 'Only admins can change the workspace import mode' });
-        return;
-      }
       if (importMode !== 'full' && importMode !== 'header-only') {
         res.status(400).json({ message: 'importMode must be "full" or "header-only"' });
         return;

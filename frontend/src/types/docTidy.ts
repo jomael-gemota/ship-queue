@@ -388,12 +388,50 @@ export interface SpsDocumentRecord {
 export interface SpsDocumentsResponse {
   data: SpsDocumentRecord[]
   nextCursor?: string | null
+  /** Mailbox folder that was listed ("out", "testout", …); null for a top-level listing. */
+  dataDir?: string | null
 }
 
 /** @deprecated Renamed to SpsDocumentRecord */
 export type SpsInvoiceRecord = SpsDocumentRecord
 /** @deprecated Renamed to SpsDocumentsResponse */
 export type SpsInvoicesResponse = SpsDocumentsResponse
+
+/**
+ * A structured EDI transaction record, parsed from a raw Transaction API file.
+ * All the same fields that the SPS Fulfillment Monitor shows — extracted from
+ * the EDI file content rather than from a proprietary internal API.
+ */
+export interface SpsTransaction {
+  filename: string
+  downloadUrl: string
+  /** EDI transaction set code: "810", "856", "850", etc. */
+  transactionSet: string
+  /** Human-readable label: "Invoice (810)", "Ship Notice / ASN (856)", etc. */
+  transactionLabel: string
+  /** Invoice #, ASN #, or PO # (the primary document identifier) */
+  documentNumber: string
+  /** Purchase order number */
+  poNumber: string
+  /** Trading partner / vendor name */
+  senderName: string
+  /** EDI interchange sender ID */
+  senderId: string
+  /** Buyer / receiver name */
+  receiverName: string
+  /** Document date as YYYY-MM-DD */
+  documentDate: string
+  size?: number
+  createdAt?: string
+  /** Set when the file content could not be fully parsed */
+  parseError?: string
+}
+
+export interface SpsTransactionsResponse {
+  data: SpsTransaction[]
+  nextCursor?: string | null
+  dataDir?: string | null
+}
 
 /**
  * A named workspace that owns a set of filter rules (one-to-many via
@@ -415,6 +453,16 @@ export interface DocTidyWorkspace {
   emailSources?: DocTidyEmailSource[]
   /** Per-workspace SPS Commerce sources. Populated on demand by fetching /sps-sources. */
   spsSources?: DocTidySpsSource[]
+  /**
+   * Number of Gmail OAuth sources connected to this workspace.
+   * Injected by the list endpoint; absent on individually-fetched workspaces.
+   */
+  emailSourceCount?: number
+  /**
+   * Number of SPS Commerce OAuth sources connected to this workspace.
+   * Injected by the list endpoint; absent on individually-fetched workspaces.
+   */
+  spsSourceCount?: number
   createdAt: string
   updatedAt: string
 }
@@ -718,12 +766,45 @@ const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
 const isJsonObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 
+const JSON_TABLE_LABEL_HEADERS = new Set(['field', 'label', 'key', 'name', 'attribute'])
+
 /**
- * The object itself, then its plain-object children (e.g. `totals`), so a
- * top-level key always outranks a grouped one.
+ * When the agent put document fields inside a `tables` array: one object of
+ * key/value-table labels → values, and one of grid-table titles → row objects.
+ * Mirrors `tableSearchScopes` in `src/services/docTidyTables.service.ts`.
+ */
+function jsonTableScopes(json: Record<string, unknown>): Record<string, unknown>[] {
+  if (!Array.isArray(json.tables)) return []
+  const fields: Record<string, unknown> = {}
+  const grids: Record<string, unknown> = {}
+  for (const table of json.tables) {
+    if (!isJsonObject(table) || !Array.isArray(table.columns) || !Array.isArray(table.rows)) continue
+    const columns = table.columns as string[]
+    const rows = table.rows as unknown[][]
+    const isKeyValue =
+      columns.length === 2 &&
+      JSON_TABLE_LABEL_HEADERS.has(String(columns[0]).toLowerCase().replace(/[^a-z0-9]/g, ''))
+    if (isKeyValue) {
+      for (const row of rows) {
+        const label = String(row[0] ?? '').trim()
+        if (label && !(label in fields)) fields[label] = row[1]
+      }
+    } else if (typeof table.title === 'string' && table.title) {
+      grids[table.title] = rows.map((row) =>
+        Object.fromEntries(columns.map((c, i) => [c, row[i] ?? null]))
+      )
+    }
+  }
+  return [fields, grids]
+}
+
+/**
+ * The object itself, then its plain-object children (e.g. `totals`), then any
+ * `tables` array the agent emitted, so a top-level key always outranks a
+ * grouped one.
  */
 function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown>[] {
-  return [json, ...Object.values(json).filter(isJsonObject)]
+  return [json, ...Object.values(json).filter(isJsonObject), ...jsonTableScopes(json)]
 }
 
 /**

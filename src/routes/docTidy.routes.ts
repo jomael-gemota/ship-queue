@@ -54,6 +54,7 @@ import {
   deleteSpsSource,
   querySpsDocuments,
   getSpsDocumentContent,
+  queryTransactions,
 } from '../controllers/docTidySpsSource.controller';
 import {
   listOrganizations,
@@ -145,6 +146,8 @@ router.delete('/workspaces/:workspaceId/sps-sources/:sourceId', deleteSpsSource)
 // Transaction API v5 document queue: list files + download individual EDI XML.
 router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents', querySpsDocuments);
 router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename', getSpsDocumentContent);
+// Parsed transaction records: download + parse EDI files, return structured rows.
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/transactions', queryTransactions);
 
 // Organizations — any auth user may list; only admins may create/modify/delete.
 router.get('/organizations', listOrganizations);

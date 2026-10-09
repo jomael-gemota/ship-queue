@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { authApi, ApiError } from '../lib/api'
 import type { AppSettings, SettingsResponse, DriveFolder, SyncConfigResponse } from '../types/label'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import DocTidySettingsCard from '../components/docTidy/DocTidySettingsCard'
 import CookieJarSection from '../components/CookieJarSection'
 
@@ -50,10 +51,9 @@ export default function Settings() {
   const [syncLoaded, setSyncLoaded] = useState(false)
   const [syncSaving, setSyncSaving] = useState(false)
 
+  const { addToast } = useToast()
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
@@ -75,7 +75,7 @@ export default function Settings() {
       const res = await authApi.get<SettingsResponse>('/settings')
       setSettings(res.data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load settings')
+      addToast(e instanceof Error ? e.message : 'Failed to load settings', 'error')
     } finally {
       setLoading(false)
     }
@@ -101,12 +101,10 @@ export default function Settings() {
   const saveSyncConfig = async () => {
     const minutes = Number(syncMinutes)
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-      setError('Sync interval must be between 1 and 1440 minutes.')
+      addToast('Sync interval must be between 1 and 1440 minutes.', 'error')
       return
     }
     setSyncSaving(true)
-    setError(null)
-    setSuccess(null)
     try {
       const res = await authApi.put<SyncConfigResponse>('/settings/sync', {
         enabled: syncEnabled,
@@ -114,13 +112,14 @@ export default function Settings() {
       })
       setSyncEnabled(res.data.enabled)
       setSyncMinutes(String(Math.max(1, Math.round(res.data.intervalMs / 60000))))
-      setSuccess(
+      addToast(
         res.data.enabled
           ? `Auto-sync enabled — syncing every ${Math.round(res.data.intervalMs / 60000)} min.`
-          : 'Auto-sync disabled.'
+          : 'Auto-sync disabled.',
+        'success',
       )
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save auto-sync settings')
+      addToast(e instanceof Error ? e.message : 'Failed to save auto-sync settings', 'error')
     } finally {
       setSyncSaving(false)
     }
@@ -131,13 +130,13 @@ export default function Settings() {
     const driveResult = searchParams.get('drive')
     const driveError = searchParams.get('drive_error')
     if (driveResult === 'connected') {
-      setSuccess('Google Drive connected successfully.')
+      addToast('Google Drive connected successfully.', 'success')
       setDriveExpired(false)
       loadSettings()
       refreshUser()
       setSearchParams({}, { replace: true })
     } else if (driveError) {
-      setError(DRIVE_ERROR_MESSAGES[driveError] ?? 'Google Drive connection failed.')
+      addToast(DRIVE_ERROR_MESSAGES[driveError] ?? 'Google Drive connection failed.', 'error')
       setSearchParams({}, { replace: true })
       return
     }
@@ -145,11 +144,11 @@ export default function Settings() {
     const dropboxResult = searchParams.get('dropbox')
     const dropboxError = searchParams.get('dropbox_error')
     if (dropboxResult === 'connected') {
-      setSuccess('Dropbox connected successfully.')
+      addToast('Dropbox connected successfully.', 'success')
       loadSettings()
       setSearchParams({}, { replace: true })
     } else if (dropboxError) {
-      setError(DROPBOX_ERROR_MESSAGES[dropboxError] ?? 'Dropbox connection failed.')
+      addToast(DROPBOX_ERROR_MESSAGES[dropboxError] ?? 'Dropbox connection failed.', 'error')
       setSearchParams({}, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,7 +156,6 @@ export default function Settings() {
 
   const loadFolders = useCallback(async (parentId?: string, driveId?: string) => {
     setFoldersLoading(true)
-    setError(null)
     try {
       const qs = new URLSearchParams()
       if (parentId) qs.set('parentId', parentId)
@@ -170,7 +168,7 @@ export default function Settings() {
         setDriveExpired(true)
         setBrowserOpen(false)
       }
-      setError(e instanceof Error ? e.message : 'Failed to list Drive folders')
+      addToast(e instanceof Error ? e.message : 'Failed to list Drive folders', 'error')
       setFolders([])
     } finally {
       setFoldersLoading(false)
@@ -207,16 +205,14 @@ export default function Settings() {
 
   const saveFolder = async (folderId: string | null) => {
     setSaving(true)
-    setError(null)
-    setSuccess(null)
     try {
       const res = await authApi.put<SettingsResponse>('/settings', { driveFolderId: folderId })
       setSettings(res.data)
       setBrowserOpen(false)
       setManualId('')
-      setSuccess(folderId ? 'Destination folder saved.' : 'Destination folder cleared (uploads go to Drive root).')
+      addToast(folderId ? 'Destination folder saved.' : 'Destination folder cleared (uploads go to Drive root).', 'success')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save folder')
+      addToast(e instanceof Error ? e.message : 'Failed to save folder', 'error')
     } finally {
       setSaving(false)
     }
@@ -228,8 +224,6 @@ export default function Settings() {
       return
     }
     setDisconnecting(true)
-    setError(null)
-    setSuccess(null)
     try {
       await authApi.delete('/settings/drive')
       setSettings((prev) => prev ? { ...prev, driveConnected: false, driveConnectedAt: null, driveAccountEmail: null, driveAccountName: null, driveAccountAvatar: null, driveFolderId: null, driveFolderName: null } : prev)
@@ -237,9 +231,9 @@ export default function Settings() {
       setBrowserOpen(false)
       setDriveExpired(false)
       await refreshUser()
-      setSuccess('Google Drive disconnected. You can reconnect at any time.')
+      addToast('Google Drive disconnected. You can reconnect at any time.', 'success')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to disconnect Google Drive')
+      addToast(e instanceof Error ? e.message : 'Failed to disconnect Google Drive', 'error')
       setConfirmDisconnect(false)
     } finally {
       setDisconnecting(false)
@@ -251,7 +245,7 @@ export default function Settings() {
       const res = await authApi.get<{ url: string }>('/auth/dropbox/connect')
       window.location.href = res.url
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start Dropbox authorisation.')
+      addToast(e instanceof Error ? e.message : 'Failed to start Dropbox authorisation.', 'error')
     }
   }
 
@@ -261,15 +255,13 @@ export default function Settings() {
       return
     }
     setDropboxDisconnecting(true)
-    setError(null)
-    setSuccess(null)
     try {
       await authApi.delete('/settings/dropbox')
       setSettings((prev) => prev ? { ...prev, dropboxConnected: false, dropboxConnectedAt: null, dropboxAccountEmail: null, dropboxAccountName: null } : prev)
       setDropboxConfirmDisconnect(false)
-      setSuccess('Dropbox disconnected. You can reconnect at any time.')
+      addToast('Dropbox disconnected. You can reconnect at any time.', 'success')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to disconnect Dropbox')
+      addToast(e instanceof Error ? e.message : 'Failed to disconnect Dropbox', 'error')
       setDropboxConfirmDisconnect(false)
     } finally {
       setDropboxDisconnecting(false)
@@ -280,12 +272,6 @@ export default function Settings() {
 
   return (
     <div className="max-w-6xl space-y-6">
-      {error && (
-        <Banner tone="error" onClose={() => setError(null)}>{error}</Banner>
-      )}
-      {success && (
-        <Banner tone="success" onClose={() => setSuccess(null)}>{success}</Banner>
-      )}
 
       {!canCreate && (
         <div className="notice-card notice-card--warning flex items-start gap-3 text-sm">
@@ -335,7 +321,7 @@ export default function Settings() {
                       const res = await authApi.get<{ url: string }>('/auth/drive/connect')
                       window.location.href = res.url
                     } catch {
-                      setError('Failed to start Google Drive authorisation.')
+                      addToast('Failed to start Google Drive authorisation.', 'error')
                     }
                   }}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
@@ -400,7 +386,7 @@ export default function Settings() {
                             const res = await authApi.get<{ url: string }>('/auth/drive/connect')
                             window.location.href = res.url
                           } catch {
-                            setError('Failed to start Google Drive authorisation.')
+                            addToast('Failed to start Google Drive authorisation.', 'error')
                           }
                         }}
                         className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer"
@@ -459,7 +445,7 @@ export default function Settings() {
                           const res = await authApi.get<{ url: string }>('/auth/drive/connect')
                           window.location.href = res.url
                         } catch {
-                          setError('Failed to start Google Drive authorisation.')
+                          addToast('Failed to start Google Drive authorisation.', 'error')
                         }
                       }}
                       className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer"
@@ -790,6 +776,11 @@ export default function Settings() {
         </section>
 
         <DocTidySettingsCard isAdmin={isAdmin} />
+        <CookieJarSection
+          isAdmin={isAdmin}
+          onError={(msg) => { if (msg) addToast(msg, 'error') }}
+          onSuccess={(msg) => { if (msg) addToast(msg, 'success') }}
+        />
       </div>
       </div>
     </div>
@@ -884,19 +875,3 @@ function HashIcon({ className = '' }: { className?: string }) {
   )
 }
 
-function Banner({ tone, children, onClose }: { tone: 'error' | 'success'; children: React.ReactNode; onClose: () => void }) {
-  const styles =
-    tone === 'error'
-      ? 'notice-card notice-card--error'
-      : 'notice-card notice-card--success'
-  const closeStyles =
-    tone === 'error'
-      ? 'text-red-700/70 hover:bg-red-100 hover:text-red-900 dark:text-red-300 dark:hover:bg-red-900/40'
-      : 'text-emerald-700/70 hover:bg-emerald-100 hover:text-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-900/40'
-  return (
-    <div className={`flex items-start gap-2 text-sm ${styles}`}>
-      <span className="flex-1">{children}</span>
-      <button onClick={onClose} className={`rounded-md p-0.5 transition-colors cursor-pointer ${closeStyles}`}>×</button>
-    </div>
-  )
-}
