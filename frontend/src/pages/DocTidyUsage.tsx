@@ -1,5 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { authApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import { formatDateTime } from '../lib/format'
@@ -30,6 +32,15 @@ function fmtUsd(value: number): string {
   const digits = abs === 0 || abs >= 1 ? 2 : abs >= 0.01 ? 4 : 6
   return `$${value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
+
+/** Plain dollars and cents for the Overview tab. */
+function fmtMoney(value: number): string {
+  if (value > 0 && value < 0.01) return '< $0.01'
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** When the true-up finalises yesterday (06:00 UTC), in the viewer's own time. */
+const finalisedAt = new Date(Date.UTC(2000, 0, 1, 6)).toLocaleTimeString([], { hour: 'numeric' })
 
 /* ─────────────────────────────────────────────────────────── ranges ── */
 
@@ -104,7 +115,28 @@ function Chevron({ open }: { open: boolean }) {
 
 /* ─────────────────────────────────────────────────── organizations ── */
 
-function OrganizationTable({ organizations }: { organizations: OrganizationUsage[] }) {
+const UNTRACKED_HINT =
+  'Billed by OpenAI for Hermes but not matched to any recorded call (e.g. jobs run by a worker that was not reporting usage). Not charged to any workspace.'
+
+function ShareBar({ value, total }: { value: number; total: number }) {
+  const pct = total > 0 ? (value / total) * 100 : 0
+  return (
+    <span className="flex items-center justify-end gap-2">
+      <span className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--bg-300)]">
+        <span className="block h-full rounded-full bg-violet-500" style={{ width: `${pct}%` }} />
+      </span>
+      <span className="w-10 text-right tabular-nums">{pct >= 0.05 || pct === 0 ? `${pct.toFixed(1)}%` : '< 0.1%'}</span>
+    </span>
+  )
+}
+
+function OrganizationTable({
+  organizations,
+  totalUsd,
+}: {
+  organizations: OrganizationUsage[]
+  totalUsd: number
+}) {
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = (key: string) =>
     setOpen((prev) => {
@@ -124,12 +156,12 @@ function OrganizationTable({ organizations }: { organizations: OrganizationUsage
         <thead>
           <tr>
             <Th label="Organization / workspace" />
-            <Th label="Jobs" align="right" />
-            <Th label="Input" align="right" />
+            <Th label="Documents" align="right" />
+            <Th label="Input tokens" align="right" />
             <Th label="Cached" align="right" />
-            <Th label="Output" align="right" />
-            <Th label="Cost" align="right" />
-            <Th label="Avg / job" align="right" />
+            <Th label="Output tokens" align="right" />
+            <Th label="Spent" align="right" />
+            <Th label="Share of total" align="right" />
           </tr>
         </thead>
         <tbody>
@@ -148,23 +180,19 @@ function OrganizationTable({ organizations }: { organizations: OrganizationUsage
                       </span>
                     </span>
                   </td>
-                  <UsageCells sums={org} strong />
+                  <OrgCells sums={org} totalUsd={totalUsd} strong />
                 </tr>
                 {isOpen &&
                   org.workspaces.map((ws) => (
                     <tr key={ws.untracked ? 'untracked' : (ws.workspaceId ?? 'none')} className="bg-[var(--bg-200)]/40">
                       <td
                         className={`${cellClass} pl-10 ${ws.untracked ? 'italic text-[var(--text-200)]' : 'text-[var(--text-100)]'}`}
-                        title={
-                          ws.untracked
-                            ? 'Billed by OpenAI for Hermes but not matched to any recorded call (e.g. jobs run by a worker that was not reporting usage). Not charged to any workspace.'
-                            : undefined
-                        }
+                        title={ws.untracked ? UNTRACKED_HINT : undefined}
                       >
-                        {ws.name}
+                        {ws.untracked ? 'Not linked to a workspace' : ws.name}
                         {ws.deleted && <span className="ml-1 text-[var(--text-200)]">({ws.workspaceId})</span>}
                       </td>
-                      <UsageCells sums={ws} />
+                      <OrgCells sums={ws} totalUsd={totalUsd} />
                     </tr>
                   ))}
               </Fragment>
@@ -176,61 +204,76 @@ function OrganizationTable({ organizations }: { organizations: OrganizationUsage
   )
 }
 
-/** `≈` marks a cost that is still partly a Hermes estimate. */
-function CostValue({ sums }: { sums: UsageSums }) {
-  if (sums.estimatedCostUsd <= 0) return <>{fmtUsd(sums.costUsd)}</>
+/** Compact token count with the exact figure on hover; a dash for none. */
+function TokenCell({ value }: { value: number }) {
   return (
-    <span
-      className="cursor-help"
-      title={`Includes ${fmtUsd(sums.estimatedCostUsd)} of estimated Hermes cost, replaced by the actual OpenAI bill after the day ends (UTC).`}
-    >
-      ≈ {fmtUsd(sums.costUsd)}
-    </span>
+    <td className={`${cellClass} text-right tabular-nums text-[var(--text-100)]`} title={value > 0 ? fmtTokens(value) : undefined}>
+      {value > 0 ? fmtCompact(value) : '—'}
+    </td>
   )
 }
 
-function UsageCells({ sums, strong = false }: { sums: UsageSums; strong?: boolean }) {
+function OrgCells({ sums, totalUsd, strong = false }: { sums: UsageSums; totalUsd: number; strong?: boolean }) {
   const num = `${cellClass} text-right tabular-nums text-[var(--text-100)]`
   return (
     <>
-      <td className={num}>{fmtTokens(sums.jobs)}</td>
-      <td className={num}>{fmtTokens(sums.inputTokens)}</td>
-      <td className={num}>{fmtTokens(sums.cachedInputTokens)}</td>
-      <td className={num}>{fmtTokens(sums.outputTokens)}</td>
-      <td className={`${num} ${strong ? 'font-semibold' : ''}`}>
-        <CostValue sums={sums} />
+      <td className={num}>{sums.jobs > 0 ? fmtTokens(sums.jobs) : '—'}</td>
+      <TokenCell value={sums.inputTokens} />
+      <TokenCell value={sums.cachedInputTokens} />
+      <TokenCell value={sums.outputTokens} />
+      <td className={`${num} ${strong ? 'font-semibold' : ''}`}>{fmtMoney(sums.costUsd)}</td>
+      <td className={`${cellClass} text-[var(--text-200)]`}>
+        <ShareBar value={sums.costUsd} total={totalUsd} />
       </td>
-      <td className={num}>{sums.jobs > 0 ? fmtUsd(sums.costUsd / sums.jobs) : '—'}</td>
     </>
   )
 }
 
 /* ───────────────────────────────────────────────────────── trend ── */
 
-function DailyTrend({ daily }: { daily: UsageSummary['daily'] }) {
-  const max = Math.max(...daily.map((d) => d.costUsd), 0)
-  if (daily.length === 0) {
-    return <p className="p-6 text-center text-xs text-[var(--text-200)]">No usage in this range.</p>
+const shortDate = (isoDate: string) =>
+  new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** Every UTC day in the range, so quiet days show as gaps rather than vanishing. */
+function DailyTrend({ summary }: { summary: UsageSummary }) {
+  const days = useMemo(() => {
+    const byDate = new Map(summary.daily.map((d) => [d.date, d.costUsd]))
+    const out: Array<{ date: string; costUsd: number }> = []
+    const end = new Date(summary.range.to).getTime()
+    for (let t = new Date(summary.range.from.slice(0, 10)).getTime(); t < end; t += 86_400_000) {
+      const date = new Date(t).toISOString().slice(0, 10)
+      out.push({ date, costUsd: byDate.get(date) ?? 0 })
+    }
+    return out
+  }, [summary])
+
+  const max = Math.max(...days.map((d) => d.costUsd), 0)
+  if (max === 0) {
+    return <p className="p-6 text-center text-xs text-[var(--text-200)]">No spending in this range.</p>
   }
+  const labelEvery = Math.max(1, Math.ceil(days.length / 8))
   return (
-    <div className="flex h-40 items-end gap-1 px-4 pb-2 pt-4">
-      {daily.map((d) => (
-        <div key={d.date} className="group relative flex h-full flex-1 flex-col justify-end">
-          <div
-            className="flex w-full flex-col overflow-hidden rounded-t"
-            style={{ height: `${max > 0 ? Math.max(2, (d.costUsd / max) * 100) : 2}%` }}
-          >
-            {d.untrackedUsd > 0 && (
-              <div className="w-full bg-slate-400/70" style={{ height: `${(d.untrackedUsd / d.costUsd) * 100}%` }} />
-            )}
-            <div className="w-full flex-1 bg-violet-500/80 group-hover:bg-violet-600" />
+    <div className="px-4 pb-3 pt-4">
+      <div className="flex h-36 items-end gap-1">
+        {days.map((d) => (
+          <div key={d.date} className="group relative flex h-full flex-1 flex-col justify-end">
+            <div
+              className={`w-full rounded-t ${d.costUsd > 0 ? 'bg-violet-500/80 group-hover:bg-violet-600' : 'bg-[var(--bg-300)]'}`}
+              style={{ height: `${d.costUsd > 0 ? Math.max(3, (d.costUsd / max) * 100) : 1}%` }}
+            />
+            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">
+              {shortDate(d.date)}: {fmtMoney(d.costUsd)}
+            </div>
           </div>
-          <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">
-            {d.date} · {fmtUsd(d.costUsd)} · {fmtCompact(d.tokens)} tokens
-            {d.untrackedUsd > 0 && ` · ${fmtUsd(d.untrackedUsd)} untracked`}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
+      <div className="mt-1 flex gap-1">
+        {days.map((d, i) => (
+          <span key={d.date} className="flex-1 truncate text-center text-[10px] text-[var(--text-200)]">
+            {i % labelEvery === 0 ? shortDate(d.date) : ''}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -239,9 +282,11 @@ function DailyTrend({ daily }: { daily: UsageSummary['daily'] }) {
 
 function TrueUpStatus({
   data,
+  canEdit,
   onTrueUp,
 }: {
   data: Extract<Reconciliation, { configured: true }>
+  canEdit: boolean
   onTrueUp: () => Promise<void>
 }) {
   const [running, setRunning] = useState(false)
@@ -274,21 +319,23 @@ function TrueUpStatus({
             {last && ` Last true-up: ${formatDateTime(last.ranAt)}.`}
           </p>
         </div>
-        <button
-          type="button"
-          className={buttonClass}
-          disabled={running}
-          onClick={async () => {
-            setRunning(true)
-            try {
-              await onTrueUp()
-            } finally {
-              setRunning(false)
-            }
-          }}
-        >
-          {running && <Spinner className="h-3 w-3" />} True up now
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={running}
+            onClick={async () => {
+              setRunning(true)
+              try {
+                await onTrueUp()
+              } finally {
+                setRunning(false)
+              }
+            }}
+          >
+            {running && <Spinner className="h-3 w-3" />} True up now
+          </button>
+        )}
       </div>
       {last?.error && <Banner kind="error">Last true-up failed: {last.error}</Banner>}
       {skipped.length > 0 && (
@@ -304,7 +351,15 @@ function TrueUpStatus({
   )
 }
 
-function ReconciliationCard({ range, onTrueUp }: { range: RangeKey; onTrueUp: () => void }) {
+function ReconciliationCard({
+  range,
+  canEdit,
+  onTrueUp,
+}: {
+  range: RangeKey
+  canEdit: boolean
+  onTrueUp: () => void
+}) {
   const { addToast } = useToast()
   const [data, setData] = useState<Reconciliation | null>(null)
   const [loading, setLoading] = useState(false)
@@ -354,7 +409,7 @@ function ReconciliationCard({ range, onTrueUp }: { range: RangeKey; onTrueUp: ()
             OpenAI's Costs API over whole UTC days, including Hermes's upstream calls on the same key.
           </p>
         </div>
-        {data?.configured && (
+        {data?.configured && canEdit && (
           <button type="button" className={buttonClass} disabled={loading} onClick={() => load(true)}>
             {loading && <Spinner className="h-3 w-3" />} Refresh
           </button>
@@ -367,8 +422,8 @@ function ReconciliationCard({ range, onTrueUp }: { range: RangeKey; onTrueUp: ()
           <Spinner />
         ) : !data.configured ? (
           <p className="text-[var(--text-200)]">
-            Set <code>OPENAI_ADMIN_KEY</code> (and optionally <code>OPENAI_USAGE_API_KEY_IDS</code>) on the server to
-            compare these numbers with OpenAI's invoice.
+            Not connected to OpenAI billing yet. An admin can set <code>OPENAI_ADMIN_KEY</code> and{' '}
+            <code>OPENAI_USAGE_API_KEY_IDS</code> on the server to compare these numbers with OpenAI's invoice.
           </p>
         ) : (
           <div className="space-y-3">
@@ -390,7 +445,7 @@ function ReconciliationCard({ range, onTrueUp }: { range: RangeKey; onTrueUp: ()
                 Not filtered by API key, so the billed figure includes every app in the OpenAI organization.
               </p>
             )}
-            <TrueUpStatus data={data} onTrueUp={trueUp} />
+            <TrueUpStatus data={data} canEdit={canEdit} onTrueUp={trueUp} />
             {data.lineItems.length > 0 && (
               <table className="w-full border-separate border-spacing-0">
                 <thead>
@@ -605,7 +660,15 @@ function PriceEditor({
   )
 }
 
-function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => void }) {
+function PricesCard({
+  range,
+  canEdit,
+  onRepriced,
+}: {
+  range: RangeKey
+  canEdit: boolean
+  onRepriced: () => void
+}) {
   const { addToast } = useToast()
   const [prices, setPrices] = useState<ModelPrice[] | null>(null)
   const [editing, setEditing] = useState<ModelPrice | 'new' | null>(null)
@@ -655,17 +718,20 @@ function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => 
         <div>
           <h3 className="text-sm font-semibold text-[var(--text-100)]">Model prices</h3>
           <p className="text-[11px] text-[var(--text-200)]">
-            USD per 1M tokens. Cost is fixed when a call is recorded; re-price to apply edits to past usage.
+            USD per 1M tokens, from openai.com/api/pricing.
+            {canEdit && ' Cost is fixed when a call is recorded; re-price to apply edits to past usage.'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button type="button" className={buttonClass} disabled={repricing} onClick={reprice}>
-            {repricing && <Spinner className="h-3 w-3" />} Re-price {RANGE_LABELS[range].toLowerCase()}
-          </button>
-          <button type="button" className={buttonClass} onClick={() => setEditing('new')}>
-            + Add price
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <button type="button" className={buttonClass} disabled={repricing} onClick={reprice}>
+              {repricing && <Spinner className="h-3 w-3" />} Re-price {RANGE_LABELS[range].toLowerCase()}
+            </button>
+            <button type="button" className={buttonClass} onClick={() => setEditing('new')}>
+              + Add price
+            </button>
+          </div>
+        )}
       </div>
       {!prices ? (
         <div className="p-4">
@@ -683,7 +749,7 @@ function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => 
                 <Th label="Cache write" align="right" />
                 <Th label="Output" align="right" />
                 <Th label="Long context" />
-                <Th label="" />
+                {canEdit && <Th label="" />}
               </tr>
             </thead>
             <tbody>
@@ -708,14 +774,16 @@ function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => 
                       ? `> ${fmtCompact(p.longContextThreshold)}: ${rate(p.longInputPer1M)} / ${rate(p.longOutputPer1M)}`
                       : '—'}
                   </td>
-                  <td className={`${cellClass} text-right`}>
-                    <button type="button" className="mr-3 cursor-pointer text-violet-600 hover:underline dark:text-violet-400" onClick={() => setEditing(p)}>
-                      Edit
-                    </button>
-                    <button type="button" className="cursor-pointer text-rose-600 hover:underline dark:text-rose-400" onClick={() => remove(p)}>
-                      Delete
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className={`${cellClass} text-right`}>
+                      <button type="button" className="mr-3 cursor-pointer text-violet-600 hover:underline dark:text-violet-400" onClick={() => setEditing(p)}>
+                        Edit
+                      </button>
+                      <button type="button" className="cursor-pointer text-rose-600 hover:underline dark:text-rose-400" onClick={() => remove(p)}>
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -736,15 +804,184 @@ function PricesCard({ range, onRepriced }: { range: RangeKey; onRepriced: () => 
   )
 }
 
+/* ─────────────────────────────────────────────────────────── tabs ── */
+
+type TabKey = 'overview' | 'billing'
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'billing', label: 'Billing & prices' },
+]
+
+function TabButton({
+  active,
+  onClick,
+  dot,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  dot?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+        active
+          ? 'bg-[var(--bg-100)] text-[var(--text-100)] shadow-sm'
+          : 'text-[var(--text-200)] hover:text-[var(--text-100)]'
+      }`}
+    >
+      {children}
+      {dot && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Needs attention" />}
+    </button>
+  )
+}
+
+function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="border-b border-[var(--bg-300)] px-4 py-3">
+      <h3 className="text-sm font-semibold text-[var(--text-100)]">{title}</h3>
+      {subtitle && <p className="text-[11px] text-[var(--text-200)]">{subtitle}</p>}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────── overview ── */
+
+function OverviewTab({ summary, range }: { summary: UsageSummary; range: RangeKey }) {
+  const { totals } = summary
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Spent" value={fmtMoney(totals.costUsd)} hint={RANGE_LABELS[range]} />
+        <StatCard label="Documents processed" value={fmtTokens(totals.jobs)} />
+        <StatCard
+          label="Average per document"
+          value={totals.jobs > 0 ? fmtMoney(totals.costUsd / totals.jobs) : '—'}
+        />
+        <StatCard
+          label="Tokens used"
+          value={fmtCompact(totals.inputTokens + totals.outputTokens)}
+          hint={`${fmtCompact(totals.inputTokens)} input (${fmtCompact(totals.cachedInputTokens)} cached) · ${fmtCompact(totals.outputTokens)} output`}
+        />
+      </div>
+      {totals.estimatedCostUsd > 0 && (
+        <p className="text-[11px] text-[var(--text-200)]">
+          Today's amount is an estimate. It becomes final once OpenAI bills the day, around {finalisedAt} your time the
+          next day.
+        </p>
+      )}
+
+      <div className={cardClass}>
+        <CardHeader title="Spending by organization" subtitle="Click an organization to see its workspaces." />
+        <OrganizationTable organizations={summary.organizations} totalUsd={totals.costUsd} />
+      </div>
+
+      <div className={cardClass}>
+        <CardHeader title="Daily spending" subtitle="Hover over a bar to see the amount." />
+        <DailyTrend summary={summary} />
+      </div>
+
+      <BreakdownCard summary={summary} />
+    </>
+  )
+}
+
+/* ──────────────────────────────────────────────────────── billing ── */
+
+function UsageWarnings({ summary }: { summary: UsageSummary }) {
+  const { totals } = summary
+  const unpricedModels = summary.breakdown.filter((row) => !row.priced)
+  return (
+    <>
+      {unpricedModels.length > 0 && (
+        <Banner kind="warning">
+          {fmtTokens(totals.unpricedCalls)} call(s) used models with no price row, so they count as $0:{' '}
+          <strong>{[...new Set(unpricedModels.map((r) => `${r.model} (${r.serviceTier})`))].join(', ')}</strong>. An
+          admin can add a price below, then re-price.
+        </Banner>
+      )}
+      {totals.missingUsageCalls > 0 && (
+        <Banner kind="warning">
+          {fmtTokens(totals.missingUsageCalls)} call(s) came back without token usage from the backend, so their tokens
+          are unknown. Run <code>python diagnose_usage.py</code> on the worker machine to check what Hermes reports.
+        </Banner>
+      )}
+    </>
+  )
+}
+
+function BreakdownCard({ summary }: { summary: UsageSummary }) {
+  return (
+    <>
+      <div className={cardClass}>
+        <CardHeader title="By purpose & model" subtitle="What each part of Doc Tidy used and cost." />
+        <div className="overflow-auto">
+          <table className="w-full border-separate border-spacing-0">
+            <thead>
+              <tr>
+                <Th label="Purpose" />
+                <Th label="Model" />
+                <Th label="Calls" align="right" />
+                <Th label="Input" align="right" />
+                <Th label="Cached" align="right" />
+                <Th label="Output" align="right" />
+                <Th label="Cost" align="right" />
+              </tr>
+            </thead>
+            <tbody>
+              {summary.breakdown.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-xs text-[var(--text-200)]">
+                    No usage in this range.
+                  </td>
+                </tr>
+              )}
+              {summary.breakdown.map((row) => (
+                <tr key={`${row.purpose}:${row.provider}:${row.model}:${row.serviceTier}:${row.priced}`}>
+                  <td className={`${cellClass} text-[var(--text-100)]`}>{USAGE_PURPOSE_LABELS[row.purpose]}</td>
+                  <td className={`${cellClass} text-[var(--text-200)]`}>
+                    {row.model}
+                    {row.serviceTier !== 'standard' && ` · ${row.serviceTier}`}
+                    {row.provider === 'hermes' && ' · via Hermes'}
+                    {!row.priced && <span className="ml-1 text-amber-600 dark:text-amber-400">(unpriced)</span>}
+                  </td>
+                  <td className={`${cellClass} text-right tabular-nums`}>{fmtTokens(row.calls)}</td>
+                  <td className={`${cellClass} text-right tabular-nums`}>{fmtCompact(row.inputTokens)}</td>
+                  <td className={`${cellClass} text-right tabular-nums`}>{fmtCompact(row.cachedInputTokens)}</td>
+                  <td className={`${cellClass} text-right tabular-nums`}>{fmtCompact(row.outputTokens)}</td>
+                  <td className={`${cellClass} text-right tabular-nums`}>
+                    {fmtMoney(row.costUsd)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
 /* ───────────────────────────────────────────────────────── page ── */
 
 /**
- * Admin-only: live token usage and cost per organization and workspace,
- * priced the way OpenAI bills. See
- * design-log/2026-10-10-doc-tidy-token-usage-and-cost-dashboard.md.
+ * Doc Tidy's LLM spend by organization and workspace, for every signed-in
+ * user; only admins may change prices or true up. See
+ * design-log/2026-10-10-token-usage-dashboard-simplified-tabs.md.
  */
 export default function DocTidyUsage() {
   const { addToast } = useToast()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: TabKey = TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : 'overview'
+  const setTab = (key: TabKey) =>
+    setSearchParams(key === 'overview' ? {} : { tab: key }, { replace: true })
+
   const [range, setRange] = useState<RangeKey>('30d')
   const [summary, setSummary] = useState<UsageSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -780,10 +1017,8 @@ export default function DocTidyUsage() {
     [load]
   )
 
-  const totals = summary?.totals
-  const unpricedModels = useMemo(
-    () => (summary?.breakdown ?? []).filter((row) => !row.priced),
-    [summary]
+  const needsAttention = Boolean(
+    summary && (summary.totals.unpricedCalls > 0 || summary.totals.missingUsageCalls > 0)
   )
 
   return (
@@ -795,9 +1030,7 @@ export default function DocTidyUsage() {
             <LiveBadge live={live} />
           </div>
           <p className="mt-0.5 text-xs text-[var(--text-200)]">
-            Tokens and cost of every Doc Tidy LLM call, by organization and workspace. Costs use each model's
-            per-token prices, the same way OpenAI bills them; Hermes costs marked ≈ are estimates until the day is
-            trued up to OpenAI's bill. Times are UTC.
+            How much Doc Tidy's AI has cost, by organization and workspace. Days follow UTC, like OpenAI's bill.
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] p-1">
@@ -818,119 +1051,33 @@ export default function DocTidyUsage() {
         </div>
       </div>
 
-      {loading && !summary ? (
+      <div className="inline-flex rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-0.5">
+        {TABS.map((t) => (
+          <TabButton
+            key={t.key}
+            active={tab === t.key}
+            onClick={() => setTab(t.key)}
+            dot={t.key === 'billing' && needsAttention}
+          >
+            {t.label}
+          </TabButton>
+        ))}
+      </div>
+
+      {tab === 'billing' ? (
+        <>
+          {summary && <UsageWarnings summary={summary} />}
+          <ReconciliationCard range={range} canEdit={isAdmin} onTrueUp={load} />
+          <PricesCard range={range} canEdit={isAdmin} onRepriced={load} />
+        </>
+      ) : loading && !summary ? (
         <div className="flex justify-center p-10">
           <Spinner className="h-6 w-6" />
         </div>
-      ) : summary && totals ? (
-        <>
-          {unpricedModels.length > 0 && (
-            <Banner kind="warning">
-              {fmtTokens(totals.unpricedCalls)} call(s) used models with no price row, so they count as $0:{' '}
-              <strong>{[...new Set(unpricedModels.map((r) => `${r.model} (${r.serviceTier})`))].join(', ')}</strong>.
-              Add a price below, then re-price.
-            </Banner>
-          )}
-          {totals.missingUsageCalls > 0 && (
-            <Banner kind="warning">
-              {fmtTokens(totals.missingUsageCalls)} call(s) came back without token usage from the backend, so their
-              tokens are unknown. Run <code>python diagnose_usage.py</code> on the worker machine to check what Hermes
-              reports.
-            </Banner>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard
-              label="Total cost"
-              value={totals.estimatedCostUsd > 0 ? `≈ ${fmtUsd(totals.costUsd)}` : fmtUsd(totals.costUsd)}
-              hint={
-                totals.estimatedCostUsd > 0
-                  ? `Includes ${fmtUsd(totals.estimatedCostUsd)} estimated (Hermes, not yet trued up)`
-                  : summary.untrackedUsd > 0
-                    ? `Includes ${fmtUsd(summary.untrackedUsd)} untracked Hermes usage`
-                    : RANGE_LABELS[range]
-              }
-            />
-            <StatCard
-              label="Total tokens"
-              value={fmtCompact(totals.inputTokens + totals.outputTokens)}
-              hint={`${fmtCompact(totals.inputTokens)} in (${fmtCompact(totals.cachedInputTokens)} cached) · ${fmtCompact(totals.outputTokens)} out`}
-            />
-            <StatCard label="Parse jobs" value={fmtTokens(totals.jobs)} hint={`${fmtTokens(totals.calls)} LLM calls`} />
-            <StatCard
-              label="Avg cost / job"
-              value={totals.jobs > 0 ? fmtUsd(totals.costUsd / totals.jobs) : '—'}
-              hint={
-                totals.inputTokens > 0
-                  ? `${((totals.cachedInputTokens / totals.inputTokens) * 100).toFixed(1)}% of input served from cache`
-                  : undefined
-              }
-            />
-          </div>
-
-          <div className={cardClass}>
-            <div className="border-b border-[var(--bg-300)] px-4 py-3">
-              <h3 className="text-sm font-semibold text-[var(--text-100)]">By organization</h3>
-              <p className="text-[11px] text-[var(--text-200)]">Click an organization to see its workspaces.</p>
-            </div>
-            <OrganizationTable organizations={summary.organizations} />
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div className={cardClass}>
-              <div className="border-b border-[var(--bg-300)] px-4 py-3">
-                <h3 className="text-sm font-semibold text-[var(--text-100)]">Daily cost</h3>
-              </div>
-              <DailyTrend daily={summary.daily} />
-            </div>
-
-            <div className={cardClass}>
-              <div className="border-b border-[var(--bg-300)] px-4 py-3">
-                <h3 className="text-sm font-semibold text-[var(--text-100)]">By purpose &amp; model</h3>
-              </div>
-              <div className="max-h-64 overflow-auto">
-                <table className="w-full border-separate border-spacing-0">
-                  <thead>
-                    <tr>
-                      <Th label="Purpose" />
-                      <Th label="Model" />
-                      <Th label="Calls" align="right" />
-                      <Th label="Tokens" align="right" />
-                      <Th label="Cost" align="right" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.breakdown.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="p-6 text-center text-xs text-[var(--text-200)]">
-                          No usage in this range.
-                        </td>
-                      </tr>
-                    )}
-                    {summary.breakdown.map((row) => (
-                      <tr key={`${row.purpose}:${row.provider}:${row.model}:${row.serviceTier}:${row.priced}`}>
-                        <td className={`${cellClass} text-[var(--text-100)]`}>{USAGE_PURPOSE_LABELS[row.purpose]}</td>
-                        <td className={`${cellClass} text-[var(--text-200)]`}>
-                          {row.model}
-                          {row.serviceTier !== 'standard' && ` · ${row.serviceTier}`}
-                          {row.provider === 'hermes' && ' · via Hermes'}
-                          {!row.priced && <span className="ml-1 text-amber-600 dark:text-amber-400">(unpriced)</span>}
-                        </td>
-                        <td className={`${cellClass} text-right tabular-nums`}>{fmtTokens(row.calls)}</td>
-                        <td className={`${cellClass} text-right tabular-nums`}>{fmtCompact(row.inputTokens + row.outputTokens)}</td>
-                        <td className={`${cellClass} text-right tabular-nums`}>{fmtUsd(row.costUsd)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <ReconciliationCard range={range} onTrueUp={load} />
-          <PricesCard range={range} onRepriced={load} />
-        </>
+      ) : summary ? (
+        <OverviewTab summary={summary} range={range} />
       ) : null}
     </div>
   )
 }
+

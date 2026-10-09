@@ -62,7 +62,6 @@ const INVOICE_AUDIT_ITEMS = [
   {
     label: 'Token Usage',
     to: '/doc-tidy/usage',
-    adminOnly: true,
     icon: (
       <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -172,7 +171,7 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
           ) : (
             <div className="border-t border-[var(--bg-300)] my-1" />
           )}
-          {INVOICE_AUDIT_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
+          {INVOICE_AUDIT_ITEMS.map((item) => (
             <NavLink
               key={item.label}
               to={item.to}
