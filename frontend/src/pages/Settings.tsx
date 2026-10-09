@@ -567,7 +567,11 @@ export default function Settings() {
           </>
         )}
       </section>
-      <CookieJarSection isAdmin={isAdmin} onError={setError} onSuccess={setSuccess} />
+      <CookieJarSection
+        isAdmin={isAdmin}
+        onError={(msg) => { if (msg) addToast(msg, 'error') }}
+        onSuccess={(msg) => { if (msg) addToast(msg, 'success') }}
+      />
       </div>
 
       <div className="space-y-6">
@@ -776,11 +780,6 @@ export default function Settings() {
         </section>
 
         <DocTidySettingsCard isAdmin={isAdmin} />
-        <CookieJarSection
-          isAdmin={isAdmin}
-          onError={(msg) => { if (msg) addToast(msg, 'error') }}
-          onSuccess={(msg) => { if (msg) addToast(msg, 'success') }}
-        />
       </div>
       </div>
     </div>
