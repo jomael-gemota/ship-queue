@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { getHHScSyncStatus, hhWaitingForCartCount } from '../../lib/hhSportswear'
 import type { HHOrderGroup, HHScSyncStatus as HHScSyncSnapshot } from '../../lib/hhSportswear'
 import { useHHList } from '../../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../../lib/hhBrand'
 import { Tooltip } from '../Tooltip'
 
 const POLL_IDLE_MS = 5000
@@ -25,6 +26,45 @@ function firstPersistedCartError(group?: HHOrderGroup): string | null {
     if (message) return `${order.orderId}: ${message}`
   }
   return null
+}
+
+function runtimeNotice(data: HHScSyncSnapshot): string | null {
+  const cart = data.cart
+  const message = [data.lastError, cart?.verifyLastError, cart?.lastError, cart?.placeLastError]
+    .map((item) => (item ?? '').trim())
+    .find(Boolean)
+  return message || null
+}
+
+function settledSnapshot(data: HHScSyncSnapshot): HHScSyncSnapshot {
+  const cart = data.cart
+  return {
+    ...data,
+    running: false,
+    currentGroupId: null,
+    currentOrderId: null,
+    queuedGroups: 0,
+    queuedGroupIds: [],
+    cart: cart
+      ? {
+          ...cart,
+          running: false,
+          currentGroupId: null,
+          currentOrderId: null,
+          queued: 0,
+          queuedGroupIds: [],
+          verifying: false,
+          verifyCurrentGroupId: null,
+          verifyCurrentOrderId: null,
+          verifyQueuedGroupIds: [],
+          placing: false,
+          placeCurrentGroupId: null,
+          placeCurrentOrderId: null,
+          placeQueued: 0,
+          placeQueuedGroupIds: [],
+        }
+      : cart,
+  }
 }
 
 function isWorkerBusy(data: HHScSyncSnapshot): boolean {
@@ -67,10 +107,12 @@ function statusLabel(data: HHScSyncSnapshot, waitingForCart: number): string {
 }
 
 export function HHScSyncStatus() {
-  const { refreshSilent, brand, level, getGroup } = useHHList()
+  const { refreshSilent, brand, level, getGroup, setSyncStatus } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const { groupId = '' } = useParams<{ groupId: string }>()
   const group = groupId ? getGroup(groupId) : undefined
   const [data, setData] = useState<HHScSyncSnapshot | null>(null)
+  const dataRef = useRef<HHScSyncSnapshot | null>(null)
   const refreshSilentRef = useRef(refreshSilent)
   useEffect(() => {
     refreshSilentRef.current = refreshSilent
@@ -81,6 +123,7 @@ export function HHScSyncStatus() {
     let cancelled = false
     let timer: number | null = null
     let running = false
+    let failures = 0
 
     const stop = () => {
       if (timer != null) {
@@ -93,7 +136,10 @@ export function HHScSyncStatus() {
       getHHScSyncStatus(brand)
         .then((res) => {
           if (cancelled) return
+          failures = 0
+          dataRef.current = res.data
           setData(res.data)
+          setSyncStatus(res.data)
           running =
             res.data.running ||
             Boolean(res.data.cart?.running) ||
@@ -104,6 +150,20 @@ export function HHScSyncStatus() {
         })
         .catch(() => {
           if (cancelled) return
+          failures += 1
+          if (failures < 2) return
+          running = false
+          const current = dataRef.current
+          if (!current || !isWorkerBusy(current)) {
+            wasRunningRef.current = false
+            return
+          }
+          const settled = settledSnapshot(current)
+          dataRef.current = settled
+          wasRunningRef.current = false
+          setData(settled)
+          setSyncStatus(settled)
+          refreshSilentRef.current()
         })
         .finally(() => {
           if (cancelled) return
@@ -117,14 +177,15 @@ export function HHScSyncStatus() {
       cancelled = true
       stop()
     }
-  }, [brand])
+  }, [brand, setSyncStatus])
 
   if (!data) return null
 
   const waitingForCart = level === 'orders' && group ? hhWaitingForCartCount(group.children) : 0
   const persistedCartError = level === 'orders' ? firstPersistedCartError(group) : null
+  const notice = persistedCartError || runtimeNotice(data)
   const busy = isWorkerBusy(data)
-  const error = !busy && Boolean(persistedCartError)
+  const error = !busy && Boolean(notice)
   const showWaiting = !busy && !error && waitingForCart > 0
   if (!busy && !error && !showWaiting) return null
 
@@ -133,7 +194,9 @@ export function HHScSyncStatus() {
   const ago = formatAgo(data.lastSuccessAt || cart?.lastSuccessAt || null)
   const title = [
     ago ? `Last success ${ago}` : null,
-    'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
+    orderDetails
+      ? 'Fills details after upload, then drafts a cart on the portal and checks it against those details. Place Order stays off.'
+      : 'Fills details after upload, then drafts a cart and checks it against the live B2B document. Place Order re-checks before submit.',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -175,8 +238,8 @@ export function HHScSyncStatus() {
     </span>
   )
 
-  if (error && persistedCartError) {
-    return <Tooltip content={persistedCartError}>{chip}</Tooltip>
+  if (error && notice) {
+    return <Tooltip content={notice}>{chip}</Tooltip>
   }
   return chip
 }

@@ -6,11 +6,14 @@ import HHOrderGroup, {
 } from '../models/HHOrderGroup';
 import { createHhB2bDraft, HhB2bDraftError, HhB2bDraftRequest } from '../lib/hhB2b';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrandId } from '../lib/hhBrand';
+import { hhBrandId, hhDraftMode, ORDER_DETAILS_DRAFT_PREFIX } from '../lib/hhBrand';
 import { fetchHhB2bOrderNumber, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { createThorogoodDraft } from '../lib/hhB2bThorogood';
 import { clearHhCartVerification, enqueueHhCartVerify } from './hhCartVerify';
 import { withHhGroupLock } from '../lib/hhGroupLock';
 import { hhCartItems } from '../lib/hhLineItems';
+import { hhLineCartSku, releaseHhSkuRuleExclusions } from '../lib/hhSkuExclude';
+import { hhShipViaForDraft, type HhShipViaOverride } from '../lib/hhShipVia';
 
 const LOG = '[hh-cart-draft]';
 const MAX_ERROR_LEN = 1000;
@@ -26,6 +29,7 @@ export interface HhCartDraftRuntime {
   currentGroupId: string | null;
   currentOrderId: string | null;
   queued: number;
+  queuedGroupIds: string[];
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
@@ -71,6 +75,7 @@ export function getHhCartDraftRuntime(): HhCartDraftRuntime {
     currentGroupId,
     currentOrderId,
     queued: queue.length,
+    queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
     lastRunAt: iso(lastRunAt),
     lastSuccessAt: iso(lastSuccessAt),
     lastError,
@@ -125,7 +130,10 @@ function childNeedsDraft(child: IHHChildOrder): boolean {
   return child.cartStatus === 'draft' && isLocalB2bDraft(child);
 }
 
-function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
+function toDraftRequest(
+  child: IHHChildOrder,
+  affixes?: { prefixes: readonly string[]; suffixes: readonly string[] }
+): HhB2bDraftRequest {
   return {
     amazonOrderId: child.orderId,
     po: child.po,
@@ -140,7 +148,8 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
       phone: child.customerPhone ?? '',
     },
     items: hhCartItems(child.items).map((item) => ({
-      sku: item.sku,
+      sku: affixes ? hhLineCartSku(item, affixes.prefixes, affixes.suffixes) : item.sku,
+      cartSku: (item.cartSku ?? '').trim(),
       asin: item.asin ?? '',
       title: item.title,
       quantity: item.quantity,
@@ -149,11 +158,42 @@ function toDraftRequest(child: IHHChildOrder): HhB2bDraftRequest {
   };
 }
 
+function shipViaOverride(child: IHHChildOrder): HhShipViaOverride {
+  return child.shipViaOverride === 'default' || child.shipViaOverride === 'usps' ? child.shipViaOverride : '';
+}
+
+async function persistOrderDetailsDraft(
+  groupId: string,
+  childId: string,
+  referenceNumber: string
+): Promise<IHHChildOrder | null> {
+  return withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return null;
+    const child = group.children.id(childId);
+    if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
+    if (child.detailsStatus !== 'synced') return child;
+    if (child.cartStatus !== 'none' && !isLocalB2bDraft(child)) return child;
+    child.cartStatus = 'draft';
+    child.b2bDraftId = `${ORDER_DETAILS_DRAFT_PREFIX}${childId}`;
+    child.referenceNumber = referenceNumber;
+    child.placeError = '';
+    child.cartError = '';
+    clearHhCartVerification(child);
+    applyGroupRollup(group);
+    group.markModified('children');
+    await group.save();
+    return child;
+  });
+}
+
 async function persistDraft(
   groupId: string,
   childId: string,
   draftId: string,
-  orderNumber: string
+  orderNumber: string,
+  shipVia?: { code: string; reason: string }
 ): Promise<IHHChildOrder | null> {
   return withHhGroupLock(groupId, async () => {
     const group = await HHOrderGroup.findById(groupId);
@@ -170,10 +210,29 @@ async function persistDraft(
     child.referenceNumber = orderNumber;
     child.placeError = '';
     child.cartError = '';
+    if (shipVia) {
+      child.shipVia = shipVia.code;
+      child.shipViaReason = shipVia.reason;
+    }
     clearHhCartVerification(child);
     applyGroupRollup(group);
     group.markModified('children');
     await group.save();
+    return child;
+  });
+}
+
+async function releaseRuleExclusions(groupId: string, childId: string): Promise<IHHChildOrder | null> {
+  return withHhGroupLock(groupId, async () => {
+    const group = await HHOrderGroup.findById(groupId);
+    if (!group) return null;
+    const child = group.children.id(childId);
+    if (!child) return null;
+    if (child.cartStatus === 'placed') return child;
+    if (releaseHhSkuRuleExclusions(child.items)) {
+      group.markModified('children');
+      await group.save();
+    }
     return child;
   });
 }
@@ -207,8 +266,52 @@ function pickNextChild(
 async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCartDraftRunResult): Promise<void> {
   currentOrderId = child.orderId;
   const childId = String(child._id);
-  const result = await createHhB2bDraft(toDraftRequest(child), group.brand);
-  const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
+  if (hhBrandId(group.brand) === 'thorogood') {
+    const result = await createThorogoodDraft(toDraftRequest(child));
+    const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber);
+    if (!saved || saved.cartStatus !== 'draft') {
+      run.skipped += 1;
+      console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+      return;
+    }
+    run.drafted += 1;
+    lastSuccessAt = new Date();
+    console.log(`${LOG} Drafted ${child.orderId} on Thorogood · Ref ${result.orderNumber}`);
+    enqueueHhCartVerify(String(group._id), childId);
+    return;
+  }
+  if (hhDraftMode(group.brand) === 'order-details') {
+    const reference = (child.po || '').trim() || child.orderId;
+    const saved = await persistOrderDetailsDraft(String(group._id), childId, reference);
+    if (!saved || saved.cartStatus !== 'draft') {
+      run.skipped += 1;
+      console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+      return;
+    }
+    run.drafted += 1;
+    lastSuccessAt = new Date();
+    console.log(`${LOG} Drafted ${child.orderId} from order details · Ref ${reference}`);
+    enqueueHhCartVerify(String(group._id), childId);
+    return;
+  }
+  const brandId = hhBrandId(group.brand);
+  const affixes = await loadHhB2bConfig(brandId);
+  const stamped = await releaseRuleExclusions(String(group._id), childId);
+  if (!stamped || stamped.cartStatus === 'placed' || stamped.detailsStatus !== 'synced') {
+    run.skipped += 1;
+    console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
+    return;
+  }
+  if (hhCartItems(stamped.items).length === 0) {
+    run.skipped += 1;
+    console.log(`${LOG} Skipped ${child.orderId} — every line is excluded from the cart`);
+    return;
+  }
+  const request = toDraftRequest(stamped, { prefixes: affixes.skuPrefixes, suffixes: affixes.skuSuffixes });
+  const shipVia = hhShipViaForDraft(request.address, shipViaOverride(child));
+  request.shipVia = shipVia.code;
+  const result = await createHhB2bDraft(request, group.brand);
+  const saved = await persistDraft(String(group._id), childId, result.draftId, result.orderNumber, shipVia);
   if (!saved || saved.cartStatus !== 'draft') {
     run.skipped += 1;
     console.log(`${LOG} Skipped ${child.orderId} — no longer waiting for a cart`);
@@ -217,7 +320,9 @@ async function draftChild(group: IHHOrderGroup, child: IHHChildOrder, run: HhCar
   run.drafted += 1;
   lastSuccessAt = new Date();
   console.log(
-    `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}`
+    `${LOG} Drafted ${child.orderId}${result.remote ? '' : ' (local)'} · Order #${result.orderNumber}${
+      shipVia.code === 'MSB' ? ` · Ship Via USPS Priority (${shipVia.reason || 'override'})` : ''
+    }`
   );
   enqueueHhCartVerify(String(group._id), childId);
 }

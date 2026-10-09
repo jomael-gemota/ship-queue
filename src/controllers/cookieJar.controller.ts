@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import CookieJar, {
   MAX_JAR_NAME_LEN,
-  isManualCookieJar,
   seedCookieJars,
   validateJarCron,
 } from '../models/CookieJar';
@@ -30,7 +29,7 @@ function toPublic(doc: InstanceType<typeof CookieJar>): CookieJarPublic {
     cron: doc.cron,
     hasCookie: Boolean(doc.get('cookie')),
     hasFetcher: Boolean(getFetcher(doc.key)),
-    manual: isManualCookieJar(doc.key),
+    manual: false,
     lastRunAt: doc.lastRunAt ? doc.lastRunAt.toISOString() : null,
     lastSuccessAt: doc.lastSuccessAt ? doc.lastSuccessAt.toISOString() : null,
     lastError: doc.lastError ?? null,

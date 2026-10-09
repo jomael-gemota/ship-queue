@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton } from '../components/hh/hhUi'
+import { HHCartBadge, HHConfirmModal, HHDetailsBadge, HHPlaceButton, HHPlacedBadge, HHRedraftButton, HHShipViaChip } from '../components/hh/hhUi'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
+import { Tooltip } from '../components/Tooltip'
 import { HHNotesField } from '../components/hh/HHNotesField'
 import { HHVerifiedCell } from '../components/hh/HHVerifyCompare'
 import { useHHList } from '../context/HHListContext'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
+  getHHB2bConfig,
   hhCartErrorMentionsSku,
   hhExcludedItems,
   hhItemIsExcluded,
@@ -20,18 +23,44 @@ import {
   hhPlaceActionTitle,
 } from '../lib/hhSportswear'
 import type { HHLineItem } from '../lib/hhSportswear'
+import { hhCartSkuAdjustment } from '../lib/hhSkuExclude'
+import { thorogoodPortalSku } from '../lib/hhThorogoodSku'
 import {
-  AmazonIcon,
   BoxIcon,
   DollarIcon,
   formatCurrency,
   HeaderLabel,
   IdIcon,
+  SellerCentralOrderId,
   Td,
   Th,
 } from '../components/labels/labelUi'
 
 const MAX_EXCLUDE_NOTE = 500
+
+type SkuAffixes = { prefixes: string[]; suffixes: string[]; initials: string[] }
+
+function automaticCartSku(item: HHLineItem, affixes: SkuAffixes | null, orderDetails: boolean): string {
+  if (!affixes) return ''
+  if (orderDetails) return thorogoodPortalSku(item.sku, affixes.initials)
+  return hhCartSkuAdjustment(item.sku, affixes.prefixes, affixes.suffixes).cartSku
+}
+
+function cartSkuReason(item: HHLineItem, cart: string, affixes: SkuAffixes | null, orderDetails: boolean): string {
+  const manual = (item.cartSku ?? '').trim()
+  if (manual) {
+    return `This line is added to the cart as ${cart}. Verification compares ${cart}, not ${item.sku}.`
+  }
+  if (orderDetails) {
+    return `Seller Central SKU is rewritten to ${cart} before the Thorogood cart. Verification compares ${cart}.`
+  }
+  const adjustment = hhCartSkuAdjustment(item.sku, affixes?.prefixes ?? [], affixes?.suffixes ?? [])
+  const parts: string[] = []
+  if (adjustment.prefix) parts.push(`${adjustment.prefix} is removed from the start`)
+  if (adjustment.suffix) parts.push(`${adjustment.suffix} is removed from the end`)
+  const removed = parts.length > 0 ? `${parts.join(' and ')} before this line is added to the cart. ` : ''
+  return `${removed}Verification compares ${cart}.`
+}
 
 function TitleIcon({ className = '' }: { className?: string }) {
   return (
@@ -219,6 +248,94 @@ function HHItemExcludeControls({
   )
 }
 
+function HHItemCartSku({
+  item,
+  affixes,
+  orderDetails,
+  locked,
+  busy,
+  error,
+  editing,
+  value,
+  onValueChange,
+  onStart,
+  onCancel,
+  onSave,
+  onUseAutomatic,
+}: {
+  item: HHLineItem
+  affixes: SkuAffixes | null
+  orderDetails: boolean
+  locked: boolean
+  busy: boolean
+  error: string | null
+  editing: boolean
+  value: string
+  onValueChange: (value: string) => void
+  onStart: () => void
+  onCancel: () => void
+  onSave: () => void
+  onUseAutomatic: () => void
+}) {
+  const manual = (item.cartSku ?? '').trim()
+  const automatic = automaticCartSku(item, affixes, orderDetails)
+  const cart = manual || automatic
+  const differs = Boolean(cart) && cart.toUpperCase() !== item.sku.trim().toUpperCase()
+  const linkClass =
+    'cursor-pointer text-xs font-medium text-[var(--accent-100)] hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-[var(--accent-200)]'
+
+  return (
+    <div className="mt-1.5 max-w-[16rem] space-y-1" onClick={(event) => event.stopPropagation()}>
+      {differs ? (
+        <p className="text-xs font-normal normal-case leading-snug text-slate-500 dark:text-[var(--text-200)]">
+          <Tooltip content={cartSkuReason(item, cart, affixes, orderDetails)}>
+            <span className="cursor-help border-b border-dotted border-slate-400 dark:border-[var(--text-200)]">
+              Cart SKU
+            </span>
+          </Tooltip>{' '}
+          <span className="font-mono text-slate-700 dark:text-[var(--text-100)]">{cart}</span>
+        </p>
+      ) : null}
+      {locked ? null : editing ? (
+        <>
+          <input
+            value={value}
+            disabled={busy}
+            maxLength={80}
+            aria-label="Cart SKU"
+            placeholder={automatic || item.sku}
+            onChange={(event) => onValueChange(event.target.value)}
+            className="w-full rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 font-mono text-[13px] text-slate-800 outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button type="button" disabled={busy} onClick={onSave} className={linkClass}>
+              {busy ? 'Saving…' : 'Save cart SKU'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onCancel}
+              className="cursor-pointer text-xs font-medium text-slate-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-[var(--text-200)]"
+            >
+              Cancel
+            </button>
+            {manual ? (
+              <button type="button" disabled={busy} onClick={onUseAutomatic} className={linkClass}>
+                Use automatic
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <button type="button" disabled={busy} onClick={onStart} className={`block ${linkClass}`}>
+          Change cart SKU
+        </button>
+      )}
+      {error ? <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p> : null}
+    </div>
+  )
+}
+
 export default function HHSportswearItems() {
   const { groupId = '', orderId = '' } = useParams<{ groupId: string; orderId: string }>()
   const {
@@ -234,7 +351,10 @@ export default function HHSportswearItems() {
     rerunCartDraft,
     cartDraftBusyId,
     updateOrderItemExclude,
+    updateOrderItemCartSku,
+    brand,
   } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const match = getOrder(groupId, orderId)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
@@ -243,6 +363,30 @@ export default function HHSportswearItems() {
   const [excludeNote, setExcludeNote] = useState('')
   const [excludeBusyId, setExcludeBusyId] = useState<string | null>(null)
   const [excludeError, setExcludeError] = useState<string | null>(null)
+  const [affixes, setAffixes] = useState<SkuAffixes | null>(null)
+  const [cartSkuItemId, setCartSkuItemId] = useState<string | null>(null)
+  const [cartSkuValue, setCartSkuValue] = useState('')
+  const [cartSkuBusyId, setCartSkuBusyId] = useState<string | null>(null)
+  const [cartSkuError, setCartSkuError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getHHB2bConfig(brand)
+      .then((res) => {
+        if (cancelled) return
+        setAffixes({
+          prefixes: res.data.skuPrefixes ?? [],
+          suffixes: res.data.skuSuffixes ?? [],
+          initials: res.data.skuInitials ?? [],
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setAffixes(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [brand])
 
   const totals = useMemo(() => {
     return filteredItems.reduce(
@@ -304,27 +448,62 @@ export default function HHSportswearItems() {
       })
   }
 
+  const saveCartSku = (item: HHLineItem, next: string) => {
+    const cleaned = next.trim().replace(/\s+/g, ' ')
+    const automatic = automaticCartSku(item, affixes, orderDetails)
+    const sameAsAutomatic = Boolean(automatic) && cleaned.toUpperCase() === automatic.toUpperCase()
+    const sameAsSeller = cleaned.toUpperCase() === item.sku.trim().toUpperCase()
+    const cartSku = !cleaned || sameAsAutomatic || (!automatic && sameAsSeller) ? '' : cleaned
+    setCartSkuBusyId(item.id)
+    setCartSkuError(null)
+    updateOrderItemCartSku(groupId, order.id, item.id, cartSku)
+      .then(() => {
+        setCartSkuItemId(null)
+        setCartSkuValue('')
+        setCartSkuError(null)
+      })
+      .catch((error: unknown) => {
+        setCartSkuError(error instanceof Error ? error.message : 'Failed to update cart SKU')
+      })
+      .finally(() => {
+        setCartSkuBusyId((current) => (current === item.id ? null : current))
+      })
+  }
+
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
         <div className="min-w-0">
           <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-            <span className="inline-flex items-center gap-1.5 font-mono">
-              <AmazonIcon className="h-4 w-4 shrink-0" />
-              {order.orderId}
-            </span>
-            <HHDetailsBadge status={order.detailsStatus} />
+            <SellerCentralOrderId
+              orderId={order.orderId}
+              iconClassName="h-4 w-4 shrink-0"
+              className="font-mono"
+            />
+            <HHDetailsBadge
+              status={order.detailsStatus}
+              sellerNotesResult={order.sellerNotesResult}
+              sellerNotesError={order.sellerNotesError}
+              error={order.detailsError}
+            />
             <HHCartBadge status={order.cartStatus} issues={order.verifyIssues} error={order.cartError} />
+            <HHShipViaChip
+              order={order}
+              busy={cartDraftBusyId === order.id}
+              onChange={
+                locked ? undefined : (next) => rerunCartDraft(groupId, order.id, next)
+              }
+            />
             <HHVerifiedCell groupId={groupId} order={order} />
             <HHPlacedBadge status={order.cartStatus} error={order.placeError} />
             <HHRedraftButton
               size="sm"
-              title={hhOrderDraftTitle(order)}
+              title={hhOrderDraftTitle(order, orderDetails)}
               disabled={locked || !canDraft}
               busy={cartDraftBusyId === order.id}
               onClick={() => setPendingAction({ type: 'redraft', target: 'order', order })}
             />
-            {hhOrderCanPlace(order) ? (
+            {!orderDetails && hhOrderCanPlace(order) ? (
               <HHPlaceButton
                 size="sm"
                 title={hhPlaceActionTitle(placeOrderEnabled)}
@@ -425,6 +604,8 @@ export default function HHSportswearItems() {
                           setExcludeItemId(item.id)
                           setExcludeNote(item.excludeNote ?? '')
                           setExcludeError(null)
+                          setCartSkuItemId(null)
+                          setCartSkuError(null)
                         }}
                         onCancel={() => {
                           if (excludeBusyId) return
@@ -436,8 +617,10 @@ export default function HHSportswearItems() {
                         onInclude={() => saveExclude(item, false)}
                       />
                     </Td>
-                    <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
-                      <span className={unmatched ? 'font-medium text-red-700 dark:text-red-300' : undefined}>
+                    <Td compact className="font-mono text-slate-600 dark:text-[var(--text-200)]">
+                      <span
+                        className={`whitespace-nowrap ${unmatched ? 'font-medium text-red-700 dark:text-red-300' : ''}`}
+                      >
                         {item.sku}
                       </span>
                       {unmatched ? (
@@ -445,6 +628,36 @@ export default function HHSportswearItems() {
                           Did not match
                         </span>
                       ) : null}
+                      {excluded ? null : (
+                        <HHItemCartSku
+                          item={item}
+                          affixes={affixes}
+                          orderDetails={orderDetails}
+                          locked={locked}
+                          busy={cartSkuBusyId === item.id}
+                          error={cartSkuItemId === item.id ? cartSkuError : null}
+                          editing={cartSkuItemId === item.id}
+                          value={cartSkuItemId === item.id ? cartSkuValue : item.cartSku ?? ''}
+                          onValueChange={setCartSkuValue}
+                          onStart={() => {
+                            const manual = (item.cartSku ?? '').trim()
+                            const automatic = automaticCartSku(item, affixes, orderDetails)
+                            setCartSkuItemId(item.id)
+                            setCartSkuValue(manual || automatic || item.sku)
+                            setCartSkuError(null)
+                            setExcludeItemId(null)
+                            setExcludeError(null)
+                          }}
+                          onCancel={() => {
+                            if (cartSkuBusyId) return
+                            setCartSkuItemId(null)
+                            setCartSkuValue('')
+                            setCartSkuError(null)
+                          }}
+                          onSave={() => saveCartSku(item, cartSkuValue)}
+                          onUseAutomatic={() => saveCartSku(item, '')}
+                        />
+                      )}
                     </Td>
                     <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
                       {item.asin}

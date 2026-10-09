@@ -19,6 +19,7 @@ import HHSportswearItems from './pages/HHSportswearItems'
 import HHSportswearConfig from './pages/HHSportswearConfig'
 import DropshipBrands from './pages/DropshipBrands'
 import AdminUsers from './pages/AdminUsers'
+import { HH_BRANDS, HH_BRAND_IDS } from './lib/hhBrand'
 
 function App() {
   return (
@@ -46,7 +47,7 @@ function App() {
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
-                {['/ordering/hh-sportswear', '/ordering/hh-workwear'].map((path) => (
+                {HH_BRAND_IDS.map((id) => HH_BRANDS[id].path).map((path) => (
                   <Route key={path} path={path} element={<HHSportswearLayout />}>
                     <Route index element={<HHSportswear />} />
                     <Route path="configurations" element={<HHSportswearConfig />} />

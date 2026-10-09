@@ -1,5 +1,5 @@
 import { hhApiPath, type HHBrandId } from './hhBrand'
-import { authApi } from './api'
+import { ApiError, authApi } from './api'
 
 function hhPath(brand: HHBrandId, rest = '') {
   return hhApiPath(brand, rest)
@@ -7,6 +7,7 @@ function hhPath(brand: HHBrandId, rest = '') {
 
 export type HHDetailsStatus = 'pending' | 'synced' | 'failed'
 export type HHCartStatus = 'none' | 'draft' | 'ready' | 'review' | 'placed'
+export type HHSellerNotesResult = '' | 'updated' | 'already' | 'failed'
 
 export const HH_DETAILS_STATUSES: HHDetailsStatus[] = ['pending', 'synced', 'failed']
 export const HH_CART_STATUSES: HHCartStatus[] = ['none', 'draft', 'ready', 'review', 'placed']
@@ -27,6 +28,19 @@ export const HH_CART_STATUS_LABELS: Record<HHCartStatus, string> = {
 
 export function hhDetailsStatusLabel(status: string): string {
   return HH_DETAILS_STATUS_LABELS[status as HHDetailsStatus] ?? status
+}
+
+export function hhSellerNotesHover(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'sellerNotesResult' | 'sellerNotesError'>,
+): string | null {
+  if (order.detailsStatus !== 'synced') return null
+  if (order.sellerNotesResult === 'updated') return 'Seller notes updated with the PO'
+  if (order.sellerNotesResult === 'already') return 'Seller notes already include the PO'
+  if (order.sellerNotesResult === 'failed') {
+    const reason = order.sellerNotesError.trim()
+    return reason ? `Seller notes were not updated: ${reason}` : 'Seller notes were not updated'
+  }
+  return null
 }
 
 export function hhCartCanVerify(status: HHCartStatus): boolean {
@@ -109,22 +123,32 @@ export function hhDraftableOrders(
   return orders.filter(hhOrderCanDraft)
 }
 
-export function hhOrderDraftTitle(order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>): string {
+export function hhOrderDraftTitle(
+  order: Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>,
+  orderDetails = false,
+): string {
   if (order.cartStatus === 'placed') return 'Placed orders cannot have their cart regenerated'
   if (order.items.length > 0 && hhCartItems(order.items).length === 0) {
     return 'Every line is excluded from the cart'
   }
   if (!hhOrderCanDraft(order)) return 'Cart draft needs synced order details'
+  if (orderDetails) {
+    return order.cartStatus === 'none' ? 'Draft a cart on the portal' : 'Regenerate the portal draft'
+  }
   return order.cartStatus === 'none' ? 'Draft B2B cart for this order' : 'Regenerate B2B draft for this order'
 }
 
 export function hhGroupDraftTitle(
   orders: Array<Pick<HHChildOrder, 'detailsStatus' | 'cartStatus' | 'items'>>,
+  orderDetails = false,
 ): string {
   if (orders.length > 0 && orders.every((order) => order.cartStatus === 'placed')) {
     return 'Placed orders cannot have their cart regenerated'
   }
   if (hhDraftableOrders(orders).length === 0) return 'Cart draft needs synced order details'
+  if (orderDetails) {
+    return hhHasCartDraft(orders) ? 'Regenerate portal drafts for this batch' : 'Draft carts on the portal'
+  }
   return hhHasCartDraft(orders) ? 'Regenerate B2B draft for this batch' : 'Draft B2B cart for this batch'
 }
 
@@ -180,6 +204,22 @@ export function hhOrderIsLocked(order: Pick<HHChildOrder, 'cartStatus'>): boolea
   return hhCartIsPlaced(order.cartStatus)
 }
 
+/** Last five characters of a batch id, uppercased so the table stays scannable. */
+export function shortHhBatchId(id: string): string {
+  const trimmed = id.trim()
+  if (trimmed.length <= 5) return trimmed.toUpperCase()
+  return trimmed.slice(-5).toUpperCase()
+}
+
+/** Paste imports are stored under this name; anything else is an uploaded file. */
+export function hhImportSource(sourceFileName: string): { kind: 'paste' | 'file'; label: string } {
+  const name = sourceFileName.trim()
+  if (!name || name.toLowerCase() === 'pasted orders') {
+    return { kind: 'paste', label: 'Pasted orders' }
+  }
+  return { kind: 'file', label: name }
+}
+
 export function hhGroupHasPlaced(group: Pick<HHOrderGroup, 'children'>): boolean {
   return group.children.some((order) => hhCartIsPlaced(order.cartStatus))
 }
@@ -211,6 +251,7 @@ export interface HHLineItem {
   tax: number
   excluded: boolean
   excludeNote: string
+  cartSku: string
 }
 
 export interface HHVerifyIssue {
@@ -247,6 +288,15 @@ export interface HHChildOrder {
   cartStatus: HHCartStatus
   placeError: string
   cartError: string
+  /** `-` is Default, `MSB` is USPS Priority. Empty until a Helly Hansen cart is drafted. */
+  shipVia: string
+  /** Why this address would use USPS Priority. Empty when Default is automatic. */
+  shipViaReason: string
+  /** `default` or `usps` when an operator overrode the automatic choice. */
+  shipViaOverride: '' | 'default' | 'usps'
+  sellerNotesResult: HHSellerNotesResult
+  sellerNotesError: string
+  detailsError: string
   verifyIssues: HHVerifyIssue[]
   verifyRows?: HHCompareRow[]
   verifiedAt: string | null
@@ -258,6 +308,8 @@ export interface HHOrderGroup {
   createdAt: string
   createdByName: string
   createdByEmail: string
+  /** Google account photo, when the creator has one on their account. */
+  createdByAvatar?: string
   notes: string
   sourceFileName: string
   detailsStatus: HHDetailsStatus
@@ -543,6 +595,79 @@ export interface HHImportMeta {
   incompleteRowsSkipped: number
 }
 
+export interface HHImportDuplicate {
+  keptRow: number
+  skippedRow: number
+  orderId: string
+  po: string
+}
+
+export interface HHImportIncomplete {
+  row: number
+  orderId: string
+  po: string
+  missing: 'orderId' | 'po'
+}
+
+export interface HHImportOrderConflict {
+  orderId: string
+  rowCount: number
+  rows: Array<{ row: number; po: string }>
+}
+
+export interface HHImportPoConflict {
+  po: string
+  rowCount: number
+  rows: Array<{ row: number; orderId: string }>
+}
+
+export interface HHImportOddOrderId {
+  row: number
+  orderId: string
+  po: string
+  looksSwapped: boolean
+}
+
+export interface HHImportOutputRow {
+  row: number
+  orderId: string
+  po: string
+  oddOrderId: boolean
+  looksSwapped: boolean
+  sharedOrderId: boolean
+  sharedPo: boolean
+}
+
+export function importOutputRowKey(row: Pick<HHImportOutputRow, 'row' | 'orderId' | 'po'>): string {
+  return `${row.row}\u0000${row.orderId}\u0000${row.po}`
+}
+
+export interface HHImportReview {
+  orderCount: number
+  duplicateRowsSkipped: number
+  incompleteRowsSkipped: number
+  orderConflictCount: number
+  poConflictCount: number
+  oddOrderIdCount: number
+  duplicates: HHImportDuplicate[]
+  incomplete: HHImportIncomplete[]
+  orderConflicts: HHImportOrderConflict[]
+  poConflicts: HHImportPoConflict[]
+  oddOrderIds: HHImportOddOrderId[]
+  rows: HHImportOutputRow[]
+}
+
+export type HHImportPreviewResult =
+  | { ok: true; review: HHImportReview }
+  | { ok: false; message: string; review: HHImportReview | null }
+
+function reviewFromErrorBody(body: unknown): HHImportReview | null {
+  if (!body || typeof body !== 'object' || !('review' in body)) return null
+  const review = (body as { review?: unknown }).review
+  if (!review || typeof review !== 'object') return null
+  return review as HHImportReview
+}
+
 export function listHHGroups(brand: HHBrandId) {
   return authApi.get<{ data: HHOrderGroup[] }>(hhPath(brand))
 }
@@ -552,15 +677,23 @@ export interface HHCartDraftStatus {
   currentGroupId: string | null
   currentOrderId: string | null
   queued: number
+  queuedGroupIds?: string[]
   lastRunAt: string | null
   lastSuccessAt: string | null
   lastError: string | null
   lastRun: { drafted: number; skipped: number; failed: number } | null
   pendingUndrafted: number
   verifying?: boolean
+  verifyCurrentGroupId?: string | null
+  verifyCurrentOrderId?: string | null
+  verifyQueuedGroupIds?: string[]
+  verifyLastError?: string | null
   placing?: boolean
+  placeLastError?: string | null
+  placeCurrentGroupId?: string | null
   placeCurrentOrderId?: string | null
   placeQueued?: number
+  placeQueuedGroupIds?: string[]
 }
 
 export interface HHScSyncStatus {
@@ -568,6 +701,7 @@ export interface HHScSyncStatus {
   currentGroupId: string | null
   currentOrderId: string | null
   queuedGroups: number
+  queuedGroupIds?: string[]
   lastRunAt: string | null
   lastSuccessAt: string | null
   lastError: string | null
@@ -575,6 +709,70 @@ export interface HHScSyncStatus {
   pendingUnsynced: number
   placeOrderEnabled?: boolean
   cart?: HHCartDraftStatus
+}
+
+export type HHProgressLiveState = 'running' | 'queued'
+
+export interface HHProgressLive {
+  state: HHProgressLiveState
+  orderId?: string | null
+}
+
+export type HHProgressActivity = Partial<Record<HHBatchProgressStage['key'], HHProgressLive>>
+
+function progressStageLive(
+  currentId: string | null | undefined,
+  running: boolean | undefined,
+  orderId: string | null | undefined,
+  queuedIds: string[] | undefined,
+  groupId: string,
+): HHProgressLive | undefined {
+  if (running && currentId === groupId) return { state: 'running', orderId }
+  if (queuedIds?.includes(groupId)) return { state: 'queued' }
+  return undefined
+}
+
+/** Which Progress stations are working on this batch right now. */
+export function hhProgressActivity(
+  status: HHScSyncStatus | null | undefined,
+  groupId: string,
+): HHProgressActivity {
+  if (!status) return {}
+  const cart = status.cart
+  const activity: HHProgressActivity = {}
+  const details = progressStageLive(
+    status.currentGroupId,
+    status.running,
+    status.currentOrderId,
+    status.queuedGroupIds,
+    groupId,
+  )
+  if (details) activity.details = details
+  const draft = progressStageLive(
+    cart?.currentGroupId,
+    cart?.running,
+    cart?.currentOrderId,
+    cart?.queuedGroupIds,
+    groupId,
+  )
+  if (draft) activity.cart = draft
+  const verified = progressStageLive(
+    cart?.verifyCurrentGroupId,
+    Boolean(cart?.verifyCurrentGroupId),
+    cart?.verifyCurrentOrderId,
+    cart?.verifyQueuedGroupIds,
+    groupId,
+  )
+  if (verified) activity.verified = verified
+  const placed = progressStageLive(
+    cart?.placeCurrentGroupId,
+    Boolean(cart?.placeCurrentGroupId),
+    cart?.placeCurrentOrderId,
+    cart?.placeQueuedGroupIds,
+    groupId,
+  )
+  if (placed) activity.placed = placed
+  return activity
 }
 
 export function getHHScSyncStatus(brand: HHBrandId) {
@@ -598,6 +796,9 @@ export interface HHB2bConfig {
   baseUrl: string
   catalog: string
   accountId: string
+  skuInitials: string[]
+  skuPrefixes: string[]
+  skuSuffixes: string[]
   hasCookie: boolean
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
@@ -613,6 +814,9 @@ export type HHB2bConfigPatch = Partial<{
   baseUrl: string
   catalog: string
   accountId: string
+  skuInitials: string[]
+  skuPrefixes: string[]
+  skuSuffixes: string[]
   cookie: string
   placeOrderEnabled: boolean
   alertWebhookUrl: string
@@ -637,20 +841,47 @@ export function testHHB2bWebhook(brand: HHBrandId) {
 
 export function importHHSpreadsheet(
   brand: HHBrandId,
-  input: File | { text: string },
-  options?: { fetchDetails?: boolean; draftCart?: boolean },
+  input: File | { text: string } | { orders: Array<{ orderId: string; po: string }>; sourceFileName?: string },
+  options?: { fetchDetails?: boolean; draftCart?: boolean; stampSellerNotes?: boolean },
 ) {
   const body = new FormData()
   if (input instanceof File) body.append('file', input)
-  else body.append('text', input.text)
+  else if ('orders' in input) {
+    body.append('orders', JSON.stringify(input.orders))
+    if (input.sourceFileName) body.append('sourceFileName', input.sourceFileName)
+  } else body.append('text', input.text)
   body.append('fetchDetails', options?.fetchDetails === false ? 'false' : 'true')
   body.append('draftCart', options?.draftCart === false ? 'false' : 'true')
+  body.append('stampSellerNotes', options?.stampSellerNotes === false ? 'false' : 'true')
   return authApi.postForm<{ data: HHOrderGroup; meta: HHImportMeta }>(hhPath(brand, '/import'), body)
 }
 
-export function rerunHHGroupScSync(brand: HHBrandId, groupId: string, options?: { draftCart?: boolean }) {
+export async function previewHHImport(
+  brand: HHBrandId,
+  input: File | { text: string },
+): Promise<HHImportPreviewResult> {
+  const body = new FormData()
+  if (input instanceof File) body.append('file', input)
+  else body.append('text', input.text)
+  try {
+    const res = await authApi.postForm<{ data: HHImportReview }>(hhPath(brand, '/import/preview'), body)
+    return { ok: true, review: res.data }
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { ok: false, message: error.message, review: reviewFromErrorBody(error.body) }
+    }
+    throw error
+  }
+}
+
+export function rerunHHGroupScSync(
+  brand: HHBrandId,
+  groupId: string,
+  options?: { draftCart?: boolean; stampSellerNotes?: boolean },
+) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
+    stampSellerNotes: options?.stampSellerNotes !== false,
   })
 }
 
@@ -658,10 +889,11 @@ export function rerunHHOrderScSync(
   brand: HHBrandId,
   groupId: string,
   orderId: string,
-  options?: { draftCart?: boolean },
+  options?: { draftCart?: boolean; stampSellerNotes?: boolean },
 ) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/sc-sync`), {
     draftCart: options?.draftCart !== false,
+    stampSellerNotes: options?.stampSellerNotes !== false,
   })
 }
 
@@ -669,8 +901,29 @@ export function rerunHHGroupCartDraft(brand: HHBrandId, groupId: string) {
   return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/cart-draft`))
 }
 
-export function rerunHHOrderCartDraft(brand: HHBrandId, groupId: string, orderId: string) {
-  return authApi.post<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}/cart-draft`))
+export type HHShipViaRequest = 'default' | 'usps' | 'auto'
+
+export function hhShipViaChip(
+  order: Pick<HHChildOrder, 'cartStatus' | 'shipVia' | 'shipViaReason' | 'shipViaOverride'>,
+): { kind: 'usps' | 'default'; reason: string; next: 'default' | 'usps' } | null {
+  const shipVia = order.shipVia ?? ''
+  const reason = (order.shipViaReason ?? '').trim()
+  if (order.cartStatus === 'none' || !shipVia) return null
+  if (shipVia === 'MSB') return { kind: 'usps', reason, next: 'default' }
+  if (shipVia === '-') return { kind: 'default', reason, next: 'usps' }
+  return null
+}
+
+export function rerunHHOrderCartDraft(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  shipVia?: HHShipViaRequest,
+) {
+  return authApi.post<{ data: HHOrderGroup }>(
+    hhPath(brand, `/${groupId}/orders/${orderId}/cart-draft`),
+    shipVia ? { shipVia } : {},
+  )
 }
 
 export function rerunHHGroupCartVerify(brand: HHBrandId, groupId: string) {
@@ -702,6 +955,19 @@ export function updateHHGroupNotes(brand: HHBrandId, id: string, notes: string) 
 
 export function updateHHOrderNotes(brand: HHBrandId, groupId: string, orderId: string, notes: string) {
   return authApi.patch<{ data: HHOrderGroup }>(hhPath(brand, `/${groupId}/orders/${orderId}`), { notes })
+}
+
+export function updateHHOrderItemCartSku(
+  brand: HHBrandId,
+  groupId: string,
+  orderId: string,
+  itemId: string,
+  cartSku: string,
+) {
+  return authApi.patch<{ data: HHOrderGroup }>(
+    hhPath(brand, `/${groupId}/orders/${orderId}/items/${itemId}`),
+    { cartSku },
+  )
 }
 
 export function updateHHOrderItemExclude(
@@ -899,6 +1165,7 @@ export function hhItemMatchesQuery(item: HHLineItem, rawQuery: string): boolean 
     includesQuery(item.unitPrice, query) ||
     includesQuery(item.tax, query) ||
     includesQuery(item.excludeNote, query) ||
+    includesQuery(item.cartSku, query) ||
     (item.excluded && includesQuery('excluded', query))
   )
 }

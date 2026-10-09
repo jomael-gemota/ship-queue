@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
-import { hhBrand, hhBrandFromPath, type HHBrandId } from '../lib/hhBrand'
+import { hhBrand, hhBrandFromPath, hhUsesOrderDetailsDraft, type HHBrandId } from '../lib/hhBrand'
 import { flashHHGroupRow } from '../components/hh/hhUi'
 import {
   hhGroupMatchesQuery,
@@ -20,8 +20,9 @@ import {
   updateHHGroupNotes,
   updateHHOrderNotes,
   updateHHOrderItemExclude,
+  updateHHOrderItemCartSku,
 } from '../lib/hhSportswear'
-import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup, HHSessionCheck } from '../lib/hhSportswear'
+import type { HHCartStatus, HHChildOrder, HHDetailsStatus, HHLineItem, HHOrderGroup, HHScSyncStatus, HHSessionCheck } from '../lib/hhSportswear'
 import { hhBreadcrumbPage, hhDirection } from '../lib/hhNav'
 import type { HHPage } from '../lib/hhNav'
 
@@ -64,9 +65,15 @@ interface HHListContextValue {
   refreshSilent: () => void
   groups: HHOrderGroup[]
   setGroups: Dispatch<SetStateAction<HHOrderGroup[]>>
-  rerunDetails: (groupId: string, orderId?: string, options?: { draftCart?: boolean }) => Promise<void>
+  syncStatus: HHScSyncStatus | null
+  setSyncStatus: Dispatch<SetStateAction<HHScSyncStatus | null>>
+  rerunDetails: (
+    groupId: string,
+    orderId?: string,
+    options?: { draftCart?: boolean; stampSellerNotes?: boolean },
+  ) => Promise<void>
   resyncBusyId: string | null
-  rerunCartDraft: (groupId: string, orderId?: string) => Promise<void>
+  rerunCartDraft: (groupId: string, orderId?: string, shipVia?: 'default' | 'usps' | 'auto') => Promise<void>
   cartDraftBusyId: string | null
   rerunCartVerify: (groupId: string, orderId?: string) => Promise<void>
   cartVerifyBusyId: string | null
@@ -74,6 +81,7 @@ interface HHListContextValue {
   placeBusyId: string | null
   placeOrderEnabled: boolean
   setPlaceOrderEnabled: (enabled: boolean) => void
+  skuRules: { prefixes: string[]; suffixes: string[]; initials: string[] } | null
   sessionCheck: HHSessionCheck | null
   updateNotes: (groupId: string, notes: string) => Promise<void>
   updateOrderNotes: (groupId: string, orderId: string, notes: string) => Promise<void>
@@ -83,6 +91,7 @@ interface HHListContextValue {
     itemId: string,
     patch: { excluded: boolean; excludeNote?: string },
   ) => Promise<void>
+  updateOrderItemCartSku: (groupId: string, orderId: string, itemId: string, cartSku: string) => Promise<void>
   selectedDetailsStatus: HHDetailsStatus | ''
   selectedCartStatus: HHCartStatus | ''
   searchInput: string
@@ -121,6 +130,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const sessionBrandRef = useRef(brand)
 
   const [groups, setGroups] = useState<HHOrderGroup[]>([])
+  const [syncStatus, setSyncStatus] = useState<HHScSyncStatus | null>(null)
   const [loadState, setLoadState] = useState<HHLoadState>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
@@ -129,6 +139,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
   const [cartVerifyBusyId, setCartVerifyBusyId] = useState<string | null>(null)
   const [placeBusyId, setPlaceBusyId] = useState<string | null>(null)
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
+  const [skuRules, setSkuRules] = useState<{ prefixes: string[]; suffixes: string[]; initials: string[] } | null>(null)
   const [sessionCheck, setSessionCheck] = useState<HHSessionCheck | null>(null)
   const [filtersByLevel, setFiltersByLevel] = useState<Record<HHPage, HHLevelFilters>>({
     list: { ...EMPTY_FILTERS },
@@ -240,16 +251,25 @@ export function HHListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
+    const orderDetails = hhUsesOrderDetailsDraft(brand)
     if (sessionBrandRef.current !== brand) {
       sessionBrandRef.current = brand
       setSessionCheck(null)
+      setSyncStatus(null)
+      setSkuRules(null)
+      if (orderDetails) setPlaceOrderEnabled(false)
     }
     const load = () => {
       getHHB2bConfig(brand)
         .then((res) => {
           if (cancelled) return
-          setPlaceOrderEnabled(Boolean(res.data.placeOrderEnabled))
+          setPlaceOrderEnabled(orderDetails ? false : Boolean(res.data.placeOrderEnabled))
           setSessionCheck(res.data.sessionCheck)
+          setSkuRules({
+            prefixes: res.data.skuPrefixes ?? [],
+            suffixes: res.data.skuSuffixes ?? [],
+            initials: res.data.skuInitials ?? [],
+          })
         })
         .catch(() => {
           if (!cancelled) setPlaceOrderEnabled(false)
@@ -329,6 +349,8 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     refreshSilent: () => refreshGroups('silent'),
     groups,
     setGroups,
+    syncStatus,
+    setSyncStatus,
     rerunDetails: async (groupId, orderId, options) => {
       const busyId = orderId ?? groupId
       setResyncBusyId(busyId)
@@ -345,12 +367,12 @@ export function HHListProvider({ children }: { children: ReactNode }) {
       }
     },
     resyncBusyId,
-    rerunCartDraft: async (groupId, orderId) => {
+    rerunCartDraft: async (groupId, orderId, shipVia) => {
       const busyId = orderId ?? groupId
       setCartDraftBusyId(busyId)
       try {
         const res = orderId
-          ? await rerunHHOrderCartDraft(brand, groupId, orderId)
+          ? await rerunHHOrderCartDraft(brand, groupId, orderId, shipVia)
           : await rerunHHGroupCartDraft(brand, groupId)
         setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
       } catch (error) {
@@ -393,6 +415,7 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     placeBusyId,
     placeOrderEnabled,
     setPlaceOrderEnabled,
+    skuRules,
     sessionCheck,
     updateNotes: async (groupId, notes) => {
       const res = await updateHHGroupNotes(brand, groupId, notes)
@@ -404,6 +427,10 @@ export function HHListProvider({ children }: { children: ReactNode }) {
     },
     updateOrderItemExclude: async (groupId, orderId, itemId, patch) => {
       const res = await updateHHOrderItemExclude(brand, groupId, orderId, itemId, patch)
+      setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
+    },
+    updateOrderItemCartSku: async (groupId, orderId, itemId, cartSku) => {
+      const res = await updateHHOrderItemCartSku(brand, groupId, orderId, itemId, cartSku)
       setGroups((current) => current.map((group) => (group.id === res.data.id ? res.data : group)))
     },
     selectedDetailsStatus,

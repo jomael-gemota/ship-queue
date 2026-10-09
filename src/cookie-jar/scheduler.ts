@@ -1,5 +1,5 @@
 import { Cron } from 'croner';
-import CookieJar, { isManualCookieJar } from '../models/CookieJar';
+import CookieJar, { COOKIE_JAR_TIMEZONE } from '../models/CookieJar';
 import { getFetcher } from './registry';
 import { executeCookieJar, markUnknownFetcher, truncateError } from './run';
 
@@ -33,7 +33,7 @@ function startJob(key: string, cron: string): void {
   const job = new Cron(
     cron,
     {
-      timezone: 'UTC',
+      timezone: COOKIE_JAR_TIMEZONE,
       mode: '5-part',
       protect: true,
       catch: (err) => {
@@ -46,13 +46,10 @@ function startJob(key: string, cron: string): void {
   );
 
   bound.set(key, { cron, job });
-  console.log(`[cookie-jar] Scheduled ${key} (${cron} UTC)`);
-
-  // Don't wait a full cron cycle after (re)bind — same idea as the order-sync
-  // scheduler's post-boot run. Overlap is still guarded in executeCookieJar.
-  setTimeout(() => {
-    void executeCookieJar(key);
-  }, 5_000);
+  const next = job.nextRun();
+  console.log(
+    `[cookie-jar] Scheduled ${key} (${cron} ${COOKIE_JAR_TIMEZONE})${next ? `, next ${next.toISOString()}` : ''}`
+  );
 }
 
 async function markInvalidCron(key: string, cron: string, err: unknown): Promise<void> {
@@ -77,9 +74,7 @@ export async function reconcileCookieJars(): Promise<void> {
 
     if (!getFetcher(row.key)) {
       stopJob(row.key);
-      if (!isManualCookieJar(row.key)) {
-        await markUnknownFetcher(row.key);
-      }
+      await markUnknownFetcher(row.key);
       continue;
     }
 

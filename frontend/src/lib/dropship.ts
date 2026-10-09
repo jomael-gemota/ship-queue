@@ -1,4 +1,4 @@
-import { HH_BRANDS, hhBrand, type HHBrandId } from './hhBrand'
+import { HH_BRAND_IDS, HH_BRANDS, hhBrand } from './hhBrand'
 
 export const DROPSHIP_PATH = '/ordering'
 export const HH_SPORTSWEAR_PATH = HH_BRANDS.sportswear.path
@@ -11,9 +11,11 @@ export type DropshipBrand = {
   catalog: string
   path: string
   logo?: string
+  logoFit?: 'cover' | 'contain'
+  logoScale?: number
 }
 
-export const DROPSHIP_BRANDS: DropshipBrand[] = (['sportswear', 'workwear'] as HHBrandId[]).map((id) => {
+export const DROPSHIP_BRANDS: DropshipBrand[] = HH_BRAND_IDS.map((id) => {
   const brand = hhBrand(id)
   return {
     id: brand.slug,
@@ -22,5 +24,7 @@ export const DROPSHIP_BRANDS: DropshipBrand[] = (['sportswear', 'workwear'] as H
     catalog: brand.catalog,
     path: brand.path,
     logo: brand.logo,
+    logoFit: brand.logoFit,
+    logoScale: brand.logoScale,
   }
 })

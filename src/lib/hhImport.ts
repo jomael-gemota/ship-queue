@@ -3,13 +3,82 @@ export interface HhImportOrderRow {
   po: string;
 }
 
+export interface HhImportDuplicate {
+  keptRow: number;
+  skippedRow: number;
+  orderId: string;
+  po: string;
+}
+
+export interface HhImportIncomplete {
+  row: number;
+  orderId: string;
+  po: string;
+  missing: 'orderId' | 'po';
+}
+
+export interface HhImportOrderConflict {
+  orderId: string;
+  rowCount: number;
+  rows: Array<{ row: number; po: string }>;
+}
+
+export interface HhImportPoConflict {
+  po: string;
+  rowCount: number;
+  rows: Array<{ row: number; orderId: string }>;
+}
+
+export interface HhImportOddOrderId {
+  row: number;
+  orderId: string;
+  po: string;
+  looksSwapped: boolean;
+}
+
+/** One row that can be created. Flags are warnings; they do not remove the row. */
+export interface HhImportOutputRow {
+  row: number;
+  orderId: string;
+  po: string;
+  oddOrderId: boolean;
+  looksSwapped: boolean;
+  sharedOrderId: boolean;
+  sharedPo: boolean;
+}
+
+/** What Create batch will do with the pasted rows or file. Arrays may be sampled. Counts are complete. */
+export interface HhImportReview {
+  orderCount: number;
+  duplicateRowsSkipped: number;
+  incompleteRowsSkipped: number;
+  orderConflictCount: number;
+  poConflictCount: number;
+  oddOrderIdCount: number;
+  duplicates: HhImportDuplicate[];
+  incomplete: HhImportIncomplete[];
+  orderConflicts: HhImportOrderConflict[];
+  poConflicts: HhImportPoConflict[];
+  oddOrderIds: HhImportOddOrderId[];
+  rows: HhImportOutputRow[];
+}
+
 export interface HhImportParseOk {
   orders: HhImportOrderRow[];
   duplicateRowsSkipped: number;
   incompleteRowsSkipped: number;
+  review: HhImportReview;
 }
 
-export type HhImportParseResult = HhImportParseOk | { error: string };
+export type HhImportParseResult = HhImportParseOk | { error: string; review?: HhImportReview };
+
+const HH_IMPORT_REVIEW_SAMPLE = 8;
+
+interface HhImportKeptRow {
+  row: number;
+  orderId: string;
+  po: string;
+}
 
 export const HH_IMPORT_MAX_ORDERS = 500;
 export const HH_IMPORT_MAX_ROWS = 5000;
@@ -185,7 +254,7 @@ export function parseHhImportCsv(text: string): HhImportParseResult {
   return parseHhImportText(text);
 }
 
-export function parseHhImportMatrix(rows: string[][]): HhImportParseResult {
+export function parseHhImportMatrix(rows: string[][], rowNumbers?: number[]): HhImportParseResult {
   let firstIndex = -1;
   for (let i = 0; i < rows.length; i += 1) {
     if (rows[i].some((cell) => cell.trim() !== '')) {
@@ -226,34 +295,192 @@ export function parseHhImportMatrix(rows: string[][]): HhImportParseResult {
     return { error: `The spreadsheet has too many rows (max ${HH_IMPORT_MAX_ROWS}).` };
   }
 
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const orders: HhImportOrderRow[] = [];
-  let duplicateRowsSkipped = 0;
-  let incompleteRowsSkipped = 0;
+  const kept: HhImportKeptRow[] = [];
+  const duplicates: HhImportDuplicate[] = [];
+  const incomplete: HhImportIncomplete[] = [];
+  const dataStart = hasOrderHeader && hasPoHeader ? firstIndex + 1 : firstIndex;
 
-  for (const row of dataRows) {
+  for (let index = 0; index < dataRows.length; index += 1) {
+    const row = dataRows[index];
+    const rowNumber = rowNumbers?.[dataStart + index] ?? dataStart + index + 1;
     const orderId = (row[orderIdx] ?? '').trim();
     const po = (row[poIdx] ?? '').trim();
     if (!orderId && !po) continue;
     if (!orderId || !po) {
-      incompleteRowsSkipped += 1;
+      incomplete.push({
+        row: rowNumber,
+        orderId,
+        po,
+        missing: orderId ? 'po' : 'orderId',
+      });
       continue;
     }
     const key = `${orderId}\u0000${po}`;
-    if (seen.has(key)) {
-      duplicateRowsSkipped += 1;
+    const keptRow = seen.get(key);
+    if (keptRow != null) {
+      duplicates.push({ keptRow, skippedRow: rowNumber, orderId, po });
       continue;
     }
-    seen.add(key);
+    seen.set(key, rowNumber);
     orders.push({ orderId, po });
+    kept.push({ row: rowNumber, orderId, po });
     if (orders.length > HH_IMPORT_MAX_ORDERS) {
       return { error: `Too many unique orders (max ${HH_IMPORT_MAX_ORDERS}).` };
     }
   }
 
+  const review = buildHhImportReview(kept, duplicates, incomplete);
+
   if (orders.length === 0) {
-    return { error: 'No Order ID / PO Number rows found.' };
+    const dropped = incomplete.length;
+    return {
+      error: dropped
+        ? `No complete rows. ${dropped} ${dropped === 1 ? 'row is' : 'rows are'} missing an Order ID or a PO.`
+        : 'No Order ID / PO Number rows found.',
+      review,
+    };
   }
 
-  return { orders, duplicateRowsSkipped, incompleteRowsSkipped };
+  return {
+    orders,
+    duplicateRowsSkipped: duplicates.length,
+    incompleteRowsSkipped: incomplete.length,
+    review,
+  };
+}
+
+function buildHhImportReview(
+  kept: HhImportKeptRow[],
+  duplicates: HhImportDuplicate[],
+  incomplete: HhImportIncomplete[],
+): HhImportReview {
+  const orderGroups = new Map<string, HhImportKeptRow[]>();
+  const poGroups = new Map<string, HhImportKeptRow[]>();
+  for (const item of kept) {
+    const orderGroup = orderGroups.get(item.orderId);
+    if (orderGroup) orderGroup.push(item);
+    else orderGroups.set(item.orderId, [item]);
+    const poGroup = poGroups.get(item.po);
+    if (poGroup) poGroup.push(item);
+    else poGroups.set(item.po, [item]);
+  }
+
+  const orderConflicts: HhImportOrderConflict[] = [];
+  for (const [orderId, group] of orderGroups) {
+    if (group.length < 2) continue;
+    orderConflicts.push({
+      orderId,
+      rowCount: group.length,
+      rows: group.map((item) => ({ row: item.row, po: item.po })),
+    });
+  }
+  orderConflicts.sort((a, b) => a.rows[0].row - b.rows[0].row);
+
+  const poConflicts: HhImportPoConflict[] = [];
+  for (const [po, group] of poGroups) {
+    if (group.length < 2) continue;
+    poConflicts.push({
+      po,
+      rowCount: group.length,
+      rows: group.map((item) => ({ row: item.row, orderId: item.orderId })),
+    });
+  }
+  poConflicts.sort((a, b) => a.rows[0].row - b.rows[0].row);
+
+  const oddOrderIds = kept
+    .filter((item) => !looksLikeAmazonOrderId(item.orderId))
+    .map((item) => ({
+      row: item.row,
+      orderId: item.orderId,
+      po: item.po,
+      looksSwapped: looksLikeAmazonOrderId(item.po),
+    }))
+    .sort((a, b) => Number(b.looksSwapped) - Number(a.looksSwapped) || a.row - b.row);
+
+  const conflictOrderIds = new Set(orderConflicts.map((conflict) => conflict.orderId));
+  const conflictPos = new Set(poConflicts.map((conflict) => conflict.po));
+  const rows: HhImportOutputRow[] = kept.map((item) => {
+    const oddOrderId = !looksLikeAmazonOrderId(item.orderId);
+    return {
+      row: item.row,
+      orderId: item.orderId,
+      po: item.po,
+      oddOrderId,
+      looksSwapped: oddOrderId && looksLikeAmazonOrderId(item.po),
+      sharedOrderId: conflictOrderIds.has(item.orderId),
+      sharedPo: conflictPos.has(item.po),
+    };
+  });
+
+  return {
+    orderCount: kept.length,
+    duplicateRowsSkipped: duplicates.length,
+    incompleteRowsSkipped: incomplete.length,
+    orderConflictCount: orderConflicts.length,
+    poConflictCount: poConflicts.length,
+    oddOrderIdCount: oddOrderIds.length,
+    duplicates,
+    incomplete,
+    orderConflicts,
+    poConflicts,
+    oddOrderIds,
+    rows,
+  };
+}
+
+const HH_IMPORT_FIELD_MAX = 120;
+
+/** Accepts the rows the user kept in the pre-check table. */
+export function parseReviewedOrders(input: unknown): HhImportParseResult {
+  if (!Array.isArray(input)) return { error: 'Choose at least one order.' };
+
+  const seen = new Set<string>();
+  const orders: HhImportOrderRow[] = [];
+  const kept: HhImportKeptRow[] = [];
+
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const orderId = typeof record.orderId === 'string' ? record.orderId.trim().slice(0, HH_IMPORT_FIELD_MAX) : '';
+    const po = typeof record.po === 'string' ? record.po.trim().slice(0, HH_IMPORT_FIELD_MAX) : '';
+    if (!orderId || !po) continue;
+    const key = `${orderId}\u0000${po}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    orders.push({ orderId, po });
+    kept.push({ row: kept.length + 1, orderId, po });
+    if (orders.length > HH_IMPORT_MAX_ORDERS) {
+      return { error: `Too many unique orders (max ${HH_IMPORT_MAX_ORDERS}).` };
+    }
+  }
+
+  if (orders.length === 0) return { error: 'Choose at least one order.' };
+
+  return {
+    orders,
+    duplicateRowsSkipped: 0,
+    incompleteRowsSkipped: 0,
+    review: buildHhImportReview(kept, [], []),
+  };
+}
+
+/** Keeps counts exact and shortens lists for the import dialog. */
+export function sampleHhImportReview(review: HhImportReview): HhImportReview {
+  return {
+    ...review,
+    duplicates: review.duplicates.slice(0, HH_IMPORT_REVIEW_SAMPLE),
+    incomplete: review.incomplete.slice(0, HH_IMPORT_REVIEW_SAMPLE),
+    orderConflicts: review.orderConflicts.slice(0, HH_IMPORT_REVIEW_SAMPLE).map((conflict) => ({
+      ...conflict,
+      rows: conflict.rows.slice(0, HH_IMPORT_REVIEW_SAMPLE),
+    })),
+    poConflicts: review.poConflicts.slice(0, HH_IMPORT_REVIEW_SAMPLE).map((conflict) => ({
+      ...conflict,
+      rows: conflict.rows.slice(0, HH_IMPORT_REVIEW_SAMPLE),
+    })),
+    oddOrderIds: review.oddOrderIds.slice(0, HH_IMPORT_REVIEW_SAMPLE),
+    rows: review.rows,
+  };
 }

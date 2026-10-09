@@ -14,13 +14,15 @@ export async function parseHhImportXlsx(buffer: Buffer): Promise<HhImportParseRe
 
   const columnCount = Math.max(sheet.columnCount, 2);
   const rows: string[][] = [];
+  const rowNumbers: number[] = [];
   sheet.eachRow((row) => {
     const cells: string[] = [];
     for (let col = 1; col <= columnCount; col += 1) {
       cells.push(cellToString(row.getCell(col).value));
     }
     rows.push(cells);
+    rowNumbers.push(row.number);
   });
 
-  return parseHhImportMatrix(rows);
+  return parseHhImportMatrix(rows, rowNumbers);
 }

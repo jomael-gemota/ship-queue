@@ -5,13 +5,23 @@ import HHOrderGroup, {
   rollupHhDetailsStatus,
 } from '../models/HHOrderGroup';
 import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
-import { hhBrandId } from '../lib/hhBrand';
-import { fetchHhB2bDocument, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import { hhBrandId, isOrderDetailsDraftId } from '../lib/hhBrand';
+import { fetchHhB2bDocument, isHhB2bRequestTimeout, looksLikeMongoObjectId } from '../lib/hhB2bHellyHansen';
+import {
+  alignResolvedThorogoodSnapshots,
+  fetchThorogoodOrder,
+  isEnvoyOrderCode,
+  snapshotFromThorogoodOrder,
+} from '../lib/hhB2bThorogood';
+import { thorogoodPortalSku } from '../lib/hhThorogoodSku';
+import { hhCartItems } from '../lib/hhLineItems';
 import {
   compareSnapshots,
   issuesFromCompareRows,
   snapshotFromB2bDocument,
   snapshotFromChild,
+  snapshotFromChildCartSkus,
+  snapshotRespectingCartSkus,
   type HhCompareRow,
   type HhVerifyIssue,
   type HhVerifySnapshot,
@@ -27,6 +37,34 @@ interface HhCartVerifyJob {
 
 const queue: HhCartVerifyJob[] = [];
 let draining = false;
+let verifyCurrentGroupId: string | null = null;
+let verifyCurrentOrderId: string | null = null;
+let lastError: string | null = null;
+let sessionStopped = false;
+
+function cartSkuOverrides(child: IHHChildOrder): Set<string> {
+  return new Set(
+    hhCartItems(child.items)
+      .map((item) => (item.cartSku ?? '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+}
+
+function thorogoodDetailsSnapshot(child: IHHChildOrder, initials: readonly string[]): HhVerifySnapshot {
+  const base = snapshotFromChild(child);
+  const qtyBySku = new Map<string, number>();
+  for (const item of hhCartItems(child.items)) {
+    const sku = (item.cartSku ?? '').trim() || thorogoodPortalSku(item.sku ?? '', initials);
+    if (!sku || item.quantity <= 0) continue;
+    qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
+  }
+  return {
+    ...base,
+    items: [...qtyBySku.entries()]
+      .map(([sku, quantity]) => ({ sku, quantity }))
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+  };
+}
 
 function jobLabel(job: HhCartVerifyJob): string {
   return job.childId ? `${job.groupId} order ${job.childId}` : job.groupId;
@@ -57,6 +95,7 @@ export function childCanVerify(child: IHHChildOrder): boolean {
   if (child.detailsStatus !== 'synced') return false;
   if (child.cartStatus === 'none' || child.cartStatus === 'placed') return false;
   const documentId = (child.b2bDraftId ?? '').trim();
+  if (isOrderDetailsDraftId(documentId) || isEnvoyOrderCode(documentId)) return true;
   return Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
 }
 
@@ -106,6 +145,32 @@ async function persistVerification(
   });
 }
 
+function sessionIssue(message: string, expected: string): HhVerifyIssue {
+  return {
+    field: 'document',
+    label: 'B2B draft',
+    expected,
+    actual: message.slice(0, 240),
+  };
+}
+
+/** Session is dead, so mark the orders we will not call out for and stop those calls. */
+async function stopVerifyForSession(
+  groupId: string,
+  children: IHHChildOrder[],
+  message: string,
+  expected: string
+): Promise<void> {
+  sessionStopped = true;
+  lastError = message.slice(0, 1000);
+  const issue = sessionIssue(message, expected);
+  for (const child of children) {
+    verifyCurrentOrderId = child.orderId;
+    await persistVerification(groupId, String(child._id), 'review', [issue]);
+    console.warn(`${LOG} ${child.orderId} ${message}`);
+  }
+}
+
 export async function verifyHhCart(groupId: string, childId?: string): Promise<void> {
   const group = await HHOrderGroup.findById(groupId);
   if (!group) return;
@@ -114,6 +179,62 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     childCanVerify
   );
   if (targets.length === 0) return;
+  sessionStopped = false;
+
+  const liveTargets: IHHChildOrder[] = [];
+  const envoyTargets: IHHChildOrder[] = [];
+  for (const child of targets) {
+    verifyCurrentOrderId = child.orderId;
+    if (isOrderDetailsDraftId(child.b2bDraftId)) {
+      const snapshot = snapshotFromChild(child);
+      const rows = compareSnapshots(snapshot, snapshot);
+      await persistVerification(groupId, String(child._id), 'ready', [], rows);
+      console.log(`${LOG} ${child.orderId} → ready (order details)`);
+      continue;
+    }
+    if (isEnvoyOrderCode(child.b2bDraftId)) {
+      envoyTargets.push(child);
+      continue;
+    }
+    liveTargets.push(child);
+  }
+
+  let envoyInitials: string[] = [];
+  if (envoyTargets.length > 0) {
+    try {
+      envoyInitials = (await loadHhB2bConfig('thorogood')).skuInitials;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await stopVerifyForSession(groupId, envoyTargets, message, 'Live Thorogood draft');
+    }
+  }
+  for (const child of envoyTargets) {
+    if (sessionStopped) break;
+    verifyCurrentOrderId = child.orderId;
+    try {
+      const compared = await compareEnvoyDraft(child, envoyInitials);
+      const nextStatus = compared.issues.length === 0 ? 'ready' : 'review';
+      await persistVerification(groupId, String(child._id), nextStatus, compared.issues, compared.rows);
+      console.log(
+        `${LOG} ${child.orderId} → ${nextStatus}${compared.issues.length > 0 ? ` (${compared.issues.map((issue) => issue.label).join(', ')})` : ''}`
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof HhB2bAuthError) {
+        const start = envoyTargets.indexOf(child);
+        await stopVerifyForSession(groupId, envoyTargets.slice(Math.max(0, start)), message, 'Live Thorogood draft');
+        break;
+      }
+      await persistVerification(groupId, String(child._id), 'review', [
+        sessionIssue(message, 'Live Thorogood draft'),
+      ]);
+      console.warn(`${LOG} ${child.orderId} ${message}`);
+    }
+  }
+  if (liveTargets.length === 0) {
+    if (!sessionStopped) lastError = null;
+    return;
+  }
 
   let config;
   let cookie;
@@ -121,18 +242,26 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     config = await loadHhB2bConfig(hhBrandId(group.brand));
     cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   } catch (err) {
-    if (err instanceof HhB2bAuthError) {
-      console.warn(`${LOG} ${err.message}`);
-      return;
-    }
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    await stopVerifyForSession(groupId, liveTargets, message, 'Live Helly Hansen cart');
+    return;
   }
 
-  for (const child of targets) {
+  let readTimedOut = false;
+  for (const child of liveTargets) {
+    verifyCurrentOrderId = child.orderId;
     const documentId = (child.b2bDraftId ?? '').trim();
     try {
       const document = await fetchHhB2bDocument(config, cookie, documentId);
-      const rows = compareSnapshots(snapshotFromChild(child), snapshotFromB2bDocument(document));
+      const rows = compareSnapshots(
+        snapshotFromChildCartSkus(child, config.skuPrefixes, config.skuSuffixes),
+        snapshotRespectingCartSkus(
+          snapshotFromB2bDocument(document),
+          cartSkuOverrides(child),
+          config.skuPrefixes,
+          config.skuSuffixes
+        )
+      );
       const issues = issuesFromCompareRows(rows);
       const nextStatus = issues.length === 0 ? 'ready' : 'review';
       await persistVerification(groupId, String(child._id), nextStatus, issues, rows);
@@ -142,21 +271,23 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof HhB2bAuthError) {
-        console.warn(`${LOG} ${child.orderId} ${message}`);
+        const start = liveTargets.indexOf(child);
+        await stopVerifyForSession(groupId, liveTargets.slice(Math.max(0, start)), message, 'Live Helly Hansen cart');
         return;
       }
-      const fetchIssues: HhVerifyIssue[] = [
-        {
-          field: 'document',
-          label: 'B2B draft',
-          expected: 'Live Helly Hansen cart',
-          actual: message.slice(0, 240),
-        },
-      ];
-      await persistVerification(groupId, String(child._id), 'review', fetchIssues);
+      if (isHhB2bRequestTimeout(err)) {
+        readTimedOut = true;
+        lastError = `${child.orderId}: B2B timed out reading the cart. Verification was left unchanged.`.slice(0, 1000);
+        console.warn(`${LOG} ${child.orderId} ${message} — left verification unchanged`);
+        continue;
+      }
+      await persistVerification(groupId, String(child._id), 'review', [
+        sessionIssue(message, 'Live Helly Hansen cart'),
+      ]);
       console.warn(`${LOG} ${child.orderId} ${message}`);
     }
   }
+  if (!sessionStopped && !readTimedOut) lastError = null;
 }
 
 async function drainQueue(): Promise<void> {
@@ -166,6 +297,8 @@ async function drainQueue(): Promise<void> {
     while (queue.length > 0) {
       const job = queue.shift();
       if (!job) break;
+      verifyCurrentGroupId = job.groupId;
+      verifyCurrentOrderId = null;
       try {
         await verifyHhCart(job.groupId, job.childId);
       } catch (err) {
@@ -173,6 +306,8 @@ async function drainQueue(): Promise<void> {
       }
     }
   } finally {
+    verifyCurrentGroupId = null;
+    verifyCurrentOrderId = null;
     draining = false;
     if (queue.length > 0) void drainQueue();
   }
@@ -203,6 +338,22 @@ export function getHhCartVerifyQueued(): number {
   return queue.length + (draining ? 1 : 0);
 }
 
+export function getHhCartVerifyRuntime(): {
+  running: boolean;
+  currentGroupId: string | null;
+  currentOrderId: string | null;
+  queuedGroupIds: string[];
+  lastError: string | null;
+} {
+  return {
+    running: draining,
+    currentGroupId: verifyCurrentGroupId,
+    currentOrderId: verifyCurrentOrderId,
+    queuedGroupIds: [...new Set(queue.map((job) => job.groupId))],
+    lastError,
+  };
+}
+
 export interface HhLiveCompareOrder {
   id: string;
   orderId: string;
@@ -220,6 +371,23 @@ function isoDate(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
   return String(value);
+}
+
+async function compareEnvoyDraft(
+  child: IHHChildOrder,
+  initials: readonly string[]
+): Promise<{
+  rows: HhCompareRow[];
+  issues: HhVerifyIssue[];
+  cart: HhVerifySnapshot;
+}> {
+  const order = await fetchThorogoodOrder((child.b2bDraftId ?? '').trim());
+  const aligned = alignResolvedThorogoodSnapshots(
+    thorogoodDetailsSnapshot(child, initials),
+    snapshotFromThorogoodOrder(order)
+  );
+  const rows = compareSnapshots(aligned.details, aligned.cart);
+  return { rows, issues: issuesFromCompareRows(rows), cart: aligned.cart };
 }
 
 function emptySnapshot(): HhVerifySnapshot {
@@ -254,17 +422,100 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
   let cookie;
   const needsLive = targets.some((child) => {
     const documentId = (child.b2bDraftId ?? '').trim();
+    if (isOrderDetailsDraftId(documentId) || isEnvoyOrderCode(documentId)) return false;
     return Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
   });
   if (needsLive) {
     config = await loadHhB2bConfig(hhBrandId(group.brand));
     cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   }
+  const needsEnvoy = targets.some((child) => isEnvoyOrderCode(child.b2bDraftId));
+  const envoyInitials = needsEnvoy ? (await loadHhB2bConfig('thorogood')).skuInitials : [];
 
   const results: HhLiveCompareOrder[] = [];
   for (const child of targets) {
     const details = snapshotFromChild(child);
     const documentId = (child.b2bDraftId ?? '').trim();
+    if (isOrderDetailsDraftId(documentId)) {
+      const rows = compareSnapshots(details, details);
+      const issues = issuesFromCompareRows(rows);
+      let cartStatus = child.cartStatus;
+      let verifiedAt = isoDate(child.verifiedAt);
+      if (childCanVerify(child)) {
+        const saved = await persistVerification(groupId, String(child._id), 'ready', issues, rows);
+        if (saved) {
+          cartStatus = saved.cartStatus;
+          verifiedAt = isoDate(saved.verifiedAt);
+        }
+      }
+      results.push({
+        id: String(child._id),
+        orderId: child.orderId,
+        cartStatus,
+        rows,
+        details,
+        cart: details,
+        canPlace: false,
+        verifiedAt,
+      });
+      continue;
+    }
+    if (isEnvoyOrderCode(documentId)) {
+      try {
+        const compared = await compareEnvoyDraft(child, envoyInitials);
+        const matched = compared.issues.length === 0;
+        let cartStatus = child.cartStatus;
+        let verifiedAt = isoDate(child.verifiedAt);
+        if (childCanVerify(child)) {
+          const saved = await persistVerification(
+            groupId,
+            String(child._id),
+            matched ? 'ready' : 'review',
+            compared.issues,
+            compared.rows
+          );
+          if (saved) {
+            cartStatus = saved.cartStatus;
+            verifiedAt = isoDate(saved.verifiedAt);
+          }
+        }
+        results.push({
+          id: String(child._id),
+          orderId: child.orderId,
+          cartStatus,
+          rows: compared.rows,
+          details,
+          cart: compared.cart,
+          canPlace: false,
+          verifiedAt,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (err instanceof HhB2bAuthError) throw err;
+        if (childCanVerify(child)) {
+          await persistVerification(groupId, String(child._id), 'review', [
+            {
+              field: 'document',
+              label: 'B2B draft',
+              expected: 'Live Thorogood draft',
+              actual: message.slice(0, 240),
+            },
+          ]);
+        }
+        results.push({
+          id: String(child._id),
+          orderId: child.orderId,
+          cartStatus: childCanVerify(child) ? 'review' : child.cartStatus,
+          error: message.slice(0, 240),
+          rows: [],
+          details,
+          cart: emptySnapshot(),
+          canPlace: false,
+          verifiedAt: new Date().toISOString(),
+        });
+      }
+      continue;
+    }
     const hasLiveId = Boolean(documentId) && looksLikeMongoObjectId(documentId) && !documentId.startsWith('local:');
 
     if (!hasLiveId) {
@@ -299,8 +550,13 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
 
     try {
       const document = await fetchHhB2bDocument(config, cookie, documentId);
-      const cart = snapshotFromB2bDocument(document);
-      const rows = compareSnapshots(details, cart);
+      const cart = snapshotRespectingCartSkus(
+        snapshotFromB2bDocument(document),
+        cartSkuOverrides(child),
+        config.skuPrefixes,
+        config.skuSuffixes
+      );
+      const rows = compareSnapshots(snapshotFromChildCartSkus(child, config.skuPrefixes, config.skuSuffixes), cart);
       const issues = issuesFromCompareRows(rows);
       const matched = issues.length === 0;
       let cartStatus = child.cartStatus;
@@ -334,6 +590,21 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof HhB2bAuthError) {
         throw err;
+      }
+      if (isHhB2bRequestTimeout(err)) {
+        console.warn(`${LOG} ${child.orderId} ${message} — left verification unchanged`);
+        results.push({
+          id: String(child._id),
+          orderId: child.orderId,
+          cartStatus: child.cartStatus,
+          error: message.slice(0, 240),
+          rows: [],
+          details,
+          cart: emptySnapshot(),
+          canPlace: false,
+          verifiedAt: isoDate(child.verifiedAt),
+        });
+        continue;
       }
       if (childCanVerify(child)) {
         await persistVerification(groupId, String(child._id), 'review', [

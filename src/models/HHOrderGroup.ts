@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { HH_BRAND_IDS, HH_DEFAULT_BRAND, type HHBrandId } from '../lib/hhBrand';
+import { HH_SKU_EXCLUDE_NOTE_PREFIX, releaseHhSkuRuleExclusions } from '../lib/hhSkuExclude';
 
 export const HH_DETAILS_STATUSES = ['pending', 'synced', 'failed'] as const;
 export type HHDetailsStatus = (typeof HH_DETAILS_STATUSES)[number];
@@ -51,6 +52,8 @@ export interface IHHLineItem {
   tax: number;
   excluded: boolean;
   excludeNote: string;
+  /** SKU sent to the cart when set. Empty uses the automatic cleaned SKU. */
+  cartSku: string;
 }
 
 export interface IHHChildOrder {
@@ -68,6 +71,20 @@ export interface IHHChildOrder {
   postalCode: string;
   country: string;
   notes: string;
+  /** Helly Hansen Ship Via on the current draft. `-` is Default, `MSB` is USPS Priority. */
+  shipVia: string;
+  /** Why this address would use USPS Priority. Empty when Default is automatic. */
+  shipViaReason: string;
+  /** `default` or `usps` when an operator overrode the automatic choice. */
+  shipViaOverride: '' | 'default' | 'usps';
+  /** PO was already written to Amazon Seller Notes, or the note already ended with the PO. */
+  sellerNotesStamped: boolean;
+  /** Result of the last Seller Notes attempt. Empty until a sync tries. */
+  sellerNotesResult: '' | 'updated' | 'already' | 'failed';
+  /** Why the last Seller Notes write failed. Empty after a success or a skip. */
+  sellerNotesError: string;
+  /** Why the last Seller Central sync failed. Empty after a successful sync. */
+  detailsError: string;
   detailsStatus: HHDetailsStatus;
   cartStatus: HHCartStatus;
   b2bDraftId: string;
@@ -104,6 +121,7 @@ const LineItemSchema = new Schema<IHHLineItem>(
     tax: { type: Number, required: true, min: 0, default: 0 },
     excluded: { type: Boolean, default: false },
     excludeNote: { type: String, default: '', trim: true },
+    cartSku: { type: String, default: '', trim: true },
   },
   { _id: true }
 );
@@ -123,6 +141,13 @@ const ChildOrderSchema = new Schema<IHHChildOrder>(
     postalCode: { type: String, default: '', trim: true },
     country: { type: String, default: 'US', trim: true },
     notes: { type: String, default: '', trim: true },
+    shipVia: { type: String, default: '' },
+    shipViaReason: { type: String, default: '' },
+    shipViaOverride: { type: String, default: '' },
+    sellerNotesStamped: { type: Boolean, default: false },
+    sellerNotesResult: { type: String, enum: ['', 'updated', 'already', 'failed'], default: '' },
+    sellerNotesError: { type: String, default: '', trim: true },
+    detailsError: { type: String, default: '', trim: true },
     detailsStatus: {
       type: String,
       enum: HH_DETAILS_STATUSES,
@@ -313,6 +338,30 @@ export async function migrateLocalHhCartDrafts(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[hh] Cleared ${updated} group${updated === 1 ? '' : 's'} of local cart placeholders`);
+  }
+}
+
+/** Older builds marked DUP_ lines off the cart. Those strings are now removed from the SKU instead. */
+export async function migrateHhCartRuleExclusions(): Promise<void> {
+  const groups = await HHOrderGroup.find({
+    'children.items.excludeNote': new RegExp(`^${HH_SKU_EXCLUDE_NOTE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+  });
+  let updated = 0;
+
+  for (const group of groups) {
+    let changed = false;
+    for (const child of group.children) {
+      if (child.cartStatus === 'placed') continue;
+      if (releaseHhSkuRuleExclusions(child.items)) changed = true;
+    }
+    if (!changed) continue;
+    group.markModified('children');
+    await group.save();
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    console.log(`[hh] Cleared cart-string flags on ${updated} batch${updated === 1 ? '' : 'es'}`);
   }
 }
 

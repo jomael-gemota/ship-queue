@@ -4,15 +4,20 @@ import { HHActionRow, HHBatchProgress, HHBatchProgressLabels, HHConfirmModal, HH
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { useHHList } from '../context/HHListContext'
 import { HHNotesField } from '../components/hh/HHNotesField'
-import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhPlaceActionTitle, hhPlaceableOrders } from '../lib/hhSportswear'
+import { Tooltip } from '../components/Tooltip'
+import { deleteHHGroup, formatCreatedAt, hhDraftableOrders, hhFilterSummary, hhGroupAllPlaced, hhGroupDetailsTitle, hhGroupDraftTitle, hhGroupHasPlaced, hhImportSource, hhPlaceActionTitle, hhPlaceableOrders, hhProgressActivity, shortHhBatchId } from '../lib/hhSportswear'
+import { hhUsesOrderDetailsDraft } from '../lib/hhBrand'
 import {
+  ClipboardIcon,
   ClockIcon,
   DeleteBatchButton,
   EyeIcon,
   HeaderLabel,
+  IdIcon,
   StatusIcon,
   Td,
   Th,
+  UploaderAvatar,
   UserIcon,
 } from '../components/labels/labelUi'
 
@@ -20,6 +25,31 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 const paginationButtonClass =
   'p-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-slate-900 dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+
+function FileSourceIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3v5h5" />
+    </svg>
+  )
+}
+
+function BatchSourceMark({ sourceFileName }: { sourceFileName: string }) {
+  const source = hhImportSource(sourceFileName)
+  const pasted = source.kind === 'paste'
+  const label = pasted ? 'Pasted orders' : `Uploaded file: ${source.label}`
+  return (
+    <Tooltip content={label}>
+      <span
+        className={`inline-flex shrink-0 ${pasted ? 'text-sky-600 dark:text-sky-300' : 'text-amber-600 dark:text-amber-400'}`}
+        aria-label={label}
+      >
+        {pasted ? <ClipboardIcon className="h-3.5 w-3.5" /> : <FileSourceIcon className="h-3.5 w-3.5" />}
+      </span>
+    </Tooltip>
+  )
+}
 
 function NotesIcon({ className = '' }: { className?: string }) {
   return (
@@ -61,7 +91,9 @@ export default function HHSportswear() {
     placeOrderEnabled,
     brand,
     brandPath,
+    syncStatus,
   } = useHHList()
+  const orderDetails = hhUsesOrderDetailsDraft(brand)
   const [pendingAction, setPendingAction] = useState<HHPendingAction | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -158,6 +190,9 @@ export default function HHSportswear() {
           <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]">
             <tr className="text-left">
               <Th>
+                <HeaderLabel icon={<IdIcon className="h-3.5 w-3.5" />} text="Batch ID" />
+              </Th>
+              <Th>
                 <HeaderLabel icon={<ClockIcon className="h-3.5 w-3.5" />} text="Date Created" />
               </Th>
               <Th>
@@ -181,13 +216,13 @@ export default function HHSportswear() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {loadState === 'loading' ? (
               <tr>
-                <Td colSpan={6} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   Loading groups…
                 </Td>
               </tr>
             ) : loadState === 'error' ? (
               <tr>
-                <Td colSpan={6} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
                   <p>{loadError || 'Failed to load groups.'}</p>
                   <button
                     type="button"
@@ -200,7 +235,7 @@ export default function HHSportswear() {
               </tr>
             ) : paginated.length === 0 ? (
               <tr>
-                <Td colSpan={6} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
                   {selectedDetailsStatus || selectedCartStatus
                     ? searchInput.trim()
                       ? `No groups match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
@@ -225,29 +260,41 @@ export default function HHSportswear() {
                     exiting={exitingId === group.id}
                     onExitEnd={() => finishExit(group.id)}
                   >
-                    <Td compact className="whitespace-nowrap text-slate-600 dark:text-[var(--text-100)]">
+                    <Td compact className="font-medium text-slate-800 dark:text-[var(--text-100)]">
                       <span className="inline-flex items-center gap-1.5">
-                        {formatCreatedAt(group.createdAt)}
+                        <BatchSourceMark sourceFileName={group.sourceFileName} />
+                        <span className="font-mono whitespace-nowrap" title={group.id}>
+                          {shortHhBatchId(group.id)}
+                        </span>
                         <HHCopyIdButton value={group.id} title="Copy batch ID" />
                       </span>
                     </Td>
+                    <Td compact className="whitespace-nowrap text-slate-600 dark:text-[var(--text-100)]">
+                      {formatCreatedAt(group.createdAt)}
+                    </Td>
                     <Td compact className="max-w-[260px]">
-                      <p className="truncate font-medium text-slate-800 dark:text-[var(--text-100)]">
-                        {group.createdByName}
-                      </p>
-                      <p className="truncate text-xs text-slate-500 dark:text-[var(--text-200)]">
-                        {group.createdByEmail}
-                      </p>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <UploaderAvatar
+                          email={group.createdByEmail}
+                          name={group.createdByName}
+                          avatar={group.createdByAvatar}
+                          size="md"
+                        />
+                        <span className="min-w-0">
+                          <p className="truncate font-medium text-slate-800 dark:text-[var(--text-100)]">
+                            {group.createdByName}
+                          </p>
+                          <p className="truncate text-xs text-slate-500 dark:text-[var(--text-200)]" title={group.createdByEmail}>
+                            {group.createdByEmail}
+                          </p>
+                        </span>
+                      </span>
                     </Td>
                     <Td compact className="max-w-[22rem]">
-                      <HHNotesField
-                        groupId={group.id}
-                        notes={group.notes}
-                        sourceFileName={group.sourceFileName}
-                      />
+                      <HHNotesField groupId={group.id} notes={group.notes} />
                     </Td>
                     <Td compact className="text-center">
-                      <HHBatchProgress orders={group.children} />
+                      <HHBatchProgress orders={group.children} activity={hhProgressActivity(syncStatus, group.id)} />
                     </Td>
                     <Td compact>
                       <Link
@@ -271,12 +318,12 @@ export default function HHSportswear() {
                       />
                       <HHRedraftButton
                         size="sm"
-                        title={hhGroupDraftTitle(group.children)}
+                        title={hhGroupDraftTitle(group.children, orderDetails)}
                         disabled={mutateLocked || !canDraft}
                         busy={cartDraftBusyId === group.id}
                         onClick={() => setPendingAction({ type: 'redraft', target: 'group', group })}
                       />
-                      {hhPlaceableOrders(group.children).length > 0 ? (
+                      {!orderDetails && hhPlaceableOrders(group.children).length > 0 ? (
                         <HHPlaceButton
                           size="sm"
                           title={hhPlaceActionTitle(placeOrderEnabled)}
@@ -340,7 +387,10 @@ export default function HHSportswear() {
 
             const request =
               pending.type === 'resync'
-                ? rerunDetails(groupId, undefined, { draftCart: options?.draftCart !== false })
+                ? rerunDetails(groupId, undefined, {
+                    draftCart: options?.draftCart !== false,
+                    stampSellerNotes: options?.stampSellerNotes !== false,
+                  })
                 : pending.type === 'place'
                   ? placeOrders(groupId)
                   : rerunCartDraft(groupId)

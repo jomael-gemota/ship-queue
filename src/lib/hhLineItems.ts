@@ -11,17 +11,19 @@ export function hhExclusionKey(item: { sku?: string; asin?: string }): string {
 }
 
 export function mergeHhItemExclusions<T extends { sku: string; asin?: string }>(
-  existing: Array<{ sku?: string; asin?: string; excluded?: boolean; excludeNote?: string }>,
+  existing: Array<{ sku?: string; asin?: string; excluded?: boolean; excludeNote?: string; cartSku?: string }>,
   incoming: T[]
-): Array<T & { excluded: boolean; excludeNote: string }> {
-  const prior = new Map<string, { excluded: boolean; excludeNote: string }>();
+): Array<T & { excluded: boolean; excludeNote: string; cartSku: string }> {
+  const prior = new Map<string, { excluded: boolean; excludeNote: string; cartSku: string }>();
   for (const item of existing) {
     const key = hhExclusionKey(item);
     if (!key) continue;
-    if (item.excluded || (item.excludeNote ?? '').trim()) {
+    const cartSku = (item.cartSku ?? '').trim();
+    if (item.excluded || (item.excludeNote ?? '').trim() || cartSku) {
       prior.set(key, {
         excluded: Boolean(item.excluded),
         excludeNote: (item.excludeNote ?? '').trim(),
+        cartSku,
       });
     }
   }
@@ -31,6 +33,7 @@ export function mergeHhItemExclusions<T extends { sku: string; asin?: string }>(
       ...item,
       excluded: saved?.excluded ?? false,
       excludeNote: saved?.excludeNote ?? '',
+      cartSku: saved?.cartSku ?? '',
     };
   });
 }

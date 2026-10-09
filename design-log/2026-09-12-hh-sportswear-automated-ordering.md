@@ -1,7 +1,7 @@
 # HH Sportswear / Workwear automated ordering
 
 **Date:** 2026-09-12
-**Updated:** 2026-09-21
+**Updated:** 2026-10-01
 **Status:** accepted
 **Author:** collaborative
 
@@ -34,12 +34,14 @@ Place Order on go-ahead.
 Operators download Order ID / PO / B2B order # from a **batch export**
 (`.xlsx` from the orders-page ⋯ menu).
 
-Stamping the PO into Amazon **Seller Notes** is still an open question — confirm
-whether that manual step is still needed before automating it.
+The first time order details sync, the PO is written into Amazon **Seller Notes**.
+The note text comes from that same Get Order response (`order.sellerNotes`).
+If it is empty, the note becomes the PO. If it already has text, the PO is
+appended after a blank line. A later re-sync does not write Seller Notes again.
 
-Place Order is gated by Configurations (`placeOrderEnabled`, default off). The
-submit path is wired (`POST` the document with `do_submit: true`) but has not
-been proven against a live Helly Hansen order.
+Place Order is gated by Configurations (`placeOrderEnabled`, default off).
+Submit is `PUT /api/documents/:id` with the create-shaped cart and
+`do_submit: true`. Posting the raw draft document back returns an empty 404.
 
 ### User / system flow
 
@@ -144,12 +146,14 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
 - **Built:** live cross-check of the Helly Hansen document vs Seller Central
   details. Cart becomes **Ready** or **Review**. Place Order only includes
   Ready orders and live-rechecks first.
-- **Wired, not live-tested:** Place Order (`do_submit: true`) when
-  Configurations has Place Order on. Held until a real order can be used.
+- **Built:** Place Order when Configurations has Place Order on. The live
+  draft is saved with `PUT /api/documents/:id` and `do_submit: true`.
 - **Built:** batch export (`GET /api/hh-sportswear/:groupId/export` or
   `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
   **Reference Number** for every order in that batch. Empty references stay
   blank. Available from the orders-page ⋯ menu.
-- **Open:** whether PO still needs to be stamped into Amazon Seller Notes.
+- **Built:** on the first details sync, stamp the PO into Amazon Seller Notes
+  (`POST /orders-api/order/:orderId/seller-notes`), keeping any existing note
+  text. A re-sync of an order that was already synced does not write again.
 - Cookie Jar is the SC session source for fetches/cross-checks that need SC.
 - Small leftovers: notes-field blur race; cancelled Amazon orders still fill.
