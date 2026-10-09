@@ -47,9 +47,7 @@ function App() {
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
-                <Route element={<ProtectedRoute adminOnly />}>
-                  <Route path="/doc-tidy/usage" element={<DocTidyUsage />} />
-                </Route>
+                <Route path="/doc-tidy/usage" element={<DocTidyUsage />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
                 {HH_BRAND_IDS.map((id) => HH_BRANDS[id].path).map((path) => (
                   <Route key={path} path={path} element={<HHSportswearLayout />}>
