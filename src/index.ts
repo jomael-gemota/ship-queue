@@ -21,6 +21,7 @@ import {
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
 import { seedModelPrices } from './models/DocTidyModelPrice';
+import { startTrueUpScheduler } from './services/docTidyTrueUp.service';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
@@ -112,6 +113,7 @@ const start = async () => {
   // Same for Doc Tidy: capture matching mail as it arrives, not on demand.
   startDocTidyPoller();
   startHhB2bHealthScheduler();
+  startTrueUpScheduler();
 };
 
 start();

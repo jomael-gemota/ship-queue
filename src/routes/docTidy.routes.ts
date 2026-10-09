@@ -89,6 +89,7 @@ import {
   deletePrice,
   repriceUsage,
   getReconciliation,
+  trueUpUsage,
 } from '../controllers/docTidyUsage.controller';
 
 const router = Router();
@@ -193,6 +194,7 @@ router.get('/config/folders', requireAdmin, listConfigFolders);
 router.get('/usage/summary', requireAdmin, getUsageSummary);
 router.get('/usage/reconciliation', requireAdmin, getReconciliation);
 router.post('/usage/reprice', requireAdmin, repriceUsage);
+router.post('/usage/true-up', requireAdmin, trueUpUsage);
 router.get('/usage/prices', requireAdmin, listPrices);
 router.post('/usage/prices', requireAdmin, createPrice);
 router.put('/usage/prices/:id', requireAdmin, updatePrice);
