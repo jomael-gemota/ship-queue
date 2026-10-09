@@ -48,6 +48,11 @@ body {
   color: var(--text-100);
 }
 
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
 @keyframes shipqueue-indeterminate {
   0% {
     transform: translateX(-100%);
