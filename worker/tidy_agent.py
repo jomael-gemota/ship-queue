@@ -48,6 +48,10 @@ _stream_usage_enabled = os.environ.get("TIDY_STREAM_USAGE", "true").lower() not 
     "no",
 )
 
+# Routes requests that share the static system prompt to the same OpenAI cache.
+# Only sent when talking to OpenAI directly — other backends may reject it.
+PROMPT_CACHE_KEY = os.environ.get("TIDY_PROMPT_CACHE_KEY", "doc-tidy-extract-v1")
+
 SYSTEM_PROMPT = """You are Tidy, an intelligent document parser built by Doc Tidy.
 
 Your task:
@@ -188,6 +192,12 @@ def _make_hermes_client() -> tuple[AsyncOpenAI, str]:
         client_kwargs["base_url"] = base_url
 
     return AsyncOpenAI(**client_kwargs), model
+
+
+def _cache_kwargs() -> dict:
+    if os.environ.get("HERMES_BASE_URL"):
+        return {}
+    return {"prompt_cache_key": PROMPT_CACHE_KEY}
 
 
 async def _create_stream(client: AsyncOpenAI, **kwargs):
@@ -367,12 +377,15 @@ async def stream_tidy(
     in_thinking = False
     thinking_done = False
 
-    system_content = (
-        SYSTEM_PROMPT
-        + _build_vendor_format_anchor(vendor_sku_samples)
-        + _build_correction_rules(examples)
-    )
-    messages: list[dict] = [{"role": "system", "content": system_content}]
+    # SYSTEM_PROMPT must stay first and byte-identical across jobs: it is the
+    # cacheable prefix. Per-vendor guidance varies per document, so it follows in
+    # its own system message instead of being appended to the shared one.
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    vendor_guidance = (
+        _build_vendor_format_anchor(vendor_sku_samples) + _build_correction_rules(examples)
+    ).strip()
+    if vendor_guidance:
+        messages.append({"role": "system", "content": vendor_guidance})
     messages.extend(_build_example_messages(examples))
 
     # When we injected reference corrections, remind the model—right before the
@@ -412,6 +425,7 @@ async def stream_tidy(
                 model=model,
                 messages=messages,
                 max_tokens=MAX_TOKENS,
+                **_cache_kwargs(),
             )
 
             async for chunk in stream:
