@@ -21,6 +21,7 @@ import DocTidyParseJob from '../models/DocTidyParseJob';
 import DocTidyOrderImport, { type IMatchedInvoice } from '../models/DocTidyOrderImport';
 import DocTidyMessage from '../models/DocTidyMessage';
 import DocTidyRule from '../models/DocTidyRule';
+import { tableSearchScopes } from './docTidyTables.service';
 
 /* ─────────────────────────── field-extraction helpers ─────────────────── */
 
@@ -35,11 +36,12 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * The object itself, then its plain-object children (e.g. `totals`), so a
- * top-level key always outranks a grouped one.
+ * The object itself, then its plain-object children (e.g. `totals`), then any
+ * `tables` array the agent emitted, so a top-level key always outranks a
+ * grouped one.
  */
 function searchScopes(obj: Record<string, unknown>): Record<string, unknown>[] {
-  return [obj, ...Object.values(obj).filter(isObject)];
+  return [obj, ...Object.values(obj).filter(isObject), ...tableSearchScopes(obj)];
 }
 
 /**

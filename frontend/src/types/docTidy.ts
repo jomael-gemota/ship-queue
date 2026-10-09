@@ -766,12 +766,45 @@ const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
 const isJsonObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 
+const JSON_TABLE_LABEL_HEADERS = new Set(['field', 'label', 'key', 'name', 'attribute'])
+
 /**
- * The object itself, then its plain-object children (e.g. `totals`), so a
- * top-level key always outranks a grouped one.
+ * When the agent put document fields inside a `tables` array: one object of
+ * key/value-table labels → values, and one of grid-table titles → row objects.
+ * Mirrors `tableSearchScopes` in `src/services/docTidyTables.service.ts`.
+ */
+function jsonTableScopes(json: Record<string, unknown>): Record<string, unknown>[] {
+  if (!Array.isArray(json.tables)) return []
+  const fields: Record<string, unknown> = {}
+  const grids: Record<string, unknown> = {}
+  for (const table of json.tables) {
+    if (!isJsonObject(table) || !Array.isArray(table.columns) || !Array.isArray(table.rows)) continue
+    const columns = table.columns as string[]
+    const rows = table.rows as unknown[][]
+    const isKeyValue =
+      columns.length === 2 &&
+      JSON_TABLE_LABEL_HEADERS.has(String(columns[0]).toLowerCase().replace(/[^a-z0-9]/g, ''))
+    if (isKeyValue) {
+      for (const row of rows) {
+        const label = String(row[0] ?? '').trim()
+        if (label && !(label in fields)) fields[label] = row[1]
+      }
+    } else if (typeof table.title === 'string' && table.title) {
+      grids[table.title] = rows.map((row) =>
+        Object.fromEntries(columns.map((c, i) => [c, row[i] ?? null]))
+      )
+    }
+  }
+  return [fields, grids]
+}
+
+/**
+ * The object itself, then its plain-object children (e.g. `totals`), then any
+ * `tables` array the agent emitted, so a top-level key always outranks a
+ * grouped one.
  */
 function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown>[] {
-  return [json, ...Object.values(json).filter(isJsonObject)]
+  return [json, ...Object.values(json).filter(isJsonObject), ...jsonTableScopes(json)]
 }
 
 /**
