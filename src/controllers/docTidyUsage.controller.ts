@@ -16,8 +16,10 @@ import {
 } from '../lib/openaiAdmin';
 
 /**
- * Admin-only token usage & cost reporting. Every route here is mounted behind
- * `requireAdmin`. See design-log/2026-10-10-doc-tidy-token-usage-and-cost-dashboard.md.
+ * Token usage & cost reporting. Reads are open to any signed-in user; every
+ * write is mounted behind `requireAdmin`. See
+ * design-log/2026-10-10-doc-tidy-token-usage-and-cost-dashboard.md and
+ * design-log/2026-10-10-token-usage-dashboard-simplified-tabs.md.
  */
 
 function fail(res: Response, error: unknown, fallback: string): void {
@@ -438,7 +440,9 @@ export const getReconciliation = async (req: Request, res: Response): Promise<vo
     const endMs = Math.ceil(range.to.getTime() / DAY_MS) * DAY_MS;
     const cacheKey = `${startMs}:${endMs}`;
     const cached = reconcileCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < RECONCILE_TTL_MS && req.query.refresh !== '1') {
+    // Only admins may bypass the cache: each miss costs OpenAI Admin API calls.
+    const refresh = req.query.refresh === '1' && req.user?.role === 'admin';
+    if (cached && Date.now() - cached.at < RECONCILE_TTL_MS && !refresh) {
       res.json({ data: { ...cached.body, ...(await calibrationState()) } });
       return;
     }

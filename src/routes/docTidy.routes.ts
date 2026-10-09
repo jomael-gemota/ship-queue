@@ -190,12 +190,13 @@ router.put('/config', requireAdmin, updateConfig);
 router.delete('/config/mailbox', requireAdmin, disconnectMailbox);
 router.get('/config/folders', requireAdmin, listConfigFolders);
 
-// Token usage & cost reporting — admin only.
-router.get('/usage/summary', requireAdmin, getUsageSummary);
-router.get('/usage/reconciliation', requireAdmin, getReconciliation);
+// Token usage & cost — any signed-in user may view; only admins may change
+// prices or rewrite recorded costs.
+router.get('/usage/summary', getUsageSummary);
+router.get('/usage/reconciliation', getReconciliation);
 router.post('/usage/reprice', requireAdmin, repriceUsage);
 router.post('/usage/true-up', requireAdmin, trueUpUsage);
-router.get('/usage/prices', requireAdmin, listPrices);
+router.get('/usage/prices', listPrices);
 router.post('/usage/prices', requireAdmin, createPrice);
 router.put('/usage/prices/:id', requireAdmin, updatePrice);
 router.delete('/usage/prices/:id', requireAdmin, deletePrice);
