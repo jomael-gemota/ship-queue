@@ -72,6 +72,26 @@ export interface UsageSummary {
   breakdown: UsageBreakdownRow[]
   daily: UsageDailyRow[]
   untrackedUsd: number
+  /** Latest model per purpose over the last 30 days, whatever the range. */
+  currentModels: CurrentModel[]
+}
+
+export interface CurrentModel {
+  purpose: UsagePurpose
+  model: string
+  provider: 'openai' | 'hermes'
+  serviceTier: ServiceTier
+  lastUsedAt: string
+  price: {
+    model: string
+    serviceTier: ServiceTier
+    upstreamModel: string | null
+    calibrationFactor: number | null
+    inputPer1M: number
+    cachedInputPer1M: number | null
+    cacheWritePer1M: number | null
+    outputPer1M: number
+  } | null
 }
 
 export interface ModelPrice {
