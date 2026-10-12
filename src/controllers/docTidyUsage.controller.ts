@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import { Types, isValidObjectId } from 'mongoose';
-import DocTidyUsageEvent from '../models/DocTidyUsageEvent';
+import DocTidyUsageEvent, { USAGE_PURPOSES, type UsagePurpose } from '../models/DocTidyUsageEvent';
 import DocTidyModelPrice, { SERVICE_TIERS, type ServiceTier } from '../models/DocTidyModelPrice';
+import { findPrice } from '../lib/tokenPricing';
 import DocTidyWorkspace from '../models/DocTidyWorkspace';
 import DocTidyOrganization from '../models/DocTidyOrganization';
 import DocTidyBilledRemainder from '../models/DocTidyBilledRemainder';
-import { invalidatePriceCache, repriceRange } from '../services/docTidyUsage.service';
+import { invalidatePriceCache, loadPrices, repriceRange } from '../services/docTidyUsage.service';
 import { lastTrueUp, runTrueUp } from '../services/docTidyTrueUp.service';
 import {
   DAY_MS,
@@ -90,6 +91,59 @@ function addSums(target: Sums, source: Sums): void {
 
 /* ------------------------------------------------------------- summary */
 
+const CURRENT_MODEL_WINDOW_DAYS = 30;
+
+/**
+ * The model behind the latest call of each purpose in the last 30 days, with
+ * today's price for it. Independent of the selected range: it answers
+ * "what is running now?".
+ */
+async function loadCurrentModels() {
+  const since = new Date(Date.now() - CURRENT_MODEL_WINDOW_DAYS * DAY_MS);
+  const [latest, prices] = await Promise.all([
+    DocTidyUsageEvent.aggregate<{
+      _id: UsagePurpose;
+      model: string;
+      provider: 'openai' | 'hermes';
+      serviceTier: ServiceTier;
+      lastUsedAt: Date;
+    }>([
+      { $match: { createdAt: { $gte: since } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$purpose',
+          model: { $first: '$model' },
+          provider: { $first: '$provider' },
+          serviceTier: { $first: '$serviceTier' },
+          lastUsedAt: { $first: '$createdAt' },
+        },
+      },
+    ]),
+    loadPrices(),
+  ]);
+
+  return latest
+    .sort((a, b) => USAGE_PURPOSES.indexOf(a._id) - USAGE_PURPOSES.indexOf(b._id))
+    .map(({ _id, ...row }) => {
+      const price = findPrice(prices, row.model, row.serviceTier);
+      return {
+        purpose: _id,
+        ...row,
+        price: price && {
+          model: price.model,
+          serviceTier: price.serviceTier,
+          upstreamModel: price.upstreamModel ?? null,
+          calibrationFactor: price.calibrationFactor ?? null,
+          inputPer1M: price.inputPer1M,
+          cachedInputPer1M: price.cachedInputPer1M ?? null,
+          cacheWritePer1M: price.cacheWritePer1M ?? null,
+          outputPer1M: price.outputPer1M,
+        },
+      };
+    });
+}
+
 /**
  * Totals, organization → workspace rollup, purpose/model breakdown and daily
  * trend for one range, in a single response so the dashboard refetches once
@@ -104,7 +158,7 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
     }
     const match = { $match: { createdAt: { $gte: range.from, $lt: range.to } } };
 
-    const [byWorkspace, totalsRows, breakdown, daily, organizations, workspaces, remainders] =
+    const [byWorkspace, totalsRows, breakdown, daily, organizations, workspaces, remainders, currentModels] =
       await Promise.all([
         DocTidyUsageEvent.aggregate([
           match,
@@ -148,6 +202,7 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
           day: { $gte: new Date(Math.floor(range.from.getTime() / DAY_MS) * DAY_MS), $lt: range.to },
           untrackedUsd: { $gt: 0 },
         }).lean(),
+        loadCurrentModels(),
       ]);
 
     const usageByWorkspace = new Map<string, Sums>();
@@ -242,6 +297,7 @@ export const getUsageSummary = async (req: Request, res: Response): Promise<void
         breakdown: breakdown.map(({ _id, ...sums }) => ({ ..._id, ...sums })),
         daily: dailyRows,
         untrackedUsd,
+        currentModels,
       },
     });
   } catch (error) {

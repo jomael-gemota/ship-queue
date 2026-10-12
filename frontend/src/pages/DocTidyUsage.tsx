@@ -13,6 +13,7 @@ import {
   type OrganizationUsage,
   type Reconciliation,
   type ServiceTier,
+  type CurrentModel,
   type TrueUpResult,
   type UsageSummary,
   type UsageSums,
@@ -850,6 +851,92 @@ function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
 
 /* ─────────────────────────────────────────────────────── overview ── */
 
+const fmtRate = (value: number | null) =>
+  value === null
+    ? '—'
+    : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+
+/** One row per model; purposes that share a model (e.g. both embedding uses) are merged. */
+function ModelsInUseCard({ models }: { models: CurrentModel[] }) {
+  const rows = useMemo(() => {
+    const byModel = new Map<string, CurrentModel & { purposes: CurrentModel['purpose'][] }>()
+    for (const m of models) {
+      const key = `${m.model}:${m.serviceTier}`
+      const row = byModel.get(key)
+      if (!row) byModel.set(key, { ...m, purposes: [m.purpose] })
+      else {
+        row.purposes.push(m.purpose)
+        if (m.lastUsedAt > row.lastUsedAt) row.lastUsedAt = m.lastUsedAt
+      }
+    }
+    return [...byModel.values()]
+  }, [models])
+
+  return (
+    <div className={cardClass}>
+      <CardHeader title="Models in use" subtitle="The model behind the latest call of each kind, and its price per 1 million tokens." />
+      {rows.length === 0 ? (
+        <p className="p-6 text-center text-xs text-[var(--text-200)]">No AI calls in the last 30 days.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-separate border-spacing-0">
+            <thead>
+              <tr>
+                <Th label="Model" />
+                <Th label="Used for" />
+                <Th label="Input" align="right" />
+                <Th label="Cached input" align="right" />
+                <Th label="Cache writes" align="right" />
+                <Th label="Output" align="right" />
+                <Th label="Last used" align="right" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const price = row.price
+                const num = `${cellClass} text-right tabular-nums text-[var(--text-100)]`
+                return (
+                  <tr key={`${row.model}:${row.serviceTier}`}>
+                    <td className={`${cellClass} text-[var(--text-100)]`}>
+                      <span className="font-medium">{price?.upstreamModel ?? row.model}</span>
+                      {(row.provider === 'hermes' || price?.upstreamModel) && (
+                        <span className="text-[var(--text-200)]"> via Hermes</span>
+                      )}
+                      {row.serviceTier !== 'standard' && <span className="text-[var(--text-200)]"> · {row.serviceTier}</span>}
+                      {price?.upstreamModel && typeof price.calibrationFactor === 'number' && (
+                        <span className="block text-[10px] text-[var(--text-200)]">
+                          Recently billed at {(price.calibrationFactor * 100).toFixed(0)}% of these prices, thanks to cached
+                          input
+                        </span>
+                      )}
+                    </td>
+                    <td className={`${cellClass} text-[var(--text-200)]`}>
+                      {row.purposes.map((p) => USAGE_PURPOSE_LABELS[p]).join(', ')}
+                    </td>
+                    {price ? (
+                      <>
+                        <td className={num}>{fmtRate(price.inputPer1M)}</td>
+                        <td className={num}>{fmtRate(price.cachedInputPer1M)}</td>
+                        <td className={num}>{fmtRate(price.cacheWritePer1M)}</td>
+                        <td className={num}>{fmtRate(price.outputPer1M || null)}</td>
+                      </>
+                    ) : (
+                      <td colSpan={4} className={`${cellClass} text-right text-amber-600 dark:text-amber-400`}>
+                        No price set
+                      </td>
+                    )}
+                    <td className={`${cellClass} text-right text-[var(--text-200)]`}>{formatDateTime(row.lastUsedAt)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OverviewTab({ summary, range }: { summary: UsageSummary; range: RangeKey }) {
   const { totals } = summary
   return (
@@ -873,6 +960,8 @@ function OverviewTab({ summary, range }: { summary: UsageSummary; range: RangeKe
           next day.
         </p>
       )}
+
+      <ModelsInUseCard models={summary.currentModels} />
 
       <div className={cardClass}>
         <CardHeader title="Spending by organization" subtitle="Click an organization to see its workspaces." />
