@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import type { IHHB2bConfig } from '../models/HHB2bConfig';
-import { hhBrand, hhBrandFromRequest, hhBrandId, HH_BRANDS, type HHBrandId } from '../lib/hhBrand';
+import { hhBrandFromRequest, hhBrandId, HH_BRANDS, type HHBrandId } from '../lib/hhBrand';
 import { normalizeCookieHeader } from '../lib/hhSellerCentral';
 import {
   HhB2bDraftError,
@@ -10,7 +10,7 @@ import {
   resolveHhB2bCookie,
   type HhB2bCookieSource,
 } from '../lib/hhB2bConfig';
-import { effectiveThorogoodSkuInitials, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
+import { effectiveThorogoodPortalAffixes, normalizeThorogoodSkuInitials } from '../lib/hhThorogoodSku';
 import {
   listThorogoodCatalogs,
   listThorogoodCustomers,
@@ -84,20 +84,24 @@ function alertEvent(value: string | undefined): HhB2bLastAlertDto['event'] {
 
 async function serializeConfig(doc: IHHB2bConfig): Promise<HhB2bConfigDto> {
   const cookieSource = (await resolveHhB2bCookie(brandFromConfigKey(doc.key), doc.cookie ?? '')).source;
+  const brand = brandFromConfigKey(doc.key);
+  const portalAffixes = brand === 'thorogood' ? effectiveThorogoodPortalAffixes(doc) : null;
+  const usesAffixes = hhBrandUsesSkuAffixes(brand);
   return {
     baseUrl: doc.baseUrl,
     catalog: doc.catalog,
     accountId: doc.accountId,
-    skuInitials:
-      doc.key === hhBrand('thorogood').configKey
-        ? effectiveThorogoodSkuInitials(doc.skuInitials, Boolean(doc.skuInitialsSet))
+    skuInitials: portalAffixes ? portalAffixes.prefixes : [],
+    skuPrefixes: portalAffixes
+      ? portalAffixes.prefixes
+      : usesAffixes
+        ? effectiveHhSkuPrefixes(doc.skuPrefixes, Boolean(doc.skuPrefixesSet))
         : [],
-    skuPrefixes: hhBrandUsesSkuAffixes(brandFromConfigKey(doc.key))
-      ? effectiveHhSkuPrefixes(doc.skuPrefixes, Boolean(doc.skuPrefixesSet))
-      : [],
-    skuSuffixes: hhBrandUsesSkuAffixes(brandFromConfigKey(doc.key))
-      ? effectiveHhSkuSuffixes(doc.skuSuffixes, Boolean(doc.skuSuffixesSet))
-      : [],
+    skuSuffixes: portalAffixes
+      ? portalAffixes.suffixes
+      : usesAffixes
+        ? effectiveHhSkuSuffixes(doc.skuSuffixes, Boolean(doc.skuSuffixesSet))
+        : [],
     hasCookie: Boolean(normalizeCookieHeader(doc.cookie ?? '')),
     cookieSource,
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
@@ -254,8 +258,8 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
 
   if ('skuPrefixes' in body || 'skuSuffixes' in body) {
     const brand = hhBrandFromRequest(req);
-    if (!hhBrandUsesSkuAffixes(brand)) {
-      res.status(400).json({ message: 'SKU strings are only saved for Helly Hansen Sports and Work.' });
+    if (!hhBrandUsesSkuAffixes(brand) && brand !== 'thorogood') {
+      res.status(400).json({ message: 'SKU strings are only saved for Helly Hansen and Thorogood.' });
       return;
     }
   }
@@ -268,6 +272,10 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
     }
     doc.skuPrefixes = parsed.tokens;
     doc.skuPrefixesSet = true;
+    if (hhBrandFromRequest(req) === 'thorogood') {
+      doc.skuInitials = parsed.tokens;
+      doc.skuInitialsSet = true;
+    }
   }
 
   if ('skuSuffixes' in body) {
@@ -292,6 +300,10 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
     }
     doc.skuInitials = parsed.initials;
     doc.skuInitialsSet = true;
+    if (!('skuPrefixes' in body)) {
+      doc.skuPrefixes = parsed.initials;
+      doc.skuPrefixesSet = true;
+    }
   }
 
   if ('cookie' in body) {

@@ -1,13 +1,15 @@
 /** Seller Central prefixes removed before a Thorogood portal search. */
 export const DEFAULT_THOROGOOD_SKU_INITIALS = ['DUP_TG', 'DUP-TG', 'TG-'];
 
-/** Used only when Bulk Order Config has not saved an End of SKU list. */
+/** Used when Dropship or Bulk Order Config has not saved an End of SKU list. */
 export const DEFAULT_THOROGOOD_SKU_SUFFIXES = ['-V2'];
 
 export const THOROGOOD_SKU_SAMPLES = [
   'DUP_TG-889-8000_L',
   'DUP_TG-814-4322_10.5-2E',
   'DUP_TG-804-4243_10.5-W',
+  'TG-804-3320_7-D',
+  'TG-804-3166_12-M-V2',
 ];
 
 const INITIAL_PATTERN = /^[A-Z0-9]+(?:[-_][A-Z0-9]+)*[-_]?$/;
@@ -182,4 +184,51 @@ export function thorogoodPortalSkuCandidates(
   }
 
   return uniquePortalCodes([`${style} ${tail.toUpperCase()}`]);
+}
+
+function portalMatchKey(sku: string): string {
+  return sku.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * Portal code to show and to compare, before a catalog hit replaces it.
+ * A manual cart SKU is kept as written. Otherwise the first candidate is used,
+ * unless one of the candidates is already the catalog spelling on the cart.
+ */
+export function chooseThorogoodPortalSku(
+  sellerSku: string,
+  manualSku: string,
+  prefixes: readonly string[],
+  suffixes: readonly string[],
+  cartSkus: readonly string[] = [],
+): string {
+  const chosen = manualSku.trim().replace(/\s+/g, ' ');
+  const candidates = chosen ? [chosen] : thorogoodPortalSkuCandidates(sellerSku, prefixes, suffixes);
+  if (candidates.length === 0) return '';
+  const cartByKey = new Map(cartSkus.map((sku) => [portalMatchKey(sku), sku]));
+  for (const candidate of candidates) {
+    const hit = cartByKey.get(portalMatchKey(candidate));
+    if (hit) return hit;
+  }
+  return candidates[0];
+}
+
+/**
+ * Start and end strings for a Dropship Thorogood portal search.
+ * A saved start list wins. Until that exists, a saved initials list is the start list.
+ * An unsaved end list falls back to `-V2`. A saved empty list stays empty.
+ */
+export function effectiveThorogoodPortalAffixes(stored: {
+  skuInitials?: string[] | null;
+  skuInitialsSet?: boolean;
+  skuPrefixes?: string[] | null;
+  skuPrefixesSet?: boolean;
+  skuSuffixes?: string[] | null;
+  skuSuffixesSet?: boolean;
+}): { prefixes: string[]; suffixes: string[] } {
+  const prefixes = stored.skuPrefixesSet
+    ? [...(stored.skuPrefixes ?? [])]
+    : effectiveThorogoodSkuInitials(stored.skuInitials ?? undefined, Boolean(stored.skuInitialsSet));
+  const suffixes = stored.skuSuffixesSet ? [...(stored.skuSuffixes ?? [])] : [...DEFAULT_THOROGOOD_SKU_SUFFIXES];
+  return { prefixes, suffixes };
 }

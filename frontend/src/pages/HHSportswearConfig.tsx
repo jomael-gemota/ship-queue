@@ -5,11 +5,7 @@ import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, getThorogoodCatalog
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
 import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
-import {
-  THOROGOOD_SKU_SAMPLES,
-  normalizeThorogoodSkuInitials,
-  thorogoodPortalSku,
-} from '../lib/hhThorogoodSku'
+import { THOROGOOD_SKU_SAMPLES, thorogoodPortalSkuCandidates } from '../lib/hhThorogoodSku'
 import { HH_SKU_SAMPLES, hhCartSku, normalizeHhSkuTokens } from '../lib/hhSkuExclude'
 
 const inputClass =
@@ -115,11 +111,6 @@ function countPhrase(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
-function initialsSummary(count: number): string {
-  if (count === 0) return 'None'
-  return countPhrase(count, 'initial', 'initials')
-}
-
 function skuStringsSummary(start: number, end: number): string {
   if (start === 0 && end === 0) return 'None'
   return `${countPhrase(start, 'start string', 'start strings')}, ${countPhrase(end, 'end string', 'end strings')}`
@@ -158,10 +149,6 @@ function alertsSummary(times: string[]): string {
 
 type ConfigSectionId = 'portal' | 'account' | 'sku' | 'session' | 'alerts'
 
-function initialsFromText(text: string): { initials: string[] } | { error: string } {
-  return normalizeThorogoodSkuInitials(text.split(/\r?\n/))
-}
-
 function tokensFromText(text: string, label: string): { tokens: string[] } | { error: string } {
   return normalizeHhSkuTokens(text.split(/\r?\n/), label)
 }
@@ -171,13 +158,6 @@ function sameTokens(text: string, saved: string[], label: string): boolean {
   if ('error' in parsed) return false
   if (parsed.tokens.length !== saved.length) return false
   return parsed.tokens.every((token, index) => token === saved[index])
-}
-
-function sameInitials(text: string, saved: string[]): boolean {
-  const parsed = initialsFromText(text)
-  if ('error' in parsed) return false
-  if (parsed.initials.length !== saved.length) return false
-  return parsed.initials.every((initial, index) => initial === saved[index])
 }
 
 function sameCheckTimes(current: string[], saved: string[]): boolean {
@@ -367,7 +347,6 @@ export default function HHSportswearConfig() {
   const [soldToNote, setSoldToNote] = useState<string | null>(null)
   const [catalogNote, setCatalogNote] = useState<string | null>(null)
   const [cookie, setCookie] = useState('')
-  const [skuInitialsText, setSkuInitialsText] = useState('')
   const [skuPrefixesText, setSkuPrefixesText] = useState('')
   const [skuSuffixesText, setSkuSuffixesText] = useState('')
   const [clearCookie, setClearCookie] = useState(false)
@@ -389,7 +368,6 @@ export default function HHSportswearConfig() {
     setBaseUrl(data.baseUrl)
     setCatalog(data.catalog)
     setAccountId(data.accountId)
-    setSkuInitialsText((data.skuInitials ?? []).join('\n'))
     setSkuPrefixesText((data.skuPrefixes ?? []).join('\n'))
     setSkuSuffixesText((data.skuSuffixes ?? []).join('\n'))
     setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
@@ -497,15 +475,12 @@ export default function HHSportswearConfig() {
       alertWebhookUrl !== (saved.alertWebhookUrl || '') ||
       !sameCheckTimes(checkTimes, savedTimes) ||
       placeOrderEnabled !== Boolean(saved.placeOrderEnabled) ||
-      (orderDetails && (catalog !== saved.catalog || accountId !== saved.accountId)) ||
-      (!orderDetails &&
-        (catalog !== saved.catalog ||
-          accountId !== saved.accountId ||
-          !sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
-          !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings'))) ||
+      catalog !== saved.catalog ||
+      accountId !== saved.accountId ||
+      !sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
+      !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings') ||
       cookie.trim().length > 0 ||
-      clearCookie ||
-      (orderDetails && !sameInitials(skuInitialsText, saved.skuInitials ?? [])))
+      clearCookie)
 
   const portalDirty = Boolean(
     orderDetails &&
@@ -523,24 +498,15 @@ export default function HHSportswearConfig() {
         accountId !== saved.accountId ||
         placeOrderEnabled !== Boolean(saved.placeOrderEnabled)),
   )
-  const initialsParsed = initialsFromText(skuInitialsText)
   const prefixesParsed = tokensFromText(skuPrefixesText, 'Start strings')
   const suffixesParsed = tokensFromText(skuSuffixesText, 'End strings')
-  const skuError = orderDetails
-    ? 'error' in initialsParsed
-      ? initialsParsed.error
-      : null
-    : 'error' in prefixesParsed
-      ? prefixesParsed.error
-      : 'error' in suffixesParsed
-        ? suffixesParsed.error
-        : null
-  const skuDirty = !saved
-    ? false
-    : orderDetails
-      ? !sameInitials(skuInitialsText, saved.skuInitials ?? [])
-      : (!sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
-        !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings'))
+  const skuError =
+    'error' in prefixesParsed ? prefixesParsed.error : 'error' in suffixesParsed ? suffixesParsed.error : null
+  const skuDirty = Boolean(
+    saved &&
+      (!sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
+        !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings')),
+  )
   const sessionDirty = canEdit && (cookie.trim().length > 0 || clearCookie)
   const alertsDirty = Boolean(
     canEdit &&
@@ -583,47 +549,30 @@ export default function HHSportswearConfig() {
     setTestError(null)
     setTestNotice(null)
     try {
-      const parsedInitials = orderDetails ? initialsFromText(skuInitialsText) : null
-      if (parsedInitials && 'error' in parsedInitials) {
-        setSaveError(parsedInitials.error)
-        revealSection('sku')
-        setBusy(false)
-        return
-      }
-      const parsedPrefixes = orderDetails ? null : tokensFromText(skuPrefixesText, 'Start strings')
-      if (parsedPrefixes && 'error' in parsedPrefixes) {
+      const parsedPrefixes = tokensFromText(skuPrefixesText, 'Start strings')
+      if ('error' in parsedPrefixes) {
         setSaveError(parsedPrefixes.error)
         revealSection('sku')
         setBusy(false)
         return
       }
-      const parsedSuffixes = orderDetails ? null : tokensFromText(skuSuffixesText, 'End strings')
-      if (parsedSuffixes && 'error' in parsedSuffixes) {
+      const parsedSuffixes = tokensFromText(skuSuffixesText, 'End strings')
+      if ('error' in parsedSuffixes) {
         setSaveError(parsedSuffixes.error)
         revealSection('sku')
         setBusy(false)
         return
       }
-      const patch: HHB2bConfigPatch = orderDetails
-        ? {
-            baseUrl,
-            catalog,
-            accountId,
-            placeOrderEnabled,
-            skuInitials: parsedInitials && 'initials' in parsedInitials ? parsedInitials.initials : [],
-            alertWebhookUrl,
-            sessionCheckTimes: checkTimes,
-          }
-        : {
-            baseUrl,
-            catalog,
-            accountId,
-            placeOrderEnabled,
-            alertWebhookUrl,
-            sessionCheckTimes: checkTimes,
-            skuPrefixes: parsedPrefixes && 'tokens' in parsedPrefixes ? parsedPrefixes.tokens : [],
-            skuSuffixes: parsedSuffixes && 'tokens' in parsedSuffixes ? parsedSuffixes.tokens : [],
-          }
+      const patch: HHB2bConfigPatch = {
+        baseUrl,
+        catalog,
+        accountId,
+        placeOrderEnabled,
+        alertWebhookUrl,
+        sessionCheckTimes: checkTimes,
+        skuPrefixes: parsedPrefixes.tokens,
+        skuSuffixes: parsedSuffixes.tokens,
+      }
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
       const res = await updateHHB2bConfig(brand, patch)
@@ -654,8 +603,8 @@ export default function HHSportswearConfig() {
 
   if (orderDetails) {
     const sessionHost = brandDef.baseUrl.replace(/^https?:\/\//, '')
-    const parsedSkuInitials = initialsFromText(skuInitialsText)
-    const skuPreviewInitials = 'initials' in parsedSkuInitials ? parsedSkuInitials.initials : []
+    const skuPreviewPrefixes = 'tokens' in prefixesParsed ? prefixesParsed.tokens : []
+    const skuPreviewSuffixes = 'tokens' in suffixesParsed ? suffixesParsed.tokens : []
     return (
       <form
         className="space-y-5 px-5 py-5"
@@ -763,54 +712,86 @@ export default function HHSportswearConfig() {
         </ConfigSection>
 
         <ConfigSection
-          title="SKU initials"
-          description="Prefixes removed from Seller Central SKUs before the portal search. Footwear is then written as the width, then the size in tenths."
-          summary={initialsSummary('initials' in initialsParsed ? initialsParsed.initials.length : 0)}
+          title="SKU strings"
+          description="Start and end strings removed from the Seller Central SKU before the Thorogood portal search. Footwear is written as the style, then the width, then the size. The cart tries the zero-padded size first."
+          summary={skuStringsSummary(
+            'tokens' in prefixesParsed ? prefixesParsed.tokens.length : 0,
+            'tokens' in suffixesParsed ? suffixesParsed.tokens.length : 0,
+          )}
           open={isOpen('sku')}
           dirty={skuDirty}
           error={skuError}
           canEdit={canEdit}
           onToggle={() => toggleSection('sku')}
         >
-          <div className="space-y-1.5">
-            <label className={labelClass} htmlFor="hh-b2b-sku-initials">
-              Initials
-            </label>
-            <p className={hintClass}>One prefix per line. The longest match is removed, including a dash after it.</p>
-            <textarea
-              id="hh-b2b-sku-initials"
-              className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
-              value={skuInitialsText}
-              onChange={(event) => setSkuInitialsText(event.target.value)}
-              placeholder={'DUP_TG\nDUP-TG\nTG-'}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy}
-            />
-            {'error' in parsedSkuInitials ? (
-              <p className="text-xs text-red-600 dark:text-red-400">{parsedSkuInitials.error}</p>
-            ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className={labelClass} htmlFor="hh-thorogood-sku-prefixes">
+                Start of SKU
+              </label>
+              <p className={hintClass}>One value per line. The longest match is removed, including a dash after it.</p>
+              <textarea
+                id="hh-thorogood-sku-prefixes"
+                className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+                value={skuPrefixesText}
+                onChange={(event) => setSkuPrefixesText(event.target.value)}
+                placeholder={'DUP_TG\nDUP-TG\nTG-'}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+              />
+              {'error' in prefixesParsed ? (
+                <p className="text-xs text-red-600 dark:text-red-400">{prefixesParsed.error}</p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <label className={labelClass} htmlFor="hh-thorogood-sku-suffixes">
+                End of SKU
+              </label>
+              <p className={hintClass}>One value per line. TG-804-3166_12-M-V2 drops -V2 before the search.</p>
+              <textarea
+                id="hh-thorogood-sku-suffixes"
+                className={`${inputClass} min-h-[5.5rem] font-mono text-xs`}
+                value={skuSuffixesText}
+                onChange={(event) => setSkuSuffixesText(event.target.value)}
+                placeholder="-V2"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+              />
+              {'error' in suffixesParsed ? (
+                <p className="text-xs text-red-600 dark:text-red-400">{suffixesParsed.error}</p>
+              ) : null}
+            </div>
           </div>
           <div className="space-y-2">
             <div className="hidden font-mono text-[11px] uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
               <span>Seller Central</span>
-              <span>Portal code</span>
+              <span>Portal codes</span>
             </div>
             <ul className="space-y-1.5">
               {THOROGOOD_SKU_SAMPLES.map((sample) => {
-                const portal = thorogoodPortalSku(sample, skuPreviewInitials)
+                const candidates = thorogoodPortalSkuCandidates(sample, skuPreviewPrefixes, skuPreviewSuffixes)
+                const [primary, ...rest] = candidates
                 return (
                   <li
                     key={sample}
                     className="grid grid-cols-1 gap-0.5 font-mono text-xs sm:grid-cols-2 sm:gap-3"
                   >
                     <span className="truncate text-slate-500 dark:text-[var(--text-200)]">{sample}</span>
-                    <span className="text-slate-800 dark:text-[var(--text-100)]">{portal || '—'}</span>
+                    <span>
+                      <span className="text-slate-800 dark:text-[var(--text-100)]">{primary || '—'}</span>
+                      {rest.length > 0 ? (
+                        <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-[var(--text-200)]">
+                          also {rest.join(', ')}
+                        </span>
+                      ) : null}
+                    </span>
                   </li>
                 )
               })}
             </ul>
-            <p className={hintClass}>10.5 becomes 105. A whole size 10 becomes 100.</p>
+            <p className={hintClass}>A blank end list removes nothing. 7 is tried as 070, then 70. 10.5 becomes 105.</p>
           </div>
         </ConfigSection>
 

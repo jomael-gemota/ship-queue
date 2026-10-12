@@ -13,7 +13,7 @@ import {
   isEnvoyOrderCode,
   snapshotFromThorogoodOrder,
 } from '../lib/hhB2bThorogood';
-import { thorogoodPortalSku } from '../lib/hhThorogoodSku';
+import { chooseThorogoodPortalSku } from '../lib/hhThorogoodSku';
 import { hhCartItems } from '../lib/hhLineItems';
 import {
   compareSnapshots,
@@ -50,11 +50,21 @@ function cartSkuOverrides(child: IHHChildOrder): Set<string> {
   );
 }
 
-function thorogoodDetailsSnapshot(child: IHHChildOrder, initials: readonly string[]): HhVerifySnapshot {
+function thorogoodDetailsSnapshot(
+  child: IHHChildOrder,
+  affixes: { prefixes: readonly string[]; suffixes: readonly string[] },
+  cartSkus: readonly string[],
+): HhVerifySnapshot {
   const base = snapshotFromChild(child);
   const qtyBySku = new Map<string, number>();
   for (const item of hhCartItems(child.items)) {
-    const sku = (item.cartSku ?? '').trim() || thorogoodPortalSku(item.sku ?? '', initials);
+    const sku = chooseThorogoodPortalSku(
+      item.sku ?? '',
+      item.cartSku ?? '',
+      affixes.prefixes,
+      affixes.suffixes,
+      cartSkus,
+    );
     if (!sku || item.quantity <= 0) continue;
     qtyBySku.set(sku, (qtyBySku.get(sku) ?? 0) + item.quantity);
   }
@@ -199,10 +209,11 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     liveTargets.push(child);
   }
 
-  let envoyInitials: string[] = [];
+  let envoyAffixes: { prefixes: string[]; suffixes: string[] } = { prefixes: [], suffixes: [] };
   if (envoyTargets.length > 0) {
     try {
-      envoyInitials = (await loadHhB2bConfig('thorogood')).skuInitials;
+      const thorogood = await loadHhB2bConfig('thorogood');
+      envoyAffixes = { prefixes: thorogood.skuPrefixes, suffixes: thorogood.skuSuffixes };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await stopVerifyForSession(groupId, envoyTargets, message, 'Live Thorogood draft');
@@ -212,7 +223,7 @@ export async function verifyHhCart(groupId: string, childId?: string): Promise<v
     if (sessionStopped) break;
     verifyCurrentOrderId = child.orderId;
     try {
-      const compared = await compareEnvoyDraft(child, envoyInitials);
+      const compared = await compareEnvoyDraft(child, envoyAffixes);
       const nextStatus = compared.issues.length === 0 ? 'ready' : 'review';
       await persistVerification(groupId, String(child._id), nextStatus, compared.issues, compared.rows);
       console.log(
@@ -375,16 +386,21 @@ function isoDate(value: Date | string | null | undefined): string | null {
 
 async function compareEnvoyDraft(
   child: IHHChildOrder,
-  initials: readonly string[]
+  affixes: { prefixes: readonly string[]; suffixes: readonly string[] },
 ): Promise<{
   rows: HhCompareRow[];
   issues: HhVerifyIssue[];
   cart: HhVerifySnapshot;
 }> {
   const order = await fetchThorogoodOrder((child.b2bDraftId ?? '').trim());
+  const cart = snapshotFromThorogoodOrder(order);
   const aligned = alignResolvedThorogoodSnapshots(
-    thorogoodDetailsSnapshot(child, initials),
-    snapshotFromThorogoodOrder(order)
+    thorogoodDetailsSnapshot(
+      child,
+      affixes,
+      cart.items.map((item) => item.sku),
+    ),
+    cart,
   );
   const rows = compareSnapshots(aligned.details, aligned.cart);
   return { rows, issues: issuesFromCompareRows(rows), cart: aligned.cart };
@@ -430,7 +446,11 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
     cookie = await loadHhB2bCookie(hhBrandId(group.brand));
   }
   const needsEnvoy = targets.some((child) => isEnvoyOrderCode(child.b2bDraftId));
-  const envoyInitials = needsEnvoy ? (await loadHhB2bConfig('thorogood')).skuInitials : [];
+  const envoyConfig = needsEnvoy ? await loadHhB2bConfig('thorogood') : null;
+  const envoyAffixes = {
+    prefixes: envoyConfig?.skuPrefixes ?? [],
+    suffixes: envoyConfig?.skuSuffixes ?? [],
+  };
 
   const results: HhLiveCompareOrder[] = [];
   for (const child of targets) {
@@ -462,7 +482,7 @@ export async function liveCompareHhCarts(groupId: string, childId?: string): Pro
     }
     if (isEnvoyOrderCode(documentId)) {
       try {
-        const compared = await compareEnvoyDraft(child, envoyInitials);
+        const compared = await compareEnvoyDraft(child, envoyAffixes);
         const matched = compared.issues.length === 0;
         let cartStatus = child.cartStatus;
         let verifiedAt = isoDate(child.verifiedAt);

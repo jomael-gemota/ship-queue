@@ -10,17 +10,17 @@ export interface IHHB2bConfig extends Document {
   accountId: string;
   cookie?: string;
   cookieUpdatedAt?: Date | null;
-  /** Seller Central prefixes stripped before a Thorogood portal search. */
+  /** Seller Central prefixes stripped before a Thorogood portal search. Mirrored from the start list when that list is saved. */
   skuInitials?: string[];
   /** False until Configurations saves the prefix list. Until then the defaults apply. */
   skuInitialsSet: boolean;
-  /** Removed from the start of a Helly Hansen Sports or Work Seller Central SKU. */
+  /** Removed from the start of a Seller Central SKU. Helly Hansen uses DUP_ and DUP-. Thorogood uses these as portal start strings. */
   skuPrefixes?: string[];
-  /** False until Configurations saves the start list. Until then DUP_ and DUP- apply. */
+  /** False until Configurations saves the start list. Until then the brand defaults apply. */
   skuPrefixesSet: boolean;
-  /** Removed from the end of a Helly Hansen Sports or Work Seller Central SKU. */
+  /** Removed from the end of a Seller Central SKU. Helly Hansen uses _FBA and -FBA. Thorogood uses these as portal end strings. */
   skuSuffixes?: string[];
-  /** False until Configurations saves the end list. Until then _FBA and -FBA apply. */
+  /** False until Configurations saves the end list. Until then the brand defaults apply. */
   skuSuffixesSet: boolean;
   /** When false, Place Order is visible but does not submit to Helly Hansen. */
   placeOrderEnabled: boolean;

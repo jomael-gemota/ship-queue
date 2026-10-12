@@ -24,7 +24,7 @@ import {
 } from '../lib/hhSportswear'
 import type { HHLineItem } from '../lib/hhSportswear'
 import { hhCartSkuAdjustment } from '../lib/hhSkuExclude'
-import { thorogoodPortalSku } from '../lib/hhThorogoodSku'
+import { thorogoodPortalSkuCandidates } from '../lib/hhThorogoodSku'
 import {
   BoxIcon,
   DollarIcon,
@@ -38,11 +38,11 @@ import {
 
 const MAX_EXCLUDE_NOTE = 500
 
-type SkuAffixes = { prefixes: string[]; suffixes: string[]; initials: string[] }
+type SkuAffixes = { prefixes: string[]; suffixes: string[] }
 
 function automaticCartSku(item: HHLineItem, affixes: SkuAffixes | null, orderDetails: boolean): string {
   if (!affixes) return ''
-  if (orderDetails) return thorogoodPortalSku(item.sku, affixes.initials)
+  if (orderDetails) return thorogoodPortalSkuCandidates(item.sku, affixes.prefixes, affixes.suffixes)[0] ?? ''
   return hhCartSkuAdjustment(item.sku, affixes.prefixes, affixes.suffixes).cartSku
 }
 
@@ -52,7 +52,10 @@ function cartSkuReason(item: HHLineItem, cart: string, affixes: SkuAffixes | nul
     return `This line is added to the cart as ${cart}. Verification compares ${cart}, not ${item.sku}.`
   }
   if (orderDetails) {
-    return `Seller Central SKU is rewritten to ${cart} before the Thorogood cart. Verification compares ${cart}.`
+    const candidates = thorogoodPortalSkuCandidates(item.sku, affixes?.prefixes ?? [], affixes?.suffixes ?? [])
+    const rest = candidates.slice(1)
+    const also = rest.length > 0 ? ` If that code is missing, the cart also tries ${rest.join(', ')}.` : ''
+    return `Seller Central SKU is rewritten to ${cart} before the Thorogood cart.${also} Verification compares the catalog SKU.`
   }
   const adjustment = hhCartSkuAdjustment(item.sku, affixes?.prefixes ?? [], affixes?.suffixes ?? [])
   const parts: string[] = []
@@ -377,7 +380,6 @@ export default function HHSportswearItems() {
         setAffixes({
           prefixes: res.data.skuPrefixes ?? [],
           suffixes: res.data.skuSuffixes ?? [],
-          initials: res.data.skuInitials ?? [],
         })
       })
       .catch(() => {

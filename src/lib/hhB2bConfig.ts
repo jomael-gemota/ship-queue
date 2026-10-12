@@ -2,7 +2,7 @@ import CookieJar from '../models/CookieJar';
 import { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { normalizeCookieHeader } from './hhSellerCentral';
 import { hhBrand, HH_DEFAULT_BRAND, type HHBrandId } from './hhBrand';
-import { effectiveThorogoodSkuInitials } from './hhThorogoodSku';
+import { effectiveThorogoodPortalAffixes } from './hhThorogoodSku';
 import { effectiveHhSkuPrefixes, effectiveHhSkuSuffixes, hhBrandUsesSkuAffixes } from './hhSkuExclude';
 
 export {
@@ -80,17 +80,19 @@ export async function loadHhB2bConfig(brand: HHBrandId = HH_DEFAULT_BRAND): Prom
   const catalog = firstNonEmpty(env.catalog, stored.catalog, def.catalog) || def.catalog;
   const accountId =
     normalizeHhB2bAccountId(firstNonEmpty(env.accountId, stored.accountId, def.accountId)) || def.accountId;
-  const skuInitials =
-    brand === 'thorogood'
-      ? effectiveThorogoodSkuInitials(stored.skuInitials, Boolean(stored.skuInitialsSet))
-      : [];
+  const portalAffixes = brand === 'thorogood' ? effectiveThorogoodPortalAffixes(stored) : null;
+  const skuInitials = portalAffixes ? portalAffixes.prefixes : [];
   const usesAffixes = hhBrandUsesSkuAffixes(brand);
-  const skuPrefixes = usesAffixes
-    ? effectiveHhSkuPrefixes(stored.skuPrefixes, Boolean(stored.skuPrefixesSet))
-    : [];
-  const skuSuffixes = usesAffixes
-    ? effectiveHhSkuSuffixes(stored.skuSuffixes, Boolean(stored.skuSuffixesSet))
-    : [];
+  const skuPrefixes = portalAffixes
+    ? portalAffixes.prefixes
+    : usesAffixes
+      ? effectiveHhSkuPrefixes(stored.skuPrefixes, Boolean(stored.skuPrefixesSet))
+      : [];
+  const skuSuffixes = portalAffixes
+    ? portalAffixes.suffixes
+    : usesAffixes
+      ? effectiveHhSkuSuffixes(stored.skuSuffixes, Boolean(stored.skuSuffixesSet))
+      : [];
   return { baseUrl, catalog, accountId, skuInitials, skuPrefixes, skuSuffixes };
 }
 

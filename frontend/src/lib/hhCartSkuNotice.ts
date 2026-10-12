@@ -1,23 +1,10 @@
 import { hhCartSku, hhCartSkuAdjustment } from './hhSkuExclude'
-import { thorogoodPortalSku } from './hhThorogoodSku'
+import { thorogoodAffixSpan, thorogoodPortalSkuCandidates } from './hhThorogoodSku'
 
 export type CartSkuStrip = {
   sellerSku: string
   cartSku: string
   note: string
-}
-
-function matchingThorogoodInitial(sku: string, initials: readonly string[]): string | null {
-  const trimmed = sku.trim()
-  const upper = trimmed.toUpperCase()
-  const prefixes = [...initials]
-    .map((item) => item.trim().toUpperCase())
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length)
-  for (const prefix of prefixes) {
-    if (upper.startsWith(prefix) && trimmed.length > prefix.length) return prefix
-  }
-  return null
 }
 
 function removalNote(prefix: string | null, suffix: string | null): string {
@@ -44,11 +31,15 @@ export function cartSkuStrips(
     if (!sellerSku) continue
 
     if (options.orderDetails) {
-      const initial = matchingThorogoodInitial(sellerSku, options.initials)
-      if (!initial) continue
-      const cartSku = thorogoodPortalSku(sellerSku, options.initials)
+      const candidates = thorogoodPortalSkuCandidates(sellerSku, options.prefixes, options.suffixes)
+      const cartSku = candidates[0] ?? ''
       if (!cartSku || cartSku.toUpperCase() === sellerSku.toUpperCase()) continue
-      strips.push({ sellerSku, cartSku, note: `${initial} removed from the start` })
+      const span = thorogoodAffixSpan(sellerSku, options.prefixes, options.suffixes)
+      strips.push({
+        sellerSku,
+        cartSku,
+        note: span ? removalNote(span.prefix, span.suffix) : 'Rewritten to the Thorogood portal code',
+      })
       continue
     }
 
@@ -84,12 +75,13 @@ function removalSpan(sellerSku: string, options: {
   const raw = sellerSku.trim()
   if (!raw) return null
   if (options.orderDetails) {
-    const initial = matchingThorogoodInitial(raw, options.initials)
-    if (!initial) return null
-    let prefixLen = initial.length
-    const rest = raw.slice(prefixLen)
-    if (rest.startsWith('-') || rest.startsWith('_')) prefixLen += 1
-    return { prefixLen, suffixLen: 0, note: `${raw.slice(0, prefixLen)} removed from the start` }
+    const span = thorogoodAffixSpan(raw, options.prefixes, options.suffixes)
+    if (!span) return null
+    return {
+      prefixLen: span.prefixLen,
+      suffixLen: span.suffixLen,
+      note: removalNote(span.prefix, span.suffix),
+    }
   }
   const adjustment = hhCartSkuAdjustment(raw, options.prefixes, options.suffixes)
   if (!adjustment.prefix && !adjustment.suffix) return null
@@ -121,9 +113,9 @@ export function skuRemovalMarks(
     const sellerSku = (item.sku ?? '').trim()
     if (!sellerSku || seen.has(sellerSku.toUpperCase())) continue
     const resolved = options.orderDetails
-      ? thorogoodPortalSku(sellerSku, options.initials)
-      : hhCartSku(sellerSku, options.prefixes, options.suffixes)
-    if (compactSku(resolved) !== wanted) continue
+      ? thorogoodPortalSkuCandidates(sellerSku, options.prefixes, options.suffixes)
+      : [hhCartSku(sellerSku, options.prefixes, options.suffixes)]
+    if (!resolved.some((sku) => compactSku(sku) === wanted)) continue
     const span = removalSpan(sellerSku, options)
     if (!span || (span.prefixLen === 0 && span.suffixLen === 0)) continue
     if (span.prefixLen + span.suffixLen >= sellerSku.length) continue

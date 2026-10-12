@@ -10,7 +10,7 @@ import type { HhB2bDraftRequest } from './hhB2b';
 import { HhB2bAuthError, HhB2bDraftError, loadHhB2bConfig, loadHhB2bCookie } from './hhB2bConfig';
 import type { HhVerifySnapshot } from './hhB2bVerify';
 import { hhBrand } from './hhBrand';
-import { effectiveThorogoodSkuInitials, thorogoodPortalSku, thorogoodPortalSkuCandidates } from './hhThorogoodSku';
+import { chooseThorogoodPortalSku, thorogoodPortalSkuCandidates } from './hhThorogoodSku';
 
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_PO_LEN = 20;
@@ -301,40 +301,28 @@ async function resolveSku(
   customerCode: string,
   sku: string,
   qty: number,
-  initials: readonly string[],
-  cartSku = ''
+  affixes: { prefixes: readonly string[]; suffixes: readonly string[] },
+  cartSku = '',
+  cache?: Map<string, CatalogSkuHit[]>,
 ): Promise<ResolvedSku> {
   const sellerSku = sku.trim();
-  const chosen = cartSku.trim();
-  const textSearch = chosen || thorogoodPortalSku(sellerSku, initials);
-  if (!textSearch) {
+  const chosen = cartSku.trim().replace(/\s+/g, ' ');
+  const candidates = chosen
+    ? [chosen]
+    : thorogoodPortalSkuCandidates(sellerSku, affixes.prefixes, affixes.suffixes);
+  if (candidates.length === 0) {
     throw new HhB2bDraftError(`SKU "${sellerSku}" could not be turned into a Thorogood portal code.`);
   }
-  const query = new URLSearchParams({ fields: SEARCH_FIELDS });
-  const wanted = skuMatchKey(textSearch);
-  const payload = await envoyRequest(baseUrl, cookie, `/api/b2b/products/search-with-facets?${query.toString()}`, {
-    method: 'POST',
-    body: JSON.stringify({
-      props: {},
-      customerCode,
-      textSearch,
-      allActiveCollections: true,
-    }),
-  });
-  for (const product of productRecords(payload)) {
-    const productCode = asString(product.code);
-    const collectionCode = collectionCodeOf(product);
-    const match = skuCodes(product).find((code) => skuMatchKey(code) === wanted);
-    if (!productCode || !match) continue;
-    if (!collectionCode) {
-      throw new HhB2bDraftError(`Thorogood product ${productCode} did not include a collection for ${textSearch}`);
-    }
-    return { productCode, collectionCode, skuCode: match, qty };
+  const hit = await findPortalHit(baseUrl, cookie, customerCode, candidates, '', cache ?? new Map());
+  if (!hit) {
+    throw new HhB2bDraftError(
+      `SKU "${sellerSku}" was not found in the Thorogood catalog for customer ${customerCode} (tried ${candidates.join(', ')})`
+    );
   }
-  const searchedAs = textSearch === sellerSku ? '' : ` (searched as "${textSearch}")`;
-  throw new HhB2bDraftError(
-    `SKU "${sellerSku}"${searchedAs} was not found in the Thorogood catalog for customer ${customerCode}`
-  );
+  if (!hit.collectionCode) {
+    throw new HhB2bDraftError(`Thorogood product ${hit.productCode} did not include a collection for ${hit.skuCode}`);
+  }
+  return { productCode: hit.productCode, collectionCode: hit.collectionCode, skuCode: hit.skuCode, qty };
 }
 
 interface ShipTo {
@@ -874,6 +862,7 @@ export async function createThorogoodDraft(
   const accountShipTo = await loadDefaultShipTo(config.baseUrl, cookie, customerCode);
 
   const resolved: ResolvedSku[] = [];
+  const catalogCache = new Map<string, CatalogSkuHit[]>();
   for (const item of request.items) {
     if (item.quantity <= 0) continue;
     const line = await resolveSku(
@@ -882,8 +871,9 @@ export async function createThorogoodDraft(
       customerCode,
       item.sku,
       item.quantity,
-      config.skuInitials,
-      item.cartSku
+      { prefixes: config.skuPrefixes, suffixes: config.skuSuffixes },
+      item.cartSku,
+      catalogCache,
     );
     const existing = resolved.find((row) => row.productCode === line.productCode && row.skuCode === line.skuCode);
     if (existing) existing.qty += line.qty;
@@ -1407,10 +1397,12 @@ function matchPortalCandidate(
   candidates: string[],
   collectionCode: string,
 ): CatalogSkuHit | undefined {
-  for (const candidate of candidates) {
-    const key = skuMatchKey(candidate);
-    const hit = hits.find((row) => row.key === key && row.collectionCode === collectionCode);
-    if (hit) return hit;
+  if (collectionCode) {
+    for (const candidate of candidates) {
+      const key = skuMatchKey(candidate);
+      const hit = hits.find((row) => row.key === key && row.collectionCode === collectionCode);
+      if (hit) return hit;
+    }
   }
   for (const candidate of candidates) {
     const key = skuMatchKey(candidate);
@@ -1418,6 +1410,41 @@ function matchPortalCandidate(
     if (hit) return hit;
   }
   return undefined;
+}
+
+function portalSearchQueries(candidates: string[]): string[] {
+  const style = styleCodeOf(candidates[0]) || candidates[0];
+  return [style, ...candidates].filter((query, index, all) => {
+    const key = skuMatchKey(query);
+    return key.length > 0 && all.findIndex((item) => skuMatchKey(item) === key) === index;
+  });
+}
+
+/** Style search first, then each portal spelling. A blank collection accepts any catalog. */
+async function findPortalHit(
+  baseUrl: string,
+  cookie: string,
+  customerCode: string,
+  candidates: string[],
+  collectionCode: string,
+  cache: Map<string, CatalogSkuHit[]>,
+): Promise<CatalogSkuHit | undefined> {
+  let hit: CatalogSkuHit | undefined;
+  let otherCollection: CatalogSkuHit | undefined;
+  for (const query of portalSearchQueries(candidates)) {
+    const found = matchPortalCandidate(
+      await catalogSkus(baseUrl, cookie, customerCode, query, cache),
+      candidates,
+      collectionCode,
+    );
+    if (!found) continue;
+    if (!collectionCode || found.collectionCode === collectionCode) {
+      hit = found;
+      break;
+    }
+    otherCollection ??= found;
+  }
+  return hit ?? otherCollection;
 }
 
 interface ImportLineResolution {
@@ -1444,27 +1471,7 @@ async function resolveImportLine(
     return { tried: [], match: null, message: 'Could not be turned into a Thorogood portal code.' };
   }
 
-  const style = styleCodeOf(candidates[0]) || candidates[0];
-  const queries = [style, ...candidates].filter((query, index, all) => {
-    const key = skuMatchKey(query);
-    return key.length > 0 && all.findIndex((item) => skuMatchKey(item) === key) === index;
-  });
-  let hit: CatalogSkuHit | undefined;
-  let otherCollection: CatalogSkuHit | undefined;
-  for (const query of queries) {
-    const found = matchPortalCandidate(
-      await catalogSkus(baseUrl, cookie, customerCode, query, cache),
-      candidates,
-      collectionCode,
-    );
-    if (!found) continue;
-    if (found.collectionCode === collectionCode) {
-      hit = found;
-      break;
-    }
-    otherCollection ??= found;
-  }
-  hit ??= otherCollection;
+  const hit = await findPortalHit(baseUrl, cookie, customerCode, candidates, collectionCode, cache);
   if (!hit) return { tried: candidates, match: null, message: 'Not found in the Thorogood catalog.' };
   if (!hit.collectionCode) {
     return {
@@ -1778,19 +1785,17 @@ export function alignResolvedThorogoodSnapshots(
 export function alignThorogoodSnapshots(
   details: HhVerifySnapshot,
   cart: HhVerifySnapshot,
-  initials: readonly string[]
+  affixes: { prefixes: readonly string[]; suffixes: readonly string[] },
 ): { details: HhVerifySnapshot; cart: HhVerifySnapshot } {
-  const cartByKey = new Map(cart.items.map((item) => [skuMatchKey(item.sku), item.sku]));
+  const cartSkus = cart.items.map((item) => item.sku);
   return {
     details: {
       ...details,
-      items: details.items.map((item) => {
-        const portalSku = thorogoodPortalSku(item.sku, initials);
-        return {
-          sku: cartByKey.get(skuMatchKey(portalSku)) ?? portalSku,
-          quantity: item.quantity,
-        };
-      }),
+      items: details.items.map((item) => ({
+        sku:
+          chooseThorogoodPortalSku(item.sku, '', affixes.prefixes, affixes.suffixes, cartSkus) || item.sku,
+        quantity: item.quantity,
+      })),
     },
     cart,
   };
