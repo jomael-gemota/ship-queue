@@ -129,7 +129,9 @@ embeddings. Every signed-in user can view it, and it updates live as jobs run.
 It has two tabs:
 
 - **Overview**: the amount spent, documents processed, average per document
-  and tokens used. Below that, one table by organization and workspace with
+  and tokens used, then **Models in use**: the model behind the latest call of
+  each kind over the last 30 days, with its price per 1M tokens. Below that,
+  one table by organization and workspace with
   documents, tokens, dollars and each one's share of the total, a daily chart,
   and a breakdown by purpose and model.
 - **Billing & prices**: warnings about unpriced models or missing usage,
