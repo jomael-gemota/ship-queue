@@ -195,17 +195,30 @@ async function directlyTrackedModels(since: Date): Promise<Set<string>> {
 }
 
 /**
- * Finds which OpenAI model an alias is actually forwarding to, by looking at
- * the Usage API data for the window: the model with the most total tokens that
- * isn't directly tracked is the upstream. Returns null when nothing is found.
+ * Finds which OpenAI model an alias is actually forwarding to.
+ *
+ * Strategy: use the MOST RECENT day that has any non-tracked model activity,
+ * then pick the highest-token model from that day only.
+ *
+ * This ensures a recent upstream switch wins even when the old model has far
+ * more cumulative tokens over the 7-day window — which is the common case
+ * right after a Hermes reconfiguration.
  */
 function detectUpstreamModel(
   usage: CompletionUsageLine[],
   directModels: Set<string>
 ): string | null {
+  // Strip models that ship-queue tracks directly (e.g. text-embedding-3-small).
+  const nonTracked = usage.filter((line) => !directModels.has(line.model.toLowerCase()));
+  if (nonTracked.length === 0) return null;
+
+  // Find the latest UTC day that has non-tracked activity.
+  const mostRecentDayMs = Math.max(...nonTracked.map((l) => l.dayMs));
+
+  // Among models seen on that day, pick the one with the most tokens.
   const totals = new Map<string, number>();
-  for (const line of usage) {
-    if (directModels.has(line.model.toLowerCase())) continue;
+  for (const line of nonTracked) {
+    if (line.dayMs !== mostRecentDayMs) continue;
     const tokens = line.inputTokens + line.outputTokens;
     totals.set(line.model, (totals.get(line.model) ?? 0) + tokens);
   }

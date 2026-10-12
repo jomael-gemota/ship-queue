@@ -857,7 +857,31 @@ const fmtRate = (value: number | null) =>
     : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
 
 /** One row per model; purposes that share a model (e.g. both embedding uses) are merged. */
-function ModelsInUseCard({ models }: { models: CurrentModel[] }) {
+function ModelsInUseCard({
+  models,
+  canEdit,
+  onSync,
+}: {
+  models: CurrentModel[]
+  canEdit?: boolean
+  onSync?: () => Promise<void>
+}) {
+  const { addToast } = useToast()
+  const [syncing, setSyncing] = useState(false)
+
+  const handleSync = async () => {
+    if (!onSync) return
+    setSyncing(true)
+    try {
+      await onSync()
+      addToast('Upstream model detection complete. Models in use updated.', 'success')
+    } catch (err) {
+      addToast((err as Error).message, 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const rows = useMemo(() => {
     const byModel = new Map<string, CurrentModel & { purposes: CurrentModel['purpose'][] }>()
     for (const m of models) {
@@ -874,7 +898,30 @@ function ModelsInUseCard({ models }: { models: CurrentModel[] }) {
 
   return (
     <div className={cardClass}>
-      <CardHeader title="Models in use" subtitle="The model behind the latest call of each kind, and its price per 1 million tokens." />
+      <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-4 py-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--text-100)]">Models in use</h3>
+          <p className="text-[11px] text-[var(--text-200)]">The model behind the latest call of each kind, and its price per 1 million tokens.</p>
+        </div>
+        {canEdit && onSync && (
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={syncing}
+            title="Detect which model Hermes is currently using and update this table"
+            onClick={handleSync}
+          >
+            {syncing ? (
+              <Spinner className="h-3 w-3" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {syncing ? 'Detecting…' : 'Sync upstream'}
+          </button>
+        )}
+      </div>
       {rows.length === 0 ? (
         <p className="p-6 text-center text-xs text-[var(--text-200)]">No AI calls in the last 30 days.</p>
       ) : (
@@ -937,7 +984,17 @@ function ModelsInUseCard({ models }: { models: CurrentModel[] }) {
   )
 }
 
-function OverviewTab({ summary, range }: { summary: UsageSummary; range: RangeKey }) {
+function OverviewTab({
+  summary,
+  range,
+  canEdit,
+  onSyncUpstream,
+}: {
+  summary: UsageSummary
+  range: RangeKey
+  canEdit?: boolean
+  onSyncUpstream?: () => Promise<void>
+}) {
   const { totals } = summary
   return (
     <>
@@ -961,7 +1018,7 @@ function OverviewTab({ summary, range }: { summary: UsageSummary; range: RangeKe
         </p>
       )}
 
-      <ModelsInUseCard models={summary.currentModels} />
+      <ModelsInUseCard models={summary.currentModels} canEdit={canEdit} onSync={onSyncUpstream} />
 
       <div className={cardClass}>
         <CardHeader title="Spending by organization" subtitle="Click an organization to see its workspaces." />
@@ -1164,7 +1221,15 @@ export default function DocTidyUsage() {
           <Spinner className="h-6 w-6" />
         </div>
       ) : summary ? (
-        <OverviewTab summary={summary} range={range} />
+        <OverviewTab
+          summary={summary}
+          range={range}
+          canEdit={isAdmin}
+          onSyncUpstream={async () => {
+            await authApi.post<{ data: TrueUpResult }>('/doc-tidy/usage/true-up', {})
+            await load()
+          }}
+        />
       ) : null}
     </div>
   )
