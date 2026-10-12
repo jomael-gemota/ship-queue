@@ -34,6 +34,64 @@ function lineAmount(item: BulkOrderLineItem): number | null {
   return Math.round(item.price * item.quantity * 100) / 100
 }
 
+function shipmentTotals(items: BulkOrderLineItem[]) {
+  let quantity = 0
+  let total = 0
+  let priced = 0
+  let currencyCode = ''
+  for (const item of items) {
+    if (Number.isFinite(item.quantity)) quantity += item.quantity
+    const amount = lineAmount(item)
+    if (amount == null) continue
+    priced += 1
+    total = Math.round((total + amount) * 100) / 100
+    if (!currencyCode && item.currencyCode) currencyCode = item.currencyCode
+  }
+  return {
+    itemCount: items.length,
+    quantity,
+    total: priced > 0 ? total : null,
+    currencyCode,
+    partial: priced > 0 && priced < items.length,
+  }
+}
+
+function ShipmentSummary({ items }: { items: BulkOrderLineItem[] }) {
+  const totals = shipmentTotals(items)
+  const figures = [
+    { label: 'items', value: totals.itemCount.toLocaleString('en-US'), accent: false, title: undefined as string | undefined },
+    { label: 'quantity', value: totals.quantity.toLocaleString('en-US'), accent: false, title: undefined },
+    {
+      label: 'total',
+      value: formatAmount(totals.total, totals.currencyCode),
+      accent: true,
+      title: totals.partial ? 'Some lines have no price' : undefined,
+    },
+  ]
+  return (
+    <dl className="mt-3 flex flex-wrap items-baseline" aria-label="Shipment totals">
+      {figures.map((figure, index) => (
+        <div
+          key={figure.label}
+          className={`flex items-baseline gap-1.5 ${index > 0 ? 'ml-4 border-l border-[var(--bg-300)] pl-4' : ''}`}
+          title={figure.title}
+        >
+          <dd
+            className={`text-[15px] font-semibold tabular-nums leading-none ${
+              figure.accent
+                ? 'text-[var(--accent-200)]'
+                : 'text-slate-900 dark:text-[var(--text-100)]'
+            }`}
+          >
+            {figure.value}
+          </dd>
+          <dt className="text-xs text-slate-500 dark:text-[var(--text-200)]">{figure.label}</dt>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 type ItemView = 'item' | 'style'
 type ItemRow = BulkOrderLineItem & { total: number | null }
 
@@ -563,7 +621,7 @@ export default function BulkOrderItems() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--bg-300)] px-4 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--bg-300)] px-4 py-4">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
             {index >= 0 ? `Shipment ${index + 1}` : 'Items'}
@@ -577,6 +635,7 @@ export default function BulkOrderItems() {
           {data?.message && items.length > 0 ? (
             <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">{data.message}</p>
           ) : null}
+          {data && index >= 0 ? <ShipmentSummary items={items} /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <DetailColumnsButton open={door !== 'closed'} onToggle={toggleDetails} />
