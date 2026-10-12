@@ -13,6 +13,7 @@ import {
   requestParse,
   rerunParse,
 } from '../services/docTidyParse.service';
+import { isAgentTable, tablesToAgentJson } from '../services/docTidyTables.service';
 import {
   addJobClient,
   clearJobProgress,
@@ -405,8 +406,17 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
 
     const normalizedNote = typeof note === 'string' && note.trim() ? note.trim() : undefined;
 
+    const jobTables = (job.tableOutput as { tables?: unknown } | null | undefined)?.tables;
+
+    // The worker replays correctedOutput as the answer the agent should copy,
+    // so a table-view correction must be stored in the agent's JSON shape.
+    const output =
+      mode === 'tabular' && Array.isArray(correctedTables)
+        ? tablesToAgentJson(correctedTables.filter(isAgentTable), job.jsonOutput, jobTables)
+        : (correctedOutput as Record<string, unknown>);
+
     const existing = await DocTidyCorrection.find({ parseJobId: id }).select('-embedding').lean();
-    const target = canonicalJson(correctedOutput);
+    const target = canonicalJson(output);
     const duplicate = existing.find(
       (c) =>
         canonicalJson(c.correctedOutput) === target && (c.note ?? undefined) === normalizedNote
@@ -420,9 +430,7 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
       0,
       CORRECTION_TEXT_SAMPLE_CHARS
     );
-    const embedding = documentTextSample ? await embedText(documentTextSample) : null;
-
-    const jobTables = (job.tableOutput as { tables?: unknown } | null | undefined)?.tables;
+    const embedding = documentTextSample ? await embedText(documentTextSample, id) : null;
 
     const correction = await DocTidyCorrection.create({
       parseJobId: job._id,
@@ -431,7 +439,7 @@ export const createJobCorrection = async (req: Request, res: Response): Promise<
       documentTextSample,
       embedding,
       originalOutput: job.jsonOutput ?? null,
-      correctedOutput: correctedOutput as Record<string, unknown>,
+      correctedOutput: output,
       mode: mode as CorrectionMode | undefined,
       correctedTables: Array.isArray(correctedTables) ? correctedTables : undefined,
       originalTables:

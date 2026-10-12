@@ -50,6 +50,13 @@ import {
   deleteEmailSource,
 } from '../controllers/docTidyEmailSource.controller';
 import {
+  listSpsSources,
+  deleteSpsSource,
+  querySpsDocuments,
+  getSpsDocumentContent,
+  queryTransactions,
+} from '../controllers/docTidySpsSource.controller';
+import {
   listOrganizations,
   createOrganization,
   updateOrganization,
@@ -74,6 +81,16 @@ import {
   refreshCogsForWorkspace,
   rebuildMatchCache,
 } from '../controllers/docTidyOrderImport.controller';
+import {
+  getUsageSummary,
+  listPrices,
+  createPrice,
+  updatePrice,
+  deletePrice,
+  repriceUsage,
+  getReconciliation,
+  trueUpUsage,
+} from '../controllers/docTidyUsage.controller';
 
 const router = Router();
 
@@ -132,6 +149,16 @@ router.delete('/workspaces/:id', deleteWorkspace);
 router.get('/workspaces/:workspaceId/email-sources', listEmailSources);
 router.delete('/workspaces/:workspaceId/email-sources/:sourceId', deleteEmailSource);
 
+// Per-workspace SPS Commerce sources — same access-control pattern as email sources.
+// Connect is handled in auth.routes.ts (GET /auth/sps/workspaces/:workspaceId/connect).
+router.get('/workspaces/:workspaceId/sps-sources', listSpsSources);
+router.delete('/workspaces/:workspaceId/sps-sources/:sourceId', deleteSpsSource);
+// Transaction API v5 document queue: list files + download individual EDI XML.
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents', querySpsDocuments);
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/documents/:docType/:filename', getSpsDocumentContent);
+// Parsed transaction records: download + parse EDI files, return structured rows.
+router.get('/workspaces/:workspaceId/sps-sources/:sourceId/transactions', queryTransactions);
+
 // Organizations — any auth user may list; only admins may create/modify/delete.
 router.get('/organizations', listOrganizations);
 router.get('/organizations/users', requireAdmin, listUsersForOrg);
@@ -162,6 +189,17 @@ router.get('/config', getConfig);
 router.put('/config', requireAdmin, updateConfig);
 router.delete('/config/mailbox', requireAdmin, disconnectMailbox);
 router.get('/config/folders', requireAdmin, listConfigFolders);
+
+// Token usage & cost — any signed-in user may view; only admins may change
+// prices or rewrite recorded costs.
+router.get('/usage/summary', getUsageSummary);
+router.get('/usage/reconciliation', getReconciliation);
+router.post('/usage/reprice', requireAdmin, repriceUsage);
+router.post('/usage/true-up', requireAdmin, trueUpUsage);
+router.get('/usage/prices', listPrices);
+router.post('/usage/prices', requireAdmin, createPrice);
+router.put('/usage/prices/:id', requireAdmin, updatePrice);
+router.delete('/usage/prices/:id', requireAdmin, deletePrice);
 
 // Shared UI preferences (column orders). Any authenticated user may read/write.
 router.get('/ui-prefs', getUiPrefs);

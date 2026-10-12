@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { ToastProvider } from './context/ToastContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -11,6 +12,7 @@ import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
 import DropboxFetcher from './pages/DropboxFetcher'
 import DocTidyInvoiceAudit from './pages/DocTidyInvoiceAudit'
+import DocTidyUsage from './pages/DocTidyUsage'
 import HHSportswear from './pages/HHSportswear'
 import HHSportswearLayout from './pages/HHSportswearLayout'
 import HHSportswearOrders from './pages/HHSportswearOrders'
@@ -31,6 +33,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ToastProvider>
         <BrowserRouter>
           <Routes>
             {/* Public routes */}
@@ -51,6 +54,7 @@ function App() {
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
                 <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/usage" element={<DocTidyUsage />} />
                 <Route path="/ordering" element={<DropshipBrands />} />
                 <Route path="/ordering/bulk" element={<BulkOrder />} />
                 {BULK_ORDER_BRANDS.map((brand) => (
@@ -80,6 +84,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   )

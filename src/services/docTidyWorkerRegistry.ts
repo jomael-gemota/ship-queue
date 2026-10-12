@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import DocTidyParseJob from '../models/DocTidyParseJob';
 import { broadcast } from './docTidyEvents';
 import { writeMatchCacheForJob } from './invoiceMatchCache.service';
+import { recordUsage, type UsageInput } from './docTidyUsage.service';
 
 /**
  * Transport between the Express server and the Python worker that runs the
@@ -31,6 +32,17 @@ interface WorkerMessage {
   message?: string;
   json?: Record<string, unknown>;
   table?: Record<string, unknown> | null;
+  /** For `usage`: one LLM call's reported tokens. */
+  purpose?: UsageInput['purpose'];
+  provider?: UsageInput['provider'];
+  model?: string;
+  serviceTier?: string | null;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  usageSource?: UsageInput['usageSource'];
 }
 
 interface JobStreamEvent {
@@ -225,6 +237,24 @@ async function handleWorkerMessage(msg: WorkerMessage): Promise<void> {
         console.error('[doc-tidy worker] failed to persist reasoning for', jobId, err)
       );
     }
+    return;
+  }
+
+  if (type === 'usage') {
+    if (!msg.purpose || !msg.provider) return;
+    await recordUsage({
+      jobId,
+      purpose: msg.purpose,
+      provider: msg.provider,
+      model: msg.model ?? 'unknown',
+      serviceTier: msg.serviceTier,
+      inputTokens: msg.inputTokens,
+      cachedInputTokens: msg.cachedInputTokens,
+      cacheWriteTokens: msg.cacheWriteTokens,
+      outputTokens: msg.outputTokens,
+      reasoningTokens: msg.reasoningTokens,
+      usageSource: msg.usageSource,
+    });
     return;
   }
 

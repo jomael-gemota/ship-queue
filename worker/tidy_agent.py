@@ -14,6 +14,8 @@ from enum import Enum, auto
 import openai
 from openai import AsyncOpenAI
 
+from usage import hermes_provider, report_usage
+
 logger = logging.getLogger(__name__)
 
 # Hard cap on document text sent to the model.  Line-item catalogs can be long,
@@ -38,6 +40,18 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", 8192))
 RETRY_MAX_ATTEMPTS = int(os.environ.get("TIDY_RETRY_MAX_ATTEMPTS", 6))
 RETRY_BASE_DELAY = float(os.environ.get("TIDY_RETRY_BASE_DELAY", 15))  # seconds
 
+# Ask streamed responses to end with a usage frame so every call can be costed.
+# Flipped off for the rest of the process if the backend rejects the option.
+_stream_usage_enabled = os.environ.get("TIDY_STREAM_USAGE", "true").lower() not in (
+    "false",
+    "0",
+    "no",
+)
+
+# Routes requests that share the static system prompt to the same OpenAI cache.
+# Only sent when talking to OpenAI directly — other backends may reject it.
+PROMPT_CACHE_KEY = os.environ.get("TIDY_PROMPT_CACHE_KEY", "doc-tidy-extract-v1")
+
 SYSTEM_PROMPT = """You are Tidy, an intelligent document parser built by Doc Tidy.
 
 Your task:
@@ -50,6 +64,11 @@ Rules:
 - The JSON must appear after the closing </thinking> tag with no markdown fencing.
 - The JSON should be well-structured and comprehensive — extract all meaningful fields.
 - Do not include explanatory text outside the <thinking> block or the JSON object.
+
+Output shape:
+- Keep document fields (invoice/PO/order numbers, dates, terms, totals) as top-level
+  keys, and addresses/parties as nested objects (e.g. "billTo", "shipTo").
+- Never wrap fields in a "tables" array — display tables are generated separately.
 
 Vendor identification:
 - Include a top-level "vendorName" field with the vendor/brand/supplier name exactly
@@ -175,6 +194,32 @@ def _make_hermes_client() -> tuple[AsyncOpenAI, str]:
     return AsyncOpenAI(**client_kwargs), model
 
 
+def _cache_kwargs() -> dict:
+    if os.environ.get("HERMES_BASE_URL"):
+        return {}
+    return {"prompt_cache_key": PROMPT_CACHE_KEY}
+
+
+async def _create_stream(client: AsyncOpenAI, **kwargs):
+    """Open a streamed completion, requesting a trailing usage frame when supported."""
+    global _stream_usage_enabled
+    if _stream_usage_enabled:
+        try:
+            return await client.chat.completions.create(
+                **kwargs, stream=True, stream_options={"include_usage": True}
+            )
+        except openai.BadRequestError as exc:
+            if "stream_options" not in str(exc) and "include_usage" not in str(exc):
+                raise
+            logger.warning(
+                "Backend rejected stream_options.include_usage (%s); streamed calls "
+                "will be recorded with missing usage",
+                exc,
+            )
+            _stream_usage_enabled = False
+    return await client.chat.completions.create(**kwargs, stream=True)
+
+
 def _build_correction_rules(examples) -> str:
     """Collect the user's correction notes into explicit, top-level rules.
 
@@ -258,12 +303,18 @@ def _build_example_messages(examples) -> list[dict]:
         sample = (ex.document_text_sample or "").strip()
         if not sample:
             continue
+        # Older table-view corrections were stored as {"tables": [...]}; replaying
+        # that shape teaches the model to emit it. Their note still applies via
+        # _build_correction_rules.
+        corrected_output = {k: v for k, v in (ex.corrected_output or {}).items() if k != "tables"}
+        if not corrected_output:
+            continue
         note_hint = (
             f"\n\nThe user's instruction with this correction: {ex.note}"
             if getattr(ex, "note", None)
             else ""
         )
-        corrected = json.dumps(ex.corrected_output, ensure_ascii=False)
+        corrected = json.dumps(corrected_output, ensure_ascii=False)
         messages.append(
             {
                 "role": "user",
@@ -326,12 +377,15 @@ async def stream_tidy(
     in_thinking = False
     thinking_done = False
 
-    system_content = (
-        SYSTEM_PROMPT
-        + _build_vendor_format_anchor(vendor_sku_samples)
-        + _build_correction_rules(examples)
-    )
-    messages: list[dict] = [{"role": "system", "content": system_content}]
+    # SYSTEM_PROMPT must stay first and byte-identical across jobs: it is the
+    # cacheable prefix. Per-vendor guidance varies per document, so it follows in
+    # its own system message instead of being appended to the shared one.
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    vendor_guidance = (
+        _build_vendor_format_anchor(vendor_sku_samples) + _build_correction_rules(examples)
+    ).strip()
+    if vendor_guidance:
+        messages.append({"role": "system", "content": vendor_guidance})
     messages.extend(_build_example_messages(examples))
 
     # When we injected reference corrections, remind the model—right before the
@@ -359,18 +413,27 @@ async def stream_tidy(
         buffer = ""
         in_thinking = False
         thinking_done = False
+        usage = None
+        echoed_model = None
+        service_tier = None
 
         try:
             # temperature is not supported by OpenAI reasoning models (e.g. gpt-5.5).
             # Omit it universally — the system prompt guides determinism sufficiently.
-            stream = await client.chat.completions.create(
+            stream = await _create_stream(
+                client,
                 model=model,
                 messages=messages,
-                stream=True,
                 max_tokens=MAX_TOKENS,
+                **_cache_kwargs(),
             )
 
             async for chunk in stream:
+                echoed_model = getattr(chunk, "model", None) or echoed_model
+                service_tier = getattr(chunk, "service_tier", None) or service_tier
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
+
                 # Some OpenAI-compatible backends emit chunks with no usable choice —
                 # e.g. usage-only final frames, keep-alive frames, or partial frames
                 # under load — where `choices` is None or empty (and occasionally the
@@ -450,6 +513,13 @@ async def stream_tidy(
                 token_type = TokenType.THINKING if in_thinking else TokenType.OUTPUT
                 yield StreamChunk(token_type, buffer)
 
+            await report_usage(
+                purpose="extraction",
+                provider=hermes_provider(),
+                model=echoed_model or model,
+                usage=usage,
+                service_tier=service_tier,
+            )
             return  # success — done
 
         except openai.RateLimitError as exc:
@@ -565,6 +635,13 @@ async def generate_table_data(json_data: dict) -> dict:
                 ],
                 stream=False,
                 max_tokens=MAX_TOKENS,
+            )
+            await report_usage(
+                purpose="table",
+                provider=hermes_provider(),
+                model=getattr(response, "model", None) or model,
+                usage=getattr(response, "usage", None),
+                service_tier=getattr(response, "service_tier", None),
             )
 
             content = (response.choices[0].message.content or "") if response.choices else ""

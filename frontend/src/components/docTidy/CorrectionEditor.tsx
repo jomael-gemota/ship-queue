@@ -269,7 +269,7 @@ function TabularCorrectionEditor({
     setResult(null)
 
     const correctedTables = tables.map(toAgentTable)
-    // Use the corrected tables as the JSON object for retrieval + duplicate detection.
+    // The server rebuilds the agent-shaped correctedOutput from correctedTables.
     const correctedOutput: Record<string, unknown> = { tables: correctedTables }
 
     try {

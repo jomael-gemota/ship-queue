@@ -121,6 +121,50 @@ See `worker/README.md` for the Ubuntu setup, restart commands, and service
 management reference, and `design-log/2026-09-11-doc-tidy-agent-parsing.md` for
 why it is built this way.
 
+### Token usage & cost
+
+**Token Usage** (`/doc-tidy/usage`, under *Invoice Auditing* in the sidebar) shows
+what every LLM call Doc Tidy makes costs: extraction, table view, narration and
+embeddings. Every signed-in user can view it, and it updates live as jobs run.
+It has two tabs:
+
+- **Overview**: the amount spent, documents processed, average per document
+  and tokens used, then **Models in use**: the model behind the latest call of
+  each kind over the last 30 days, with its price per 1M tokens. Below that,
+  one table by organization and workspace with
+  documents, tokens, dollars and each one's share of the total, a daily chart,
+  and a breakdown by purpose and model.
+- **Billing & prices**: warnings about unpriced models or missing usage,
+  recorded vs. OpenAI's bill with its line items, the Hermes calibration, and
+  the model price table.
+
+Only admins can edit prices, **Re-price**, **True up now**, or force-refresh the
+OpenAI comparison.
+
+- Counts come from the `usage` object each API response returns, never from
+  estimates. Cost follows OpenAI's billing: ordinary input, cached input and
+  cache writes each at their own rate, plus output (reasoning included), with
+  long-context and service-tier (Standard/Flex/Batch/Fast) prices where they apply.
+- Prices live in an admin-editable table seeded from openai.com/api/pricing.
+  Cost is fixed when a call is recorded. After editing a price, use **Re-price**
+  to apply it to past usage. Calls to a model with no price row are flagged as
+  unpriced rather than counted as $0 silently.
+- Hermes reports its model as `hermes-agent` and calls `gpt-5.6-sol` upstream,
+  but doesn't pass through which input was cached. Its price row therefore has
+  an **upstream model**. Today's Hermes costs are estimates: list price × the
+  ratio OpenAI actually billed over the last 7 days. They're marked **≈**.
+  Each complete UTC day is then **trued up** to the real bill, about 6 hours
+  after midnight UTC, then hourly, or on demand with **True up now**. Spend
+  that no recorded call accounts for shows as **Untracked Hermes usage**.
+- Set `OPENAI_ADMIN_KEY` and `OPENAI_USAGE_API_KEY_IDS` (the Doc Tidy key ID,
+  e.g. `key_…`). They enable **Recorded vs. billed by OpenAI** and the Hermes
+  true-up. Without them, Hermes costs stay at list price.
+- On the worker machine, `python diagnose_usage.py` shows which model the Hermes
+  backend reports and whether it returns token usage.
+
+See `design-log/2026-10-10-doc-tidy-token-usage-and-cost-dashboard.md` and
+`design-log/2026-10-10-hermes-cost-calibration-and-daily-true-up.md`.
+
 ## Tech Stack
 
 | Layer    | Technology                                              |
@@ -333,6 +377,12 @@ attachment destination are admin-only.
 | GET/PUT | `/config`              | Get / set the Drive destination (PUT = admin)      |
 | DELETE | `/config/mailbox`       | Disconnect the mailbox (admin)                     |
 | GET    | `/config/folders`       | Drive folder picker for the mailbox account (admin) |
+| GET    | `/usage/summary`        | Token usage & cost by organization/workspace      |
+| GET    | `/usage/reconciliation` | Recorded cost vs. OpenAI Costs API                 |
+| POST   | `/usage/reprice`        | Re-apply current prices to a date range (admin)    |
+| POST   | `/usage/true-up`        | Recalibrate and true up Hermes costs to the OpenAI bill (admin) |
+| GET/POST | `/usage/prices`       | List model prices / add one (POST = admin)         |
+| PUT/DELETE | `/usage/prices/:id` | Edit / delete a model price (admin)                |
 
 ### Shipments — `/api/shipments`
 

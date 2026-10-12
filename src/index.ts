@@ -22,6 +22,8 @@ import {
 import { seedCookieJars } from './models/CookieJar';
 import { seedHhB2bConfig } from './models/HHB2bConfig';
 import { seedBulkOrderConfig } from './models/BulkOrderConfig';
+import { seedModelPrices } from './models/DocTidyModelPrice';
+import { startTrueUpScheduler } from './services/docTidyTrueUp.service';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
@@ -99,6 +101,7 @@ const start = async () => {
   await seedCookieJars();
   await seedHhB2bConfig();
   await seedBulkOrderConfig();
+  await seedModelPrices();
   await migrateHhOrderGroupBrands();
   await migrateHhSplitStatuses();
   await migrateLocalHhCartDrafts();
@@ -114,6 +117,7 @@ const start = async () => {
   startDocTidyPoller();
   startHhB2bHealthScheduler();
   startBulkOrderHealthScheduler();
+  startTrueUpScheduler();
 };
 
 start();

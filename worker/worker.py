@@ -43,6 +43,7 @@ from sku import (
     resolve_vendor,
 )
 from tidy_agent import TokenType, extract_json, generate_table_data, stream_tidy
+from usage import set_usage_sink
 
 # ── Environment profile ───────────────────────────────────────────────────────
 # Use --env to load a named profile, e.g.:
@@ -159,6 +160,11 @@ async def process_job(
 
     async def send(payload: dict) -> None:
         await ws.send(json.dumps(payload))
+
+    async def send_usage(event: dict) -> None:
+        await send({"type": "usage", "jobId": job_id, **event})
+
+    set_usage_sink(send_usage)
 
     narrator = Narrator()
     step_counter = 0

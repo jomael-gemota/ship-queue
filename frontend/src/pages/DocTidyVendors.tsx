@@ -434,10 +434,9 @@ function CorrectionItem({
   const [showAll, setShowAll] = useState(false)
 
   // Tabular corrections store the full corrected table in correctedTables.
-  // Their correctedOutput is { tables: [...] } which has a completely different
-  // schema from originalOutput (the agent's JSON), so running diffOutputs on them
-  // produces nothing useful — ALL paths appear changed (schema mismatch).
-  // Detect tabular and take a different display path.
+  // Older ones have a correctedOutput of { tables: [...] }, a different schema
+  // from originalOutput, so diffOutputs would mark every path changed. The
+  // table diff is exact for every tabular correction, so always use it.
   const isTabular =
     correction.mode === 'tabular' &&
     Array.isArray(correction.correctedTables) &&
