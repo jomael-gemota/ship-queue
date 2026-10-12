@@ -99,13 +99,21 @@ const GPT_56_SOL_RATES = {
   longCacheWritePer1M: 10, longOutputPer1M: 30,
 };
 
+const GPT_6_LUNA_RATES = {
+  inputPer1M: 0.10, cachedInputPer1M: 0.01, cacheWritePer1M: 0.125, outputPer1M: 0.50,
+  longContextThreshold: 272_000, longInputPer1M: 0.20, longCachedInputPer1M: 0.02,
+  longCacheWritePer1M: 0.25, longOutputPer1M: 0.75,
+};
+
 /**
  * Rows added after the first seed, inserted only when missing so they reach
- * databases that were seeded before they existed. Hermes reports its model as
- * `hermes-agent` and calls gpt-5.6-sol upstream (verified 2026-10-10).
+ * databases that were seeded before they existed.
+ * The `hermes-agent` row's `upstreamModel` is auto-updated by the true-up
+ * scheduler when Hermes's actual upstream model changes.
  */
 const ENSURED_PRICES: Array<Partial<IDocTidyModelPrice>> = [
   { model: 'gpt-5.6-sol', serviceTier: 'standard', ...GPT_56_SOL_RATES },
+  { model: 'gpt-6-luna', serviceTier: 'standard', ...GPT_6_LUNA_RATES },
   {
     model: 'hermes-agent', serviceTier: 'standard', ...GPT_56_SOL_RATES,
     upstreamModel: 'gpt-5.6-sol',

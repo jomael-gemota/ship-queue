@@ -10,7 +10,7 @@ import {
   type CompletionUsageLine,
   type CostLine,
 } from '../lib/openaiAdmin';
-import { announceUsage, invalidatePriceCache, repriceRange } from './docTidyUsage.service';
+import { announceUsage, invalidatePriceCache, loadPrices, repriceRange } from './docTidyUsage.service';
 
 /**
  * Calibrates and trues up alias models (rows with `upstreamModel`, i.e. Hermes)
@@ -39,6 +39,8 @@ export interface TrueUpDay {
 export interface TrueUpCalibration {
   model: string;
   upstreamModel: string;
+  /** The model actually seen in the Usage API this run; null when no data. */
+  detectedUpstream: string | null;
   calibrationFactor: number | null;
   billedUsd: number;
   listUsd: number;
@@ -70,6 +72,7 @@ const listWeight = (input: number, output: number, rates: PriceRates): number =>
 interface Alias extends PriceRates {
   _id: unknown;
   model: string;
+  serviceTier: string;
   upstreamModel: string;
 }
 
@@ -177,6 +180,98 @@ function sumByDay<T extends { dayMs: number }>(
   return totals;
 }
 
+/**
+ * Models Doc Tidy calls directly via the openai provider (not through an alias
+ * like hermes-agent). These appear in the Usage API data but are already
+ * tracked per-event, so they should be excluded when hunting for the upstream
+ * model an alias forwards to.
+ */
+async function directlyTrackedModels(since: Date): Promise<Set<string>> {
+  const models = await DocTidyUsageEvent.distinct('model', {
+    provider: 'openai',
+    createdAt: { $gte: since },
+  }) as string[];
+  return new Set(models.map((m) => m.toLowerCase()));
+}
+
+/**
+ * Finds which OpenAI model an alias is actually forwarding to, by looking at
+ * the Usage API data for the window: the model with the most total tokens that
+ * isn't directly tracked is the upstream. Returns null when nothing is found.
+ */
+function detectUpstreamModel(
+  usage: CompletionUsageLine[],
+  directModels: Set<string>
+): string | null {
+  const totals = new Map<string, number>();
+  for (const line of usage) {
+    if (directModels.has(line.model.toLowerCase())) continue;
+    const tokens = line.inputTokens + line.outputTokens;
+    totals.set(line.model, (totals.get(line.model) ?? 0) + tokens);
+  }
+  if (totals.size === 0) return null;
+  return [...totals.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+/**
+ * When Hermes's upstream model changes, update the alias price row so that
+ * the Models-in-use card, the calibration factor and the true-up all use the
+ * new model automatically. Copies the new model's rates from the price table
+ * (if a row exists) so pricing stays accurate.
+ */
+async function syncAliasUpstreamModel(alias: Alias, newUpstream: string): Promise<void> {
+  console.log(
+    `[doc-tidy usage] upstream model for ${alias.model} changed: ${alias.upstreamModel} → ${newUpstream}`
+  );
+
+  // Look up the new model's rates so we can keep the alias priced accurately.
+  const prices = await loadPrices();
+  const newPrice = prices.find(
+    (p) => p.model.toLowerCase() === newUpstream.toLowerCase() && p.serviceTier === alias.serviceTier
+  ) ?? prices.find(
+    (p) => p.model.toLowerCase() === newUpstream.toLowerCase() && p.serviceTier === 'standard'
+  );
+
+  const rateUpdate = newPrice
+    ? {
+        inputPer1M: newPrice.inputPer1M,
+        cachedInputPer1M: newPrice.cachedInputPer1M ?? null,
+        cacheWritePer1M: newPrice.cacheWritePer1M ?? null,
+        outputPer1M: newPrice.outputPer1M,
+        longContextThreshold: newPrice.longContextThreshold ?? null,
+        longInputPer1M: newPrice.longInputPer1M ?? null,
+        longCachedInputPer1M: newPrice.longCachedInputPer1M ?? null,
+        longCacheWritePer1M: newPrice.longCacheWritePer1M ?? null,
+        longOutputPer1M: newPrice.longOutputPer1M ?? null,
+      }
+    : {};
+
+  await DocTidyModelPrice.updateOne(
+    { _id: alias._id },
+    {
+      $set: {
+        upstreamModel: newUpstream,
+        calibrationFactor: null, // reset; will be recomputed this run
+        calibratedAt: null,
+        notes: `Upstream auto-detected as ${newUpstream} on ${new Date().toISOString().slice(0, 10)}`,
+        ...rateUpdate,
+      },
+    }
+  );
+
+  // Update the in-memory alias object so the rest of this run uses the new values.
+  alias.upstreamModel = newUpstream;
+  if (newPrice) {
+    alias.inputPer1M = newPrice.inputPer1M;
+    alias.outputPer1M = newPrice.outputPer1M;
+  }
+  if (!newPrice) {
+    console.warn(
+      `[doc-tidy usage] no price row found for ${newUpstream} — add one in Billing & prices to keep costs accurate`
+    );
+  }
+}
+
 async function run(now: number): Promise<TrueUpResult> {
   const result: TrueUpResult = {
     configured: Boolean(adminKey()),
@@ -194,10 +289,26 @@ async function run(now: number): Promise<TrueUpResult> {
   const today = startOfUtcDay(now);
   const windowStart = today - (WINDOW_DAYS - 1) * DAY_MS;
   const windowEnd = today + DAY_MS;
-  const [costs, usage]: [CostLine[], CompletionUsageLine[]] = await Promise.all([
-    fetchDailyCosts(windowStart, windowEnd),
-    fetchDailyCompletionUsage(windowStart, windowEnd),
-  ]);
+  const [costs, usage, directModels]: [CostLine[], CompletionUsageLine[], Set<string>] =
+    await Promise.all([
+      fetchDailyCosts(windowStart, windowEnd),
+      fetchDailyCompletionUsage(windowStart, windowEnd),
+      directlyTrackedModels(new Date(windowStart)),
+    ]);
+
+  // Auto-detect the upstream model for each alias. If Hermes has been switched
+  // to a different OpenAI model, this updates the price row (including rates)
+  // and resets the calibration factor so it gets recomputed below.
+  const detectedUpstream = detectUpstreamModel(usage, directModels);
+  for (const alias of aliases) {
+    if (
+      detectedUpstream &&
+      detectedUpstream.toLowerCase() !== alias.upstreamModel.toLowerCase()
+    ) {
+      await syncAliasUpstreamModel(alias, detectedUpstream);
+      invalidatePriceCache();
+    }
+  }
 
   const perAlias = aliases.map((alias) => {
     const billed = sumByDay(
@@ -216,6 +327,7 @@ async function run(now: number): Promise<TrueUpResult> {
     result.calibrations.push({
       model: alias.model,
       upstreamModel: alias.upstreamModel,
+      detectedUpstream: detectedUpstream ?? null,
       calibrationFactor,
       billedUsd,
       listUsd,
