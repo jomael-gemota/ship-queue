@@ -1,4 +1,5 @@
-import CookieJar from '../models/CookieJar';
+import CookieJar, { THOROGOOD_B2B_KEY } from '../models/CookieJar';
+import { recheckThorogoodSessionsAfterJar } from '../services/thorogoodSessionRecheck';
 import { getFetcher } from './registry';
 
 const MAX_ERROR_LEN = 1000;
@@ -36,6 +37,7 @@ export async function executeCookieJar(key: string): Promise<{ skipped: boolean 
   inFlight.add(key);
   const startedAt = new Date();
   console.log(`[cookie-jar] Running ${key}`);
+  let fetched = false;
 
   try {
     const cookie = await fetcher();
@@ -50,6 +52,7 @@ export async function executeCookieJar(key: string): Promise<{ skipped: boolean 
         },
       }
     );
+    fetched = true;
     console.log(`[cookie-jar] ${key} succeeded`);
   } catch (err) {
     const message = truncateError(err instanceof Error ? err.message : String(err));
@@ -65,6 +68,10 @@ export async function executeCookieJar(key: string): Promise<{ skipped: boolean 
     console.error(`[cookie-jar] ${key} failed: ${message}`);
   } finally {
     inFlight.delete(key);
+  }
+
+  if (fetched && key === THOROGOOD_B2B_KEY) {
+    await recheckThorogoodSessionsAfterJar();
   }
 
   return { skipped: false };

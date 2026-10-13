@@ -1,13 +1,19 @@
 import { Cron } from 'croner';
 import HHB2bConfig, { getOrCreateHhB2bConfig } from '../models/HHB2bConfig';
 import { hhBrand, hhDraftMode, HH_BRAND_IDS, type HHBrandId } from '../lib/hhBrand';
-import { HhB2bAuthError, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
+import { HhB2bAuthError, hhB2bCookieUsesJar, loadHhB2bConfig, loadHhB2bCookie } from '../lib/hhB2bConfig';
 import { probeHhB2bSession } from '../lib/hhB2bHellyHansen';
 import { probeThorogoodSession } from '../lib/hhB2bThorogood';
 
 const LOG = '[hh-b2b-health]';
 export const HH_B2B_HEALTH_TIMEZONE = 'Asia/Manila';
 export const HH_B2B_HEALTH_DEFAULT_TIMES = ['20:00', '04:00'];
+/**
+ * Thorogood Cookie Jar often runs on the same minute as this check and finishes
+ * about 20s later. Wait before recording a jar-sourced auth failure so the new
+ * cookie can replace the one that just expired.
+ */
+export const THOROGOOD_SESSION_AUTH_RETRY_MS = 45_000;
 const MAX_CHECK_TIMES = 12;
 const WEBHOOK_TIMEOUT_MS = 10_000;
 const MESSAGE_MAX = 500;
@@ -51,6 +57,10 @@ interface BoundCheck {
 
 const boundChecks = new Map<string, BoundCheck>();
 let schedulerStarted = false;
+
+export function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function truncate(value: string): string {
   const trimmed = value.trim();
@@ -198,7 +208,16 @@ async function classifyProbe(brand: HHBrandId): Promise<{ status: HhB2bHealthSta
   }
 }
 
-export async function runHhB2bHealthCheck(brand: HHBrandId): Promise<void> {
+async function thorogoodJarCanReplaceSession(brand: HHBrandId): Promise<boolean> {
+  if (brand !== 'thorogood') return false;
+  const stored = await getOrCreateHhB2bConfig(brand, true);
+  return hhB2bCookieUsesJar(brand, stored.cookie ?? '');
+}
+
+export async function runHhB2bHealthCheck(
+  brand: HHBrandId,
+  options?: { retryAuth?: boolean },
+): Promise<void> {
   if (inflight.has(brand)) throw new HhB2bHealthBusyError();
   inflight.add(brand);
   try {
@@ -206,7 +225,12 @@ export async function runHhB2bHealthCheck(brand: HHBrandId): Promise<void> {
     const doc = await getOrCreateHhB2bConfig(brand, false);
     const previous = doc.sessionCheckStatus || '';
     const webhookUrl = (doc.alertWebhookUrl || '').trim();
-    const probe = await classifyProbe(brand);
+    let probe = await classifyProbe(brand);
+    if (options?.retryAuth && probe.status === 'auth' && (await thorogoodJarCanReplaceSession(brand))) {
+      console.log(`${LOG} ${brand} auth — rechecking after the Cookie Jar refresh window`);
+      await delayMs(THOROGOOD_SESSION_AUTH_RETRY_MS);
+      probe = await classifyProbe(brand);
+    }
     const checkedAt = new Date();
 
     await HHB2bConfig.updateOne(
@@ -343,7 +367,7 @@ export async function reconcileHhB2bHealthSchedule(): Promise<void> {
         },
       },
       () => {
-        void runHhB2bHealthCheck(next.brand).catch((err) => {
+        void runHhB2bHealthCheck(next.brand, { retryAuth: next.brand === 'thorogood' }).catch((err) => {
           if (err instanceof HhB2bHealthBusyError) {
             console.log(`${LOG} Skipping ${next.brand} — a check is already running`);
             return;

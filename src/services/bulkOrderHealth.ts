@@ -1,11 +1,13 @@
 import { Cron } from 'croner';
 import BulkOrderConfig, { BULK_ORDER_CONFIG_KEY, getOrCreateBulkOrderConfig } from '../models/BulkOrderConfig';
-import { HhB2bAuthError, resolveHhB2bCookie } from '../lib/hhB2bConfig';
+import { HhB2bAuthError, hhB2bCookieUsesJar, resolveHhB2bCookie } from '../lib/hhB2bConfig';
 import { probeThorogoodSession } from '../lib/hhB2bThorogood';
 import {
+  delayMs,
   HH_B2B_HEALTH_TIMEZONE,
   hhB2bAlertEvent,
   resolveSessionCheckTimes,
+  THOROGOOD_SESSION_AUTH_RETRY_MS,
   type HhB2bAlertEvent,
   type HhB2bHealthStatus,
 } from './hhB2bHealth';
@@ -126,14 +128,22 @@ async function classifyProbe(): Promise<{ status: HhB2bHealthStatus; message: st
   }
 }
 
-export async function runBulkOrderHealthCheck(): Promise<void> {
+export async function runBulkOrderHealthCheck(options?: { retryAuth?: boolean }): Promise<void> {
   if (inflight) throw new BulkOrderHealthBusyError();
   inflight = true;
   try {
     const doc = await getOrCreateBulkOrderConfig(false);
     const previous = doc.sessionCheckStatus || '';
     const webhookUrl = (doc.alertWebhookUrl || '').trim();
-    const probe = await classifyProbe();
+    let probe = await classifyProbe();
+    if (options?.retryAuth && probe.status === 'auth') {
+      const stored = await getOrCreateBulkOrderConfig(true);
+      if (await hhB2bCookieUsesJar('thorogood', stored.cookie ?? '')) {
+        console.log(`${LOG} auth — rechecking after the Cookie Jar refresh window`);
+        await delayMs(THOROGOOD_SESSION_AUTH_RETRY_MS);
+        probe = await classifyProbe();
+      }
+    }
     const checkedAt = new Date();
 
     await BulkOrderConfig.updateOne(
@@ -238,7 +248,7 @@ export async function reconcileBulkOrderHealthSchedule(): Promise<void> {
         },
       },
       () => {
-        void runBulkOrderHealthCheck().catch((err) => {
+        void runBulkOrderHealthCheck({ retryAuth: true }).catch((err) => {
           if (err instanceof BulkOrderHealthBusyError) {
             console.log(`${LOG} Skipping — a check is already running`);
             return;

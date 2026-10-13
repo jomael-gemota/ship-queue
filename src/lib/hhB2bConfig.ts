@@ -131,6 +131,12 @@ export async function resolveHhB2bCookie(
   return { source: 'none', cookie: '' };
 }
 
+/** True when drafts and session checks read the brand jar rather than a pasted or server cookie. */
+export async function hhB2bCookieUsesJar(brand: HHBrandId, storedCookie: string): Promise<boolean> {
+  const source = (await resolveHhB2bCookie(brand, storedCookie)).source;
+  return source === 'jar' || source === 'jar-empty';
+}
+
 export async function loadHhB2bCookie(brand: HHBrandId = HH_DEFAULT_BRAND): Promise<string> {
   const def = hhBrand(brand);
   const stored = await getOrCreateHhB2bConfig(brand, true);
