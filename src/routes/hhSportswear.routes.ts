@@ -26,6 +26,7 @@ import {
   updateOrderItemExclude,
 } from '../controllers/hhSportswear.controller';
 import { checkHhB2bSession, getHhB2bCatalogs, getHhB2bConfig, getHhB2bSoldTos, testHhB2bWebhook, updateHhB2bConfig } from '../controllers/hhB2bConfig.controller';
+import { checkDsOmSheet, commitDsOmWrite, previewDsOmWrite } from '../controllers/dsOm.controller';
 
 const router = Router();
 
@@ -71,6 +72,9 @@ router.get('/config/catalogs', getHhB2bCatalogs);
 router.patch('/config', requireAdmin, updateHhB2bConfig);
 router.post('/config/session-check', requireAdmin, checkHhB2bSession);
 router.post('/config/webhook-test', requireAdmin, testHhB2bWebhook);
+router.post('/config/ds-om/check', requireAdmin, checkDsOmSheet);
+router.post('/:groupId/ds-om/preview', previewDsOmWrite);
+router.post('/:groupId/ds-om/write', commitDsOmWrite);
 router.get('/sc-sync', getScSyncStatus);
 router.post('/:groupId/sc-sync', rerunGroupScSync);
 router.post('/:groupId/orders/:orderId/sc-sync', rerunOrderScSync);

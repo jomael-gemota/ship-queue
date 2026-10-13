@@ -30,9 +30,16 @@ Seller Central, drafts the B2B order (does not Place Order), cross-checks the
 live B2B document against Seller Central details, waits for the user, then
 Place Order on go-ahead.
 
-**Reference Number** holds the B2B order number from the cart draft. Writing that number back into the DS OM spreadsheet is **not** the path.
-Operators download Order ID / PO / B2B order # from a **batch export**
-(`.xlsx` from the orders-page ⋯ menu).
+**Reference Number** holds the B2B order number from the cart draft. After an
+order is **Placed**, the batch action **Update DS OM** writes that number into
+the Google Sheet named in Configurations. Thorogood has the same action.
+Place Order is not connected there yet, so a Thorogood order is included once
+it has a reference number. The write runs as the signed-in user's Google
+account, which must be an editor of the workbook. A pre-check lists cells to
+fill, cells that already match, cells with other text, and orders that are
+not in the sheet. The handler can leave rows unchecked. Other text is
+overwritten only when the handler opts in. The batch export (`.xlsx` from
+the orders-page ⋯ menu) remains available.
 
 The first time order details sync, the PO is written into Amazon **Seller Notes**.
 The note text comes from that same Get Order response (`order.sellerNotes`).
@@ -152,6 +159,13 @@ Dummy seed data was removed; groups now come from spreadsheet upload or paste.
   `/hh-workwear`) downloads an `.xlsx` with **Order ID**, **PO Number**, and
   **Reference Number** for every order in that batch. Empty references stay
   blank. Available from the orders-page ⋯ menu.
+- **Built:** Update DS OM, from that same menu, writes reference numbers
+  into the Google Sheet configured on Sportswear, Workwear, or Thorogood.
+  Sportswear and Workwear include only placed orders. Thorogood includes an
+  order once it has a reference number, because Place Order is not connected
+  yet. The signed-in Google account must be an editor. The pre-check is a
+  table, and rows that can be written start checked. Other text is written
+  only when the handler opts in.
 - **Built:** on the first details sync, stamp the PO into Amazon Seller Notes
   (`POST /orders-api/order/:orderId/seller-notes`), keeping any existing note
   text. A re-sync of an order that was already synced does not write again.

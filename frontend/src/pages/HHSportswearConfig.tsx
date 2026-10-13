@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { checkHHB2bSession, formatCreatedAt, getHHB2bConfig, getThorogoodCatalogs, getThorogoodSoldTos, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
+import { checkDsOmSheet, checkHHB2bSession, formatCreatedAt, getHHB2bConfig, getThorogoodCatalogs, getThorogoodSoldTos, testHHB2bWebhook, updateHHB2bConfig } from '../lib/hhSportswear'
 import type { HHB2bConfig, HHB2bConfigPatch, HHSessionCheck } from '../lib/hhSportswear'
 import { useHHList } from '../context/HHListContext'
 import { hhBrand, hhUsesOrderDetailsDraft } from '../lib/hhBrand'
@@ -130,6 +130,15 @@ function manilaMinutesNow(): number {
   return hour * 60 + minute
 }
 
+function dsOmSummary(spreadsheetId: string, sheetName: string, orderHeader: string, poHeader: string, referenceHeader: string): string {
+  if (!spreadsheetId && !sheetName && !orderHeader && !poHeader && !referenceHeader) return 'Not set'
+  const book = spreadsheetId ? 'Workbook set' : 'No workbook'
+  const tab = sheetName || 'No sheet'
+  const headers = [orderHeader, poHeader, referenceHeader].filter(Boolean)
+  const columns = headers.length === 3 ? headers.join(', ') : 'Columns incomplete'
+  return `${book} · ${tab} · ${columns}`
+}
+
 function alertsSummary(times: string[]): string {
   const slots = times
     .map((time) => {
@@ -147,7 +156,7 @@ function alertsSummary(times: string[]): string {
   return `Next check ${formatCheckClock(upcoming.time)}`
 }
 
-type ConfigSectionId = 'portal' | 'account' | 'sku' | 'session' | 'alerts'
+type ConfigSectionId = 'portal' | 'account' | 'sku' | 'session' | 'alerts' | 'dsOm'
 
 function tokensFromText(text: string, label: string): { tokens: string[] } | { error: string } {
   return normalizeHhSkuTokens(text.split(/\r?\n/), label)
@@ -353,6 +362,14 @@ export default function HHSportswearConfig() {
   const [placeOrderEnabled, setPlaceOrderEnabled] = useState(false)
   const [alertWebhookUrl, setAlertWebhookUrl] = useState('')
   const [checkTimes, setCheckTimes] = useState<string[]>([])
+  const [dsOmSpreadsheetId, setDsOmSpreadsheetId] = useState('')
+  const [dsOmSheetName, setDsOmSheetName] = useState('')
+  const [dsOmOrderIdColumn, setDsOmOrderIdColumn] = useState('')
+  const [dsOmPoColumn, setDsOmPoColumn] = useState('')
+  const [dsOmReferenceColumn, setDsOmReferenceColumn] = useState('')
+  const [dsOmChecking, setDsOmChecking] = useState(false)
+  const [dsOmCheckError, setDsOmCheckError] = useState<string | null>(null)
+  const [dsOmCheckNotice, setDsOmCheckNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [testingWebhook, setTestingWebhook] = useState(false)
@@ -373,6 +390,11 @@ export default function HHSportswearConfig() {
     setPlaceOrderEnabled(Boolean(data.placeOrderEnabled))
     setAlertWebhookUrl(data.alertWebhookUrl || '')
     setCheckTimes(data.sessionCheckTimes?.length ? data.sessionCheckTimes : [])
+    setDsOmSpreadsheetId(data.dsOmSpreadsheetId || '')
+    setDsOmSheetName(data.dsOmSheetName || '')
+    setDsOmOrderIdColumn(data.dsOmOrderIdColumn || '')
+    setDsOmPoColumn(data.dsOmPoColumn || '')
+    setDsOmReferenceColumn(data.dsOmReferenceColumn || '')
     setCookie('')
     setClearCookie(false)
   }
@@ -450,6 +472,25 @@ export default function HHSportswearConfig() {
     }
   }
 
+  const checkDsOm = async () => {
+    if (!canEdit || dsOmChecking || dsOmDirty) return
+    setDsOmChecking(true)
+    setDsOmCheckError(null)
+    setDsOmCheckNotice(null)
+    try {
+      const res = await checkDsOmSheet(brand)
+      const email = res.data.accountEmail ? ` Editing as ${res.data.accountEmail}.` : ''
+      const columnNote = (letter: string, label: string) => (label ? `${letter} (${label})` : letter)
+      setDsOmCheckNotice(
+        `${res.data.spreadsheetTitle} · ${res.data.sheetName} · ${columnNote(res.data.columns.orderId, res.data.labels.orderId)}, ${columnNote(res.data.columns.po, res.data.labels.po)}, ${columnNote(res.data.columns.reference, res.data.labels.reference)}.${email}`,
+      )
+    } catch (error: unknown) {
+      setDsOmCheckError(error instanceof Error ? error.message : 'Could not check the DS OM sheet')
+    } finally {
+      setDsOmChecking(false)
+    }
+  }
+
   const sendWebhookTest = async () => {
     if (!canEdit || testingWebhook) return
     setTestingWebhook(true)
@@ -480,7 +521,12 @@ export default function HHSportswearConfig() {
       !sameTokens(skuPrefixesText, saved.skuPrefixes ?? [], 'Start strings') ||
       !sameTokens(skuSuffixesText, saved.skuSuffixes ?? [], 'End strings') ||
       cookie.trim().length > 0 ||
-      clearCookie)
+      clearCookie ||
+      dsOmSpreadsheetId !== (saved.dsOmSpreadsheetId || '') ||
+      dsOmSheetName !== (saved.dsOmSheetName || '') ||
+      dsOmOrderIdColumn !== (saved.dsOmOrderIdColumn || '') ||
+      dsOmPoColumn !== (saved.dsOmPoColumn || '') ||
+      dsOmReferenceColumn !== (saved.dsOmReferenceColumn || ''))
 
   const portalDirty = Boolean(
     orderDetails &&
@@ -513,12 +559,22 @@ export default function HHSportswearConfig() {
       saved &&
       (alertWebhookUrl !== (saved.alertWebhookUrl || '') || !sameCheckTimes(checkTimes, savedTimes)),
   )
+  const dsOmDirty = Boolean(
+    canEdit &&
+      saved &&
+      (dsOmSpreadsheetId !== (saved.dsOmSpreadsheetId || '') ||
+        dsOmSheetName !== (saved.dsOmSheetName || '') ||
+        dsOmOrderIdColumn !== (saved.dsOmOrderIdColumn || '') ||
+        dsOmPoColumn !== (saved.dsOmPoColumn || '') ||
+        dsOmReferenceColumn !== (saved.dsOmReferenceColumn || '')),
+  )
 
   const sectionLocked = (id: ConfigSectionId) => {
     if (id === 'portal') return portalDirty
     if (id === 'account') return accountDirty
     if (id === 'sku') return skuDirty || Boolean(skuError)
     if (id === 'session') return sessionDirty
+    if (id === 'dsOm') return dsOmDirty
     return alertsDirty
   }
 
@@ -573,6 +629,11 @@ export default function HHSportswearConfig() {
         skuPrefixes: parsedPrefixes.tokens,
         skuSuffixes: parsedSuffixes.tokens,
       }
+      patch.dsOmSpreadsheetId = dsOmSpreadsheetId
+      patch.dsOmSheetName = dsOmSheetName
+      patch.dsOmOrderIdColumn = dsOmOrderIdColumn
+      patch.dsOmPoColumn = dsOmPoColumn
+      patch.dsOmReferenceColumn = dsOmReferenceColumn
       if (clearCookie) patch.cookie = ''
       else if (cookie.trim()) patch.cookie = cookie
       const res = await updateHHB2bConfig(brand, patch)
@@ -592,6 +653,143 @@ export default function HHSportswearConfig() {
     checkTimes.length > 0
       ? `Daily at ${checkTimes.map(formatCheckClock).join(', ')}, Philippines time.`
       : 'No daily check until you add a time.'
+
+  const dsOmDescription =
+    brand === 'thorogood'
+      ? 'Where reference numbers are written. Place Order is not connected yet, so an order is included once it has a reference number. Columns are letters. Update DS OM runs as the signed-in Google account, which must be an editor of this workbook.'
+      : 'Where placed reference numbers are written. Columns are letters. Update DS OM runs as the signed-in Google account, which must be an editor of this workbook.'
+
+  const dsOmSection = (
+    <ConfigSection
+      title="DS OM"
+      description={dsOmDescription}
+      summary={dsOmSummary(dsOmSpreadsheetId.trim(), dsOmSheetName.trim(), dsOmOrderIdColumn.trim(), dsOmPoColumn.trim(), dsOmReferenceColumn.trim())}
+      open={isOpen('dsOm')}
+      dirty={dsOmDirty}
+      canEdit={canEdit}
+      onToggle={() => toggleSection('dsOm')}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <label className={labelClass} htmlFor="hh-ds-om-workbook">
+            Workbook
+          </label>
+          <input
+            id="hh-ds-om-workbook"
+            className={inputClass}
+            value={dsOmSpreadsheetId}
+            onChange={(event) => {
+              setDsOmSpreadsheetId(event.target.value)
+              setDsOmCheckNotice(null)
+              setDsOmCheckError(null)
+            }}
+            placeholder="https://docs.google.com/spreadsheets/d/…"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+          <p className={hintClass}>Paste the Google Sheets URL or the ID from it. A full URL is stored as the ID.</p>
+        </div>
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-ds-om-sheet">
+            Sheet name
+          </label>
+          <input
+            id="hh-ds-om-sheet"
+            className={inputClass}
+            value={dsOmSheetName}
+            onChange={(event) => {
+              setDsOmSheetName(event.target.value)
+              setDsOmCheckNotice(null)
+              setDsOmCheckError(null)
+            }}
+            placeholder="Sheet1"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+          <p className={hintClass}>The tab name, exactly as it appears.</p>
+        </div>
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-ds-om-order-id">
+            Order ID column
+          </label>
+          <input
+            id="hh-ds-om-order-id"
+            className={`${inputClass} font-mono uppercase`}
+            value={dsOmOrderIdColumn}
+            onChange={(event) => {
+              setDsOmOrderIdColumn(event.target.value.toUpperCase())
+              setDsOmCheckNotice(null)
+              setDsOmCheckError(null)
+            }}
+            placeholder="A"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={3}
+            disabled={busy}
+          />
+          <p className={hintClass}>Column letter. Row 1 is the header and is left alone.</p>
+        </div>
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-ds-om-po">
+            PO column
+          </label>
+          <input
+            id="hh-ds-om-po"
+            className={`${inputClass} font-mono uppercase`}
+            value={dsOmPoColumn}
+            onChange={(event) => {
+              setDsOmPoColumn(event.target.value.toUpperCase())
+              setDsOmCheckNotice(null)
+              setDsOmCheckError(null)
+            }}
+            placeholder="C"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={3}
+            disabled={busy}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className={labelClass} htmlFor="hh-ds-om-reference">
+            Reference column
+          </label>
+          <input
+            id="hh-ds-om-reference"
+            className={`${inputClass} font-mono uppercase`}
+            value={dsOmReferenceColumn}
+            onChange={(event) => {
+              setDsOmReferenceColumn(event.target.value.toUpperCase())
+              setDsOmCheckNotice(null)
+              setDsOmCheckError(null)
+            }}
+            placeholder="G"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={3}
+            disabled={busy}
+          />
+          <p className={hintClass}>Column letter. Only this column is written.</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] pt-4">
+        <p className={hintClass}>Save first, then check. The check uses your Google account.</p>
+        <button
+          type="button"
+          disabled={!canEdit || dsOmChecking || dsOmDirty || busy}
+          onClick={() => {
+            void checkDsOm()
+          }}
+          className={quietButtonClass}
+        >
+          {dsOmChecking ? 'Checking…' : 'Check sheet'}
+        </button>
+      </div>
+      {dsOmCheckNotice ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{dsOmCheckNotice}</p> : null}
+      {dsOmCheckError ? <p className="text-sm text-red-600 dark:text-red-400">{dsOmCheckError}</p> : null}
+    </ConfigSection>
+  )
 
   if (loadState === 'loading') {
     return <p className="px-5 py-8 text-sm text-slate-500 dark:text-[var(--text-200)]">Loading configurations…</p>
@@ -876,6 +1074,8 @@ export default function HHSportswearConfig() {
             </label>
           ) : null}
         </ConfigSection>
+
+        {dsOmSection}
 
         <ConfigSection
           title="Alerts"
@@ -1287,6 +1487,8 @@ export default function HHSportswearConfig() {
           </label>
         ) : null}
       </ConfigSection>
+
+      {dsOmSection}
 
       <ConfigSection
         title="Alerts"

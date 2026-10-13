@@ -18,7 +18,7 @@ export interface UploadedDriveFile {
   webViewLink?: string | null;
 }
 
-function buildOAuthClient(creds: DriveCredentials): OAuth2Client {
+export function buildOAuthClient(creds: DriveCredentials): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 

@@ -23,6 +23,7 @@ import {
   hhBrandUsesSkuAffixes,
   normalizeHhSkuTokens,
 } from '../lib/hhSkuExclude';
+import { parseDsOmColumns, parseDsOmSheetName, parseDsOmSpreadsheetId } from '../lib/dsOmMatch';
 import {
   HhB2bHealthBusyError,
   HhB2bWebhookTestError,
@@ -59,6 +60,11 @@ export interface HhB2bConfigDto {
   cookieSource: HhB2bCookieSource;
   cookieUpdatedAt: string | null;
   placeOrderEnabled: boolean;
+  dsOmSpreadsheetId: string;
+  dsOmSheetName: string;
+  dsOmOrderIdColumn: string;
+  dsOmPoColumn: string;
+  dsOmReferenceColumn: string;
   alertWebhookUrl: string;
   sessionCheckTimes: string[];
   sessionCheck: HhB2bSessionCheckDto;
@@ -106,6 +112,11 @@ async function serializeConfig(doc: IHHB2bConfig): Promise<HhB2bConfigDto> {
     cookieSource,
     cookieUpdatedAt: doc.cookieUpdatedAt ? doc.cookieUpdatedAt.toISOString() : null,
     placeOrderEnabled: Boolean(doc.placeOrderEnabled),
+    dsOmSpreadsheetId: doc.dsOmSpreadsheetId || '',
+    dsOmSheetName: doc.dsOmSheetName || '',
+    dsOmOrderIdColumn: doc.dsOmOrderIdColumn || '',
+    dsOmPoColumn: doc.dsOmPoColumn || '',
+    dsOmReferenceColumn: doc.dsOmReferenceColumn || '',
     alertWebhookUrl: doc.alertWebhookUrl || '',
     sessionCheckTimes: resolveSessionCheckTimes(doc.sessionCheckTimes, Boolean(doc.sessionCheckTimesSet)),
     sessionCheck: {
@@ -231,6 +242,50 @@ export async function updateHhB2bConfig(req: Request, res: Response): Promise<vo
       return;
     }
     doc.placeOrderEnabled = body.placeOrderEnabled;
+  }
+
+  if ('dsOmSpreadsheetId' in body) {
+    if (typeof body.dsOmSpreadsheetId !== 'string') {
+      res.status(400).json({ message: 'dsOmSpreadsheetId must be a string.' });
+      return;
+    }
+    const parsed = parseDsOmSpreadsheetId(body.dsOmSpreadsheetId);
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.dsOmSpreadsheetId = parsed.id;
+  }
+
+  if ('dsOmSheetName' in body) {
+    if (typeof body.dsOmSheetName !== 'string') {
+      res.status(400).json({ message: 'dsOmSheetName must be a string.' });
+      return;
+    }
+    const parsed = parseDsOmSheetName(body.dsOmSheetName);
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.dsOmSheetName = parsed.name;
+  }
+
+  if ('dsOmOrderIdColumn' in body || 'dsOmPoColumn' in body || 'dsOmReferenceColumn' in body) {
+    const orderId = 'dsOmOrderIdColumn' in body ? body.dsOmOrderIdColumn : doc.dsOmOrderIdColumn;
+    const po = 'dsOmPoColumn' in body ? body.dsOmPoColumn : doc.dsOmPoColumn;
+    const reference = 'dsOmReferenceColumn' in body ? body.dsOmReferenceColumn : doc.dsOmReferenceColumn;
+    if (typeof orderId !== 'string' || typeof po !== 'string' || typeof reference !== 'string') {
+      res.status(400).json({ message: 'DS OM columns must be letters.' });
+      return;
+    }
+    const parsed = parseDsOmColumns(orderId, po, reference);
+    if ('error' in parsed) {
+      res.status(400).json({ message: parsed.error });
+      return;
+    }
+    doc.dsOmOrderIdColumn = parsed.columns.orderId;
+    doc.dsOmPoColumn = parsed.columns.po;
+    doc.dsOmReferenceColumn = parsed.columns.reference;
   }
 
   if ('alertWebhookUrl' in body) {

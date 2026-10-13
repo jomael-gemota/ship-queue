@@ -804,6 +804,11 @@ export interface HHB2bConfig {
   cookieSource: 'env' | 'config' | 'jar' | 'jar-empty' | 'none'
   cookieUpdatedAt: string | null
   placeOrderEnabled: boolean
+  dsOmSpreadsheetId: string
+  dsOmSheetName: string
+  dsOmOrderIdColumn: string
+  dsOmPoColumn: string
+  dsOmReferenceColumn: string
   alertWebhookUrl: string
   sessionCheckTimes: string[]
   sessionCheck: HHSessionCheck
@@ -821,6 +826,11 @@ export type HHB2bConfigPatch = Partial<{
   skuSuffixes: string[]
   cookie: string
   placeOrderEnabled: boolean
+  dsOmSpreadsheetId: string
+  dsOmSheetName: string
+  dsOmOrderIdColumn: string
+  dsOmPoColumn: string
+  dsOmReferenceColumn: string
   alertWebhookUrl: string
   sessionCheckTimes: string[]
 }>
@@ -851,6 +861,71 @@ export function checkHHB2bSession(brand: HHBrandId) {
 
 export function testHHB2bWebhook(brand: HHBrandId) {
   return authApi.post<{ data: HHB2bConfig }>(hhPath(brand, '/config/webhook-test'))
+}
+
+export interface DsOmTarget {
+  childId: string
+  orderId: string
+  po: string
+  referenceNumber: string
+  row: number
+  current: string
+}
+
+export interface DsOmNotFound {
+  childId: string
+  orderId: string
+  po: string
+  referenceNumber: string
+}
+
+export interface DsOmSkipped {
+  childId: string
+  orderId: string
+  po: string
+  reason: 'not-placed' | 'no-reference'
+}
+
+export interface DsOmPreview {
+  ok: boolean
+  accountEmail: string | null
+  message: string | null
+  spreadsheetTitle: string | null
+  sheetName: string | null
+  willFill: DsOmTarget[]
+  alreadySet: DsOmTarget[]
+  hasOtherText: DsOmTarget[]
+  notFound: DsOmNotFound[]
+  skipped: DsOmSkipped[]
+}
+
+export interface DsOmWriteResult extends DsOmPreview {
+  written: number
+  overwritten: number
+}
+
+export interface DsOmCheck {
+  accountEmail: string | null
+  spreadsheetTitle: string
+  sheetName: string
+  columns: { orderId: string; po: string; reference: string }
+  labels: { orderId: string; po: string; reference: string }
+}
+
+export function checkDsOmSheet(brand: HHBrandId) {
+  return authApi.post<{ data: DsOmCheck }>(hhPath(brand, '/config/ds-om/check'))
+}
+
+export function previewDsOmWrite(brand: HHBrandId, groupId: string) {
+  return authApi.post<{ data: DsOmPreview }>(hhPath(brand, `/${groupId}/ds-om/preview`))
+}
+
+export function writeDsOmReferences(
+  brand: HHBrandId,
+  groupId: string,
+  input: { overwrite: boolean; rows: Array<{ childId: string; row: number }> },
+) {
+  return authApi.post<{ data: DsOmWriteResult }>(hhPath(brand, `/${groupId}/ds-om/write`), input)
 }
 
 export function importHHSpreadsheet(

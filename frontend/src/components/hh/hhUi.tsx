@@ -424,6 +424,19 @@ function MenuTrashIcon({ className = '' }: { className?: string }) {
   )
 }
 
+function DsOmIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 7h16M4 12h16M4 17h10"
+      />
+    </svg>
+  )
+}
+
 function ExportIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -447,7 +460,9 @@ export function HHBatchHeaderMenu({
   resyncBusy = false,
   redraftBusy = false,
   exportBusy = false,
+  showDsOm = false,
   onExport,
+  onUpdateDsOm,
   onResync,
   onRedraft,
   onDelete,
@@ -461,7 +476,9 @@ export function HHBatchHeaderMenu({
   resyncBusy?: boolean
   redraftBusy?: boolean
   exportBusy?: boolean
+  showDsOm?: boolean
   onExport: () => void
+  onUpdateDsOm?: () => void
   onResync: () => void
   onRedraft: () => void
   onDelete: () => void
@@ -577,6 +594,17 @@ export function HHBatchHeaderMenu({
                   {exportBusy ? <Spinner className="h-4 w-4" /> : <ExportIcon className="h-4 w-4" />}
                   Export spreadsheet
                 </button>
+                {showDsOm ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={itemClass()}
+                    onClick={() => run(onUpdateDsOm ?? (() => undefined))}
+                  >
+                    <DsOmIcon className="h-4 w-4" />
+                    Update DS OM
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   role="menuitem"

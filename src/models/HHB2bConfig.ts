@@ -24,6 +24,12 @@ export interface IHHB2bConfig extends Document {
   skuSuffixesSet: boolean;
   /** When false, Place Order is visible but does not submit to Helly Hansen. */
   placeOrderEnabled: boolean;
+  /** Google Sheet ID for the DS OM workbook. Empty until Configurations saves one. */
+  dsOmSpreadsheetId: string;
+  dsOmSheetName: string;
+  dsOmOrderIdColumn: string;
+  dsOmPoColumn: string;
+  dsOmReferenceColumn: string;
   /** POST target when a session check starts failing or recovers. Empty skips the call. */
   alertWebhookUrl: string;
   /** Daily check times as HH:MM in Asia/Manila. */
@@ -60,6 +66,11 @@ const HHB2bConfigSchema = new Schema<IHHB2bConfig>(
     skuSuffixes: { type: [String], default: undefined },
     skuSuffixesSet: { type: Boolean, default: false },
     placeOrderEnabled: { type: Boolean, default: false },
+    dsOmSpreadsheetId: { type: String, default: '', trim: true },
+    dsOmSheetName: { type: String, default: '', trim: true },
+    dsOmOrderIdColumn: { type: String, default: '', trim: true },
+    dsOmPoColumn: { type: String, default: '', trim: true },
+    dsOmReferenceColumn: { type: String, default: '', trim: true },
     alertWebhookUrl: { type: String, default: '' },
     sessionCheckTimes: { type: [String] },
     sessionCheckTimesSet: { type: Boolean, default: false },

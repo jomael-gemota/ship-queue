@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { HHActionRow, HHBatchHeaderMenu, HHCartBadge, HHCartSkuNotice, HHCartSummary, HHConfirmModal, HHDetailsBadge, HHDetailsSummary, HHPlaceButton, HHPlacedBadge, HHPlacedSummary, HHRedraftButton, HHResyncButton, HHRowActions, HHRowActionsHeader, HHShipViaChip, HHVerifiedSummary, useHHOpenRow, useHHRowExit } from '../components/hh/hhUi'
+import { HHDsOmModal } from '../components/hh/HHDsOmModal'
 import type { HHPendingAction } from '../components/hh/hhUi'
 import { HHBuyerInfo } from '../components/hh/HHBuyerInfo'
 import { HHNotesField } from '../components/hh/HHNotesField'
@@ -67,6 +68,7 @@ export default function HHSportswearOrders() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [dsOmOpen, setDsOmOpen] = useState(false)
   const { openId, toggle, close } = useHHOpenRow()
   const { exitingId, beginExit, finishExit } = useHHRowExit((id) => {
     setGroups((current) =>
@@ -226,6 +228,7 @@ export default function HHSportswearOrders() {
             resyncBusy={resyncBusyId === group.id}
             redraftBusy={cartDraftBusyId === group.id}
             exportBusy={exportBusy}
+            showDsOm
             onExport={() => {
               if (exportBusy) return
               setExportBusy(true)
@@ -236,6 +239,7 @@ export default function HHSportswearOrders() {
                 })
                 .finally(() => setExportBusy(false))
             }}
+            onUpdateDsOm={() => setDsOmOpen(true)}
             onResync={() => setPendingAction({ type: 'resync', target: 'group', group })}
             onRedraft={() => setPendingAction({ type: 'redraft', target: 'group', group })}
             onDelete={() => setPendingAction({ type: 'delete', target: 'group', group })}
@@ -420,6 +424,10 @@ export default function HHSportswearOrders() {
           </tbody>
         </table>
       </div>
+
+      {dsOmOpen && group ? (
+        <HHDsOmModal brand={brand} groupId={group.id} onClose={() => setDsOmOpen(false)} />
+      ) : null}
 
       {pendingAction && (
         <HHConfirmModal
