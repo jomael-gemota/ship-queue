@@ -20,6 +20,8 @@ export interface DsOmSheetRow {
   orderId: string;
   po: string;
   reference: string;
+  /** True when the reference cell is text. A numeric string shows a leading ' in Sheets. */
+  referenceIsText: boolean;
 }
 
 export interface DsOmTarget {
@@ -62,6 +64,15 @@ export function dsOmCellText(value: unknown): string {
   }
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   return String(value).trim();
+}
+
+/** Digits Sheets can store as a number. A string write of the same digits shows a leading '. */
+export function dsOmPlainNumber(value: string): number | null {
+  const text = dsOmCellText(value);
+  if (!/^\d+$/.test(text)) return null;
+  const number = Number(text);
+  if (!Number.isSafeInteger(number)) return null;
+  return number;
 }
 
 export function parseDsOmSpreadsheetId(input: string): { id: string } | { error: string } {
@@ -155,9 +166,16 @@ export function sheetRowsFromValues(
     const line = values[index] ?? [];
     const orderId = dsOmCellText(line[columns.orderId]);
     const po = dsOmCellText(line[columns.po]);
-    const reference = dsOmCellText(line[columns.reference]);
+    const rawReference = line[columns.reference];
+    const reference = dsOmCellText(rawReference);
     if (!orderId && !po && !reference) continue;
-    rows.push({ row: index + 1, orderId, po, reference });
+    rows.push({
+      row: index + 1,
+      orderId,
+      po,
+      reference,
+      referenceIsText: typeof rawReference === 'string' && reference !== '',
+    });
   }
   return { rows };
 }
@@ -220,7 +238,9 @@ export function planDsOmWrite(
     const normalized = { ...order, orderId, po, referenceNumber };
     for (const row of matches) {
       const item = targetFrom(normalized, row);
-      if (!row.reference) plan.willFill.push(item);
+      const sameDigitsAsText =
+        row.reference === referenceNumber && row.referenceIsText && dsOmPlainNumber(referenceNumber) != null;
+      if (!row.reference || sameDigitsAsText) plan.willFill.push(item);
       else if (row.reference === referenceNumber) plan.alreadySet.push(item);
       else plan.hasOtherText.push(item);
     }

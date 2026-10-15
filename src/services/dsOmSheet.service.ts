@@ -6,6 +6,7 @@ import {
   type DsOmWriteSelection,
   columnIndex,
   dsOmCellText,
+  dsOmPlainNumber,
   planDsOmWrite,
   quoteSheetName,
   sheetRowsFromValues,
@@ -195,6 +196,22 @@ export async function inspectDsOmSheet(
   };
 }
 
+async function sheetIdFor(auth: OAuth2Client, workbook: DsOmWorkbook, email: string | null): Promise<number> {
+  const sheets = google.sheets({ version: 'v4', auth });
+  let id: number | null | undefined;
+  try {
+    const res = await sheets.spreadsheets.get({
+      spreadsheetId: workbook.spreadsheetId,
+      fields: 'sheets(properties(sheetId,title))',
+    });
+    id = res.data.sheets?.find((sheet) => sheet.properties?.title === workbook.sheetName)?.properties?.sheetId;
+  } catch (error) {
+    throw sheetError(error, email, 'Could not open the DS OM sheet.', workbook.sheetName);
+  }
+  if (typeof id !== 'number') throw new DsOmSheetError(`No tab named "${workbook.sheetName}".`, email);
+  return id;
+}
+
 async function writeCells(
   auth: OAuth2Client,
   workbook: DsOmWorkbook,
@@ -204,19 +221,43 @@ async function writeCells(
 ): Promise<void> {
   if (cells.length === 0) return;
   const sheets = google.sheets({ version: 'v4', auth });
-  const quoted = quoteSheetName(workbook.sheetName);
+  const sheetId = await sheetIdFor(auth, workbook, email);
+  const column = columnIndex(referenceColumn);
   const chunkSize = 200;
   try {
     for (let offset = 0; offset < cells.length; offset += chunkSize) {
       const chunk = cells.slice(offset, offset + chunkSize);
-      await sheets.spreadsheets.values.batchUpdate({
+      await sheets.spreadsheets.batchUpdate({
         spreadsheetId: workbook.spreadsheetId,
         requestBody: {
-          valueInputOption: 'RAW',
-          data: chunk.map((cell) => ({
-            range: `${quoted}!${referenceColumn}${cell.row}`,
-            values: [[dsOmCellText(cell.referenceNumber)]],
-          })),
+          requests: chunk.map((cell) => {
+            const text = dsOmCellText(cell.referenceNumber);
+            const numeric = dsOmPlainNumber(text);
+            return {
+              updateCells: {
+                range: {
+                  sheetId,
+                  startRowIndex: cell.row - 1,
+                  endRowIndex: cell.row,
+                  startColumnIndex: column,
+                  endColumnIndex: column + 1,
+                },
+                rows: [
+                  {
+                    values: [
+                      numeric == null
+                        ? { userEnteredValue: { stringValue: text } }
+                        : {
+                            userEnteredValue: { numberValue: numeric },
+                            userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '0' } },
+                          },
+                    ],
+                  },
+                ],
+                fields: numeric == null ? 'userEnteredValue' : 'userEnteredValue,userEnteredFormat.numberFormat',
+              },
+            };
+          }),
         },
       });
     }
@@ -247,7 +288,9 @@ export async function writeDsOmReferences(
     orders,
     grid.rows.map((row) => {
       const next = cells.find((cell) => cell.row === row.row);
-      return next ? { ...row, reference: dsOmCellText(next.referenceNumber) } : row;
+      if (!next) return row;
+      const reference = dsOmCellText(next.referenceNumber);
+      return { ...row, reference, referenceIsText: dsOmPlainNumber(reference) == null && reference !== '' };
     }),
     { requirePlaced },
   );
