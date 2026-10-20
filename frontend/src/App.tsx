@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { ToastProvider } from './context/ToastContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -10,12 +11,29 @@ import CreateShippingLabel from './pages/CreateShippingLabel'
 import BatchItems from './pages/BatchItems'
 import Settings from './pages/Settings'
 import DropboxFetcher from './pages/DropboxFetcher'
+import DocTidyInvoiceAudit from './pages/DocTidyInvoiceAudit'
+import DocTidyUsage from './pages/DocTidyUsage'
+import HHSportswear from './pages/HHSportswear'
+import HHSportswearLayout from './pages/HHSportswearLayout'
+import HHSportswearOrders from './pages/HHSportswearOrders'
+import HHSportswearItems from './pages/HHSportswearItems'
+import HHSportswearConfig from './pages/HHSportswearConfig'
+import DropshipBrands from './pages/DropshipBrands'
+import BulkOrder from './pages/BulkOrder'
+import BulkOrderConfig from './pages/BulkOrderConfig'
+import BulkOrderLayout from './pages/BulkOrderLayout'
+import BulkOrderOrders from './pages/BulkOrderOrders'
+import BulkOrderShipments from './pages/BulkOrderShipments'
+import BulkOrderItems from './pages/BulkOrderItems'
 import AdminUsers from './pages/AdminUsers'
+import { BULK_ORDER_BRANDS } from './lib/bulkOrder'
+import { HH_BRANDS, HH_BRAND_IDS } from './lib/hhBrand'
 
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ToastProvider>
         <BrowserRouter>
           <Routes>
             {/* Public routes */}
@@ -30,6 +48,31 @@ function App() {
                 <Route path="/create-label" element={<CreateShippingLabel />} />
                 <Route path="/create-label/batches/:batchId" element={<BatchItems />} />
                 <Route path="/dropbox-fetcher" element={<DropboxFetcher />} />
+                <Route path="/doc-tidy" element={<Navigate to="/doc-tidy/invoice-audit" replace />} />
+                {/* Invoice Audit — addressable routes so refresh / deep-links restore position */}
+                <Route path="/doc-tidy/invoice-audit" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/orgs/:orgId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/orgs/:orgId/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/invoice-audit/workspaces/:workspaceId" element={<DocTidyInvoiceAudit />} />
+                <Route path="/doc-tidy/usage" element={<DocTidyUsage />} />
+                <Route path="/ordering" element={<DropshipBrands />} />
+                <Route path="/ordering/bulk" element={<BulkOrder />} />
+                {BULK_ORDER_BRANDS.map((brand) => (
+                  <Route key={brand.path} path={brand.path} element={<BulkOrderLayout />}>
+                    <Route index element={<BulkOrderOrders />} />
+                    <Route path="configurations" element={<BulkOrderConfig />} />
+                    <Route path=":orderId" element={<BulkOrderShipments />} />
+                    <Route path=":orderId/shipments/:shipmentIndex" element={<BulkOrderItems />} />
+                  </Route>
+                ))}
+                {HH_BRAND_IDS.map((id) => HH_BRANDS[id].path).map((path) => (
+                  <Route key={path} path={path} element={<HHSportswearLayout />}>
+                    <Route index element={<HHSportswear />} />
+                    <Route path="configurations" element={<HHSportswearConfig />} />
+                    <Route path=":groupId" element={<HHSportswearOrders />} />
+                    <Route path=":groupId/orders/:orderId" element={<HHSportswearItems />} />
+                  </Route>
+                ))}
                 <Route path="/settings" element={<Settings />} />
                 {/* Reachable by all authenticated users; the page itself shows a
                     blocking note and skips data loading for non-admins. */}
@@ -41,6 +84,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   )

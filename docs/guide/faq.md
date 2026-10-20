@@ -26,7 +26,7 @@ cases:
 - **User Management shows "Admins only"** — that page is for admins.
 
 ### What's the difference between a "User" and an "Admin"?
-An **Admin** can manage people, change auto-sync, and always create labels. A
+An **Admin** can manage people, change auto-sync and Cookie Jar schedules, and always create labels. A
 **User** is a standard account whose ability to create labels is controlled by a
 separate permission. See the full table below.
 
@@ -87,6 +87,7 @@ update right away.
 | Dropbox Fetcher | Yes** | Yes** | Yes** |
 | Connect Drive / Dropbox | Yes | Yes | Yes |
 | Change auto-sync settings | View only | View only | Yes |
+| Change Cookie Jar schedules | View only | View only | Yes |
 | User Management | No | No | Yes |
 
 \* Requires Google Drive to be connected.  

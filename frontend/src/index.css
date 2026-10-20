@@ -48,6 +48,11 @@ body {
   color: var(--text-100);
 }
 
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
 @keyframes shipqueue-indeterminate {
   0% {
     transform: translateX(-100%);
@@ -124,5 +129,676 @@ body {
     background-image: none;
     background-color: rgb(30 58 138 / 0.2);
     color: rgb(147 197 253);
+  }
+}
+
+.hh-drilldown-viewport {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.hh-drilldown-page {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.hh-drilldown-page--exit-forward,
+.hh-drilldown-page--exit-back {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hh-drilldown-page--enter-forward,
+.hh-drilldown-page--enter-back {
+  z-index: 1;
+}
+
+.hh-drilldown-page--exit-forward {
+  animation: hh-slide-out-left 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.hh-drilldown-page--enter-forward {
+  animation: hh-slide-in-right 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.hh-drilldown-page--exit-back {
+  animation: hh-slide-out-right 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.hh-drilldown-page--enter-back {
+  animation: hh-slide-in-left 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes hh-slide-out-left {
+  to {
+    transform: translateX(-28%);
+    opacity: 0;
+  }
+}
+
+@keyframes hh-slide-in-right {
+  from {
+    transform: translateX(36%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes hh-slide-out-right {
+  to {
+    transform: translateX(28%);
+    opacity: 0;
+  }
+}
+
+@keyframes hh-slide-in-left {
+  from {
+    transform: translateX(-36%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hh-drilldown-page--exit-forward,
+  .hh-drilldown-page--enter-forward,
+  .hh-drilldown-page--exit-back,
+  .hh-drilldown-page--enter-back {
+    animation: none;
+  }
+}
+
+.bulk-items-swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.bulk-items-pane {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.bulk-items-pane--exit-forward,
+.bulk-items-pane--exit-back {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bulk-items-pane--enter-forward,
+.bulk-items-pane--enter-back {
+  z-index: 1;
+}
+
+.bulk-items-pane--exit-forward {
+  animation: bulk-items-out-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--enter-forward {
+  animation: bulk-items-in-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--exit-back {
+  animation: bulk-items-out-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.bulk-items-pane--enter-back {
+  animation: bulk-items-in-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes bulk-items-out-left {
+  to {
+    transform: translateX(-14px);
+    opacity: 0;
+  }
+}
+
+@keyframes bulk-items-in-right {
+  from {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bulk-items-out-right {
+  to {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+}
+
+@keyframes bulk-items-in-left {
+  from {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-items-pane--exit-forward,
+  .bulk-items-pane--enter-forward,
+  .bulk-items-pane--exit-back,
+  .bulk-items-pane--enter-back {
+    animation: none;
+  }
+}
+
+/* Full-width sheet. Closed tracks share the row; opening shrinks both sides so the seam parts. Durations match DOOR_SLIDE_MS / DOOR_FADE_MS. */
+.bulk-sheet {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  grid-template-columns:
+    minmax(5.5rem, 0.75fr)
+    minmax(10rem, 1.55fr)
+    minmax(7.5rem, 1.05fr)
+    minmax(9.5rem, 2.5fr)
+    minmax(0px, 0fr)
+    minmax(0px, 0fr)
+    minmax(0px, 0fr)
+    minmax(7.75rem, 0.68fr)
+    minmax(5.75rem, 0.85fr)
+    minmax(5.75rem, 0.9fr);
+  transition: grid-template-columns 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bulk-sheet.is-wide {
+  grid-template-columns:
+    minmax(5.5rem, 0.6fr)
+    minmax(10rem, 1.5fr)
+    minmax(7.5rem, 0.85fr)
+    minmax(9.5rem, 1.6fr)
+    minmax(7.75rem, 0.8fr)
+    minmax(4.75rem, 0.5fr)
+    minmax(5.5rem, 0.55fr)
+    minmax(7.75rem, 0.55fr)
+    minmax(5.75rem, 0.7fr)
+    minmax(5.75rem, 0.75fr);
+}
+
+.bulk-sheet.is-style {
+  grid-template-columns:
+    minmax(5.5rem, 0.8fr)
+    minmax(9.5rem, 3.2fr)
+    minmax(0px, 0fr)
+    minmax(7.75rem, 0.68fr)
+    minmax(5.75rem, 1fr);
+}
+
+.bulk-sheet.is-style.is-wide {
+  grid-template-columns:
+    minmax(5.5rem, 0.65fr)
+    minmax(9.5rem, 2fr)
+    minmax(9.25rem, 1.4fr)
+    minmax(7.75rem, 0.55fr)
+    minmax(5.75rem, 0.85fr);
+}
+
+.bulk-sheet-head,
+.bulk-sheet-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: stretch;
+}
+
+.bulk-sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--bg-200);
+  box-shadow: inset 0 -1px 0 var(--bg-300);
+}
+
+.bulk-sheet-row {
+  --hh-row-bg: var(--bg-100);
+  background-color: var(--hh-row-bg);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.bulk-sheet-row.is-alt {
+  --hh-row-bg: var(--bg-200);
+}
+
+.dark .bulk-sheet-row {
+  border-bottom-color: var(--bg-300);
+}
+
+.bulk-sheet-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 4.25rem;
+  padding: 0.5rem 0.75rem;
+  overflow: hidden;
+}
+
+.bulk-sheet-head .bulk-sheet-cell {
+  min-height: 0;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  font-weight: 500;
+}
+
+.bulk-sheet-cell.is-center {
+  justify-content: center;
+  text-align: center;
+}
+
+.bulk-sheet-cell.is-end {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.bulk-sheet-cell[data-col='qty'] {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.bulk-sheet-cell[data-col='total'] {
+  padding-right: 1.5rem;
+}
+
+.bulk-sheet-cell[data-col='size'] .bulk-sheet-detail-inner,
+.bulk-sheet-cell[data-col='width'] .bulk-sheet-detail-inner {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.bulk-sheet-cell.is-strong {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.dark .bulk-sheet-cell.is-strong {
+  color: var(--text-100);
+}
+
+.bulk-sheet-cell.is-clip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-sheet-detail {
+  padding: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease, visibility 0s linear 160ms;
+}
+
+.bulk-sheet.is-shown .bulk-sheet-detail {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 200ms ease, visibility 0s linear 0s;
+}
+
+.bulk-sheet-detail-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.bulk-sheet-head .bulk-sheet-detail-inner {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.bulk-sheet-message {
+  grid-column: 1 / -1;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bulk-sheet-row:hover:not(.is-message) {
+    background-color: var(--primary-100);
+  }
+
+  .bulk-sheet-row:hover:not(.is-message) .bulk-sheet-cell:first-child {
+    box-shadow: inset 3px 0 0 var(--accent-200);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-sheet,
+  .bulk-sheet-detail {
+    transition: none;
+  }
+}
+
+.hh-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 22rem);
+}
+
+.bulk-items-scroll {
+  max-height: calc(100vh - 18rem);
+}
+
+.hh-table-scroll table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.hh-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--bg-200);
+  box-shadow: inset 0 -1px 0 var(--bg-300);
+}
+
+.hh-action-row {
+  --hh-peek: 12px;
+  --hh-peek-hot: 36px;
+  --hh-action-shift: 11.5rem;
+  isolation: isolate;
+}
+
+.hh-action-row.hh-actions-compact {
+  --hh-action-shift: 6.5rem;
+}
+
+/* Keep the shipment hover menu inside the card when the row is wider than the table. */
+.bulk-shipment-table .hh-row-actions {
+  position: sticky;
+  right: 0;
+}
+
+.hh-table-row {
+  --hh-row-bg: var(--bg-100);
+}
+
+.hh-table-row.hh-row-alt {
+  --hh-row-bg: var(--bg-200);
+}
+
+.hh-table-row > td {
+  background-color: var(--hh-row-bg);
+}
+
+.hh-table-row > td:first-child {
+  box-shadow: inset 3px 0 0 transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hh-table-row:hover:not(.is-deleting) > td:not(.hh-row-actions) {
+    background-color: var(--primary-100);
+  }
+
+  .hh-table-row:hover:not(.is-deleting) > td:first-child {
+    box-shadow: inset 3px 0 0 var(--accent-200);
+  }
+}
+
+.hh-action-row > td:not(.hh-row-actions) {
+  --hh-shift: 0px;
+  --hh-t: 1;
+  position: relative;
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hh-action-row:hover > td:not(.hh-row-actions) {
+    --hh-shift: var(--hh-peek);
+    transform: translateX(calc(-1 * var(--hh-shift) * var(--hh-t)));
+  }
+
+  .hh-action-row:has(.hh-row-handle:hover) > td:not(.hh-row-actions),
+  .hh-action-row:has(.hh-row-handle:focus-visible) > td:not(.hh-row-actions) {
+    --hh-shift: var(--hh-peek-hot);
+    transform: translateX(calc(-1 * var(--hh-shift) * var(--hh-t)));
+  }
+}
+
+.hh-action-row.is-open > td:not(.hh-row-actions),
+.hh-action-row.is-open:hover > td:not(.hh-row-actions),
+.hh-action-row.is-open:focus-within > td:not(.hh-row-actions) {
+  --hh-shift: var(--hh-action-shift);
+  transform: translateX(calc(-1 * var(--hh-shift) * var(--hh-t)));
+}
+
+.hh-row-actions {
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  padding: 0 !important;
+  border: 0;
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+  vertical-align: middle;
+}
+
+.hh-row-actions-tray {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: var(--hh-peek);
+  overflow: hidden;
+  pointer-events: none;
+  transition: width 160ms ease;
+}
+
+.hh-row-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: var(--hh-peek);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-300);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    background-color 160ms ease,
+    width 160ms ease;
+}
+
+.hh-row-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  width: var(--hh-peek-hot);
+}
+
+.hh-action-row:hover .hh-row-handle,
+.hh-row-handle:focus-visible,
+.hh-action-row.is-open .hh-row-handle {
+  opacity: 1;
+}
+
+.hh-action-row:has(.hh-row-handle:hover) .hh-row-actions-tray,
+.hh-action-row:has(.hh-row-handle:focus-visible) .hh-row-actions-tray {
+  width: var(--hh-peek-hot);
+}
+
+.hh-row-handle:hover,
+.hh-row-handle:focus-visible {
+  width: var(--hh-peek-hot);
+  background: var(--accent-100);
+}
+
+.hh-action-row.is-open .hh-row-actions-tray,
+.hh-action-row.is-open:has(.hh-row-handle:hover) .hh-row-actions-tray,
+.hh-action-row.is-open:has(.hh-row-handle:focus-visible) .hh-row-actions-tray {
+  width: var(--hh-action-shift);
+  pointer-events: auto;
+}
+
+.hh-action-row.is-open .hh-row-handle,
+.hh-action-row.is-open .hh-row-handle:hover {
+  width: var(--hh-action-shift);
+  background: var(--bg-300);
+}
+
+.hh-action-row.is-open .hh-row-handle::before {
+  display: none;
+}
+
+.hh-row-actions-inner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  width: var(--hh-action-shift);
+  padding: 0 0.5rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.hh-row-actions-inner > * {
+  flex-shrink: 0;
+}
+
+.hh-action-row.is-open .hh-row-actions-inner {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@keyframes hh-row-fresh {
+  0%,
+  28% {
+    background-color: var(--primary-100);
+  }
+  100% {
+    background-color: var(--hh-row-bg);
+  }
+}
+
+@keyframes hh-row-fresh-bar {
+  0%,
+  28% {
+    box-shadow: inset 3px 0 0 var(--accent-200);
+  }
+  100% {
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+.hh-action-row.is-fresh > td:not(.hh-row-actions) {
+  animation: hh-row-fresh 4.5s ease-out both;
+}
+
+.hh-action-row.is-fresh > td:first-child {
+  animation:
+    hh-row-fresh 4.5s ease-out both,
+    hh-row-fresh-bar 4.5s ease-out both;
+}
+
+.hh-action-row.is-deleting {
+  pointer-events: none;
+  background-color: rgb(254 226 226) !important;
+}
+
+.hh-action-row.is-deleting > td {
+  background-color: rgb(254 226 226) !important;
+  overflow: hidden;
+  transition:
+    background-color 180ms ease,
+    height 320ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
+    padding-top 320ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
+    padding-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
+    opacity 240ms ease;
+}
+
+.hh-action-row.is-deleting > td:not(.hh-row-actions),
+.hh-action-row.is-deleting:hover > td:not(.hh-row-actions),
+.hh-action-row.is-deleting.is-open > td:not(.hh-row-actions) {
+  transform: none;
+}
+
+.hh-action-row.is-deleting .hh-row-handle,
+.hh-action-row.is-deleting .hh-row-actions-inner,
+.hh-action-row.is-deleting .hh-row-actions-tray {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.hh-action-row.is-deleting.is-collapsing {
+  border-top-width: 0 !important;
+}
+
+.hh-action-row.is-deleting.is-collapsing > td {
+  height: 0 !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  opacity: 0;
+  border-width: 0 !important;
+}
+
+.dark .hh-action-row.is-deleting,
+.dark .hh-action-row.is-deleting > td {
+  background-color: rgb(127 29 29 / 0.42) !important;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .hh-row-handle {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hh-action-row.is-fresh > td:not(.hh-row-actions) {
+    animation: none;
+    background-color: var(--primary-100);
+  }
+
+  .hh-action-row.is-fresh > td:first-child {
+    box-shadow: inset 3px 0 0 var(--accent-200);
+  }
+
+  .hh-action-row > td:not(.hh-row-actions),
+  .hh-row-handle,
+  .hh-row-actions-tray,
+  .hh-row-actions-inner {
+    transition: none;
+  }
+
+  .hh-action-row:hover > td:not(.hh-row-actions),
+  .hh-action-row:has(.hh-row-handle:focus-visible) > td:not(.hh-row-actions),
+  .hh-action-row.is-open > td:not(.hh-row-actions),
+  .hh-action-row.is-open:hover > td:not(.hh-row-actions) {
+    transform: none;
   }
 }

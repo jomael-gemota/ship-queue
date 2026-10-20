@@ -1,11 +1,11 @@
 # Settings
 
 The **Settings** page is where you connect the services Ship Queue uses and
-choose a few preferences. It has three sections: **Google Drive**, **Dropbox**,
-and **Automatic order syncing**.
+choose a few preferences. It has four sections: **Google Drive**, **Dropbox**,
+**Automatic order syncing**, and **Cookie Jar**.
 
 Everyone can connect their own Google Drive and Dropbox. Only admins can change
-the automatic syncing settings.
+the automatic syncing and Cookie Jar schedules.
 
 ![The Settings page with Google Drive, Dropbox, and Automatic order syncing sections](/screenshots/settings.png)
 
@@ -75,6 +75,36 @@ Admins click **Save changes** to apply.
 Everyone can see these settings, but only **admins** can change them. If you're
 not an admin, the controls are greyed out and you'll see a note that only an
 admin can change them.
+:::
+
+## Cookie Jar
+
+Cookie Jar is a background worker that refreshes stored session cookies on a
+schedule. Settings shows one cookie at a time. **Seller Central Outdoor Equipped US**
+is selected by default, and it is the scheduled job. **Helly Hansen Sports B2B**
+calls Sphere with id `b2b-hhsportswear` when that job is enabled. **Helly Hansen
+Work B2B** calls Sphere with id `b2b-hhworkwear` when that job is enabled. **Thorogood
+B2B** calls Sphere with id `b2b-thorogood` when that job is enabled. Settings only
+edits the **schedule**; the cookie value itself is never shown.
+
+- **Enabled** — turns that job on or off.
+- **Name** — label in this list. Does not change which fetcher runs.
+- **Cron schedule** — five-field cron in **Philippines time**, for example
+  `0 0,6,12,18 * * *` (12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM). Starting the
+  worker does not fetch immediately; the next run is the next one of those times.
+- **Cookie / Last success / Last run** — status only. A stored cookie means the
+  worker has a value; the page does not display it.
+
+Admins click **Save changes** to apply a new schedule. The worker re-reads the
+database about every 30 seconds, so a new cron takes effect without restarting
+anything.
+
+**Run now** fetches immediately — it does not wait for the next cron tick, and
+it still runs if the job is disabled. The cookie value is never shown.
+
+::: info Read-only for most users
+Same as auto-sync: everyone can see Cookie Jar, but only **admins** can change
+it.
 :::
 
 ## What's next?

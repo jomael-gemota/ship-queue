@@ -81,7 +81,7 @@ export default function Login() {
             <div className="absolute -left-20 bottom-[-7rem] h-72 w-72 rounded-full border border-[var(--accent-100)] bg-[var(--primary-100)] opacity-35" />
             <div className="relative">
               <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-200)]">
-                Supplier Management Console
+                SM Department · Internal Platform
               </div>
 
               <div className="mb-6 flex items-center gap-4">
@@ -89,43 +89,28 @@ export default function Login() {
                   <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-200)]">Internal Platform</p>
+                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-200)]">SM Department</p>
                   <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-100)] sm:text-3xl">Ship Queue</h1>
                 </div>
               </div>
 
               <h2 className="max-w-xl text-2xl font-semibold leading-tight text-[var(--text-100)] sm:text-3xl">
-                Pull ShipStation orders and generate shipping labels in bulk without workflow chaos.
+                One platform for ShipStation, Invoice Auditing, and B2B Order automations — with more on the way.
               </h2>
 
               <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--text-200)] sm:text-base">
-                Built for Supplier Management Order Takers to queue incoming orders, generate labels at scale, and keep outbound processing consistent.
+                Built for the Supplier Management team to streamline daily operations across order processing, vendor invoice review, and B2B ordering workflows — all in a single, access-controlled hub.
               </p>
 
               <div className="mt-8 grid gap-3 text-sm text-[var(--text-200)] sm:grid-cols-2">
+                <FeaturePill label="ShipStation integration" />
+                <FeaturePill label="AI invoice auditing" />
+                <FeaturePill label="B2B order automation" />
                 <FeaturePill label="Google-secured access" />
-                <FeaturePill label="ShipStation order sync" />
-                <FeaturePill label="Bulk label generation" />
                 <FeaturePill label="Admin-managed permissions" />
+                <FeaturePill label="More features coming soon" />
               </div>
 
-              <div className="mt-8 rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-200)]">Workflow Snapshot</p>
-                <div className="mt-3 grid gap-2 text-sm">
-                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
-                    <span className="text-[var(--text-200)]">1. Pull new orders from ShipStation</span>
-                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Sync</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
-                    <span className="text-[var(--text-200)]">2. Build bulk batches for labels</span>
-                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Batch</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2">
-                    <span className="text-[var(--text-200)]">3. Export and finalize shipments</span>
-                    <span className="rounded-md bg-[var(--primary-100)] px-2 py-0.5 text-xs text-[var(--accent-200)]">Ready</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -139,7 +124,7 @@ export default function Login() {
               </p>
               <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--text-100)]">Welcome back</h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--text-200)]">
-                Continue with your company Google account to open the Supplier Management order queue.
+                Continue with your company Google account to access the SM Department operations platform.
               </p>
 
               {errorMessage && (
@@ -160,9 +145,6 @@ export default function Login() {
                 Continue with Google
               </button>
 
-              <div className="mt-8 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-4 text-xs leading-relaxed text-[var(--text-200)]">
-                Access is limited to verified team members from <span className="font-semibold text-[var(--text-100)]">@outdoorequipped.com</span> and <span className="font-semibold text-[var(--text-100)]">@channelprecision.com</span>.
-              </div>
             </div>
           </section>
         </div>

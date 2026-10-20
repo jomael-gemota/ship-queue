@@ -18,7 +18,7 @@ export interface UploadedDriveFile {
   webViewLink?: string | null;
 }
 
-function buildOAuthClient(creds: DriveCredentials): OAuth2Client {
+export function buildOAuthClient(creds: DriveCredentials): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -77,6 +77,60 @@ export async function uploadPdfToDrive(
     name: res.data.name || fileName,
     webViewLink: res.data.webViewLink,
   };
+}
+
+/**
+ * Uploads an arbitrary buffer to Drive inside `folderId`. Used by Doc Tidy for
+ * email attachments, which can be any content type (unlike label PDFs).
+ */
+export async function uploadBufferToDrive(
+  creds: DriveCredentials,
+  fileName: string,
+  mimeType: string,
+  buffer: Buffer,
+  folderId?: string
+): Promise<UploadedDriveFile> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      ...(folderId ? { parents: [folderId] } : {}),
+    },
+    media: {
+      mimeType: mimeType || 'application/octet-stream',
+      body: Readable.from(buffer),
+    },
+    fields: 'id, name, webViewLink',
+    supportsAllDrives: true,
+  });
+
+  return {
+    id: res.data.id || '',
+    name: res.data.name || fileName,
+    webViewLink: res.data.webViewLink,
+  };
+}
+
+/**
+ * Downloads a Drive file's raw bytes. Doc Tidy uses this to pull a stored
+ * attachment back out for parsing, so the worker never needs Drive access of
+ * its own.
+ */
+export async function downloadDriveFile(
+  creds: DriveCredentials,
+  fileId: string
+): Promise<Buffer> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+
+  const res = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' }
+  );
+
+  return Buffer.from(res.data as ArrayBuffer);
 }
 
 /**
@@ -145,4 +199,17 @@ export async function getDriveFolder(
   }
 
   return { id: res.data.id || folderId, name: res.data.name || 'Folder' };
+}
+
+/**
+ * Permanently deletes a file from Drive. Best-effort: callers should not
+ * surface errors to the user when the file is already gone or inaccessible.
+ */
+export async function deleteDriveFile(
+  creds: DriveCredentials,
+  fileId: string
+): Promise<void> {
+  const auth = buildOAuthClient(creds);
+  const drive = google.drive({ version: 'v3', auth });
+  await drive.files.delete({ fileId, supportsAllDrives: true });
 }

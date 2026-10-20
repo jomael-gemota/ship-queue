@@ -1,0 +1,113 @@
+import type { Response } from 'express';
+
+/**
+ * Fan-out for Doc Tidy server-sent events, so the results table can update the
+ * moment an extraction stores something instead of waiting for a client poll.
+ *
+ * Deliberately in-memory and best-effort: an event is a hint to refetch, never
+ * the data itself, so a client that misses one recovers on its next refetch or
+ * reconnect.
+ */
+
+export interface DocTidyEvent {
+  type:
+    | 'imported'
+    | 'ping'
+    | 'connected'
+    | 'parse_status'
+    | 'parse_progress'
+    | 'worker_status'
+    | 'poll_status'
+    | 'ui_prefs'
+    /** Token usage was recorded; the admin usage dashboard refetches. Carries no data. */
+    | 'usage';
+  /** Number of newly stored messages, for `imported`. */
+  imported?: number;
+  /** For `poll_status`: whether the background poller is actively fetching. */
+  pollerRunning?: boolean;
+  /** For `poll_status`: the error message from the last failed poll, or null on success. */
+  pollError?: string | null;
+  /** For `poll_status`: ISO timestamp of the last successful import, or null. */
+  lastImportAt?: string | null;
+  /**
+   * For `parse_status`: which parse job changed and what it changed to, so a
+   * table showing that document can move its status chip without refetching the
+   * whole page. Unlike `imported`, this carries the id because the client can
+   * apply it to a row it already holds.
+   *
+   * For `parse_progress`: which running job the `step`/`snippet` below describe.
+   */
+  parseJobId?: string;
+  parseStatus?: string;
+  /**
+   * For `parse_progress`: how far through its transcript a running job is, and
+   * a few words of what it is doing. Carried on this shared stream rather than
+   * the per-job one so a table watching hundreds of jobs still needs exactly one
+   * connection. See design-log/2026-09-25-parse-progress-multiplexing.md.
+   */
+  step?: number;
+  snippet?: string;
+  /** For `worker_status`: whether the Python worker is currently connected. */
+  workerOnline?: boolean;
+  /**
+   * For `ui_prefs`: updated column orders for the given workspace.
+   * Clients only apply the update when their active workspace matches.
+   */
+  workspaceId?: string;
+  auditColumnOrder?: string[];
+  wsEmailColumnOrder?: string[];
+  pdfImportColOrder?: string[];
+  at?: string;
+}
+
+const HEARTBEAT_MS = 25_000;
+
+const clients = new Set<Response>();
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+function write(res: Response, event: DocTidyEvent): void {
+  try {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  } catch {
+    // The socket is gone; the 'close' handler will do the removal.
+  }
+}
+
+function startHeartbeat(): void {
+  if (heartbeat) return;
+
+  // Idle streams get dropped by proxies and load balancers. A periodic comment
+  // also surfaces half-open sockets, which otherwise linger in `clients`.
+  heartbeat = setInterval(() => {
+    for (const res of clients) write(res, { type: 'ping', at: new Date().toISOString() });
+  }, HEARTBEAT_MS);
+
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
+}
+
+function stopHeartbeat(): void {
+  if (heartbeat && clients.size === 0) {
+    clearInterval(heartbeat);
+    heartbeat = null;
+  }
+}
+
+/** Registers an SSE response and returns a cleanup function. */
+export function addClient(res: Response): () => void {
+  clients.add(res);
+  startHeartbeat();
+
+  return () => {
+    clients.delete(res);
+    stopHeartbeat();
+  };
+}
+
+export function broadcast(event: DocTidyEvent): void {
+  const payload = { ...event, at: event.at ?? new Date().toISOString() };
+  for (const res of clients) write(res, payload);
+}
+
+export function clientCount(): number {
+  return clients.size;
+}

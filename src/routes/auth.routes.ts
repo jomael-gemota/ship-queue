@@ -3,7 +3,13 @@ import passport from 'passport';
 import { googleCallback, getMe, logout } from '../controllers/auth.controller';
 import { getDriveAuthUrl, handleDriveCallback } from '../controllers/driveAuth.controller';
 import { getDropboxAuthUrl, handleDropboxCallback } from '../controllers/dropboxAuth.controller';
-import { requireAuth } from '../middleware/auth';
+import { getWorkspaceSpsAuthUrl, handleSpsCallback } from '../controllers/spsAuth.controller';
+import {
+  getDocTidyAuthUrl,
+  getWorkspaceEmailSourceAuthUrl,
+  handleDocTidyCallback,
+} from '../controllers/docTidyAuth.controller';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -72,6 +78,25 @@ router.get('/drive/callback', handleDriveCallback);
 // Dropbox OAuth — connects a user's Dropbox account for the Dropbox Fetcher.
 router.get('/dropbox/connect', requireAuth, getDropboxAuthUrl);
 router.get('/dropbox/callback', handleDropboxCallback);
+
+// SPS Commerce OAuth — connects a workspace's SPS Commerce account as an
+// invoice source. Register http://localhost:5000/api/auth/sps/callback in the
+// SPS Dev Center (and the production equivalent for prod deploys).
+router.get('/sps/workspaces/:workspaceId/connect', requireAuth, getWorkspaceSpsAuthUrl);
+router.get('/sps/callback', handleSpsCallback);
+
+// Doc Tidy OAuth — connects the single shared mailbox (Gmail read + Drive
+// write) that extraction rules run against. Admin-only.
+router.get('/doc-tidy/connect', requireAuth, requireAdmin, getDocTidyAuthUrl);
+router.get('/doc-tidy/callback', handleDocTidyCallback);
+// Per-workspace email source connect — allows each workspace to use its own
+// Gmail account instead of the shared global mailbox. Any authenticated user
+// may connect a source for a workspace they have access to.
+router.get(
+  '/doc-tidy/workspaces/:workspaceId/connect',
+  requireAuth,
+  getWorkspaceEmailSourceAuthUrl
+);
 
 // Protected — returns the currently authenticated user
 router.get('/me', requireAuth, getMe);

@@ -2,6 +2,7 @@ import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { authApi } from '../lib/api'
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from '../types/order'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import type {
   Order,
   OrderItem,
@@ -271,9 +272,8 @@ export default function Orders() {
   const [tableRefreshing, setTableRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const { addToast } = useToast()
   const [syncState, setSyncState] = useState<SyncState | null>(null)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [syncDone, setSyncDone] = useState<string | null>(null)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null)
 
@@ -446,23 +446,23 @@ export default function Orders() {
           stopPolling()
 
           if (status.error) {
-            setSyncError(status.error)
+            addToast(status.error, 'error')
           } else if (!manualSyncRef.current) {
             // Background (server-scheduled) sync finished cleanly — stay quiet,
-            // the table just refreshes silently without a success banner.
+            // the table just refreshes silently without a success toast.
           } else if (status.result) {
             const { inserted, updated, fetched, isIncremental } = status.result
             const label = isIncremental ? 'Incremental sync' : 'Full sync'
 
             if (fetched === 0) {
-              setSyncDone(`${label} complete — already up to date, no orders found in this window`)
+              addToast(`${label} complete — already up to date, no orders found in this window`, 'success')
             } else if (inserted === 0 && updated === 0) {
-              setSyncDone(`${label} complete — ${fetched.toLocaleString()} orders checked, nothing changed`)
+              addToast(`${label} complete — ${fetched.toLocaleString()} orders checked, nothing changed`, 'success')
             } else {
               const parts: string[] = []
               if (inserted > 0) parts.push(`${inserted.toLocaleString()} new`)
               if (updated > 0) parts.push(`${updated.toLocaleString()} updated`)
-              setSyncDone(`${label} complete — ${parts.join(', ')} (${fetched.toLocaleString()} checked)`)
+              addToast(`${label} complete — ${parts.join(', ')} (${fetched.toLocaleString()} checked)`, 'success')
             }
           }
 
@@ -490,8 +490,6 @@ export default function Orders() {
 
     manualSyncRef.current = true
     setAutoSyncing(false)
-    setSyncError(null)
-    setSyncDone(null)
     lastSyncedCountRef.current = 0
     try {
       const res = await authApi.post<SyncResponse>('/orders/sync')
@@ -499,7 +497,7 @@ export default function Orders() {
       startPolling()
     } catch (err) {
       manualSyncRef.current = false
-      setSyncError(err instanceof Error ? err.message : 'Failed to start sync')
+      addToast(err instanceof Error ? err.message : 'Failed to start sync', 'error')
     }
   }
 
@@ -815,58 +813,6 @@ export default function Orders() {
 
       {/* Sync progress bar */}
       {isSyncing && syncState && <SyncProgressBar state={syncState} />}
-
-      {/* Sync success banner */}
-      {syncDone && !isSyncing && (
-        <div className="notice-card notice-card--success mb-4 flex items-start gap-3 text-sm">
-          <svg
-            className="h-4 w-4 mt-0.5 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-          {syncDone}
-          <button
-            onClick={() => setSyncDone(null)}
-            className="ml-auto rounded-md p-0.5 text-emerald-700/70 hover:bg-emerald-100 hover:text-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-900/40 cursor-pointer transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Sync error banner */}
-      {syncError && (
-        <div className="notice-card notice-card--error mb-4 flex items-start gap-3 text-sm">
-          <svg
-            className="h-4 w-4 mt-0.5 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          {syncError}
-          <button
-            onClick={() => setSyncError(null)}
-            className="ml-auto rounded-md p-0.5 text-red-700/70 hover:bg-red-100 hover:text-red-900 dark:text-red-300 dark:hover:bg-red-900/40 cursor-pointer transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Table card */}
       <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-100)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm overflow-hidden">
