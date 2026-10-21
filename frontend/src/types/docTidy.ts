@@ -570,6 +570,18 @@ export interface ParseJobListItem {
   source?: 'email' | 'pdf-import'
 }
 
+/**
+ * One Invoice Audit row's worth of a parse job. A spreadsheet batch file holds
+ * several invoices, so its job yields one of these per invoice, each with that
+ * invoice as `jsonOutput`. `_id` stays the real job id.
+ */
+export interface InvoiceRowJob extends ParseJobListItem {
+  rowKey: string
+  /** Position and count within a batch file; absent for single-invoice jobs. */
+  invoiceIndex?: number
+  invoiceCount?: number
+}
+
 export interface ParseJobsResponse {
   data: ParseJobListItem[]
   pagination: {
@@ -851,6 +863,32 @@ export function extractJsonField(
     }
   }
   return ''
+}
+
+/**
+ * The invoices in a job's output: each element of `invoices[]` for a
+ * spreadsheet batch file, otherwise the output itself.
+ *
+ * Must stay identical to `invoiceDocuments` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown>[] {
+  const invoices = Array.isArray(json.invoices) ? json.invoices.filter(isJsonObject) : []
+  return invoices.length > 0 ? invoices : [json]
+}
+
+/** Expands spreadsheet batch jobs into one row-job per invoice; other jobs pass through. */
+export function expandInvoiceJobs(jobs: ParseJobListItem[]): InvoiceRowJob[] {
+  return jobs.flatMap((job) => {
+    const docs = isJsonObject(job.jsonOutput) ? invoiceDocuments(job.jsonOutput) : []
+    if (docs.length === 0 || docs[0] === job.jsonOutput) return [{ ...job, rowKey: job._id }]
+    return docs.map((doc, i) => ({
+      ...job,
+      jsonOutput: doc,
+      rowKey: `${job._id}:${i}`,
+      invoiceIndex: i,
+      invoiceCount: docs.length,
+    }))
+  })
 }
 
 /**

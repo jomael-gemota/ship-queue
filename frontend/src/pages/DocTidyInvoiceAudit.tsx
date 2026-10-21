@@ -37,6 +37,7 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
+  expandInvoiceJobs,
   PO_NUMBER_FIELD_KEYS,
   documentTypeOf,
   DOCUMENT_TYPE_LABELS,
@@ -52,6 +53,7 @@ import {
   type WorkspaceEmailColumn,
   type WorkspaceEmailColumnId,
   type ParseJobListItem,
+  type InvoiceRowJob,
   type ParseJobsResponse,
   type PdfImport,
   type PdfImportColumn,
@@ -3174,7 +3176,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Header-only parse-job delete ── */
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
-  const [confirmDeleteJob, setConfirmDeleteJob] = useState<ParseJobListItem | null>(null)
+  const [confirmDeleteJob, setConfirmDeleteJob] = useState<InvoiceRowJob | null>(null)
   const [jobDeleting, setJobDeleting] = useState(false)
   const [confirmBulkDeleteJobs, setConfirmBulkDeleteJobs] = useState(false)
   const [jobBulkDeleting, setJobBulkDeleting] = useState(false)
@@ -3261,9 +3263,9 @@ export default function DocTidyInvoiceAudit() {
   }, [workspaceTab, fetchPdfImports])
 
   const handlePdfFilesSelected = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files).filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
+    const fileArray = Array.from(files).filter((f) => PARSEABLE.test(f.name))
     if (fileArray.length === 0) {
-      setPdfUploadError('Please select PDF files only.')
+      setPdfUploadError('Please select PDF, CSV or Excel (.xlsx, .xls) files only.')
       return
     }
     if (!activeWorkspace) return
@@ -4159,6 +4161,7 @@ export default function DocTidyInvoiceAudit() {
   const leaveOrg = () => {
     setActiveOrg(null)
     setView('organizations')
+    setWsSearch('')
     navigate('/doc-tidy/invoice-audit')
   }
 
@@ -4229,6 +4232,9 @@ export default function DocTidyInvoiceAudit() {
     saveCollapsedWeeks(collapsedWeeks)
   }, [collapsedWeeks])
 
+  /** Parse jobs as invoice rows — spreadsheet batch files contribute one per invoice. */
+  const invoiceJobs = useMemo(() => expandInvoiceJobs(jobs), [jobs])
+
   /**
    * Pre-compute all invoice matches for every loaded order import row.
    * Keyed by order._id for O(1) lookup in the render loop.
@@ -4238,10 +4244,10 @@ export default function DocTidyInvoiceAudit() {
   const invoiceMatchMap = useMemo<Map<string, InvoiceMatch[]>>(() => {
     const map = new Map<string, InvoiceMatch[]>()
     for (const order of orderImports) {
-      map.set(order._id, findAllInvoiceMatches(order, jobs))
+      map.set(order._id, findAllInvoiceMatches(order, invoiceJobs))
     }
     return map
-  }, [orderImports, jobs])
+  }, [orderImports, invoiceJobs])
 
   /** Fast lookup of parse jobs by id — used to check vendorNeedsSetup in table rows. */
   const jobsById = useMemo(() => {
@@ -4258,8 +4264,8 @@ export default function DocTidyInvoiceAudit() {
   const getColUniqueValues = useCallback((colId: InvoiceAuditColumnId): Map<string, number> => {
     const vals = new Map<string, number>()
     if (isHeaderOnly) {
-      // Header-only workspaces: rows are parse jobs, not order imports
-      for (const job of jobs) {
+      // Header-only workspaces: rows are parsed invoices, not order imports
+      for (const job of invoiceJobs) {
         const val = headerOnlyColStr(colId, job).trim()
         vals.set(val, (vals.get(val) ?? 0) + 1)
       }
@@ -4271,7 +4277,7 @@ export default function DocTidyInvoiceAudit() {
       }
     }
     return vals
-  }, [isHeaderOnly, jobs, orderImports, invoiceMatchMap])
+  }, [isHeaderOnly, invoiceJobs, orderImports, invoiceMatchMap])
 
   /**
    * Client-side filter applied on top of the server-fetched `orderImports`.
@@ -4318,20 +4324,20 @@ export default function DocTidyInvoiceAudit() {
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
 
   /**
-   * For header-only workspaces: completed parse jobs filtered by the active
+   * For header-only workspaces: parsed invoices filtered by the active
    * date range (using invoice date extracted from the job's JSON output).
    */
   const filteredHeaderOnlyJobs = useMemo(() => {
-    if (!isHeaderOnly) return jobs
+    if (!isHeaderOnly) return invoiceJobs
 
     const activeColEntries = Object.entries(colFilters).filter(
       (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
     const hasDateFilter = Boolean(auditDateFrom || auditDateTo)
 
-    if (activeColEntries.length === 0 && !hasDateFilter) return jobs
+    if (activeColEntries.length === 0 && !hasDateFilter) return invoiceJobs
 
-    return jobs.filter((job) => {
+    return invoiceJobs.filter((job) => {
       // ── Column filters ──
       if (activeColEntries.length > 0) {
         const passesCol = activeColEntries.every(([colId, allowed]) => {
@@ -4354,20 +4360,27 @@ export default function DocTidyInvoiceAudit() {
 
       return true
     })
-  }, [isHeaderOnly, jobs, colFilters, auditDateFrom, auditDateTo])
+  }, [isHeaderOnly, invoiceJobs, colFilters, auditDateFrom, auditDateTo])
 
   /* ── Org / workspace grouping ── */
+  /** Search query for filtering workspace cards on the organizations and workspaces views. */
+  const [wsSearch, setWsSearch] = useState('')
+
   /** Workspaces that have no organization assignment (visible to all users). */
-  const unassignedWorkspaces = useMemo(
-    () => workspaces.filter((w) => !w.organizationId),
-    [workspaces]
-  )
+  const unassignedWorkspaces = useMemo(() => {
+    const all = workspaces.filter((w) => !w.organizationId)
+    if (!wsSearch.trim()) return all
+    const q = wsSearch.trim().toLowerCase()
+    return all.filter((w) => w.name.toLowerCase().includes(q))
+  }, [workspaces, wsSearch])
 
   /** Workspaces belonging to the currently active organization. */
-  const orgWorkspaces = useMemo(
-    () => (activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []),
-    [workspaces, activeOrg]
-  )
+  const orgWorkspaces = useMemo(() => {
+    const all = activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []
+    if (!wsSearch.trim()) return all
+    const q = wsSearch.trim().toLowerCase()
+    return all.filter((w) => w.name.toLowerCase().includes(q))
+  }, [workspaces, activeOrg, wsSearch])
 
   /* ── Email column filter helpers ── */
   const getEmailColUniqueValues = useCallback((colId: WorkspaceEmailColumnId): Map<string, number> => {
@@ -4475,7 +4488,7 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /* ── Header-only parse-job delete handlers ── */
-  const handleDeleteParseJob = async (job: ParseJobListItem) => {
+  const handleDeleteParseJob = async (job: InvoiceRowJob) => {
     setJobDeleting(true)
     try {
       await authApi.delete(`/doc-tidy/parse-jobs/${job._id}`)
@@ -4515,9 +4528,9 @@ export default function DocTidyInvoiceAudit() {
 
       if (isHeaderOnly) {
         // ── Header-only workspaces: rows are parse jobs, not order imports ──
-        let exportJobs: ParseJobListItem[]
+        let exportJobs: InvoiceRowJob[]
         if (mode === 'selection') {
-          exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+          exportJobs = invoiceJobs.filter((j) => selectedJobIds.has(j._id))
         } else {
           // 'all' — use the already-filtered in-memory list so the export
           // matches exactly what the user sees in the table (filters, date range).
@@ -4919,6 +4932,35 @@ export default function DocTidyInvoiceAudit() {
             )}
           </div>
 
+          {/* ── Workspace search bar ── */}
+          {!wsLoading && (unassignedWorkspaces.length > 0 || wsSearch) && (
+            <div className="relative max-w-sm">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={wsSearch}
+                onChange={(e) => setWsSearch(e.target.value)}
+                placeholder="Search workspaces…"
+                className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-8 pr-8 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              />
+              {wsSearch && (
+                <button
+                  onClick={() => setWsSearch('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* ── Divider between organizations and unassigned workspaces ── */}
           {!orgLoading && organizations.length > 0 && (wsLoading || unassignedWorkspaces.length > 0) && (
             <div className="flex items-center gap-3">
@@ -4970,6 +5012,8 @@ export default function DocTidyInvoiceAudit() {
                     </div>
                   ))}
                 </div>
+              ) : unassignedWorkspaces.length === 0 && wsSearch ? (
+                <p className="text-xs text-[var(--text-200)]">No workspaces match <span className="font-medium text-[var(--text-100)]">"{wsSearch}"</span>.</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {unassignedWorkspaces.map((ws) => (
@@ -5040,6 +5084,35 @@ export default function DocTidyInvoiceAudit() {
             </span>
           </div>
 
+          {/* Search bar */}
+          {!wsLoading && (orgWorkspaces.length > 0 || wsSearch) && (
+            <div className="relative max-w-sm">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={wsSearch}
+                onChange={(e) => setWsSearch(e.target.value)}
+                placeholder="Search workspaces…"
+                className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-8 pr-8 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              />
+              {wsSearch && (
+                <button
+                  onClick={() => setWsSearch('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           {wsLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -5061,6 +5134,8 @@ export default function DocTidyInvoiceAudit() {
                 </div>
               ))}
             </div>
+          ) : orgWorkspaces.length === 0 && wsSearch ? (
+            <p className="text-xs text-[var(--text-200)]">No workspaces match <span className="font-medium text-[var(--text-100)]">"{wsSearch}"</span>.</p>
           ) : orgWorkspaces.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
@@ -5776,9 +5851,9 @@ export default function DocTidyInvoiceAudit() {
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
-                  {/* Import PDFs icon button */}
+                  {/* Import files icon button */}
                   <button type="button" onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
-                    title="Import PDFs — upload PDF files to parse"
+                    title="Import files — upload PDF, CSV or Excel files to parse"
                     className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -5923,12 +5998,12 @@ export default function DocTidyInvoiceAudit() {
                       </div>
                       <div>
                         <p className="text-[10px] font-medium text-[var(--text-100)]">
-                          {pdfHasActiveFilters ? 'No files match' : 'No PDFs imported yet'}
+                          {pdfHasActiveFilters ? 'No files match' : 'No files imported yet'}
                         </p>
                         <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                           {pdfHasActiveFilters
                             ? 'Try adjusting or clearing the filters.'
-                            : 'Click "Import PDFs" above to upload files.'}
+                            : 'Click the import button above to upload PDF, CSV or Excel files.'}
                         </p>
                       </div>
                       {pdfHasActiveFilters && (
@@ -6212,14 +6287,14 @@ export default function DocTidyInvoiceAudit() {
               <div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Import PDFs"
+                aria-label="Import files"
                 className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
               >
                 {/* Modal header */}
                 <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import PDFs</h3>
-                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF only · Max 50 MB each</p>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import files</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF, CSV or Excel · Max 50 MB each</p>
                   </div>
                   <button
                     type="button"
@@ -6244,7 +6319,7 @@ export default function DocTidyInvoiceAudit() {
                   <input
                     ref={pdfFileInputRef}
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                     multiple
                     className="hidden"
                     onChange={(e) => {
@@ -6285,7 +6360,7 @@ export default function DocTidyInvoiceAudit() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-[var(--text-100)]">
-                            Click or drop PDF files here
+                            Click or drop PDF, CSV or Excel files here
                           </p>
                           <p className="mt-1 text-xs text-[var(--text-200)]">Multiple files accepted · uploads to Drive + parsed on demand</p>
                         </div>
@@ -6585,7 +6660,7 @@ export default function DocTidyInvoiceAudit() {
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedJobIds.has(job._id)
                             return (
-                              <tr key={job._id}
+                              <tr key={job.rowKey}
                                 className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
                                 <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
@@ -7245,7 +7320,11 @@ export default function DocTidyInvoiceAudit() {
             <>
               <span className="font-medium text-[var(--text-100)]">{confirmDeleteJob.filename}</span>
               <br />
-              <span className="text-[var(--text-200)]">The parse job and its extracted data will be permanently removed. This cannot be undone.</span>
+              <span className="text-[var(--text-200)]">
+                {confirmDeleteJob.invoiceCount
+                  ? `This file holds ${confirmDeleteJob.invoiceCount} invoices — deleting its parse job removes all ${confirmDeleteJob.invoiceCount} rows and their extracted data. This cannot be undone.`
+                  : 'The parse job and its extracted data will be permanently removed. This cannot be undone.'}
+              </span>
             </>
           }
           deleting={jobDeleting}

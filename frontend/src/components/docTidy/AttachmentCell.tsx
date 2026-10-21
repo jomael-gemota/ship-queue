@@ -3,8 +3,11 @@ import { PdfIcon } from '../labels/labelUi'
 import { ParseStatusChip } from './docTidyUi'
 import { isParseRunning, type DocTidyMessage } from '../../types/docTidy'
 
-/** Attachments the agent can read; anything else can't be sent for parsing. */
-export const PARSEABLE = /\.(pdf)$/i
+/**
+ * Attachments the agent can read; anything else can't be sent for parsing.
+ * Mirrors `src/lib/parseableFiles.ts`.
+ */
+export const PARSEABLE = /\.(pdf|csv|xlsx|xls)$/i
 
 /**
  * A message's attachments — each rendered as a polished card showing the
