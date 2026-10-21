@@ -37,6 +37,7 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
+  PO_NUMBER_FIELD_KEYS,
   documentTypeOf,
   DOCUMENT_TYPE_LABELS,
   PARSE_STATUS_LABELS,
@@ -156,12 +157,7 @@ function findAllInvoiceMatches(
 
   for (const job of jobs) {
     const json = job.jsonOutput ?? null
-    const jobPo = normForMatch(
-      extractJsonField(json,
-        'po_number', 'purchase_order_number', 'po_no', 'po',
-        'purchase_order', 'order_number', 'order_no'
-      )
-    )
+    const jobPo = normForMatch(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS))
     if (!jobPo || jobPo !== normPo) continue
 
     const lineItems = extractJsonArray(json,
@@ -2657,8 +2653,7 @@ function headerOnlyColStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): s
   const json = job.jsonOutput ?? null
   switch (colId) {
     case 'poNumber':
-      return extractJsonField(json,
-        'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no')
+      return extractJsonField(json, ...PO_NUMBER_FIELD_KEYS)
     case 'invoiceDate':
       return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
     case 'invoiceNumber':
@@ -4799,8 +4794,7 @@ export default function DocTidyInvoiceAudit() {
     const json = job.jsonOutput ?? null
     switch (colId) {
       case 'poNumber':
-        return monoCell(extractJsonField(json,
-          'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+        return monoCell(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS))
       case 'invoiceDate':
         return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
       case 'invoiceNumber': {

@@ -763,7 +763,24 @@ export function saveCollapsedWeeks(keys: Set<string>): void {
   }
 }
 
-const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+const normJsonKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_KEYS` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export const PO_NUMBER_FIELD_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+]
 
 const isJsonObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -812,7 +829,8 @@ function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown
 /**
  * Extract a scalar value from a free-form AI JSON output, trying multiple
  * common field-name variants in priority order. Keys are normalised to
- * lowercase with all separators (`_`, `-`, spaces) stripped before comparison.
+ * lowercase with every non-alphanumeric character (`_`, `-`, spaces, `#`, `.`)
+ * stripped before comparison.
  *
  * Must stay identical to `extractField` in `src/services/invoiceMatchCache.service.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.

@@ -30,7 +30,24 @@ function norm(s: unknown): string {
   return String(s ?? '').trim().toLowerCase().replace(/[\s#_-]+/g, '');
 }
 
-const normKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '');
+const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_FIELD_KEYS` in `frontend/src/types/docTidy.ts`.
+ */
+export const PO_NUMBER_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+];
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -46,8 +63,9 @@ function searchScopes(obj: Record<string, unknown>): Record<string, unknown>[] {
 
 /**
  * Pull the first non-empty scalar from a JSON object by candidate keys, in
- * priority order. Keys match after lowercasing and stripping `_`, `-` and
- * spaces, so camelCase and snake_case agent output are equivalent.
+ * priority order. Keys match after lowercasing and stripping every
+ * non-alphanumeric character, so camelCase, snake_case and printed labels
+ * (`Customer PO #`) are equivalent.
  *
  * Must stay identical to `extractJsonField` in `frontend/src/types/docTidy.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.
@@ -135,12 +153,7 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
   const json = job.jsonOutput as Record<string, unknown>;
 
   // Extract PO # from the invoice JSON.
-  const jobPo = norm(
-    extractField(json,
-      'po_number', 'purchase_order_number', 'po_no', 'po',
-      'purchase_order', 'order_number', 'order_no'
-    )
-  );
+  const jobPo = norm(extractField(json, ...PO_NUMBER_KEYS));
   if (!jobPo) return 0;
 
   const workspaceId = await resolveWorkspaceId(job);
