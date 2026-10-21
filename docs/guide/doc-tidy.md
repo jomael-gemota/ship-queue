@@ -29,9 +29,19 @@ The button is replaced by a status chip that tells you where things are:
 
 Click any chip to open the document's panel.
 
-::: tip Only PDFs
-The Parse button only appears on PDFs. The agent can't read other file types, so
-offering it elsewhere would just queue a job that was always going to fail.
+::: tip PDFs, CSV and Excel
+The Parse button appears on PDF, CSV and Excel (`.xlsx`, `.xls`) attachments, and
+the same files can be uploaded on a workspace's **PDF Imports** tab. The agent
+can't read other file types, so offering it elsewhere would just queue a job that
+was always going to fail.
+:::
+
+::: info One file, many invoices
+CSV and Excel invoice exports often hold a whole day's invoices. The agent splits
+the file by invoice number (or PO when there is none) and reads the invoices in
+batches. The file is still one document with one status, but the Invoice Audit
+shows one row per invoice, each matched on its own PO. On these files the
+**Tables** tab lists one row per invoice; line items are in the **JSON** tab.
 :::
 
 ::: warning "The parsing worker is not connected"
