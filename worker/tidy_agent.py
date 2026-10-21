@@ -183,6 +183,20 @@ Rules:
 """
 
 
+def _build_batch_instructions(invoice_count: int) -> str:
+    """Output contract for a batch of invoices read from a spreadsheet export."""
+    return (
+        f"SPREADSHEET BATCH — the document is a spreadsheet export holding {invoice_count} "
+        "separate invoice(s), each in its own block marked '--- Invoice k of N ---' with the "
+        "column header repeated. Read every block independently. Respond with a single JSON "
+        'object of the form {"invoices": [ ... ]} containing EXACTLY '
+        f"{invoice_count} element(s), one per block, in block order. Each element is one "
+        "complete invoice object following every rule above — top-level poNumber, "
+        "vendorName, invoice number/date/terms/totals, and its own lineItems built from that "
+        "block's rows only. Never merge, split, skip, or reorder invoices."
+    )
+
+
 class TokenType(Enum):
     THINKING = auto()
     OUTPUT = auto()
@@ -360,6 +374,7 @@ async def stream_tidy(
     document_text: str,
     examples=None,
     vendor_sku_samples=None,
+    invoice_count: int | None = None,
 ) -> AsyncGenerator[StreamChunk, None]:
     """
     Stream the Tidy agent's response for the given document text.
@@ -376,6 +391,9 @@ async def stream_tidy(
     ``vendor_sku_samples`` is an optional list of real SKUs captured at vendor
     setup; when present they're injected as a hard formatting rule so the model
     reproduces that vendor's SKU shape(s) from the first run (cold-start anchor).
+
+    ``invoice_count`` marks the document as a batch of that many spreadsheet
+    invoices; the model then answers ``{"invoices": [...]}`` instead of one object.
     """
     client, model = _make_hermes_client()
     base_url = os.environ.get("HERMES_BASE_URL") or None
@@ -403,6 +421,8 @@ async def stream_tidy(
     ).strip()
     if vendor_guidance:
         messages.append({"role": "system", "content": vendor_guidance})
+    if invoice_count:
+        messages.append({"role": "system", "content": _build_batch_instructions(invoice_count)})
     messages.extend(_build_example_messages(examples))
 
     # When we injected reference corrections, remind the model—right before the
@@ -414,7 +434,15 @@ async def stream_tidy(
         if examples
         else ""
     )
-    messages.append({"role": "user", "content": f"{apply_hint}Document text:\n\n{document_text}"})
+    batch_hint = (
+        f'This document holds {invoice_count} invoice(s) — answer with {{"invoices": [...]}} '
+        f"containing exactly {invoice_count} element(s), one per block.\n\n"
+        if invoice_count
+        else ""
+    )
+    messages.append(
+        {"role": "user", "content": f"{apply_hint}{batch_hint}Document text:\n\n{document_text}"}
+    )
 
     # ── Retry loop: recover from 429 "too many concurrent runs" ──────────────
     # The Hermes backend enforces a global concurrent-run cap shared across all

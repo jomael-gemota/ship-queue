@@ -37,6 +37,17 @@ from mongo_collections import PARSE_JOBS, PDF_BUCKET
 from narrator import Narrator
 from pdf_extractor import extract_text
 from po_number import ensure_po_number
+from tabular_reader import (
+    batch_groups,
+    batch_text,
+    file_kind,
+    group_invoices,
+    invoice_table,
+    invoice_text,
+    po_value,
+    read_spreadsheet,
+    sheet_text,
+)
 from sku import (
     detect_vendor_name_from_text,
     extract_vendor_name,
@@ -133,16 +144,87 @@ def _human_size(num_bytes: int) -> str:
     return f"{size:.1f} GB"
 
 
-async def fetch_pdf_bytes(db: motor.motor_asyncio.AsyncIOMotorDatabase, job_id: str) -> bytes:
-    """Download PDF bytes from MongoDB GridFS."""
+async def fetch_file_bytes(db: motor.motor_asyncio.AsyncIOMotorDatabase, job_id: str) -> bytes:
+    """Download the job's document (PDF, CSV or Excel) from MongoDB GridFS."""
     bucket = motor.motor_asyncio.AsyncIOMotorGridFSBucket(db, bucket_name=PDF_BUCKET)
 
     job = await db[PARSE_JOBS].find_one({"_id": ObjectId(job_id)})
     if not job or not job.get("pdfFileId"):
-        raise ValueError(f"No PDF file reference found for job {job_id}")
+        raise ValueError(f"No stored file reference found for job {job_id}")
 
     stream = await bucket.open_download_stream(job["pdfFileId"])
     return await stream.read()
+
+
+def _invoices_from_output(output: str) -> list[dict]:
+    """The `invoices` array of a batch answer; [] when it can't be read."""
+    try:
+        parsed = extract_json(output)
+    except (ValueError, json.JSONDecodeError):
+        return []
+    invoices = parsed.get("invoices") if isinstance(parsed, dict) else None
+    if not isinstance(invoices, list):
+        return []
+    return [inv for inv in invoices if isinstance(inv, dict)]
+
+
+def _single_invoice(output: str) -> dict:
+    """One invoice's answer, unwrapping an `invoices` array of one if the model sent it."""
+    parsed = extract_json(output)
+    wrapped = parsed.get("invoices") if isinstance(parsed, dict) else None
+    if isinstance(wrapped, list) and len(wrapped) == 1 and isinstance(wrapped[0], dict):
+        return wrapped[0]
+    return parsed
+
+
+async def _read_invoice_batches(sheet, invoice_groups, run_tidy, emit_thinking, job_id) -> list[dict]:
+    """Read a spreadsheet's invoices with one Tidy call per batch.
+
+    A batch that comes back with the wrong number of invoices can't be lined up
+    with its rows, so it is re-read one invoice at a time rather than dropping or
+    misattributing any of them.
+    """
+    total = len(invoice_groups)
+    invoices: list[dict] = []
+    for batch in batch_groups(sheet, invoice_groups):
+        first = len(invoices) + 1
+        last = first + len(batch) - 1
+        span = f"{first}" if first == last else f"{first}–{last}"
+        await emit_thinking(f"   Reading invoice {span} of {total}...\n")
+
+        parsed = _invoices_from_output(
+            await run_tidy(batch_text(sheet, batch, first, total), len(batch))
+        )
+        if len(parsed) != len(batch):
+            logger.warning(
+                "Job %s: batch %s returned %d of %d invoices; re-reading singly",
+                job_id, span, len(parsed), len(batch),
+            )
+            await emit_thinking(
+                f"   That batch came back with {len(parsed)} of {len(batch)} invoices — "
+                "I'll read them one at a time.\n"
+            )
+            parsed = [
+                _single_invoice(await run_tidy(invoice_text(sheet, rows)))
+                for rows in batch
+            ]
+
+        for inv, rows in zip(parsed, batch):
+            _ensure_sheet_po_number(inv, sheet, rows)
+        invoices.extend(parsed)
+    return invoices
+
+
+def _ensure_sheet_po_number(invoice: dict, sheet, rows) -> str | None:
+    """Like `ensure_po_number`, but a spreadsheet's PO column outranks the text pattern."""
+    po = ensure_po_number(invoice)
+    if po:
+        return po
+    po = po_value(sheet, rows)
+    if po:
+        invoice["poNumber"] = po
+        return po
+    return ensure_po_number(invoice, invoice_text(sheet, rows))
 
 
 async def process_job(
@@ -211,32 +293,55 @@ async def process_job(
             f"Hi! I've got your document, {filename} — let me take a look.",
         )
 
+        kind = file_kind(filename)
+        noun = "PDF" if kind == "pdf" else "spreadsheet"
         await step_start(
-            "Tell the user you're now fetching their PDF from storage.",
-            "Let me grab your PDF from storage...",
+            f"Tell the user you're now fetching their {noun} from storage.",
+            f"Let me grab your {noun} from storage...",
         )
-        pdf_bytes = await fetch_pdf_bytes(db, job_id)
-        logger.info("Job %s: PDF fetched (%d bytes)", job_id, len(pdf_bytes))
-        size_str = _human_size(len(pdf_bytes))
+        file_bytes = await fetch_file_bytes(db, job_id)
+        logger.info("Job %s: %s fetched (%d bytes)", job_id, kind, len(file_bytes))
+        size_str = _human_size(len(file_bytes))
         await step_done(
-            f"You just finished loading the PDF and it is {size_str}.",
+            f"You just finished loading the {noun} and it is {size_str}.",
             f"Got it — that's {size_str} loaded and ready.",
         )
 
-        await step_start(
-            "Tell the user you're now reading the text off the pages.",
-            "Now I'll read the text from the pages...",
-        )
-        # pdfplumber (and Tesseract, for scanned pages) is synchronous and
-        # CPU-bound. Running it inline would block the event loop, and with it
-        # every other job's token relay, for the whole extraction.
-        document_text = await asyncio.to_thread(extract_text, pdf_bytes)
-        logger.info("Job %s: text extracted (%d chars)", job_id, len(document_text))
-        char_str = f"{len(document_text):,}"
-        await step_done(
-            f"You just extracted the text and it came to {char_str} characters.",
-            f"Done — I pulled out {char_str} characters of text.",
-        )
+        sheet = None
+        invoice_groups: list = []
+        if kind == "pdf":
+            await step_start(
+                "Tell the user you're now reading the text off the pages.",
+                "Now I'll read the text from the pages...",
+            )
+            # pdfplumber (and Tesseract, for scanned pages) is synchronous and
+            # CPU-bound. Running it inline would block the event loop, and with it
+            # every other job's token relay, for the whole extraction.
+            document_text = await asyncio.to_thread(extract_text, file_bytes)
+            logger.info("Job %s: text extracted (%d chars)", job_id, len(document_text))
+            char_str = f"{len(document_text):,}"
+            await step_done(
+                f"You just extracted the text and it came to {char_str} characters.",
+                f"Done — I pulled out {char_str} characters of text.",
+            )
+        else:
+            await step_start(
+                "Tell the user you're now reading the rows of their spreadsheet.",
+                "Now I'll read the rows of the spreadsheet...",
+            )
+            sheet = await asyncio.to_thread(read_spreadsheet, file_bytes, kind)
+            invoice_groups = group_invoices(sheet)
+            document_text = sheet_text(sheet)
+            row_count = len(sheet.rows)
+            invoice_count = len(invoice_groups)
+            logger.info(
+                "Job %s: %d rows, %d invoice group(s)", job_id, row_count, invoice_count
+            )
+            await step_done(
+                f"You read {row_count} rows and found {invoice_count} invoice(s) in them.",
+                f"Done — {row_count} rows holding {invoice_count} invoice(s).",
+            )
+        is_batch = len(invoice_groups) > 1
 
         # Identify the vendor from the raw text up front so correction retrieval
         # can be scoped to this vendor (extraction — and thus the extracted
@@ -284,37 +389,51 @@ async def process_job(
             "Now let me read through and make sense of it...",
         )
 
-        output_buffer = ""
         saw_reasoning = False
 
-        # Acquire the semaphore only for the AI inference phase so that at most
-        # MAX_CONCURRENT_JOBS documents are hitting the API at the same time.
-        # The PDF fetch and text-extraction steps above run freely in parallel;
-        # they are cheap I/O and do not contribute to the Anthropic concurrent-run
-        # quota.
-        async with get_job_semaphore():
-            logger.info(
-                "Job %s: acquired inference slot (max %d concurrent)",
-                job_id,
-                MAX_CONCURRENT_JOBS,
-            )
-            async for chunk in stream_tidy(
-                document_text, examples=examples, vendor_sku_samples=vendor_sku_samples
-            ):
-                token_type_str: str = (
-                    "thinking" if chunk.token_type == TokenType.THINKING else "output"
+        async def run_tidy(text: str, invoice_count: int | None = None) -> str:
+            """One streamed Tidy call; returns its raw output section."""
+            nonlocal saw_reasoning
+            output = ""
+            # Acquire the semaphore only for the AI inference phase so that at most
+            # MAX_CONCURRENT_JOBS calls are hitting the API at the same time. The
+            # fetch and text-extraction steps above run freely in parallel; they
+            # are cheap I/O and do not contribute to the concurrent-run quota. A
+            # batch file takes the slot per call, so other jobs interleave with it.
+            async with get_job_semaphore():
+                logger.info(
+                    "Job %s: acquired inference slot (max %d concurrent)",
+                    job_id,
+                    MAX_CONCURRENT_JOBS,
                 )
-                await send({
-                    "type": "token",
-                    "jobId": job_id,
-                    "tokenType": token_type_str,
-                    "content": chunk.content,
-                })
+                async for chunk in stream_tidy(
+                    text,
+                    examples=examples,
+                    vendor_sku_samples=vendor_sku_samples,
+                    invoice_count=invoice_count,
+                ):
+                    token_type_str: str = (
+                        "thinking" if chunk.token_type == TokenType.THINKING else "output"
+                    )
+                    await send({
+                        "type": "token",
+                        "jobId": job_id,
+                        "tokenType": token_type_str,
+                        "content": chunk.content,
+                    })
 
-                if chunk.token_type == TokenType.OUTPUT:
-                    output_buffer += chunk.content
-                else:
-                    saw_reasoning = True
+                    if chunk.token_type == TokenType.OUTPUT:
+                        output += chunk.content
+                    else:
+                        saw_reasoning = True
+            return output
+
+        if is_batch:
+            invoices = await _read_invoice_batches(
+                sheet, invoice_groups, run_tidy, emit_thinking, job_id
+            )
+        else:
+            output_buffer = await run_tidy(document_text)
 
         if saw_reasoning:
             await step_done(
@@ -333,9 +452,24 @@ async def process_job(
             "Now let me tidy this into clean, structured data...",
         )
         logger.info("Job %s: stream complete, parsing JSON", job_id)
-        result_json = extract_json(output_buffer)
-        po_number = ensure_po_number(result_json, document_text)
-        logger.info("Job %s: PO number %s", job_id, po_number or "not found")
+        if is_batch:
+            result_json = {
+                "vendorName": next(
+                    (v for v in map(extract_vendor_name, invoices) if v), None
+                ),
+                "invoiceCount": len(invoices),
+                "invoices": invoices,
+            }
+            found = sum(1 for inv in invoices if inv.get("poNumber"))
+            logger.info("Job %s: PO number on %d of %d invoices", job_id, found, len(invoices))
+        else:
+            result_json = extract_json(output_buffer)
+            po_number = (
+                _ensure_sheet_po_number(result_json, sheet, sheet.rows)
+                if sheet
+                else ensure_po_number(result_json, document_text)
+            )
+            logger.info("Job %s: PO number %s", job_id, po_number or "not found")
         await step_done(
             "Tell the user the structured data is ready and valid.",
             "All set — your structured data is ready and valid.",
@@ -357,7 +491,10 @@ async def process_job(
         # jobs without line items still record a vendor; replaced with the
         # canonical name once resolved.
         vendor_name = detected_vendor or existing_vendor_name
-        _, line_items = find_line_items(result_json)
+        if is_batch:
+            line_items = [li for inv in invoices for li in find_line_items(inv)[1]]
+        else:
+            _, line_items = find_line_items(result_json)
         if line_items:
             # Try every name we know — the model's extracted value, the one detected
             # from raw text, and the user's confirmed value for this job — resolving
@@ -407,13 +544,19 @@ async def process_job(
         )
         result_table: dict | None = None
         try:
-            async with get_job_semaphore():
-                logger.info(
-                    "Job %s: acquired inference slot for table pass (max %d concurrent)",
-                    job_id,
-                    MAX_CONCURRENT_JOBS,
-                )
-                result_table = await generate_table_data(result_json)
+            if is_batch:
+                # Built here rather than by the formatter: a whole export's JSON
+                # outgrows its input budget, and one row per invoice is what an
+                # Invoices table correction maps back onto.
+                result_table = invoice_table(invoices)
+            else:
+                async with get_job_semaphore():
+                    logger.info(
+                        "Job %s: acquired inference slot for table pass (max %d concurrent)",
+                        job_id,
+                        MAX_CONCURRENT_JOBS,
+                    )
+                    result_table = await generate_table_data(result_json)
             await step_done(
                 "Tell the user the table view is ready.",
                 "Done — the table view is ready too.",
