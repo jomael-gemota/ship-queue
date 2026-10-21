@@ -3036,6 +3036,12 @@ export default function DocTidyInvoiceAudit() {
   const [emailDateFrom, setEmailDateFrom] = useState('')
   const [emailDateTo, setEmailDateTo] = useState('')
   const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
+  /* Email advanced search */
+  const [emailAdvancedOpen, setEmailAdvancedOpen] = useState(false)
+  const [emailAdvPo, setEmailAdvPo] = useState('')
+  const [emailAdvInvoice, setEmailAdvInvoice] = useState('')
+  const [emailAdvVendor, setEmailAdvVendor] = useState('')
+  const [emailAdvDebounced, setEmailAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
@@ -3132,6 +3138,12 @@ export default function DocTidyInvoiceAudit() {
   const [pdfDateFrom, setPdfDateFrom] = useState('')
   const [pdfDateTo, setPdfDateTo] = useState('')
   const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
+  /* PDF advanced search */
+  const [pdfAdvancedOpen, setPdfAdvancedOpen] = useState(false)
+  const [pdfAdvPo, setPdfAdvPo] = useState('')
+  const [pdfAdvInvoice, setPdfAdvInvoice] = useState('')
+  const [pdfAdvVendor, setPdfAdvVendor] = useState('')
+  const [pdfAdvDebounced, setPdfAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -3225,8 +3237,14 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [pdfSearch])
 
+  /* Debounce pdf advanced search inputs */
+  useEffect(() => {
+    const t = setTimeout(() => setPdfAdvDebounced({ po: pdfAdvPo, invoice: pdfAdvInvoice, vendor: pdfAdvVendor }), 400)
+    return () => clearTimeout(t)
+  }, [pdfAdvPo, pdfAdvInvoice, pdfAdvVendor])
+
   /* Reset page + selection when filters change */
-  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter])
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter, pdfAdvDebounced])
 
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
   const pdfFetchGenRef = useRef(0)
@@ -3244,6 +3262,12 @@ export default function DocTidyInvoiceAudit() {
       if (pdfDebouncedSearch) params.set('search', pdfDebouncedSearch)
       if (pdfDateFrom) params.set('dateFrom', pdfDateFrom)
       if (pdfDateTo) params.set('dateTo', pdfDateTo)
+      // Advanced search: PO #, invoice #, vendor
+      const pdfAdvPoTerms = [...new Set(pdfAdvDebounced.po.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      const pdfAdvInvTerms = [...new Set(pdfAdvDebounced.invoice.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      if (pdfAdvPoTerms.length) params.set('poNumbers', pdfAdvPoTerms.join(','))
+      if (pdfAdvInvTerms.length) params.set('invoiceNumbers', pdfAdvInvTerms.join(','))
+      if (pdfAdvDebounced.vendor.trim()) params.set('vendor', pdfAdvDebounced.vendor.trim())
       const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number; parsedCount: number } }>(
         `/doc-tidy/pdf-imports?${params.toString()}`
       )
@@ -3256,7 +3280,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       if (gen === pdfFetchGenRef.current) setPdfImportsLoading(false)
     }
-  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo])
+  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfAdvDebounced])
 
   useEffect(() => {
     if (workspaceTab === 'pdf-imports') void fetchPdfImports()
@@ -3553,7 +3577,11 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || Object.values(pdfColFilters).some((s) => s?.size))
+  const emailAdvancedActive = !!(emailAdvPo.trim() || emailAdvInvoice.trim() || emailAdvVendor.trim())
+  const emailAdvancedCount = [emailAdvPo, emailAdvInvoice, emailAdvVendor].filter((s) => s.trim()).length
+  const pdfAdvancedActive = !!(pdfAdvPo.trim() || pdfAdvInvoice.trim() || pdfAdvVendor.trim())
+  const pdfAdvancedCount = [pdfAdvPo, pdfAdvInvoice, pdfAdvVendor].filter((s) => s.trim()).length
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || pdfAdvancedActive || Object.values(pdfColFilters).some((s) => s?.size))
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
     .filter((c): c is PdfImportColumn => Boolean(c))
@@ -3693,8 +3721,14 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [emailSearch])
 
+  /* Debounce email advanced search inputs */
+  useEffect(() => {
+    const t = setTimeout(() => setEmailAdvDebounced({ po: emailAdvPo, invoice: emailAdvInvoice, vendor: emailAdvVendor }), 400)
+    return () => clearTimeout(t)
+  }, [emailAdvPo, emailAdvInvoice, emailAdvVendor])
+
   /* Reset email page when filters change */
-  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter])
+  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter, emailAdvDebounced])
 
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
@@ -3743,6 +3777,12 @@ export default function DocTidyInvoiceAudit() {
       if (emailDebouncedSearch) params.set('search', emailDebouncedSearch)
       if (emailDateFrom) params.set('dateFrom', emailDateFrom)
       if (emailDateTo) params.set('dateTo', emailDateTo)
+      // Advanced search: PO #, invoice #, vendor
+      const emailAdvPoTerms = [...new Set(emailAdvDebounced.po.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      const emailAdvInvTerms = [...new Set(emailAdvDebounced.invoice.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      if (emailAdvPoTerms.length) params.set('poNumbers', emailAdvPoTerms.join(','))
+      if (emailAdvInvTerms.length) params.set('invoiceNumbers', emailAdvInvTerms.join(','))
+      if (emailAdvDebounced.vendor.trim()) params.set('vendor', emailAdvDebounced.vendor.trim())
       const res = await authApi.get<DocTidyMessagesResponse>(`/doc-tidy/messages?${params.toString()}`)
       if (gen !== emailFetchGenRef.current) return  // stale response — a newer fetch is in flight
       setEmailMessages(res.data)
@@ -3753,7 +3793,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       if (gen === emailFetchGenRef.current && !silent) setEmailLoading(false)
     }
-  }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo])
+  }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo, emailAdvDebounced])
 
   useEffect(() => {
     if (workspaceTab === 'emails') void fetchEmails()
@@ -5314,10 +5354,29 @@ export default function DocTidyInvoiceAudit() {
                     <option value="completed">Parsed</option>
                     <option value="failed">Failed</option>
                   </select>
-                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
+                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter || emailAdvancedActive) && (
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
+                  {/* Advanced Search toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setEmailAdvancedOpen((o) => !o)}
+                    title="Advanced Search — filter by PO number, invoice number, or vendor"
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                      emailAdvancedOpen || emailAdvancedActive
+                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
+                        : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
+                    }`}
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                    </svg>
+                    Advanced
+                    {emailAdvancedCount > 0 && (
+                      <span className="min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[9px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
+                    )}
+                  </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
                   {/* Fetch Emails icon button */}
                   <button type="button" onClick={() => void handleFetchEmails()} disabled={emailFetching}
@@ -5462,6 +5521,56 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </div>
                 </div>
+
+                {/* Advanced Search Panel — Emails */}
+                {emailAdvancedOpen && (
+                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
+                      <textarea
+                        value={emailAdvPo}
+                        onChange={(e) => setEmailAdvPo(e.target.value)}
+                        placeholder={"12345\n67890"}
+                        rows={3}
+                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
+                      <textarea
+                        value={emailAdvInvoice}
+                        onChange={(e) => setEmailAdvInvoice(e.target.value)}
+                        placeholder={"INV-001\nINV-002"}
+                        rows={3}
+                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
+                      <input
+                        type="text"
+                        value={emailAdvVendor}
+                        onChange={(e) => setEmailAdvVendor(e.target.value)}
+                        placeholder="Vendor name…"
+                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
+                    </div>
+                    {emailAdvancedActive && (
+                      <div className="self-end pb-5">
+                        <button
+                          type="button"
+                          onClick={() => { setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
+                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
+                        >
+                          Clear advanced
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -5847,9 +5956,28 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
+                  {/* Advanced Search toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setPdfAdvancedOpen((o) => !o)}
+                    title="Advanced Search — filter by PO number, invoice number, or vendor"
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                      pdfAdvancedOpen || pdfAdvancedActive
+                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
+                        : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
+                    }`}
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                    </svg>
+                    Advanced
+                    {pdfAdvancedCount > 0 && (
+                      <span className="min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[9px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
+                    )}
+                  </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
                   {/* Import files icon button */}
                   <button type="button" onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
@@ -5940,6 +6068,56 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </div>
                 </div>
+
+                {/* Advanced Search Panel — PDF Imports */}
+                {pdfAdvancedOpen && (
+                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
+                      <textarea
+                        value={pdfAdvPo}
+                        onChange={(e) => setPdfAdvPo(e.target.value)}
+                        placeholder={"12345\n67890"}
+                        rows={3}
+                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
+                      <textarea
+                        value={pdfAdvInvoice}
+                        onChange={(e) => setPdfAdvInvoice(e.target.value)}
+                        placeholder={"INV-001\nINV-002"}
+                        rows={3}
+                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
+                      <input
+                        type="text"
+                        value={pdfAdvVendor}
+                        onChange={(e) => setPdfAdvVendor(e.target.value)}
+                        placeholder="Vendor name…"
+                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                      />
+                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
+                    </div>
+                    {pdfAdvancedActive && (
+                      <div className="self-end pb-5">
+                        <button
+                          type="button"
+                          onClick={() => { setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
+                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
+                        >
+                          Clear advanced
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ── Table ── */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
