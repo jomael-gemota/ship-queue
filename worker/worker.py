@@ -36,6 +36,7 @@ from corrections import CORRECTION_TEXT_SAMPLE_CHARS, retrieve_examples
 from mongo_collections import PARSE_JOBS, PDF_BUCKET
 from narrator import Narrator
 from pdf_extractor import extract_text
+from po_number import ensure_po_number
 from sku import (
     detect_vendor_name_from_text,
     extract_vendor_name,
@@ -333,6 +334,8 @@ async def process_job(
         )
         logger.info("Job %s: stream complete, parsing JSON", job_id)
         result_json = extract_json(output_buffer)
+        po_number = ensure_po_number(result_json, document_text)
+        logger.info("Job %s: PO number %s", job_id, po_number or "not found")
         await step_done(
             "Tell the user the structured data is ready and valid.",
             "All set — your structured data is ready and valid.",

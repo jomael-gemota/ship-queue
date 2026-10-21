@@ -70,6 +70,23 @@ Output shape:
   keys, and addresses/parties as nested objects (e.g. "billTo", "shipTo").
 - Never wrap fields in a "tables" array — display tables are generated separately.
 
+PO number (CRITICAL — used to match every invoice to its order):
+- Always include a top-level "poNumber" field holding the buyer's purchase order
+  number exactly as printed (keep letters, digits, dashes; drop the label itself).
+- ALL of these labels mean the PO number and MUST be extracted into "poNumber":
+  "PO Number", "PO #", "PO No.", "P.O.", "Purchase Order", "Purchase Order #",
+  "Customer PO", "Customer PO Number", "Customer PO #", "Cust PO", "Cust. PO #",
+  "Customer Purchase Order", "Customer Reference", "Customer Ref", "Cust Ref",
+  "Customer Reference Number", "Your PO", "Your Order No.", "Your Reference",
+  "Your Ref", "Buyer PO", "Client PO", "Reference PO".
+- If the document shows both an explicit PO label and a Customer Reference with
+  different values, put the explicit PO value in "poNumber" and keep the other
+  under its own key (e.g. "customerReference").
+- Do NOT use the vendor's own invoice number, sales order / order acknowledgement
+  number, packing slip, tracking, or account number as "poNumber", and never treat
+  a "P.O. Box" address as a PO number.
+- If no PO number of any kind is printed, set "poNumber" to null. Do not invent one.
+
 Vendor identification:
 - Include a top-level "vendorName" field with the vendor/brand/supplier name exactly
   as printed on the document (used to look up vendor-specific rules downstream).
