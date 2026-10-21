@@ -7,16 +7,21 @@ import DocTidyParseJob from '../models/DocTidyParseJob';
 import { ParseRequestError, storePdf, requestParseFromGridFS } from '../services/docTidyParse.service';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { deleteDriveFile, uploadBufferToDrive } from '../services/googleDrive.service';
+import {
+  PARSEABLE_FILES_LABEL,
+  isParseableFilename,
+  mimeTypeForParseable,
+} from '../lib/parseableFiles';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB per file
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+    if (isParseableFilename(file.originalname)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF files are accepted'));
+      cb(new Error(`Only ${PARSEABLE_FILES_LABEL} files are accepted`));
     }
   },
 });
@@ -128,7 +133,7 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
-      res.status(400).json({ message: 'At least one PDF file is required' });
+      res.status(400).json({ message: `At least one ${PARSEABLE_FILES_LABEL} file is required` });
       return;
     }
 
@@ -150,7 +155,7 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
             const uploaded = await uploadBufferToDrive(
               { refreshToken: config.gmailRefreshToken },
               file.originalname,
-              'application/pdf',
+              mimeTypeForParseable(file.originalname),
               file.buffer,
               config.driveFolderId
             );
