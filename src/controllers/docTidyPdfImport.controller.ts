@@ -12,6 +12,7 @@ import {
   isParseableFilename,
   mimeTypeForParseable,
 } from '../lib/parseableFiles';
+import { findJobsByContent } from '../services/parsedContentSearch.service';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
@@ -44,6 +45,9 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
       dateTo,
       page = '1',
       pageSize = '100',
+      poNumbers: poNumbersRaw,
+      invoiceNumbers: invoiceNumbersRaw,
+      vendor: vendorRaw,
     } = req.query as Record<string, string | undefined>;
 
     if (!workspaceId || !isValidObjectId(workspaceId)) {
@@ -66,6 +70,17 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
         range.$lte = end;
       }
       filter.createdAt = range;
+    }
+
+    // ── Advanced search: filter by parsed content (PO #, invoice #, vendor) ──
+    {
+      const poNumbers = (poNumbersRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const invoiceNumbers = (invoiceNumbersRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const vendor = vendorRaw?.trim() ?? '';
+      if (poNumbers.length || invoiceNumbers.length || vendor) {
+        const { pdfJobIds } = await findJobsByContent(workspaceId, { poNumbers, invoiceNumbers, vendor });
+        filter.parseJobId = { $in: pdfJobIds };
+      }
     }
 
     const pg = Math.max(1, parseInt(page, 10));

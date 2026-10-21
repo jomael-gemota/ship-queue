@@ -14,6 +14,7 @@ import { runRule, runEnabledRules } from '../services/docTidy.service';
 import { addClient, broadcast } from '../services/docTidyEvents';
 import { deleteDriveFile, getDriveFolder, listDriveFolders, listSharedDrives } from '../services/googleDrive.service';
 import { getPollerStatus } from '../services/docTidyPoller';
+import { findJobsByContent } from '../services/parsedContentSearch.service';
 
 /** Escapes user input before it is used inside a RegExp. */
 function escapeRegExp(input: string): string {
@@ -285,6 +286,9 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
       workspaceId,
       page = '1',
       pageSize = '50',
+      poNumbers: poNumbersRaw,
+      invoiceNumbers: invoiceNumbersRaw,
+      vendor: vendorRaw,
     } = req.query as Record<string, string | undefined>;
 
     const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1);
@@ -344,6 +348,19 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
         { ruleName: regex },
         { 'attachments.filename': regex },
       ];
+    }
+
+    // ── Advanced search: filter by parsed content (PO #, invoice #, vendor) ──
+    if (workspaceId && isValidObjectId(workspaceId)) {
+      const poNumbers = toStringArray(poNumbersRaw);
+      const invoiceNumbers = toStringArray(invoiceNumbersRaw);
+      const vendor = vendorRaw?.trim() ?? '';
+      if (poNumbers.length || invoiceNumbers.length || vendor) {
+        const { messageIds } = await findJobsByContent(workspaceId, { poNumbers, invoiceNumbers, vendor });
+        // Filter messages to only those with a matching parse result.
+        // This intersects cleanly with the existing ruleId scope.
+        filter._id = { $in: messageIds };
+      }
     }
 
     const hasFilter = Object.keys(filter).length > 0;
