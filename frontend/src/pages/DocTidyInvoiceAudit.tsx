@@ -3038,10 +3038,15 @@ export default function DocTidyInvoiceAudit() {
   const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   /* Email advanced search */
   const [emailAdvancedOpen, setEmailAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
   const [emailAdvPo, setEmailAdvPo] = useState('')
   const [emailAdvInvoice, setEmailAdvInvoice] = useState('')
   const [emailAdvVendor, setEmailAdvVendor] = useState('')
   const [emailAdvDebounced, setEmailAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [emailDraftPo, setEmailDraftPo] = useState('')
+  const [emailDraftInvoice, setEmailDraftInvoice] = useState('')
+  const [emailDraftVendor, setEmailDraftVendor] = useState('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
@@ -3140,10 +3145,15 @@ export default function DocTidyInvoiceAudit() {
   const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   /* PDF advanced search */
   const [pdfAdvancedOpen, setPdfAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
   const [pdfAdvPo, setPdfAdvPo] = useState('')
   const [pdfAdvInvoice, setPdfAdvInvoice] = useState('')
   const [pdfAdvVendor, setPdfAdvVendor] = useState('')
   const [pdfAdvDebounced, setPdfAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [pdfDraftPo, setPdfDraftPo] = useState('')
+  const [pdfDraftInvoice, setPdfDraftInvoice] = useState('')
+  const [pdfDraftVendor, setPdfDraftVendor] = useState('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -5355,13 +5365,13 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter || emailAdvancedActive) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor(''); setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setEmailAdvancedOpen(true)}
+                    onClick={() => { setEmailDraftPo(emailAdvPo); setEmailDraftInvoice(emailAdvInvoice); setEmailDraftVendor(emailAdvVendor); setEmailAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
                       emailAdvancedActive
@@ -5906,13 +5916,13 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor(''); setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setPdfAdvancedOpen(true)}
+                    onClick={() => { setPdfDraftPo(pdfAdvPo); setPdfDraftInvoice(pdfAdvInvoice); setPdfDraftVendor(pdfAdvVendor); setPdfAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
                       pdfAdvancedActive
@@ -6361,6 +6371,7 @@ export default function DocTidyInvoiceAudit() {
           {/* ══ Advanced Search Modal — Emails ══ */}
           {emailAdvancedOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
               <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setEmailAdvancedOpen(false)} />
               <div
                 role="dialog"
@@ -6374,6 +6385,7 @@ export default function DocTidyInvoiceAudit() {
                     <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
                     <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter emails by parsed invoice data</p>
                   </div>
+                  {/* X — dismiss without applying */}
                   <button
                     type="button"
                     onClick={() => setEmailAdvancedOpen(false)}
@@ -6385,13 +6397,13 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   </button>
                 </div>
-                {/* Body */}
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
                 <div className="px-5 py-5 space-y-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
                     <textarea
-                      value={emailAdvPo}
-                      onChange={(e) => setEmailAdvPo(e.target.value)}
+                      value={emailDraftPo}
+                      onChange={(e) => setEmailDraftPo(e.target.value)}
                       placeholder={"12345\n67890"}
                       rows={3}
                       autoFocus
@@ -6402,8 +6414,8 @@ export default function DocTidyInvoiceAudit() {
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
                     <textarea
-                      value={emailAdvInvoice}
-                      onChange={(e) => setEmailAdvInvoice(e.target.value)}
+                      value={emailDraftInvoice}
+                      onChange={(e) => setEmailDraftInvoice(e.target.value)}
                       placeholder={"INV-001\nINV-002"}
                       rows={3}
                       className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
@@ -6414,8 +6426,8 @@ export default function DocTidyInvoiceAudit() {
                     <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
                     <input
                       type="text"
-                      value={emailAdvVendor}
-                      onChange={(e) => setEmailAdvVendor(e.target.value)}
+                      value={emailDraftVendor}
+                      onChange={(e) => setEmailDraftVendor(e.target.value)}
                       placeholder="Vendor name…"
                       className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
                     />
@@ -6424,17 +6436,19 @@ export default function DocTidyInvoiceAudit() {
                 </div>
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
                   <button
                     type="button"
-                    onClick={() => { setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
-                    disabled={!emailAdvancedActive}
+                    onClick={() => { setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
+                    disabled={!emailDraftPo.trim() && !emailDraftInvoice.trim() && !emailDraftVendor.trim()}
                     className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
                   >
                     Clear all
                   </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
                   <button
                     type="button"
-                    onClick={() => setEmailAdvancedOpen(false)}
+                    onClick={() => { setEmailAdvPo(emailDraftPo); setEmailAdvInvoice(emailDraftInvoice); setEmailAdvVendor(emailDraftVendor); setEmailAdvancedOpen(false) }}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
                   >
                     Apply & Close
@@ -6447,6 +6461,7 @@ export default function DocTidyInvoiceAudit() {
           {/* ══ Advanced Search Modal — PDF Imports ══ */}
           {pdfAdvancedOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
               <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setPdfAdvancedOpen(false)} />
               <div
                 role="dialog"
@@ -6460,6 +6475,7 @@ export default function DocTidyInvoiceAudit() {
                     <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
                     <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter imported files by parsed invoice data</p>
                   </div>
+                  {/* X — dismiss without applying */}
                   <button
                     type="button"
                     onClick={() => setPdfAdvancedOpen(false)}
@@ -6471,13 +6487,13 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   </button>
                 </div>
-                {/* Body */}
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
                 <div className="px-5 py-5 space-y-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
                     <textarea
-                      value={pdfAdvPo}
-                      onChange={(e) => setPdfAdvPo(e.target.value)}
+                      value={pdfDraftPo}
+                      onChange={(e) => setPdfDraftPo(e.target.value)}
                       placeholder={"12345\n67890"}
                       rows={3}
                       autoFocus
@@ -6488,8 +6504,8 @@ export default function DocTidyInvoiceAudit() {
                   <div className="space-y-1.5">
                     <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
                     <textarea
-                      value={pdfAdvInvoice}
-                      onChange={(e) => setPdfAdvInvoice(e.target.value)}
+                      value={pdfDraftInvoice}
+                      onChange={(e) => setPdfDraftInvoice(e.target.value)}
                       placeholder={"INV-001\nINV-002"}
                       rows={3}
                       className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
@@ -6500,8 +6516,8 @@ export default function DocTidyInvoiceAudit() {
                     <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
                     <input
                       type="text"
-                      value={pdfAdvVendor}
-                      onChange={(e) => setPdfAdvVendor(e.target.value)}
+                      value={pdfDraftVendor}
+                      onChange={(e) => setPdfDraftVendor(e.target.value)}
                       placeholder="Vendor name…"
                       className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
                     />
@@ -6510,17 +6526,19 @@ export default function DocTidyInvoiceAudit() {
                 </div>
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
                   <button
                     type="button"
-                    onClick={() => { setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
-                    disabled={!pdfAdvancedActive}
+                    onClick={() => { setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
+                    disabled={!pdfDraftPo.trim() && !pdfDraftInvoice.trim() && !pdfDraftVendor.trim()}
                     className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
                   >
                     Clear all
                   </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
                   <button
                     type="button"
-                    onClick={() => setPdfAdvancedOpen(false)}
+                    onClick={() => { setPdfAdvPo(pdfDraftPo); setPdfAdvInvoice(pdfDraftInvoice); setPdfAdvVendor(pdfDraftVendor); setPdfAdvancedOpen(false) }}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
                   >
                     Apply & Close
