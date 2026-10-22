@@ -70,6 +70,23 @@ Output shape:
   keys, and addresses/parties as nested objects (e.g. "billTo", "shipTo").
 - Never wrap fields in a "tables" array — display tables are generated separately.
 
+PO number (CRITICAL — used to match every invoice to its order):
+- Always include a top-level "poNumber" field holding the buyer's purchase order
+  number exactly as printed (keep letters, digits, dashes; drop the label itself).
+- ALL of these labels mean the PO number and MUST be extracted into "poNumber":
+  "PO Number", "PO #", "PO No.", "P.O.", "Purchase Order", "Purchase Order #",
+  "Customer PO", "Customer PO Number", "Customer PO #", "Cust PO", "Cust. PO #",
+  "Customer Purchase Order", "Customer Reference", "Customer Ref", "Cust Ref",
+  "Customer Reference Number", "Your PO", "Your Order No.", "Your Reference",
+  "Your Ref", "Buyer PO", "Client PO", "Reference PO".
+- If the document shows both an explicit PO label and a Customer Reference with
+  different values, put the explicit PO value in "poNumber" and keep the other
+  under its own key (e.g. "customerReference").
+- Do NOT use the vendor's own invoice number, sales order / order acknowledgement
+  number, packing slip, tracking, or account number as "poNumber", and never treat
+  a "P.O. Box" address as a PO number.
+- If no PO number of any kind is printed, set "poNumber" to null. Do not invent one.
+
 Vendor identification:
 - Include a top-level "vendorName" field with the vendor/brand/supplier name exactly
   as printed on the document (used to look up vendor-specific rules downstream).
@@ -164,6 +181,20 @@ Rules:
 - All cell values must be strings, numbers, booleans, or null — never nested objects or arrays.
 - Output only the JSON object. No markdown fencing, no commentary, no <thinking> tags.
 """
+
+
+def _build_batch_instructions(invoice_count: int) -> str:
+    """Output contract for a batch of invoices read from a spreadsheet export."""
+    return (
+        f"SPREADSHEET BATCH — the document is a spreadsheet export holding {invoice_count} "
+        "separate invoice(s), each in its own block marked '--- Invoice k of N ---' with the "
+        "column header repeated. Read every block independently. Respond with a single JSON "
+        'object of the form {"invoices": [ ... ]} containing EXACTLY '
+        f"{invoice_count} element(s), one per block, in block order. Each element is one "
+        "complete invoice object following every rule above — top-level poNumber, "
+        "vendorName, invoice number/date/terms/totals, and its own lineItems built from that "
+        "block's rows only. Never merge, split, skip, or reorder invoices."
+    )
 
 
 class TokenType(Enum):
@@ -343,6 +374,7 @@ async def stream_tidy(
     document_text: str,
     examples=None,
     vendor_sku_samples=None,
+    invoice_count: int | None = None,
 ) -> AsyncGenerator[StreamChunk, None]:
     """
     Stream the Tidy agent's response for the given document text.
@@ -359,6 +391,9 @@ async def stream_tidy(
     ``vendor_sku_samples`` is an optional list of real SKUs captured at vendor
     setup; when present they're injected as a hard formatting rule so the model
     reproduces that vendor's SKU shape(s) from the first run (cold-start anchor).
+
+    ``invoice_count`` marks the document as a batch of that many spreadsheet
+    invoices; the model then answers ``{"invoices": [...]}`` instead of one object.
     """
     client, model = _make_hermes_client()
     base_url = os.environ.get("HERMES_BASE_URL") or None
@@ -386,6 +421,8 @@ async def stream_tidy(
     ).strip()
     if vendor_guidance:
         messages.append({"role": "system", "content": vendor_guidance})
+    if invoice_count:
+        messages.append({"role": "system", "content": _build_batch_instructions(invoice_count)})
     messages.extend(_build_example_messages(examples))
 
     # When we injected reference corrections, remind the model—right before the
@@ -397,7 +434,15 @@ async def stream_tidy(
         if examples
         else ""
     )
-    messages.append({"role": "user", "content": f"{apply_hint}Document text:\n\n{document_text}"})
+    batch_hint = (
+        f'This document holds {invoice_count} invoice(s) — answer with {{"invoices": [...]}} '
+        f"containing exactly {invoice_count} element(s), one per block.\n\n"
+        if invoice_count
+        else ""
+    )
+    messages.append(
+        {"role": "user", "content": f"{apply_hint}{batch_hint}Document text:\n\n{document_text}"}
+    )
 
     # ── Retry loop: recover from 429 "too many concurrent runs" ──────────────
     # The Hermes backend enforces a global concurrent-run cap shared across all

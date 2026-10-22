@@ -570,6 +570,18 @@ export interface ParseJobListItem {
   source?: 'email' | 'pdf-import'
 }
 
+/**
+ * One Invoice Audit row's worth of a parse job. A spreadsheet batch file holds
+ * several invoices, so its job yields one of these per invoice, each with that
+ * invoice as `jsonOutput`. `_id` stays the real job id.
+ */
+export interface InvoiceRowJob extends ParseJobListItem {
+  rowKey: string
+  /** Position and count within a batch file; absent for single-invoice jobs. */
+  invoiceIndex?: number
+  invoiceCount?: number
+}
+
 export interface ParseJobsResponse {
   data: ParseJobListItem[]
   pagination: {
@@ -763,7 +775,24 @@ export function saveCollapsedWeeks(keys: Set<string>): void {
   }
 }
 
-const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+const normJsonKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_KEYS` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export const PO_NUMBER_FIELD_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+]
 
 const isJsonObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -812,7 +841,8 @@ function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown
 /**
  * Extract a scalar value from a free-form AI JSON output, trying multiple
  * common field-name variants in priority order. Keys are normalised to
- * lowercase with all separators (`_`, `-`, spaces) stripped before comparison.
+ * lowercase with every non-alphanumeric character (`_`, `-`, spaces, `#`, `.`)
+ * stripped before comparison.
  *
  * Must stay identical to `extractField` in `src/services/invoiceMatchCache.service.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.
@@ -833,6 +863,32 @@ export function extractJsonField(
     }
   }
   return ''
+}
+
+/**
+ * The invoices in a job's output: each element of `invoices[]` for a
+ * spreadsheet batch file, otherwise the output itself.
+ *
+ * Must stay identical to `invoiceDocuments` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown>[] {
+  const invoices = Array.isArray(json.invoices) ? json.invoices.filter(isJsonObject) : []
+  return invoices.length > 0 ? invoices : [json]
+}
+
+/** Expands spreadsheet batch jobs into one row-job per invoice; other jobs pass through. */
+export function expandInvoiceJobs(jobs: ParseJobListItem[]): InvoiceRowJob[] {
+  return jobs.flatMap((job) => {
+    const docs = isJsonObject(job.jsonOutput) ? invoiceDocuments(job.jsonOutput) : []
+    if (docs.length === 0 || docs[0] === job.jsonOutput) return [{ ...job, rowKey: job._id }]
+    return docs.map((doc, i) => ({
+      ...job,
+      jsonOutput: doc,
+      rowKey: `${job._id}:${i}`,
+      invoiceIndex: i,
+      invoiceCount: docs.length,
+    }))
+  })
 }
 
 /**

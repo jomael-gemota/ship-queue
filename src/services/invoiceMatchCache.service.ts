@@ -2,7 +2,8 @@
  * Invoice Match Cache
  *
  * When a parse job completes, this service:
- *   1. Extracts the PO # and line items from the job's jsonOutput.
+ *   1. Extracts the PO # and line items from the job's jsonOutput — once per
+ *      invoice for spreadsheet batch files (`invoices[]`).
  *   2. Finds every DocTidyOrderImport in the same workspace whose poNumber +
  *      orderSku normalise-match the invoice data.
  *   3. Appends a cache entry to `matchedInvoices[]` on each matching order
@@ -30,7 +31,24 @@ function norm(s: unknown): string {
   return String(s ?? '').trim().toLowerCase().replace(/[\s#_-]+/g, '');
 }
 
-const normKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '');
+const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_FIELD_KEYS` in `frontend/src/types/docTidy.ts`.
+ */
+export const PO_NUMBER_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+];
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -46,8 +64,9 @@ function searchScopes(obj: Record<string, unknown>): Record<string, unknown>[] {
 
 /**
  * Pull the first non-empty scalar from a JSON object by candidate keys, in
- * priority order. Keys match after lowercasing and stripping `_`, `-` and
- * spaces, so camelCase and snake_case agent output are equivalent.
+ * priority order. Keys match after lowercasing and stripping every
+ * non-alphanumeric character, so camelCase, snake_case and printed labels
+ * (`Customer PO #`) are equivalent.
  *
  * Must stay identical to `extractJsonField` in `frontend/src/types/docTidy.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.
@@ -132,19 +151,71 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
 
   if (!job || job.status !== 'completed' || !job.jsonOutput) return 0;
 
-  const json = job.jsonOutput as Record<string, unknown>;
-
-  // Extract PO # from the invoice JSON.
-  const jobPo = norm(
-    extractField(json,
-      'po_number', 'purchase_order_number', 'po_no', 'po',
-      'purchase_order', 'order_number', 'order_no'
-    )
-  );
-  if (!jobPo) return 0;
+  const invoices = invoiceDocuments(job.jsonOutput as Record<string, unknown>)
+    .filter((inv) => norm(extractField(inv, ...PO_NUMBER_KEYS)));
+  if (invoices.length === 0) return 0;
 
   const workspaceId = await resolveWorkspaceId(job);
   if (!workspaceId) return 0;
+
+  // Fetch every order import once and filter in JS so we can reuse `norm()`.
+  const candidates = await DocTidyOrderImport.find({ workspaceId }).select('_id poNumber orderSku').lean();
+
+  const matched = invoices.flatMap((inv) =>
+    cachesForInvoice(inv, job._id as Types.ObjectId, job.driveFileId ?? undefined, candidates)
+  );
+  if (matched.length === 0) return 0;
+
+  // An order can match several invoices of one batch file (split shipment), so
+  // all of this job's entries for an order are replaced together.
+  const byOrder = new Map<string, { id: Types.ObjectId; caches: IMatchedInvoice[] }>();
+  for (const { id, cache } of matched) {
+    const entry = byOrder.get(String(id)) ?? { id, caches: [] };
+    entry.caches.push(cache);
+    byOrder.set(String(id), entry);
+  }
+
+  // Step 1: remove any prior entries for this job (idempotent re-parse support).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pullOps: any[] = [...byOrder.values()].map(({ id }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $pull: { matchedInvoices: { jobId: job._id } } },
+    },
+  }));
+  await DocTidyOrderImport.bulkWrite(pullOps);
+
+  // Step 2: append the fresh cache entries for this job.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pushOps: any[] = [...byOrder.values()].map(({ id, caches }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $push: { matchedInvoices: { $each: caches } } },
+    },
+  }));
+  const result = await DocTidyOrderImport.bulkWrite(pushOps);
+  return result.modifiedCount;
+}
+
+/**
+ * The invoices in a job's output: each element of `invoices[]` for a
+ * spreadsheet batch file, otherwise the output itself.
+ *
+ * Must stay identical to `invoiceDocuments` in `frontend/src/types/docTidy.ts`.
+ */
+function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown>[] {
+  const invoices = Array.isArray(json.invoices) ? json.invoices.filter(isObject) : [];
+  return invoices.length > 0 ? invoices : [json];
+}
+
+/** Cache entries for every order import matching one invoice by PO # (and SKU when present). */
+function cachesForInvoice(
+  json: Record<string, unknown>,
+  jobId: Types.ObjectId,
+  driveFileId: string | undefined,
+  candidates: { _id: unknown; poNumber?: string; orderSku?: string }[],
+): { id: Types.ObjectId; cache: IMatchedInvoice }[] {
+  const jobPo = norm(extractField(json, ...PO_NUMBER_KEYS));
 
   // Extract document-level fields (same for every matched order from this invoice).
   const invoiceDate   = extractField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date');
@@ -157,10 +228,6 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
   const lineItems = extractArray(json,
     'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
   );
-
-  // Find all order imports in this workspace whose PO # normalises to `jobPo`.
-  // We fetch them all and filter in JS so we can reuse `norm()`.
-  const candidates = await DocTidyOrderImport.find({ workspaceId }).select('_id poNumber orderSku').lean();
 
   const matchedIds: { id: Types.ObjectId; cache: IMatchedInvoice }[] = [];
 
@@ -190,8 +257,8 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
     const li = matchedItem;
 
     const cache: IMatchedInvoice = {
-      jobId:    job._id as Types.ObjectId,
-      driveFileId:   job.driveFileId ?? undefined,
+      jobId,
+      driveFileId,
       invoiceDate,
       invoiceNumber,
       terms,
@@ -209,28 +276,7 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
     matchedIds.push({ id: order._id as Types.ObjectId, cache });
   }
 
-  if (matchedIds.length === 0) return 0;
-
-  // Step 1: remove any prior entry for this job (idempotent re-parse support).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pullOps: any[] = matchedIds.map(({ id }) => ({
-    updateOne: {
-      filter: { _id: id },
-      update: { $pull: { matchedInvoices: { jobId: job._id } } },
-    },
-  }));
-  await DocTidyOrderImport.bulkWrite(pullOps);
-
-  // Step 2: append the fresh cache entry for this job.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pushOps: any[] = matchedIds.map(({ id, cache }) => ({
-    updateOne: {
-      filter: { _id: id },
-      update: { $push: { matchedInvoices: cache } },
-    },
-  }));
-  const result = await DocTidyOrderImport.bulkWrite(pushOps);
-  return result.modifiedCount;
+  return matchedIds;
 }
 
 /* ─────────────────── workspace-wide backfill (for Resync) ─────────────── */

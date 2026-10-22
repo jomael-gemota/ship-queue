@@ -7,16 +7,22 @@ import DocTidyParseJob from '../models/DocTidyParseJob';
 import { ParseRequestError, storePdf, requestParseFromGridFS } from '../services/docTidyParse.service';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { deleteDriveFile, uploadBufferToDrive } from '../services/googleDrive.service';
+import {
+  PARSEABLE_FILES_LABEL,
+  isParseableFilename,
+  mimeTypeForParseable,
+} from '../lib/parseableFiles';
+import { findJobsByContent } from '../services/parsedContentSearch.service';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB per file
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+    if (isParseableFilename(file.originalname)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF files are accepted'));
+      cb(new Error(`Only ${PARSEABLE_FILES_LABEL} files are accepted`));
     }
   },
 });
@@ -39,6 +45,9 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
       dateTo,
       page = '1',
       pageSize = '100',
+      poNumbers: poNumbersRaw,
+      invoiceNumbers: invoiceNumbersRaw,
+      vendor: vendorRaw,
     } = req.query as Record<string, string | undefined>;
 
     if (!workspaceId || !isValidObjectId(workspaceId)) {
@@ -61,6 +70,17 @@ export const listPdfImports = async (req: Request, res: Response): Promise<void>
         range.$lte = end;
       }
       filter.createdAt = range;
+    }
+
+    // ── Advanced search: filter by parsed content (PO #, invoice #, vendor) ──
+    {
+      const poNumbers = (poNumbersRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const invoiceNumbers = (invoiceNumbersRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const vendor = vendorRaw?.trim() ?? '';
+      if (poNumbers.length || invoiceNumbers.length || vendor) {
+        const { pdfJobIds } = await findJobsByContent(workspaceId, { poNumbers, invoiceNumbers, vendor });
+        filter.parseJobId = { $in: pdfJobIds };
+      }
     }
 
     const pg = Math.max(1, parseInt(page, 10));
@@ -128,7 +148,7 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
-      res.status(400).json({ message: 'At least one PDF file is required' });
+      res.status(400).json({ message: `At least one ${PARSEABLE_FILES_LABEL} file is required` });
       return;
     }
 
@@ -150,7 +170,7 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
             const uploaded = await uploadBufferToDrive(
               { refreshToken: config.gmailRefreshToken },
               file.originalname,
-              'application/pdf',
+              mimeTypeForParseable(file.originalname),
               file.buffer,
               config.driveFolderId
             );
