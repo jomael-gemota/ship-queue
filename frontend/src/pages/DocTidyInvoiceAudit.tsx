@@ -5361,10 +5361,10 @@ export default function DocTidyInvoiceAudit() {
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setEmailAdvancedOpen((o) => !o)}
+                    onClick={() => setEmailAdvancedOpen(true)}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
-                      emailAdvancedOpen || emailAdvancedActive
+                      emailAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
@@ -5521,56 +5521,6 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </div>
                 </div>
-
-                {/* Advanced Search Panel — Emails */}
-                {emailAdvancedOpen && (
-                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
-                      <textarea
-                        value={emailAdvPo}
-                        onChange={(e) => setEmailAdvPo(e.target.value)}
-                        placeholder={"12345\n67890"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
-                      <textarea
-                        value={emailAdvInvoice}
-                        onChange={(e) => setEmailAdvInvoice(e.target.value)}
-                        placeholder={"INV-001\nINV-002"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
-                      <input
-                        type="text"
-                        value={emailAdvVendor}
-                        onChange={(e) => setEmailAdvVendor(e.target.value)}
-                        placeholder="Vendor name…"
-                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
-                    </div>
-                    {emailAdvancedActive && (
-                      <div className="self-end pb-5">
-                        <button
-                          type="button"
-                          onClick={() => { setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
-                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
-                        >
-                          Clear advanced
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -5962,10 +5912,10 @@ export default function DocTidyInvoiceAudit() {
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setPdfAdvancedOpen((o) => !o)}
+                    onClick={() => setPdfAdvancedOpen(true)}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
-                      pdfAdvancedOpen || pdfAdvancedActive
+                      pdfAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
@@ -6068,56 +6018,6 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </div>
                 </div>
-
-                {/* Advanced Search Panel — PDF Imports */}
-                {pdfAdvancedOpen && (
-                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
-                      <textarea
-                        value={pdfAdvPo}
-                        onChange={(e) => setPdfAdvPo(e.target.value)}
-                        placeholder={"12345\n67890"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
-                      <textarea
-                        value={pdfAdvInvoice}
-                        onChange={(e) => setPdfAdvInvoice(e.target.value)}
-                        placeholder={"INV-001\nINV-002"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
-                      <input
-                        type="text"
-                        value={pdfAdvVendor}
-                        onChange={(e) => setPdfAdvVendor(e.target.value)}
-                        placeholder="Vendor name…"
-                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
-                    </div>
-                    {pdfAdvancedActive && (
-                      <div className="self-end pb-5">
-                        <button
-                          type="button"
-                          onClick={() => { setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
-                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
-                        >
-                          Clear advanced
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* ── Table ── */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -6457,6 +6357,178 @@ export default function DocTidyInvoiceAudit() {
             </div>
           )}
           {/* ── end workspaceTab === 'pdf-imports' ── */}
+
+          {/* ══ Advanced Search Modal — Emails ══ */}
+          {emailAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setEmailAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — Emails"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter emails by parsed invoice data</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmailAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={emailAdvPo}
+                      onChange={(e) => setEmailAdvPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={emailAdvInvoice}
+                      onChange={(e) => setEmailAdvInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={emailAdvVendor}
+                      onChange={(e) => setEmailAdvVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => { setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
+                    disabled={!emailAdvancedActive}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmailAdvancedOpen(false)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ Advanced Search Modal — PDF Imports ══ */}
+          {pdfAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setPdfAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — PDF Imports"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter imported files by parsed invoice data</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPdfAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={pdfAdvPo}
+                      onChange={(e) => setPdfAdvPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={pdfAdvInvoice}
+                      onChange={(e) => setPdfAdvInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={pdfAdvVendor}
+                      onChange={(e) => setPdfAdvVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => { setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
+                    disabled={!pdfAdvancedActive}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPdfAdvancedOpen(false)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ══ PDF Import Upload Modal ══ */}
           {showPdfUploadModal && (
