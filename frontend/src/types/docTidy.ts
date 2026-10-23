@@ -270,6 +270,8 @@ export interface DocTidyParseJob extends ParseJobSummary {
   tableOutput?: TableOutput | null
   documentTextSample?: string
   requestedByName?: string
+  /** Where this job originated — present on jobs created after 2026-09-22. */
+  source?: 'email' | 'pdf-import'
   createdAt: string
   updatedAt: string
 }
