@@ -63,13 +63,15 @@ export default function ParseJobPanel({
   }, [loadJob, loadCorrections])
 
   // The stream carries the tokens but not the persisted job fields (vendor,
-  // timestamps), so refresh once the run ends.
+  // timestamps), so refresh once the run ends. Also reload corrections so the
+  // history reflects any that the new run's completion may have affected.
   const finished = stream.status === 'completed' || stream.status === 'failed'
   useEffect(() => {
     if (!finished) return
     void loadJob()
+    void loadCorrections()
     onChanged()
-  }, [finished, loadJob, onChanged])
+  }, [finished, loadJob, loadCorrections, onChanged])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -89,7 +91,19 @@ export default function ParseJobPanel({
     setRerunning(true)
     setActionError(null)
     try {
-      await authApi.post(`/doc-tidy/parse-jobs/${jobId}/rerun`)
+      // Email jobs: re-download fresh bytes from Drive, exactly like the table's
+      // per-attachment button does. This ensures the modal's Re-run and the
+      // table's Re-run are identical code paths, so corrections are applied the
+      // same way in both.
+      // PDF-import jobs: use the dedicated /rerun endpoint (no Drive source to
+      // re-download from; GridFS is the authoritative copy).
+      if (job?.source === 'email') {
+        await authApi.post(
+          `/doc-tidy/messages/${job.messageId}/attachments/${job.attachmentIndex}/parse`
+        )
+      } else {
+        await authApi.post(`/doc-tidy/parse-jobs/${jobId}/rerun`)
+      }
       await loadJob()
       onChanged()
       // The job id is unchanged, so bumping the epoch is what reconnects the

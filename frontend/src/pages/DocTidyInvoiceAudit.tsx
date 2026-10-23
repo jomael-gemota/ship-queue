@@ -14,7 +14,6 @@ import {
   avatarColour,
 } from '../components/docTidy/docTidyUi'
 import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
-import AttachmentIcons from '../components/docTidy/AttachmentIcons'
 import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
@@ -42,8 +41,10 @@ import {
   documentTypeOf,
   DOCUMENT_TYPE_LABELS,
   PARSE_STATUS_LABELS,
+  type DocTidyAttachment,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
+  type ParseJobSummary,
   type DocTidyWorkspace,
   type DocTidyEmailSource,
   type DocTidySpsSource,
@@ -2768,6 +2769,62 @@ function emailEffectiveParseStatus(msg: DocTidyMessage): ParseJobStatus | 'none'
   return 'completed'
 }
 
+/**
+ * One row in the expanded Emails table — one per parseable attachment per message.
+ * Messages with no parseable attachments produce a single row with `attachment: null`.
+ */
+interface EmailAttachmentRow {
+  /** Unique React key. */
+  rowKey: string
+  msg: DocTidyMessage
+  /** `null` when the message has no parseable attachments. */
+  attachmentIndex: number | null
+  attachment: DocTidyAttachment | null
+  parseJob: ParseJobSummary | undefined
+  /** First row in a multi-attachment group gets full email metadata; others get a continuation style. */
+  isFirstInGroup: boolean
+  /** Number of parseable attachments for this message (0 when none). */
+  groupSize: number
+}
+
+/**
+ * Expands a list of messages into one row per parseable attachment.
+ * Messages with no parseable attachments produce one placeholder row.
+ */
+function expandEmailRows(messages: DocTidyMessage[]): EmailAttachmentRow[] {
+  const result: EmailAttachmentRow[] = []
+  for (const msg of messages) {
+    const parseable = msg.attachments
+      .map((att, i) => ({ att, i }))
+      .filter(({ att }) => PARSEABLE.test(att.filename))
+
+    if (parseable.length === 0) {
+      result.push({
+        rowKey: msg._id,
+        msg,
+        attachmentIndex: null,
+        attachment: null,
+        parseJob: undefined,
+        isFirstInGroup: true,
+        groupSize: 0,
+      })
+    } else {
+      parseable.forEach(({ att, i }, groupIdx) => {
+        result.push({
+          rowKey: `${msg._id}:${i}`,
+          msg,
+          attachmentIndex: i,
+          attachment: att,
+          parseJob: msg.parseJobs?.find((j) => j.attachmentIndex === i),
+          isFirstInGroup: groupIdx === 0,
+          groupSize: parseable.length,
+        })
+      })
+    }
+  }
+  return result
+}
+
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
 function pdfColStr(colId: PdfImportColumnId, imp: PdfImport): string {
   switch (colId) {
@@ -3038,13 +3095,20 @@ export default function DocTidyInvoiceAudit() {
   const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   /* Email advanced search */
   const [emailAdvancedOpen, setEmailAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
   const [emailAdvPo, setEmailAdvPo] = useState('')
   const [emailAdvInvoice, setEmailAdvInvoice] = useState('')
   const [emailAdvVendor, setEmailAdvVendor] = useState('')
   const [emailAdvDebounced, setEmailAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [emailDraftPo, setEmailDraftPo] = useState('')
+  const [emailDraftInvoice, setEmailDraftInvoice] = useState('')
+  const [emailDraftVendor, setEmailDraftVendor] = useState('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+  /** Keys of individual attachment parse requests in flight: `${msgId}:${attachmentIndex}`. */
+  const [emailSendingKeys, setEmailSendingKeys] = useState<Set<string>>(new Set())
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
@@ -3140,10 +3204,15 @@ export default function DocTidyInvoiceAudit() {
   const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
   /* PDF advanced search */
   const [pdfAdvancedOpen, setPdfAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
   const [pdfAdvPo, setPdfAdvPo] = useState('')
   const [pdfAdvInvoice, setPdfAdvInvoice] = useState('')
   const [pdfAdvVendor, setPdfAdvVendor] = useState('')
   const [pdfAdvDebounced, setPdfAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [pdfDraftPo, setPdfDraftPo] = useState('')
+  const [pdfDraftInvoice, setPdfDraftInvoice] = useState('')
+  const [pdfDraftVendor, setPdfDraftVendor] = useState('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -3211,6 +3280,12 @@ export default function DocTidyInvoiceAudit() {
       })
     })
   }, [emailMessages, emailColFilters, emailParseStatusFilter])
+
+  /** One row per parseable attachment (or one placeholder row for messages without any). */
+  const expandedEmailRows = useMemo(
+    () => expandEmailRows(filteredEmailMessages),
+    [filteredEmailMessages],
+  )
 
   const filteredPdfImports = useMemo(() => {
     const activeEntries = Object.entries(pdfColFilters).filter(
@@ -3938,6 +4013,20 @@ export default function DocTidyInvoiceAudit() {
       return next
     })
   }
+
+  /** Send a single attachment to the parse agent. Key format: `${msgId}:${attachmentIndex}`. */
+  const handleSingleAttachmentParse = useCallback(async (msgId: string, attachmentIndex: number) => {
+    const key = `${msgId}:${attachmentIndex}`
+    setEmailSendingKeys((prev) => { const s = new Set(prev); s.add(key); return s })
+    try {
+      await authApi.post(`/doc-tidy/messages/${msgId}/attachments/${attachmentIndex}/parse`)
+      void fetchEmails(true)
+    } catch {
+      // Error will be visible via job status on next refresh
+    } finally {
+      setEmailSendingKeys((prev) => { const s = new Set(prev); s.delete(key); return s })
+    }
+  }, [authApi, fetchEmails])
 
   /* ── Audit search debounce ── */
   useEffect(() => {
@@ -5355,16 +5444,16 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter || emailAdvancedActive) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor(''); setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setEmailAdvancedOpen((o) => !o)}
+                    onClick={() => { setEmailDraftPo(emailAdvPo); setEmailDraftInvoice(emailAdvInvoice); setEmailDraftVendor(emailAdvVendor); setEmailAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
-                      emailAdvancedOpen || emailAdvancedActive
+                      emailAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
@@ -5522,56 +5611,6 @@ export default function DocTidyInvoiceAudit() {
                   </div>
                 </div>
 
-                {/* Advanced Search Panel — Emails */}
-                {emailAdvancedOpen && (
-                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
-                      <textarea
-                        value={emailAdvPo}
-                        onChange={(e) => setEmailAdvPo(e.target.value)}
-                        placeholder={"12345\n67890"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
-                      <textarea
-                        value={emailAdvInvoice}
-                        onChange={(e) => setEmailAdvInvoice(e.target.value)}
-                        placeholder={"INV-001\nINV-002"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
-                      <input
-                        type="text"
-                        value={emailAdvVendor}
-                        onChange={(e) => setEmailAdvVendor(e.target.value)}
-                        placeholder="Vendor name…"
-                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
-                    </div>
-                    {emailAdvancedActive && (
-                      <div className="self-end pb-5">
-                        <button
-                          type="button"
-                          onClick={() => { setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor('') }}
-                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
-                        >
-                          Clear advanced
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Table */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
                   {/* Resync overlay — thin violet progress bar; no layout shift */}
@@ -5716,44 +5755,120 @@ export default function DocTidyInvoiceAudit() {
                           </td>
                         </tr>
                       ) : (
-                        filteredEmailMessages.map((msg) => {
+                        // eslint-disable-next-line react-hooks/refs -- handleSingleAttachmentParse transitively reads a ref (fetchGenRef inside fetchEmails) but only from an async callback, not during render
+                        expandedEmailRows.map((row) => {
+                          const { msg, attachment, attachmentIndex, parseJob, isFirstInGroup, groupSize, rowKey } = row
                           const isSelected = selectedEmailIds.has(msg._id)
                           const senderSeed = msg.fromName || msg.from
+                          const sendKey = attachmentIndex !== null ? `${msg._id}:${attachmentIndex}` : null
+                          const isSending = sendKey !== null && emailSendingKeys.has(sendKey)
+                          const jobRunning = parseJob ? isParseRunning(parseJob.status) : false
+
+                          /* Single-attachment action button */
+                          const attachmentAction = (() => {
+                            if (attachmentIndex === null) return null
+                            if (isSending) {
+                              return (
+                                <span className="inline-flex h-7 w-7 items-center justify-center">
+                                  <svg className="h-3.5 w-3.5 animate-spin text-sky-500" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                  </svg>
+                                </span>
+                              )
+                            }
+                            if (jobRunning && parseJob) {
+                              return (
+                                <ParseProgressBadge
+                                  jobId={parseJob._id}
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                />
+                              )
+                            }
+                            if (parseJob?.status === 'completed') {
+                              return (
+                                <button
+                                  type="button"
+                                  title="Completed — click to view"
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                >
+                                  <SuccessIcon className="h-5 w-5" />
+                                </button>
+                              )
+                            }
+                            if (parseJob?.status === 'failed') {
+                              return (
+                                <button
+                                  type="button"
+                                  title={parseJob.error ?? 'Failed — click to view'}
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-400"
+                                >
+                                  <ErrorIcon className="h-4 w-4" />
+                                </button>
+                              )
+                            }
+                            // No job yet — show send button
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => void handleSingleAttachmentParse(msg._id, attachmentIndex)}
+                                title="Send to Tidy Agent"
+                                aria-label="Send to Tidy Agent"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-900/20 dark:hover:text-sky-400 cursor-pointer"
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                              </button>
+                            )
+                          })()
+
                           return (
-                            <tr key={msg._id}
+                            <tr key={rowKey}
                               onClick={() => setViewMessage(msg)}
                               className={`group cursor-pointer align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
-                                isSelected
-                                  ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                                  : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                                !isFirstInGroup
+                                  ? isSelected
+                                    ? 'border-l-2 border-l-[var(--accent-200)]/30 bg-[var(--primary-100)]/50 hover:bg-[var(--primary-100)]/70'
+                                    : 'border-l-2 border-l-[var(--bg-300)] bg-[var(--bg-200)]/60 hover:bg-[var(--bg-200)]'
+                                  : isSelected
+                                    ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                    : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
                               {/* Checkbox — always first */}
                               <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
-                                <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                  aria-label={`Select ${msg.subject || 'message'}`}
-                                  className={emailCheckboxClass} />
+                                {isFirstInGroup ? (
+                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
+                                    aria-label={`Select ${msg.subject || 'message'}`}
+                                    className={emailCheckboxClass} />
+                                ) : (
+                                  /* Continuation rows share the same checkbox state */
+                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
+                                    aria-label={`Select ${msg.subject || 'message'}`}
+                                    className={`${emailCheckboxClass} opacity-40`} />
+                                )}
                               </td>
 
-                              {/* Actions — second column, right after the checkbox */}
+                              {/* Actions — single-attachment parse button + delete (first row only) */}
                               <td className="px-3 py-px text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-0.5">
-                                  <AttachmentIcons
-                                    message={msg}
-                                    onOpenJob={setOpenJobId}
-                                    onChanged={() => void fetchEmails(true)}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteEmail(msg)}
-                                    title="Delete this message"
-                                    aria-label="Delete message"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
-                                  >
-                                    <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  {attachmentAction}
+                                  {isFirstInGroup && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteEmail(msg)}
+                                      title="Delete this message"
+                                      aria-label="Delete message"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
+                                    >
+                                      <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
 
@@ -5770,125 +5885,145 @@ export default function DocTidyInvoiceAudit() {
                                 switch (col.id) {
                                   case 'received':
                                     return (
-                                      <td key="received" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={formatDateTime(msg.sentAt)}>
-                                        {formatDate(msg.sentAt)}
+                                      <td key="received" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={isFirstInGroup ? formatDateTime(msg.sentAt) : undefined}>
+                                        {isFirstInGroup ? formatDate(msg.sentAt) : null}
                                       </td>
                                     )
                                   case 'from':
                                     return (
                                       <td key="from" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
-                                        <div className="flex min-w-0 items-center gap-2">
-                                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white ${avatarColour(senderSeed)}`}>
-                                            {senderSeed.charAt(0).toUpperCase()}
-                                          </span>
-                                          <div className="min-w-0 truncate text-[var(--text-100)]"
-                                            title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
-                                            {msg.fromName || msg.from}
+                                        {isFirstInGroup ? (
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white ${avatarColour(senderSeed)}`}>
+                                              {senderSeed.charAt(0).toUpperCase()}
+                                            </span>
+                                            <div className="min-w-0 truncate text-[var(--text-100)]"
+                                              title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
+                                              {msg.fromName || msg.from}
+                                            </div>
                                           </div>
-                                        </div>
+                                        ) : (
+                                          <span className="pl-1 text-[10px] text-[var(--text-200)] select-none">└─</span>
+                                        )}
                                       </td>
                                     )
                                   case 'to':
                                     return (
                                       <td key="to" className={`px-3 py-px min-w-0 max-w-[180px] ${emailColDragCls}`}>
-                                        {msg.to && msg.to.length > 0 ? (
-                                          <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
-                                            {msg.to[0]}
-                                            {msg.to.length > 1 && (
-                                              <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
-                                                +{msg.to.length - 1}
-                                              </span>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        {isFirstInGroup ? (
+                                          msg.to && msg.to.length > 0 ? (
+                                            <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
+                                              {msg.to[0]}
+                                              {msg.to.length > 1 && (
+                                                <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                                  +{msg.to.length - 1}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="italic text-[var(--text-200)]">—</span>
+                                          )
+                                        ) : null}
                                       </td>
                                     )
                                   case 'subject':
                                     return (
                                       <td key="subject" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
-                                        <div className="truncate text-[var(--text-100)]" title={msg.subject}>
-                                          {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
-                                        </div>
+                                        {isFirstInGroup ? (
+                                          <div className="truncate text-[var(--text-100)]" title={msg.subject}>
+                                            {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
+                                          </div>
+                                        ) : null}
                                       </td>
                                     )
                                   case 'documentType':
                                     return (
                                       <td key="documentType" className={`px-3 py-px whitespace-nowrap ${emailColDragCls}`}>
-                                        <DocumentTypeBadge value={msg.documentType} />
+                                        {isFirstInGroup ? <DocumentTypeBadge value={msg.documentType} /> : null}
                                       </td>
                                     )
                                   case 'rule':
                                     return (
                                       <td key="rule" className={`px-3 py-px ${emailColDragCls}`}>
-                                        {msg.ruleName ? (
-                                          <span title={msg.ruleName}
-                                            className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] text-[var(--accent-200)]">
-                                            <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                                            </svg>
-                                            <span className="truncate">{msg.ruleName}</span>
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        {isFirstInGroup ? (
+                                          msg.ruleName ? (
+                                            <span title={msg.ruleName}
+                                              className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] text-[var(--accent-200)]">
+                                              <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
+                                              </svg>
+                                              <span className="truncate">{msg.ruleName}</span>
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] italic text-[var(--text-200)]">—</span>
+                                          )
+                                        ) : null}
                                       </td>
                                     )
-                                  case 'attachments':
+                                  case 'attachments': {
+                                    /* One attachment per row — show only the row's attachment */
+                                    const att = attachment
+                                    if (!att) {
+                                      return (
+                                        <td key="attachments" className={`px-3 py-px ${emailColDragCls}`}>
+                                          <span className="italic text-[var(--text-200)]">—</span>
+                                        </td>
+                                      )
+                                    }
+                                    const href = att.webViewLink
+                                      || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
+                                    const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
                                     return (
                                       <td key="attachments" className={`px-3 py-px ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
-                                        {msg.attachments && msg.attachments.length > 0 ? (
-                                          <div className="space-y-0.5">
-                                            {msg.attachments.map((att, ai) => {
-                                              const href = att.webViewLink
-                                                || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
-                                              const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
-                                              return (
-                                                <div key={ai} className="flex items-center gap-1.5">
-                                                  {href ? (
-                                                    <a href={href} target="_blank" rel="noopener noreferrer"
-                                                      onClick={(e) => e.stopPropagation()} title={att.filename}
-                                                      className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline">
-                                                      {isPdf ? (
-                                                        <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                        </svg>
-                                                      ) : (
-                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                        </svg>
-                                                      )}
-                                                      <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
-                                                    </a>
-                                                  ) : (
-                                                    <>
-                                                      {isPdf ? (
-                                                        <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                        </svg>
-                                                      ) : (
-                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                        </svg>
-                                                      )}
-                                                      <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
-                                                    </>
-                                                  )}
-                                                  {att.size > 0 && (
-                                                    <span className="shrink-0 text-[10px] text-[var(--text-200)]">
-                                                      {formatBytes(att.size)}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              )
-                                            })}
-                                          </div>
-                                        ) : (
-                                          <span className="italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                          {href ? (
+                                            <a href={href} target="_blank" rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()} title={att.filename}
+                                              className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline">
+                                              {isPdf ? (
+                                                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                </svg>
+                                              ) : (
+                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                </svg>
+                                              )}
+                                              <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
+                                            </a>
+                                          ) : (
+                                            <>
+                                              {isPdf ? (
+                                                <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                                </svg>
+                                              ) : (
+                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                                </svg>
+                                              )}
+                                              <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
+                                            </>
+                                          )}
+                                          {att.size > 0 && (
+                                            <span className="shrink-0 text-[10px] text-[var(--text-200)]">
+                                              {formatBytes(att.size)}
+                                            </span>
+                                          )}
+                                          {groupSize > 1 && isFirstInGroup && (
+                                            <span className="shrink-0 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                              1/{groupSize}
+                                            </span>
+                                          )}
+                                          {groupSize > 1 && !isFirstInGroup && attachmentIndex !== null && (
+                                            <span className="shrink-0 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                              {attachmentIndex + 1}/{groupSize}
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                     )
+                                  }
                                   default:
                                     return null
                                 }
@@ -5956,16 +6091,16 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor(''); setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
                   {/* Advanced Search toggle */}
                   <button
                     type="button"
-                    onClick={() => setPdfAdvancedOpen((o) => !o)}
+                    onClick={() => { setPdfDraftPo(pdfAdvPo); setPdfDraftInvoice(pdfAdvInvoice); setPdfDraftVendor(pdfAdvVendor); setPdfAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
                     className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
-                      pdfAdvancedOpen || pdfAdvancedActive
+                      pdfAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
@@ -6068,56 +6203,6 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </div>
                 </div>
-
-                {/* Advanced Search Panel — PDF Imports */}
-                {pdfAdvancedOpen && (
-                  <div className="flex flex-wrap items-start gap-4 px-4 py-3 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">PO Numbers</label>
-                      <textarea
-                        value={pdfAdvPo}
-                        onChange={(e) => setPdfAdvPo(e.target.value)}
-                        placeholder={"12345\n67890"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Invoice Numbers</label>
-                      <textarea
-                        value={pdfAdvInvoice}
-                        onChange={(e) => setPdfAdvInvoice(e.target.value)}
-                        placeholder={"INV-001\nINV-002"}
-                        rows={3}
-                        className="w-44 resize-none rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)]">One per line or comma-separated</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-200)]">Vendor</label>
-                      <input
-                        type="text"
-                        value={pdfAdvVendor}
-                        onChange={(e) => setPdfAdvVendor(e.target.value)}
-                        placeholder="Vendor name…"
-                        className="w-44 rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-[10px] text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
-                      />
-                      <span className="text-[9px] text-[var(--text-200)] mt-1">Matches parsed vendor name</span>
-                    </div>
-                    {pdfAdvancedActive && (
-                      <div className="self-end pb-5">
-                        <button
-                          type="button"
-                          onClick={() => { setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor('') }}
-                          className="text-[10px] text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap"
-                        >
-                          Clear advanced
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* ── Table ── */}
                 <div className="relative overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -6457,6 +6542,186 @@ export default function DocTidyInvoiceAudit() {
             </div>
           )}
           {/* ── end workspaceTab === 'pdf-imports' ── */}
+
+          {/* ══ Advanced Search Modal — Emails ══ */}
+          {emailAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setEmailAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — Emails"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter emails by parsed invoice data</p>
+                  </div>
+                  {/* X — dismiss without applying */}
+                  <button
+                    type="button"
+                    onClick={() => setEmailAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={emailDraftPo}
+                      onChange={(e) => setEmailDraftPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={emailDraftInvoice}
+                      onChange={(e) => setEmailDraftInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={emailDraftVendor}
+                      onChange={(e) => setEmailDraftVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
+                  <button
+                    type="button"
+                    onClick={() => { setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
+                    disabled={!emailDraftPo.trim() && !emailDraftInvoice.trim() && !emailDraftVendor.trim()}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
+                  <button
+                    type="button"
+                    onClick={() => { setEmailAdvPo(emailDraftPo); setEmailAdvInvoice(emailDraftInvoice); setEmailAdvVendor(emailDraftVendor); setEmailAdvancedOpen(false) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ Advanced Search Modal — PDF Imports ══ */}
+          {pdfAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setPdfAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — PDF Imports"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter imported files by parsed invoice data</p>
+                  </div>
+                  {/* X — dismiss without applying */}
+                  <button
+                    type="button"
+                    onClick={() => setPdfAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={pdfDraftPo}
+                      onChange={(e) => setPdfDraftPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={pdfDraftInvoice}
+                      onChange={(e) => setPdfDraftInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={pdfDraftVendor}
+                      onChange={(e) => setPdfDraftVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
+                  <button
+                    type="button"
+                    onClick={() => { setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
+                    disabled={!pdfDraftPo.trim() && !pdfDraftInvoice.trim() && !pdfDraftVendor.trim()}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
+                  <button
+                    type="button"
+                    onClick={() => { setPdfAdvPo(pdfDraftPo); setPdfAdvInvoice(pdfDraftInvoice); setPdfAdvVendor(pdfDraftVendor); setPdfAdvancedOpen(false) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ══ PDF Import Upload Modal ══ */}
           {showPdfUploadModal && (
