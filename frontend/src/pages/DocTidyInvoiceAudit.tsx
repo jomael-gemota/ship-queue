@@ -8,7 +8,6 @@ import {
   DocumentTypeBadge,
   PaginationArrows,
   ParseProgressBadge,
-  ParseStatusChip,
   Spinner,
   Th,
   avatarColour,
@@ -3716,7 +3715,7 @@ export default function DocTidyInvoiceAudit() {
   const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || pdfAdvancedActive || Object.values(pdfColFilters).some((s) => s?.size))
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
-    .filter((c): c is PdfImportColumn => Boolean(c))
+    .filter((c): c is PdfImportColumn => c != null && c.id !== 'parseStatus')
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -5394,7 +5393,7 @@ export default function DocTidyInvoiceAudit() {
             {([
               ['audit',       'Invoice Audit', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['emails',      'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
-              ['pdf-imports', 'PDF Imports',   'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['pdf-imports', 'CSV/PDF Imports',   'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['rules',       'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
               ['vendors',     'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
             ] as const).map(([tab, label, icon]) => (
@@ -6290,11 +6289,15 @@ export default function DocTidyInvoiceAudit() {
                         {Array.from({ length: 20 }).map((_, i) => (
                           <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                             <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1.5">
+                              <div className="flex justify-center gap-2">
+                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                              </div>
+                            </td>
                             {orderedPdfCols.map((col, ci) => (
                               <td key={col.id} className="px-3 py-1.5">
-                                {col.id === 'parseStatus' ? (
-                                  <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--bg-300)]" />
-                                ) : col.id === 'filename' ? (
+                                {col.id === 'filename' ? (
                                   <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
                                     style={{ width: `${6 + ((i + ci) % 5) * 2}rem` }} />
                                 ) : (
@@ -6303,12 +6306,6 @@ export default function DocTidyInvoiceAudit() {
                                 )}
                               </td>
                             ))}
-                            <td className="px-3 py-1.5">
-                              <div className="flex justify-center gap-2">
-                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
-                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
-                              </div>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -6372,6 +6369,7 @@ export default function DocTidyInvoiceAudit() {
                               className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                             />
                           </Th>
+                          <Th label="Actions" align="center" className="min-w-[200px]" />
                           {orderedPdfCols.map((col) => (
                             <DraggableTh
                               key={col.id}
@@ -6402,7 +6400,6 @@ export default function DocTidyInvoiceAudit() {
                               }}
                             />
                           ))}
-                          <Th label="Actions" align="center" className="min-w-[200px]" />
                         </tr>
                       </thead>
                       <tbody>
@@ -6437,78 +6434,6 @@ export default function DocTidyInvoiceAudit() {
                                   className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
                                 />
                               </td>
-
-                              {orderedPdfCols.map((col) => {
-                                const cls = `${dragCls(col.id)}`
-                                switch (col.id) {
-                                  case 'imported':
-                                    return (
-                                      <td key="imported" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
-                                        {formatDate(imp.createdAt)}
-                                      </td>
-                                    )
-                                  case 'importedBy':
-                                    return (
-                                      <td key="importedBy" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`}>
-                                        {imp.uploadedByName ?? <span className="italic">—</span>}
-                                      </td>
-                                    )
-                                  case 'size':
-                                    return (
-                                      <td key="size" className={`px-3 py-px whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
-                                        {formatBytes(imp.size)}
-                                      </td>
-                                    )
-                                  case 'filename':
-                                    return (
-                                      <td key="filename" className={`px-3 py-px min-w-0 max-w-[300px] ${cls}`}>
-                                        {imp.driveWebViewLink ? (
-                                          <a
-                                            href={imp.driveWebViewLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            title={`Open ${imp.filename} in Google Drive`}
-                                            className="inline-flex items-center gap-1.5 min-w-0 group"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                            </svg>
-                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
-                                          </a>
-                                        ) : (
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                            </svg>
-                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
-                                          </div>
-                                        )}
-                                      </td>
-                                    )
-                                  default:
-                                    return null
-                                  case 'parseStatus':
-                                    return (
-                                      <td key="parseStatus" className={`px-3 py-px whitespace-nowrap ${cls}`}>
-                                        {imp.parseJob ? (
-                                          <div className="flex flex-col gap-0.5">
-                                            <ParseStatusChip status={imp.parseJob.status} />
-                                            {imp.parseJob.completedAt && (
-                                              <span title={formatDateTime(imp.parseJob.completedAt)} className="text-[10px] text-[var(--text-200)]">
-                                                {formatDate(imp.parseJob.completedAt)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
-                                            Not sent
-                                          </span>
-                                        )}
-                                      </td>
-                                    )
-                                }
-                              })}
 
                               {/* Actions — mirrors the Emails tab AttachmentIcons states */}
                               <td className="px-3 py-px text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -6593,6 +6518,59 @@ export default function DocTidyInvoiceAudit() {
                                   </button>
                                 </div>
                               </td>
+
+                              {orderedPdfCols.map((col) => {
+                                const cls = `${dragCls(col.id)}`
+                                switch (col.id) {
+                                  case 'imported':
+                                    return (
+                                      <td key="imported" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
+                                        {formatDate(imp.createdAt)}
+                                      </td>
+                                    )
+                                  case 'importedBy':
+                                    return (
+                                      <td key="importedBy" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`}>
+                                        {imp.uploadedByName ?? <span className="italic">—</span>}
+                                      </td>
+                                    )
+                                  case 'size':
+                                    return (
+                                      <td key="size" className={`px-3 py-px whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
+                                        {formatBytes(imp.size)}
+                                      </td>
+                                    )
+                                  case 'filename':
+                                    return (
+                                      <td key="filename" className={`px-3 py-px min-w-0 max-w-[300px] ${cls}`}>
+                                        {imp.driveWebViewLink ? (
+                                          <a
+                                            href={imp.driveWebViewLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`Open ${imp.filename} in Google Drive`}
+                                            className="inline-flex items-center gap-1.5 min-w-0 group"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
+                                          </a>
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return null
+                                }
+                              })}
                             </tr>
                           )
                         })}
