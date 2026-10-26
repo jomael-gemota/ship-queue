@@ -5832,24 +5832,30 @@ export default function DocTidyInvoiceAudit() {
                               className={`group cursor-pointer align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
                                 !isFirstInGroup
                                   ? isSelected
-                                    ? 'border-l-2 border-l-[var(--accent-200)]/30 bg-[var(--primary-100)]/50 hover:bg-[var(--primary-100)]/70'
-                                    : 'border-l-2 border-l-[var(--bg-300)] bg-[var(--bg-200)]/60 hover:bg-[var(--bg-200)]'
-                                  : isSelected
-                                    ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                                    : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                                    ? 'border-l-[3px] border-l-[var(--accent-200)]/50 bg-[var(--primary-100)]/25 hover:bg-[var(--primary-100)]/45'
+                                    : 'border-l-[3px] border-l-[var(--accent-200)]/25 bg-[var(--bg-200)]/50 hover:bg-[var(--bg-200)]/80'
+                                  : groupSize > 1
+                                    ? isSelected
+                                      ? 'border-l-[3px] border-l-[var(--accent-200)]/50 bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : 'border-l-[3px] border-l-[var(--accent-200)]/25 odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                                    : isSelected
+                                      ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
-                              {/* Checkbox — always first */}
+                              {/* Checkbox — first row gets a full checkbox; continuation rows get a scaled-down
+                                  version so the whole message remains selectable but the UI feels subordinate */}
                               <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
                                 {isFirstInGroup ? (
                                   <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
                                     aria-label={`Select ${msg.subject || 'message'}`}
                                     className={emailCheckboxClass} />
                                 ) : (
-                                  /* Continuation rows share the same checkbox state */
-                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                    aria-label={`Select ${msg.subject || 'message'}`}
-                                    className={`${emailCheckboxClass} opacity-40`} />
+                                  <div className="flex items-center justify-center">
+                                    <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
+                                      aria-label={`Select attachment of ${msg.subject || 'message'}`}
+                                      className={`${emailCheckboxClass} scale-[0.72] opacity-25`} />
+                                  </div>
                                 )}
                               </td>
 
@@ -5904,7 +5910,10 @@ export default function DocTidyInvoiceAudit() {
                                             </div>
                                           </div>
                                         ) : (
-                                          <span className="pl-1 text-[10px] text-[var(--text-200)] select-none">└─</span>
+                                          /* CSS-drawn L-connector: a small rounded-bl box that reads as "↳ sub-item" */
+                                          <div className="flex items-center pl-2" aria-hidden>
+                                            <span className="inline-block h-3 w-3 shrink-0 rounded-bl-[3px] border-b-[1.5px] border-l-[1.5px] border-[var(--text-200)]/25" />
+                                          </div>
                                         )}
                                       </td>
                                     )
@@ -5974,51 +5983,44 @@ export default function DocTidyInvoiceAudit() {
                                     const href = att.webViewLink
                                       || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
                                     const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
+
+                                    /* File type icon — slightly larger than before */
+                                    const fileIcon = isPdf ? (
+                                      <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                        <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                      </svg>
+                                    ) : (
+                                      <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                      </svg>
+                                    )
+
                                     return (
-                                      <td key="attachments" className={`px-3 py-px ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center gap-1.5">
+                                      <td key="attachments" className={`py-px ${isFirstInGroup ? 'px-3' : 'pl-5 pr-3'} ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
+                                        {/* Continuation rows get a subtle pill wrapper to look like a nested sub-item */}
+                                        <div className={`flex items-center gap-1.5 ${!isFirstInGroup ? 'rounded-md bg-[var(--bg-300)]/40 px-2 py-[3px]' : ''}`}>
                                           {href ? (
                                             <a href={href} target="_blank" rel="noopener noreferrer"
                                               onClick={(e) => e.stopPropagation()} title={att.filename}
-                                              className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline">
-                                              {isPdf ? (
-                                                <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                </svg>
-                                              ) : (
-                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                </svg>
-                                              )}
-                                              <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
+                                              className="inline-flex min-w-0 items-center gap-1.5 text-[var(--accent-200)] hover:underline">
+                                              {fileIcon}
+                                              <span className="truncate max-w-[160px] text-[10px]">{att.filename}</span>
                                             </a>
                                           ) : (
-                                            <>
-                                              {isPdf ? (
-                                                <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                  <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                </svg>
-                                              ) : (
-                                                <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                </svg>
-                                              )}
-                                              <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
-                                            </>
+                                            <div className="inline-flex min-w-0 items-center gap-1.5">
+                                              {fileIcon}
+                                              <span className="truncate max-w-[160px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
+                                            </div>
                                           )}
                                           {att.size > 0 && (
-                                            <span className="shrink-0 text-[10px] text-[var(--text-200)]">
+                                            <span className="shrink-0 text-[9px] text-[var(--text-200)] tabular-nums">
                                               {formatBytes(att.size)}
                                             </span>
                                           )}
-                                          {groupSize > 1 && isFirstInGroup && (
-                                            <span className="shrink-0 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
-                                              1/{groupSize}
-                                            </span>
-                                          )}
-                                          {groupSize > 1 && !isFirstInGroup && attachmentIndex !== null && (
-                                            <span className="shrink-0 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
-                                              {attachmentIndex + 1}/{groupSize}
+                                          {/* First row of a multi-attachment group: show total count chip */}
+                                          {isFirstInGroup && groupSize > 1 && (
+                                            <span className="shrink-0 rounded-full bg-[var(--accent-200)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--accent-200)]">
+                                              {groupSize} files
                                             </span>
                                           )}
                                         </div>
