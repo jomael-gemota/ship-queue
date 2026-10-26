@@ -5508,18 +5508,17 @@ export default function DocTidyInvoiceAudit() {
                     type="button"
                     onClick={() => { setEmailDraftPo(emailAdvPo); setEmailDraftInvoice(emailAdvInvoice); setEmailDraftVendor(emailAdvVendor); setEmailAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
-                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                    className={`relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors ${
                       emailAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
                   >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                     </svg>
-                    Advanced
                     {emailAdvancedCount > 0 && (
-                      <span className="min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[9px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[8px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
                     )}
                   </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -6160,18 +6159,17 @@ export default function DocTidyInvoiceAudit() {
                     type="button"
                     onClick={() => { setPdfDraftPo(pdfAdvPo); setPdfDraftInvoice(pdfAdvInvoice); setPdfDraftVendor(pdfAdvVendor); setPdfAdvancedOpen(true) }}
                     title="Advanced Search — filter by PO number, invoice number, or vendor"
-                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                    className={`relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors ${
                       pdfAdvancedActive
                         ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
                         : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
                     }`}
                   >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                     </svg>
-                    Advanced
                     {pdfAdvancedCount > 0 && (
-                      <span className="min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[9px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[8px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
                     )}
                   </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
