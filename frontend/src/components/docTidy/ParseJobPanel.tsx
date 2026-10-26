@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { authApi } from '../../lib/api'
 import { useParseJobStream } from '../../hooks/useParseJobStream'
 import { ParseStatusChip, Spinner } from './docTidyUi'
@@ -12,9 +12,25 @@ import {
 
 type Tab = 'reasoning' | 'corrections'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'reasoning', label: 'Reasoning' },
-  { id: 'corrections', label: 'Corrections' },
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: 'reasoning',
+    label: 'Reasoning',
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'corrections',
+    label: 'Corrections',
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+      </svg>
+    ),
+  },
 ]
 
 /**
@@ -169,29 +185,31 @@ export default function ParseJobPanel({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {/* Abort — only relevant while a job is in flight */}
+            {/* Abort — only visible while a job is running */}
             {isParseRunning(status) && (
               <button
                 type="button"
                 onClick={() => void abort()}
                 disabled={aborting}
                 title="Stop this parse immediately and mark it as failed"
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 py-1.5 text-sm text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {aborting ? <Spinner /> : (
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                {aborting ? <Spinner className="h-3.5 w-3.5" /> : (
+                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
                   </svg>
                 )}
-                Abort
+                {aborting ? 'Stopping…' : 'Stop'}
               </button>
             )}
+
+            {/* Re-run Agent */}
             <button
               type="button"
               onClick={rerun}
               disabled={rerunning || isParseRunning(status)}
               title={isParseRunning(status) ? 'Agent is already running' : 'Send this document to Tidy Agent again'}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-amber-400 bg-transparent px-3 py-1.5 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-50 hover:border-amber-500 dark:text-amber-400 dark:border-amber-500/60 dark:hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {rerunning ? (
                 <Spinner className="h-3.5 w-3.5" />
@@ -200,15 +218,20 @@ export default function ParseJobPanel({
                   <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
                 </svg>
               )}
-              Re-run
+              {rerunning ? 'Running…' : 'Re-run Agent'}
             </button>
+
+            {/* Close */}
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="cursor-pointer rounded-lg px-2 py-1.5 text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+              title="Close (Esc)"
+              className="cursor-pointer inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]"
             >
-              ✕
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           </div>
         </header>
@@ -219,15 +242,16 @@ export default function ParseJobPanel({
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
-              className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 tab === item.id
                   ? 'bg-[var(--primary-100)] text-[var(--accent-200)]'
                   : 'text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]'
               }`}
             >
+              {item.icon}
               {item.label}
               {item.id === 'corrections' && corrections.length > 0 && (
-                <span className="ml-1.5 text-[11px] text-[var(--text-200)]">
+                <span className="ml-0.5 min-w-[18px] rounded-full bg-[var(--accent-200)] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
                   {corrections.length}
                 </span>
               )}
