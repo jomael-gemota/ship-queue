@@ -4,7 +4,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import DocTidyOrderImport, { IDocTidyOrderImport } from '../models/DocTidyOrderImport';
-import { populateCogsForBatch, populateCogsForWorkspace } from '../services/dcCogs.service';
+import { populateCogsForBatch, populateCogsForWorkspace, forceRefreshCogsForWorkspace } from '../services/dcCogs.service';
 import { rebuildMatchCacheForWorkspace } from '../services/invoiceMatchCache.service';
 
 /* ── multer — memory storage; parsing happens in this controller ── */
@@ -284,7 +284,7 @@ export const uploadOrderImports = async (req: Request, res: Response): Promise<v
   }
 };
 
-/* ── Re-trigger DC COGS lookup for all pending rows in a workspace ── */
+/* ── Re-trigger DC COGS lookup for all pending / previously-failed rows in a workspace ── */
 export const refreshCogsForWorkspace = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId } = req.params;
@@ -293,10 +293,17 @@ export const refreshCogsForWorkspace = async (req: Request, res: Response): Prom
       return;
     }
 
-    const pendingCount = await DocTidyOrderImport.countDocuments({ workspaceId, dcCogs: null });
+    // Count both truly-pending (null) and previously-failed ('n/a') rows so the
+    // caller sees how many will be attempted.  forceRefreshCogsForWorkspace resets
+    // 'n/a' rows back to null before running the population pass, ensuring rows
+    // that failed due to a case-mismatch or missing credentials are retried.
+    const pendingCount = await DocTidyOrderImport.countDocuments({
+      workspaceId,
+      dcCogs: { $in: [null, 'n/a'] },
+    });
 
     // Fire-and-forget — response returns immediately with the count of rows queued.
-    void populateCogsForWorkspace(workspaceId);
+    void forceRefreshCogsForWorkspace(workspaceId);
 
     res.json({ queued: pendingCount });
   } catch (error) {

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 
-from mongo_collections import VENDORS
+from mongo_collections import MESSAGES, RULES, VENDORS
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,38 @@ def normalize_vendor_name(name: str) -> str:
     return re.sub(r"\s+", " ", name.strip().lower())
 
 
-async def resolve_vendor(db, vendor_name: str | None) -> dict | None:
+async def resolve_job_workspace_id(db, job: dict | None):
+    """Return the workspace a parse job belongs to, or ``None`` if unknown.
+
+    PDF-import jobs carry ``workspaceId`` directly; email jobs only reach it
+    through message → rule.
+    """
+    if not job:
+        return None
+    if job.get("workspaceId"):
+        return job["workspaceId"]
+    try:
+        message = await db[MESSAGES].find_one(
+            {"_id": job.get("messageId")}, projection={"ruleId": 1}
+        )
+        if not message or not message.get("ruleId"):
+            return None
+        rule = await db[RULES].find_one(
+            {"_id": message["ruleId"]}, projection={"workspaceId": 1}
+        )
+        return (rule or {}).get("workspaceId")
+    except Exception as exc:  # DB hiccup shouldn't fail the whole job
+        logger.warning("Workspace lookup failed for job %s: %s", job.get("_id"), exc)
+        return None
+
+
+def _workspace_filter(workspace_id) -> dict:
+    """Vendors are registered per workspace; ``None`` means the job's workspace
+    could not be determined, so fall back to searching every workspace."""
+    return {"workspaceId": workspace_id} if workspace_id is not None else {}
+
+
+async def resolve_vendor(db, vendor_name: str | None, workspace_id=None) -> dict | None:
     """Look up a vendor record by (normalized) name in the vendors collection.
 
     Returns the vendor document or ``None`` if the name is empty or unknown.
@@ -61,13 +92,17 @@ async def resolve_vendor(db, vendor_name: str | None) -> dict | None:
         return None
     try:
         normalized = normalize_vendor_name(vendor_name)
-        return await db[VENDORS].find_one({"normalizedName": normalized})
+        return await db[VENDORS].find_one(
+            {"normalizedName": normalized, **_workspace_filter(workspace_id)}
+        )
     except Exception as exc:  # DB hiccup shouldn't fail the whole job
         logger.warning("Vendor lookup failed for %r: %s", vendor_name, exc)
         return None
 
 
-async def detect_vendor_name_from_text(db, document_text: str) -> str | None:
+async def detect_vendor_name_from_text(
+    db, document_text: str, workspace_id=None
+) -> str | None:
     """Best-effort vendor identification from RAW text, *before* extraction.
 
     Correction retrieval runs before the LLM extracts structured fields, so the
@@ -81,7 +116,7 @@ async def detect_vendor_name_from_text(db, document_text: str) -> str | None:
         return None
     try:
         vendors = await db[VENDORS].find(
-            {}, projection={"name": 1, "normalizedName": 1}
+            _workspace_filter(workspace_id), projection={"name": 1, "normalizedName": 1}
         ).to_list(length=1000)
     except Exception as exc:  # DB hiccup shouldn't fail the whole job
         logger.warning("Vendor list lookup failed: %s", exc)

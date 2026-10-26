@@ -350,6 +350,71 @@ function TabularCorrectionEditor({
   )
 }
 
+/* ──────────────────────── JSON syntax highlighter (VSCode Dark+) ── */
+
+type JsonTokenType = 'key' | 'string' | 'number' | 'keyword' | 'punctuation' | 'plain'
+
+/** Tokenise a JSON string for coloured display. Robust against partial/invalid input. */
+function tokenizeJson(json: string): Array<{ type: JsonTokenType; value: string }> {
+  const out: Array<{ type: JsonTokenType; value: string }> = []
+  let i = 0
+  while (i < json.length) {
+    // Whitespace / newlines
+    if (/\s/.test(json[i])) {
+      let j = i + 1
+      while (j < json.length && /\s/.test(json[j])) j++
+      out.push({ type: 'plain', value: json.slice(i, j) })
+      i = j
+      continue
+    }
+    // String literal
+    if (json[i] === '"') {
+      let j = i + 1
+      while (j < json.length) {
+        if (json[j] === '\\') { j += 2; continue }
+        if (json[j] === '"') { j++; break }
+        j++
+      }
+      const str = json.slice(i, j)
+      // Key when the next non-whitespace char is ':'
+      const isKey = /^\s*:/.test(json.slice(j))
+      out.push({ type: isKey ? 'key' : 'string', value: str })
+      i = j
+      continue
+    }
+    // Number
+    const numM = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(json.slice(i))
+    if (numM) { out.push({ type: 'number', value: numM[0] }); i += numM[0].length; continue }
+    // Keywords
+    const kwM = /^(true|false|null)/.exec(json.slice(i))
+    if (kwM) { out.push({ type: 'keyword', value: kwM[0] }); i += kwM[0].length; continue }
+    // Punctuation / anything else
+    out.push({ type: 'punctuation', value: json[i] })
+    i++
+  }
+  return out
+}
+
+/** Read-only JSON viewer styled like VSCode Dark+. */
+function JsonHighlight({ value }: { value: string }) {
+  const tokens = useMemo(() => tokenizeJson(value), [value])
+  return (
+    <pre className="max-h-96 overflow-auto rounded-lg bg-[#1e1e1e] px-4 py-3.5 font-mono text-[11px] leading-5 text-[#d4d4d4] select-all">
+      {tokens.map((tok, idx) => {
+        const cls =
+          tok.type === 'key'         ? 'text-[#9cdcfe]' :
+          tok.type === 'string'      ? 'text-[#ce9178]' :
+          tok.type === 'number'      ? 'text-[#b5cea8]' :
+          tok.type === 'keyword'     ? 'text-[#569cd6]' :
+          tok.type === 'punctuation' ? 'text-[#d4d4d4]' : ''
+        return cls
+          ? <span key={idx} className={cls}>{tok.value}</span>
+          : <span key={idx}>{tok.value}</span>
+      })}
+    </pre>
+  )
+}
+
 /* ──────────────────────────────────────── JSON correction editor ── */
 
 function JsonCorrectionEditor({
@@ -427,22 +492,46 @@ function JsonCorrectionEditor({
 
   return (
     <div className="space-y-3">
+      {/* ── Syntax-highlighted read reference ── */}
       <div>
-        <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
-          Corrected output
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-xs font-semibold text-[var(--text-100)]">Extracted JSON</span>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(draft)}
+            className="cursor-pointer rounded-md border border-[var(--bg-300)] px-2 py-0.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+          >
+            Copy
+          </button>
+        </div>
+        {/* Compact highlighted view — scrollable, capped height so the editor
+            below stays visible without scrolling the whole modal */}
+        <div className="max-h-52 overflow-auto rounded-lg">
+          <JsonHighlight value={draft} />
+        </div>
+      </div>
+
+      {/* ── Editable textarea — always visible for corrections ── */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-[var(--text-100)]">
+          Correct the JSON
+          <span className="ml-1.5 font-normal text-[var(--text-200)]">
+            — edit below, then save your correction.
+          </span>
         </label>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
-          rows={14}
-          className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-3 font-mono text-xs leading-relaxed text-[var(--text-100)] focus:border-[var(--accent-200)] focus:outline-none"
+          rows={12}
+          className="w-full rounded-lg border border-[var(--bg-300)] bg-[#1e1e1e] p-3.5 font-mono text-[11px] leading-5 text-[#d4d4d4] focus:border-[var(--accent-200)] focus:outline-none"
         />
         {parsed.error && (
           <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{parsed.error}</p>
         )}
       </div>
 
+      {/* ── Note ── */}
       <div>
         <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
           What was wrong?
@@ -459,6 +548,7 @@ function JsonCorrectionEditor({
         />
       </div>
 
+      {/* ── Diff ── */}
       {parsed.value && (
         <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-3">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
@@ -511,21 +601,24 @@ export default function CorrectionEditor({
   const hasTables = tables.length > 0
 
   type Mode = 'json' | 'tabular'
-  const [mode, setMode] = useState<Mode>('json')
+  // Default to the Table sub-tab when the agent produced table output.
+  const [mode, setMode] = useState<Mode>(() => hasTables ? 'tabular' : 'json')
   // Note is shared so switching mode doesn't discard what the user typed.
   const [note, setNote] = useState('')
 
-  // Reset shared note when the job changes.
+  // Reset mode and note when the job changes (e.g. re-run or different file).
   useEffect(() => {
     setNote('')
-  }, [jobId])
+    setMode(hasTables ? 'tabular' : 'json')
+  }, [jobId, hasTables])
 
   return (
     <div className="space-y-3">
       {/* Mode toggle — only shown when the agent produced table output */}
       {hasTables && (
         <div className="flex gap-1">
-          {(['json', 'tabular'] as const).map((m) => (
+          {/* Table first, JSON second */}
+          {(['tabular', 'json'] as const).map((m) => (
             <button
               key={m}
               type="button"
@@ -536,7 +629,7 @@ export default function CorrectionEditor({
                   : 'text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]'
               }`}
             >
-              {m === 'json' ? 'JSON' : 'Table'}
+              {m === 'tabular' ? 'Table' : 'JSON'}
             </button>
           ))}
         </div>

@@ -230,8 +230,92 @@ def batch_groups(sheet: Spreadsheet, groups: list[list[list[str]]]) -> list[list
     return batches
 
 
+def _find_line_items(inv: dict) -> list[dict]:
+    """Return the line-item array from an invoice dict, or [] if none is found.
+
+    Checks common field names first; falls back to the first list-of-dicts field.
+    """
+    _LI_NORMS = {
+        "lineitems", "lineitem", "items", "lines", "lineitemlist",
+        "details", "products", "orderitems", "orderlines",
+    }
+    # Priority pass: recognised key names.
+    for key, value in inv.items():
+        if _norm(key) in _LI_NORMS and isinstance(value, list):
+            return [i for i in value if isinstance(i, dict)]
+    # Fallback: first list-of-dicts field regardless of name.
+    for value in inv.values():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            return [i for i in value if isinstance(i, dict)]
+    return []
+
+
+def _line_items_table(invoices: list[dict], summary_columns: list[str]) -> dict | None:
+    """Combined read-only display table for all invoices' line items.
+
+    Includes an invoice-identifier prefix column so each row can be traced back
+    to its invoice.  Returns None when no invoice has line items.
+
+    This table is intentionally skipped by ``tablesToAgentJson`` on the server
+    when saving a tabular correction (the "Invoices" table is the only editable
+    one for batch files), so it never creates a spurious top-level key.
+    """
+    # Pick the best invoice identifier from the scalar columns already collected.
+    _ID_NORMS = {
+        "invoicenumber", "invoiceno", "invoiceid", "invnumber", "invno", "invid",
+        "ponumber", "po", "pono",
+    }
+    inv_id_col: str | None = next(
+        (c for c in summary_columns if _norm(c) in _ID_NORMS),
+        summary_columns[0] if summary_columns else None,
+    )
+
+    li_columns: list[str] = []  # column names from line-item dicts
+    collected: list[tuple[str, dict]] = []  # (inv_id_value, item_dict)
+
+    for inv in invoices:
+        items = _find_line_items(inv)
+        if not items:
+            continue
+        inv_id_val = str(inv.get(inv_id_col, "") if inv_id_col else "")
+        for item in items:
+            for k, v in item.items():
+                if k not in li_columns and not isinstance(v, (dict, list)):
+                    li_columns.append(k)
+            collected.append((inv_id_val, item))
+
+    if not collected:
+        return None
+
+    # Prepend the invoice identifier only when it isn't already a line-item key.
+    if inv_id_col and inv_id_col not in li_columns:
+        all_columns = [inv_id_col] + li_columns
+        def make_row(inv_id_val: str, item: dict) -> list:
+            return [inv_id_val] + [
+                "" if item.get(c) is None else item.get(c, "")
+                for c in li_columns
+            ]
+    else:
+        all_columns = li_columns
+        def make_row(inv_id_val: str, item: dict) -> list:  # noqa: F811
+            return ["" if item.get(c) is None else item.get(c, "") for c in li_columns]
+
+    rows = [make_row(inv_id_val, item) for inv_id_val, item in collected]
+    return {"title": "Line Items", "columns": all_columns, "rows": rows}
+
+
 def invoice_table(invoices: list[dict]) -> dict:
-    """Display table for a batch file: one row per invoice, its scalar fields as columns."""
+    """Display table for a batch file.
+
+    Always emits an ``"Invoices"`` summary grid (one row per invoice, scalar
+    fields only) that round-trips cleanly through tabular corrections.
+
+    When invoices carry line items, also emits a combined **read-only**
+    ``"Line Items"`` grid so all CSV columns are visible in the Table view.
+    ``tablesToAgentJson`` on the server skips this table during corrections
+    (it has no matching top-level key in the batch JSON structure).
+    """
+    # ── Invoices summary table (editable via tabular correction) ──
     columns: list[str] = []
     for inv in invoices:
         for key, value in inv.items():
@@ -242,4 +326,11 @@ def invoice_table(invoices: list[dict]) -> dict:
         for inv in invoices
     ]
     rows = [["" if v is None else v for v in row] for row in rows]
-    return {"tables": [{"title": "Invoices", "columns": columns, "rows": rows}]}
+    tables: list[dict] = [{"title": "Invoices", "columns": columns, "rows": rows}]
+
+    # ── Line items table (read-only display supplement) ──
+    li_table = _line_items_table(invoices, columns)
+    if li_table is not None:
+        tables.append(li_table)
+
+    return {"tables": tables}

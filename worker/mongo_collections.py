@@ -17,5 +17,10 @@ PARSE_JOBS = "doctidy_parse_jobs"
 CORRECTIONS = "doctidy_corrections"
 VENDORS = "doctidy_vendors"
 
+# These two use Mongoose's default pluralised names (no ``collection`` option on
+# DocTidyMessage / DocTidyRule), so they must track the model names instead.
+MESSAGES = "doctidymessages"
+RULES = "doctidyrules"
+
 #: GridFS bucket holding PDFs the server mirrored out of Google Drive.
 PDF_BUCKET = "doctidy_pdfs"

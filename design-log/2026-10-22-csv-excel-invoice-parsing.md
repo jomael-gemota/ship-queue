@@ -53,10 +53,13 @@ email parse validation; `PARSEABLE` mirrors it on the frontend.
    invoice at a time, so an invoice is never silently dropped.
 5. `ensure_po_number` runs per invoice, against that invoice's own rows.
 6. Stored output: `{ vendorName, invoiceCount, invoices: [...] }`. The table view
-   is built deterministically as one "Invoices" grid (one row per invoice, its
-   scalar fields), which round-trips through table corrections onto `invoices`
-   while each invoice's `lineItems` are preserved. Line items are viewed and
-   corrected in the JSON tab.
+   is built deterministically as one editable **"Invoices"** grid (one row per
+   invoice, its scalar fields) that round-trips through tabular corrections, plus
+   a read-only **"Line Items"** grid that combines every invoice's line items into
+   one table (invoice identifier prepended as the first column). The Line Items
+   table is skipped by `tablesToAgentJson` during corrections (it has no matching
+   top-level key in the batch JSON structure), so saving a tabular correction
+   never corrupts the invoices array.
 
 ### Matching and Invoice Audit
 
@@ -88,6 +91,7 @@ email parse validation; `PARSEABLE` mirrors it on the frontend.
   invoices (more when a batch has to be re-read singly).
 - The worker needs `openpyxl` and `xlrd` (`pip install -r requirements.txt`).
 - Only the first non-empty sheet of a workbook is read.
-- Line items on batch files are not in the table view; edit them in JSON.
+- Line items on batch files are now visible in the Table view (read-only "Line
+  Items" grid); to edit individual line-item cells, use the JSON tab.
 - Deleting one invoice row of a batch file deletes the whole file's parse job.
 - The PDF Imports tab keeps its name; its copy now says PDF, CSV or Excel.

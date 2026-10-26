@@ -60,7 +60,13 @@ export async function fetchDcCogs(sku: string): Promise<CostResult | null> {
     const data = res.data;
     if (!data || data.total === 0 || !Array.isArray(data.items)) return null;
 
-    const matching = data.items.filter((item) => item.sku === sku.trim());
+    // Normalise both sides before comparing so "ABC-123" and "abc-123" are
+    // treated as the same SKU.  The upstream `s` search parameter is fuzzy,
+    // so the response may contain SKUs that differ only in case or whitespace.
+    const skuNorm = sku.trim().toUpperCase();
+    const matching = data.items.filter(
+      (item) => typeof item.sku === 'string' && item.sku.trim().toUpperCase() === skuNorm,
+    );
     if (matching.length === 0) return null;
 
     // Pick the most recently updated entry (mirrors btcostWorker's sort logic).
@@ -160,5 +166,29 @@ export async function populateCogsForWorkspace(workspaceId: string): Promise<voi
     await _populateCogsForFilter({ workspaceId, dcCogs: null });
   } catch (err) {
     console.error('[dcCogs] Background population failed (workspace):', err);
+  }
+}
+
+/**
+ * Force-refresh DC COGS for a workspace: resets any rows currently marked
+ * `"n/a"` back to `null` so the population pass re-tries them, then runs the
+ * full population for all `null` rows (including the just-reset ones).
+ *
+ * Use this from the manual Resync / refresh-cogs endpoint so that rows whose
+ * previous lookup failed (e.g. due to a case-mismatch or missing credentials)
+ * are not permanently stuck showing "—".
+ *
+ * Runs in the background (fire-and-forget).
+ */
+export async function forceRefreshCogsForWorkspace(workspaceId: string): Promise<void> {
+  try {
+    // Un-mark 'n/a' rows so they are included in the population pass below.
+    await DocTidyOrderImport.updateMany(
+      { workspaceId, dcCogs: 'n/a' },
+      { $set: { dcCogs: null, dcCogsAt: null } },
+    );
+    await _populateCogsForFilter({ workspaceId, dcCogs: null });
+  } catch (err) {
+    console.error('[dcCogs] Force-refresh failed (workspace):', err);
   }
 }

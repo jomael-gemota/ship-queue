@@ -1,18 +1,21 @@
 import { formatBytes } from '../../lib/format'
-import { CsvIcon, PdfIcon } from '../labels/labelUi'
+import { CsvFileIcon, ExcelFileIcon, PdfIcon } from '../labels/labelUi'
 import { ParseStatusChip } from './docTidyUi'
 import { isParseRunning, type DocTidyMessage } from '../../types/docTidy'
 
 /** Choose the right file-type icon based on filename / MIME type. */
 function AttachmentIcon({ filename, mimeType, className }: { filename: string; mimeType: string; className?: string }) {
-  const isSpreadsheet =
-    /\.(csv|xlsx|xls)$/i.test(filename) ||
-    mimeType === 'text/csv' ||
+  const isExcel =
+    /\.(xlsx|xls)$/i.test(filename) ||
     mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
     mimeType === 'application/vnd.ms-excel'
-  return isSpreadsheet
-    ? <CsvIcon className={className} />
-    : <PdfIcon className={className} />
+  const isCsv =
+    /\.csv$/i.test(filename) ||
+    mimeType === 'text/csv'
+
+  if (isExcel) return <ExcelFileIcon className={className} />
+  if (isCsv)   return <CsvFileIcon className={className} />
+  return <PdfIcon className={className} />
 }
 
 /**

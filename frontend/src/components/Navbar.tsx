@@ -89,51 +89,46 @@ export default function Navbar({
             </svg>
             <span className="text-xs sm:text-sm font-medium tracking-wide">{today}</span>
           </div>
-          <a
-            href="/docs/index.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open the user guide"
-            title="Open the user guide"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)] dark:hover:bg-[var(--primary-100)] transition-colors shadow-sm cursor-pointer"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-              />
-            </svg>
-            <span className="hidden sm:inline">Guide</span>
-          </a>
+          {/* Theme toggle — pill with sun / moon */}
           <button
             type="button"
             onClick={toggleTheme}
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-1.5 text-xs sm:text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)] dark:hover:bg-[var(--primary-100)] transition-colors shadow-sm cursor-pointer"
+            className="relative inline-flex items-center rounded-full border border-[var(--bg-300)] bg-[var(--bg-200)] p-0.5 shadow-sm transition-colors duration-200 hover:border-[var(--primary-200)] cursor-pointer"
           >
-            {isDarkTheme ? (
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            {/* Sun icon slot */}
+            <span
+              className={`flex items-center justify-center rounded-full w-7 h-7 transition-all duration-200 ${
+                !isDarkTheme
+                  ? 'bg-[var(--primary-200)] text-white shadow'
+                  : 'text-[var(--text-200)] hover:text-[var(--text-100)]'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
                   d="M12 4V2m0 20v-2m8-8h2M2 12H4m13.657 5.657 1.414 1.414M4.929 4.929l1.414 1.414m11.314-1.414-1.414 1.414M6.343 17.657l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z"
                 />
               </svg>
-            ) : (
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            </span>
+            {/* Moon icon slot */}
+            <span
+              className={`flex items-center justify-center rounded-full w-7 h-7 transition-all duration-200 ${
+                isDarkTheme
+                  ? 'bg-[var(--primary-200)] text-white shadow'
+                  : 'text-[var(--text-200)] hover:text-[var(--text-100)]'
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
                   d="M20.354 15.354A9 9 0 018.646 3.646a9 9 0 1011.708 11.708z"
                 />
               </svg>
-            )}
-            <span className="hidden sm:inline">{isDarkTheme ? 'Light' : 'Dark'} Mode</span>
+            </span>
           </button>
         </div>
       </div>
