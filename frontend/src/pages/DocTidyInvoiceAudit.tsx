@@ -3106,7 +3106,12 @@ export default function DocTidyInvoiceAudit() {
   const [emailDraftVendor, setEmailDraftVendor] = useState('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
-  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+  /**
+   * Per-attachment-row selection.  Key format mirrors `EmailAttachmentRow.rowKey`:
+   *   - `${msg._id}:${attachmentIndex}` for parseable-attachment rows
+   *   - `${msg._id}` for placeholder rows (messages with no parseable attachments)
+   */
+  const [selectedEmailKeys, setSelectedEmailKeys] = useState<Set<string>>(new Set())
   /** Keys of individual attachment parse requests in flight: `${msgId}:${attachmentIndex}`. */
   const [emailSendingKeys, setEmailSendingKeys] = useState<Set<string>>(new Set())
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
@@ -3417,7 +3422,13 @@ export default function DocTidyInvoiceAudit() {
     setEmailDeleting(true)
     try {
       await authApi.delete(`/doc-tidy/messages/${msg._id}`)
-      setSelectedEmailIds((prev) => { const next = new Set(prev); next.delete(msg._id); return next })
+      setSelectedEmailKeys((prev) => {
+        const next = new Set(prev)
+        for (const k of next) {
+          if ((k.includes(':') ? k.split(':')[0] : k) === msg._id) next.delete(k)
+        }
+        return next
+      })
       setConfirmDeleteEmail(null)
       void fetchEmails(true)
     } catch (err) {
@@ -3430,13 +3441,15 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Emails: bulk delete selected messages ── */
   const handleBulkDeleteEmails = async () => {
-    const ids = Array.from(selectedEmailIds)
+    // Derive unique message IDs from the row-level key set
+    const msgIds = new Set(Array.from(selectedEmailKeys).map((k) => k.includes(':') ? k.split(':')[0] : k))
+    const ids = Array.from(msgIds)
     setEmailBulkDeleting(true)
     try {
       await authApi.post('/doc-tidy/messages/bulk-delete', { ids })
-      setEmailMessages((prev) => prev.filter((m) => !selectedEmailIds.has(m._id)))
+      setEmailMessages((prev) => prev.filter((m) => !msgIds.has(m._id)))
       setEmailPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
-      setSelectedEmailIds(new Set())
+      setSelectedEmailKeys(new Set())
       setConfirmBulkDeleteEmails(false)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete selected messages', 'error')
@@ -3499,18 +3512,22 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /* ── Emails: bulk send selected messages to Tidy Agent for parsing ── */
+  /* ── Emails: bulk send selected attachment rows to Tidy Agent for parsing ── */
   const handleBulkSendEmailsToAgent = async () => {
-    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    // Only keys with `:` represent parseable attachment rows; skip placeholder rows
     const tasks: Array<{ msgId: string; index: number }> = []
-    for (const msg of selectedMsgs) {
-      for (let i = 0; i < msg.attachments.length; i++) {
-        const att = msg.attachments[i]
-        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        if (job && (job.status === 'pending' || job.status === 'processing')) continue
-        tasks.push({ msgId: msg._id, index: i })
-      }
+    for (const key of selectedEmailKeys) {
+      if (!key.includes(':')) continue
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) continue
+      const att = msg.attachments[attachmentIndex]
+      if (!att || !PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      if (job && (job.status === 'pending' || job.status === 'processing')) continue
+      tasks.push({ msgId, index: attachmentIndex })
     }
     if (tasks.length === 0) return
     setEmailBulkSending(true)
@@ -3546,14 +3563,18 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Abort all running/pending parse jobs across selected email rows. */
+  /** Abort running/pending parse jobs for each selected attachment row. */
   const handleBulkAbortEmails = async () => {
     const jobIds: string[] = []
-    for (const msg of emailMessages) {
-      if (!selectedEmailIds.has(msg._id)) continue
-      for (const job of msg.parseJobs ?? []) {
-        if (job.status === 'pending' || job.status === 'processing') jobIds.push(job._id)
-      }
+    for (const key of selectedEmailKeys) {
+      if (!key.includes(':')) continue
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) continue
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      if (job && (job.status === 'pending' || job.status === 'processing')) jobIds.push(job._id)
     }
     if (jobIds.length === 0) return
     setEmailBulkAborting(true)
@@ -3589,29 +3610,42 @@ export default function DocTidyInvoiceAudit() {
   const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
 
-  /** True when every parseable attachment across all selected emails already has a completed parse job. */
-  const allSelectedEmailsCompleted =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .every((m) => {
-        let hasParseable = false
-        for (let i = 0; i < m.attachments.length; i++) {
-          const att = m.attachments[i]
-          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-          hasParseable = true
-          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
-          if (!job || job.status !== 'completed') return false
-        }
-        return hasParseable
-      })
+  /** Keys in the selection that represent parseable attachment rows (`msgId:index` format). */
+  const selectedAttachmentKeys = useMemo(
+    () => Array.from(selectedEmailKeys).filter((k) => k.includes(':')),
+    [selectedEmailKeys],
+  )
 
-  /** True when at least one selected email has a running (pending/processing) parse job. */
+  /** Unique message IDs touched by the current selection — used for bulk delete. */
+  const selectedMsgIdsForDelete = useMemo(
+    () => new Set(Array.from(selectedEmailKeys).map((k) => k.includes(':') ? k.split(':')[0] : k)),
+    [selectedEmailKeys],
+  )
+
+  /** True when every selected attachment row already has a completed parse job. */
+  const allSelectedEmailsCompleted =
+    selectedAttachmentKeys.length > 0 &&
+    selectedAttachmentKeys.every((key) => {
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) return false
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      return job?.status === 'completed'
+    })
+
+  /** True when at least one selected attachment row has a running/pending parse job. */
   const anySelectedEmailRunning =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
+    selectedAttachmentKeys.some((key) => {
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) return false
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      return job?.status === 'pending' || job?.status === 'processing'
+    })
 
   /** True when at least one selected PDF import has a running parse job. */
   const anySelectedPdfRunning =
@@ -3803,7 +3837,7 @@ export default function DocTidyInvoiceAudit() {
   }, [emailAdvPo, emailAdvInvoice, emailAdvVendor])
 
   /* Reset email page when filters change */
-  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter, emailAdvDebounced])
+  useEffect(() => { setEmailPage(1); setSelectedEmailKeys(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter, emailAdvDebounced])
 
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
@@ -3985,30 +4019,30 @@ export default function DocTidyInvoiceAudit() {
       .catch(() => setWorkerOnline(false))
   }, [activeWorkspace])
 
-  /* Indeterminate state on the select-all checkbox */
+  /* Indeterminate state on the select-all checkbox — operates at the attachment-row level */
   const allEmailsOnPageSelected =
-    filteredEmailMessages.length > 0 && filteredEmailMessages.every((m) => selectedEmailIds.has(m._id))
-  const someEmailsOnPageSelected = filteredEmailMessages.some((m) => selectedEmailIds.has(m._id))
+    expandedEmailRows.length > 0 && expandedEmailRows.every((r) => selectedEmailKeys.has(r.rowKey))
+  const someEmailsOnPageSelected = expandedEmailRows.some((r) => selectedEmailKeys.has(r.rowKey))
   useEffect(() => {
     if (selectAllEmailRef.current) {
       selectAllEmailRef.current.indeterminate = someEmailsOnPageSelected && !allEmailsOnPageSelected
     }
   }, [someEmailsOnPageSelected, allEmailsOnPageSelected])
 
-  const toggleEmailRow = (id: string) => {
-    setSelectedEmailIds((prev) => {
+  const toggleEmailKey = (rowKey: string) => {
+    setSelectedEmailKeys((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(rowKey)) next.delete(rowKey)
+      else next.add(rowKey)
       return next
     })
   }
   const toggleAllEmailsOnPage = () => {
-    setSelectedEmailIds((prev) => {
+    setSelectedEmailKeys((prev) => {
       const next = new Set(prev)
-      for (const msg of filteredEmailMessages) {
-        if (allEmailsOnPageSelected) next.delete(msg._id)
-        else next.add(msg._id)
+      for (const row of expandedEmailRows) {
+        if (allEmailsOnPageSelected) next.delete(row.rowKey)
+        else next.add(row.rowKey)
       }
       return next
     })
@@ -4195,9 +4229,9 @@ export default function DocTidyInvoiceAudit() {
     setEmailDateFrom('')
     setEmailDateTo('')
     setEmailMessages([])
-    setSelectedEmailIds(new Set())
+    setSelectedEmailKeys(new Set())
 
-    // Reload workspace-scoped column visibility from localStorage.
+  //  Reload workspace-scoped column visibility from localStorage.
     // Pass importMode so header-only workspaces start with line-item columns hidden.
     setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
 
@@ -5545,7 +5579,7 @@ export default function DocTidyInvoiceAudit() {
                     {anySelectedEmailRunning && (
                       <button
                         type="button"
-                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
+                        title={`Abort running parse jobs for ${selectedEmailKeys.size} selected attachment${selectedEmailKeys.size === 1 ? '' : 's'}`}
                         onClick={() => void handleBulkAbortEmails()}
                         disabled={emailBulkAborting}
                         className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
@@ -5559,15 +5593,15 @@ export default function DocTidyInvoiceAudit() {
                       </button>
                     )}
                     {/* Send to Tidy Agent */}
-                    {selectedEmailIds.size > 0 && (
+                    {selectedEmailKeys.size > 0 && (
                       <button
                         type="button"
                         title={
                           !workerOnline
                             ? 'Tidy Agent is offline'
                             : allSelectedEmailsCompleted
-                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
-                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
+                              ? `Rerun Tidy Agent on ${selectedAttachmentKeys.length} already-parsed attachment${selectedAttachmentKeys.length === 1 ? '' : 's'}`
+                              : `Send ${selectedAttachmentKeys.length} selected attachment${selectedAttachmentKeys.length === 1 ? '' : 's'} to Tidy Agent`
                         }
                         onClick={() => void handleBulkSendEmailsToAgent()}
                         disabled={emailBulkSending || workerOnline === false}
@@ -5583,12 +5617,12 @@ export default function DocTidyInvoiceAudit() {
                           </svg>
                         )}
                         {allSelectedEmailsCompleted
-                          ? `Rerun ${selectedEmailIds.size}`
-                          : `Send ${selectedEmailIds.size} to Agent`}
+                          ? `Rerun ${selectedAttachmentKeys.length}`
+                          : `Send ${selectedAttachmentKeys.length} to Agent`}
                       </button>
                     )}
-                    {/* Bulk delete emails */}
-                    {selectedEmailIds.size > 0 && (
+                    {/* Bulk delete emails — shown when any rows are selected; count is unique messages */}
+                    {selectedEmailKeys.size > 0 && (
                       <button
                         type="button"
                         onClick={() => setConfirmBulkDeleteEmails(true)}
@@ -5597,7 +5631,7 @@ export default function DocTidyInvoiceAudit() {
                         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        Delete {selectedEmailIds.size}
+                        Delete {selectedMsgIdsForDelete.size}
                       </button>
                     )}
                     <span className="whitespace-nowrap">Rows per page:</span>
@@ -5758,7 +5792,7 @@ export default function DocTidyInvoiceAudit() {
                         // eslint-disable-next-line react-hooks/refs -- handleSingleAttachmentParse transitively reads a ref (fetchGenRef inside fetchEmails) but only from an async callback, not during render
                         expandedEmailRows.map((row) => {
                           const { msg, attachment, attachmentIndex, parseJob, isFirstInGroup, groupSize, rowKey } = row
-                          const isSelected = selectedEmailIds.has(msg._id)
+                          const isSelected = selectedEmailKeys.has(rowKey)
                           const senderSeed = msg.fromName || msg.from
                           const sendKey = attachmentIndex !== null ? `${msg._id}:${attachmentIndex}` : null
                           const isSending = sendKey !== null && emailSendingKeys.has(sendKey)
@@ -5843,20 +5877,19 @@ export default function DocTidyInvoiceAudit() {
                                       : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
-                              {/* Checkbox — first row gets a full checkbox; continuation rows get a scaled-down
-                                  version so the whole message remains selectable but the UI feels subordinate */}
+                              {/* Checkbox — every row gets its own independent checkbox keyed by rowKey */}
                               <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
-                                {isFirstInGroup ? (
-                                  <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                    aria-label={`Select ${msg.subject || 'message'}`}
-                                    className={emailCheckboxClass} />
-                                ) : (
-                                  <div className="flex items-center justify-center">
-                                    <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                      aria-label={`Select attachment of ${msg.subject || 'message'}`}
-                                      className={`${emailCheckboxClass} scale-[0.72] opacity-25`} />
-                                  </div>
-                                )}
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleEmailKey(rowKey)}
+                                  aria-label={
+                                    attachment
+                                      ? `Select ${attachment.filename}`
+                                      : `Select ${msg.subject || 'message'}`
+                                  }
+                                  className={emailCheckboxClass}
+                                />
                               </td>
 
                               {/* Actions — single-attachment parse button + delete (first row only) */}
@@ -7692,10 +7725,10 @@ export default function DocTidyInvoiceAudit() {
       {/* ── Confirm bulk delete: emails ── */}
       {confirmBulkDeleteEmails && (
         <ConfirmDeleteDialog
-          title={`Delete ${selectedEmailIds.size} selected message${selectedEmailIds.size !== 1 ? 's' : ''}?`}
+          title={`Delete ${selectedMsgIdsForDelete.size} selected message${selectedMsgIdsForDelete.size !== 1 ? 's' : ''}?`}
           description={
             <span className="text-[var(--text-200)]">
-              {selectedEmailIds.size} message{selectedEmailIds.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
+              {selectedMsgIdsForDelete.size} message{selectedMsgIdsForDelete.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
             </span>
           }
           deleting={emailBulkDeleting}
