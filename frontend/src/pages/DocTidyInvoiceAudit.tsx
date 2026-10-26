@@ -5652,85 +5652,79 @@ export default function DocTidyInvoiceAudit() {
                       }
                     </span>
                   )}
-                  {/* Right: stats + bulk actions + rows per page + pagination */}
-                  <div className="ml-auto flex items-center gap-2">
-                    {/* Stats: parsed / total emails */}
-                    {emailPagination.total > 0 && (
-                      <span className="text-[10px] text-[var(--text-200)] whitespace-nowrap">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
-                        <span className="opacity-50">/</span>
-                        <span>{emailPagination.total.toLocaleString()}</span>
-                        {' '}email{emailPagination.total === 1 ? '' : 's'}
-                      </span>
-                    )}
-                    {/* Abort Jobs */}
-                    {anySelectedEmailRunning && (
-                      <button
-                        type="button"
-                        title={`Abort running parse jobs for ${selectedEmailKeys.size} selected attachment${selectedEmailKeys.size === 1 ? '' : 's'}`}
-                        onClick={() => void handleBulkAbortEmails()}
-                        disabled={emailBulkAborting}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
-                      >
-                        {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                  {/* Stats — right side of row 1 */}
+                  {emailPagination.total > 0 && (
+                    <span className="ml-auto text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
+                      <span className="opacity-50">/</span>
+                      <span>{emailPagination.total.toLocaleString()}</span>
+                      {' '}email{emailPagination.total === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {/* Selection action row — only visible when rows are selected */}
+                  {(selectedEmailKeys.size > 0 || anySelectedEmailRunning) && (
+                    <div className="flex w-full items-center gap-2">
+                      {/* Abort Jobs */}
+                      {anySelectedEmailRunning && (
+                        <button
+                          type="button"
+                          title={`Abort running parse jobs for ${selectedEmailKeys.size} selected attachment${selectedEmailKeys.size === 1 ? '' : 's'}`}
+                          onClick={() => void handleBulkAbortEmails()}
+                          disabled={emailBulkAborting}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                        >
+                          {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          Abort Jobs
+                        </button>
+                      )}
+                      {/* Send to Tidy Agent */}
+                      {selectedEmailKeys.size > 0 && (
+                        <button
+                          type="button"
+                          title={
+                            !workerOnline
+                              ? 'Tidy Agent is offline'
+                              : allSelectedEmailsCompleted
+                                ? `Rerun Tidy Agent on ${selectedAttachmentKeys.length} already-parsed attachment${selectedAttachmentKeys.length === 1 ? '' : 's'}`
+                                : `Send ${selectedAttachmentKeys.length} selected attachment${selectedAttachmentKeys.length === 1 ? '' : 's'} to Tidy Agent`
+                          }
+                          onClick={() => void handleBulkSendEmailsToAgent()}
+                          disabled={emailBulkSending || workerOnline === false}
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            allSelectedEmailsCompleted
+                              ? 'bg-amber-500 text-white hover:bg-amber-600'
+                              : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                          }`}
+                        >
+                          {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
+                            <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                            </svg>
+                          )}
+                          {allSelectedEmailsCompleted
+                            ? `Rerun ${selectedAttachmentKeys.length}`
+                            : `Send ${selectedAttachmentKeys.length} to Agent`}
+                        </button>
+                      )}
+                      {/* Bulk delete emails */}
+                      {selectedEmailKeys.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmBulkDeleteEmails(true)}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                        >
                           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        )}
-                        Abort Jobs
-                      </button>
-                    )}
-                    {/* Send to Tidy Agent */}
-                    {selectedEmailKeys.size > 0 && (
-                      <button
-                        type="button"
-                        title={
-                          !workerOnline
-                            ? 'Tidy Agent is offline'
-                            : allSelectedEmailsCompleted
-                              ? `Rerun Tidy Agent on ${selectedAttachmentKeys.length} already-parsed attachment${selectedAttachmentKeys.length === 1 ? '' : 's'}`
-                              : `Send ${selectedAttachmentKeys.length} selected attachment${selectedAttachmentKeys.length === 1 ? '' : 's'} to Tidy Agent`
-                        }
-                        onClick={() => void handleBulkSendEmailsToAgent()}
-                        disabled={emailBulkSending || workerOnline === false}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          allSelectedEmailsCompleted
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
-                        }`}
-                      >
-                        {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
-                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                          </svg>
-                        )}
-                        {allSelectedEmailsCompleted
-                          ? `Rerun ${selectedAttachmentKeys.length}`
-                          : `Send ${selectedAttachmentKeys.length} to Agent`}
-                      </button>
-                    )}
-                    {/* Bulk delete emails — shown when any rows are selected; count is unique messages */}
-                    {selectedEmailKeys.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDeleteEmails(true)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete {selectedMsgIdsForDelete.size}
-                      </button>
-                    )}
-                    <span className="whitespace-nowrap">Rows per page:</span>
-                    <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
-                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {emailPagination.pages > 0 && (
-                      <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
-                    )}
-                  </div>
+                          Delete {selectedMsgIdsForDelete.size}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Table */}
@@ -6164,6 +6158,18 @@ export default function DocTidyInvoiceAudit() {
                   </table>
                 </div>
 
+                {/* Pagination footer */}
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                  <span className="whitespace-nowrap">Rows per page:</span>
+                  <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {emailPagination.pages > 0 && (
+                    <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
+                  )}
+                </div>
+
               </div>
             </div>
           )}
@@ -6248,8 +6254,8 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
-                  {/* Right: stats + bulk actions + rows per page + pagination */}
-                  <div className="ml-auto flex items-center gap-2">
+                  {/* Second row: stats + bulk actions (left) · rows per page + pagination (right) */}
+                  <div className="flex w-full items-center gap-2">
                     {/* Stats: total / parsed / pending */}
                     {pdfImportsPagination.total > 0 && (
                       <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
@@ -6318,14 +6324,6 @@ export default function DocTidyInvoiceAudit() {
                         </svg>
                         Delete {pdfSelectedIds.size}
                       </button>
-                    )}
-                    <span className="whitespace-nowrap">Rows per page:</span>
-                    <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
-                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {pdfImportsPagination.pages > 0 && (
-                      <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
                     )}
                   </div>
                 </div>
@@ -6643,6 +6641,19 @@ export default function DocTidyInvoiceAudit() {
                     </table>
                   )}
                 </div>
+
+                {/* Pagination footer */}
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                  <span className="whitespace-nowrap">Rows per page:</span>
+                  <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {pdfImportsPagination.pages > 0 && (
+                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                  )}
+                </div>
+
               </div>
             </div>
           )}
@@ -7012,8 +7023,8 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   )}
                 </button>
-                {/* Right: row count + bulk delete + rows per page + pagination */}
-                <div className="ml-auto flex items-center gap-2">
+                {/* Second row: stats + bulk actions (left) · rows per page + pagination (right) */}
+                <div className="flex w-full items-center gap-2">
                   {/* Row count / filter count / selection count */}
                   {orderPagination.total > 0 && (
                     <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
@@ -7060,14 +7071,6 @@ export default function DocTidyInvoiceAudit() {
                       </svg>
                       Delete {selectedJobIds.size}
                     </button>
-                  )}
-                  <span className="whitespace-nowrap">Rows per page:</span>
-                  <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                    {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  {orderPagination.pages > 0 && (
-                    <PaginationArrows page={orderPage} pages={orderPagination.pages} onChange={setOrderPage} />
                   )}
                 </div>
               </div>
@@ -7444,6 +7447,18 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Pagination footer */}
+              <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                <span className="whitespace-nowrap">Rows per page:</span>
+                <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {orderPagination.pages > 0 && (
+                  <PaginationArrows page={orderPage} pages={orderPagination.pages} onChange={setOrderPage} />
+                )}
               </div>
 
             </div>
