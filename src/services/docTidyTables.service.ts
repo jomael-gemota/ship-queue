@@ -96,6 +96,16 @@ export function tablesToAgentJson(
     }
 
     const target = titleKey ?? (camelCase(table.title ?? '') || `table${index + 1}`);
+
+    // For batch-file corrections the stored JSON has `{ invoices: [...] }` at the
+    // top level.  Any table whose title doesn't map to an existing top-level key
+    // (e.g. the "Line Items" display supplement) is purely for viewing and must
+    // not be written back — doing so would create a spurious top-level key and
+    // corrupt the invoices structure.
+    if (!titleKey && Array.isArray(base.invoices) && !(target in base)) {
+      return;
+    }
+
     const originalItems = Array.isArray(base[target]) ? (base[target] as unknown[]) : [];
     const templateKeys = [...new Set(originalItems.filter(isObject).flatMap((o) => Object.keys(o)))];
     const byName = table.columns.map((c) => templateKeys.find((k) => norm(k) === norm(c)));
