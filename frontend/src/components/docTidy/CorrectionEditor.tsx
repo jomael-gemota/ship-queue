@@ -434,14 +434,11 @@ function JsonCorrectionEditor({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string | null>(null)
-  /** When false, shows the syntax-highlighted preview; when true, the raw textarea. */
-  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     setDraft(JSON.stringify(original ?? {}, null, 2))
     setError(null)
     setResult(null)
-    setEditing(false)
   }, [jobId, original])
 
   const parsed = useMemo(() => {
@@ -495,51 +492,46 @@ function JsonCorrectionEditor({
 
   return (
     <div className="space-y-3">
-      {/* JSON display / editor */}
+      {/* ── Syntax-highlighted read reference ── */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-xs font-semibold text-[var(--text-100)]">
-            Extracted JSON
-          </span>
-          <div className="flex items-center gap-2">
-            {!editing && (
-              <button
-                type="button"
-                onClick={() => void navigator.clipboard.writeText(draft)}
-                className="cursor-pointer text-[11px] text-[var(--text-200)] hover:text-[var(--text-100)] transition-colors"
-                title="Copy JSON"
-              >
-                Copy
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setEditing((v) => !v)}
-              className="cursor-pointer rounded-md border border-[var(--bg-300)] px-2 py-0.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
-            >
-              {editing ? 'Preview' : 'Edit JSON'}
-            </button>
-          </div>
+          <span className="text-xs font-semibold text-[var(--text-100)]">Extracted JSON</span>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(draft)}
+            className="cursor-pointer rounded-md border border-[var(--bg-300)] px-2 py-0.5 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+          >
+            Copy
+          </button>
         </div>
-
-        {editing ? (
-          <>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              spellCheck={false}
-              rows={16}
-              className="w-full rounded-lg border border-[var(--bg-300)] bg-[#1e1e1e] p-3.5 font-mono text-[11px] leading-5 text-[#d4d4d4] focus:border-[var(--accent-200)] focus:outline-none"
-            />
-            {parsed.error && (
-              <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{parsed.error}</p>
-            )}
-          </>
-        ) : (
+        {/* Compact highlighted view — scrollable, capped height so the editor
+            below stays visible without scrolling the whole modal */}
+        <div className="max-h-52 overflow-auto rounded-lg">
           <JsonHighlight value={draft} />
+        </div>
+      </div>
+
+      {/* ── Editable textarea — always visible for corrections ── */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-[var(--text-100)]">
+          Correct the JSON
+          <span className="ml-1.5 font-normal text-[var(--text-200)]">
+            — edit below, then save your correction.
+          </span>
+        </label>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          spellCheck={false}
+          rows={12}
+          className="w-full rounded-lg border border-[var(--bg-300)] bg-[#1e1e1e] p-3.5 font-mono text-[11px] leading-5 text-[#d4d4d4] focus:border-[var(--accent-200)] focus:outline-none"
+        />
+        {parsed.error && (
+          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{parsed.error}</p>
         )}
       </div>
 
+      {/* ── Note ── */}
       <div>
         <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
           What was wrong?
@@ -556,6 +548,7 @@ function JsonCorrectionEditor({
         />
       </div>
 
+      {/* ── Diff ── */}
       {parsed.value && (
         <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-3">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
