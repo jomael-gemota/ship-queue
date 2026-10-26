@@ -1538,6 +1538,42 @@ export function PdfIcon({ className = '' }: { className?: string }) {
   )
 }
 
+/**
+ * Microsoft Excel file-type icon — green document with the crossed-bar "X"
+ * mark that has been Excel's identity since Office 2013.
+ * Use for .xlsx / .xls attachments.
+ */
+export function ExcelFileIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* Document body — Microsoft Excel green (#107C41) */}
+      <path d="M6 2h7l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#107C41" />
+      {/* Folded top-right corner — darker forest green */}
+      <path d="M13 2l5 5h-5V2z" fill="#075C2E" />
+      {/* Crossed bars — the Excel "X" lettermark */}
+      <path d="M8.5 11L13.5 17M13.5 11L8.5 17" stroke="white" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
+ * CSV file-type icon — teal document with a "CSV" badge.
+ * Use for .csv attachments (no official brand; teal differentiates it
+ * from Excel while remaining in the "spreadsheet" colour family).
+ */
+export function CsvFileIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* Document body — teal */}
+      <path d="M6 2h7l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#0E7490" />
+      {/* Folded corner — darker teal */}
+      <path d="M13 2l5 5h-5V2z" fill="#0A5568" />
+      {/* "CSV" text badge */}
+      <text x="11" y="17" textAnchor="middle" fontSize="5.5" fontWeight="700" fontFamily="Arial, Helvetica, sans-serif" fill="#ffffff">CSV</text>
+    </svg>
+  )
+}
+
 /** Official multi-color Google Drive logo. */
 export function GoogleDriveIcon({ className = '' }: { className?: string }) {
   return (
