@@ -13,7 +13,7 @@ import {
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
-import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
+import { CsvFileIcon, ErrorIcon, ExcelFileIcon, SuccessIcon } from '../components/labels/labelUi'
 import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
@@ -6015,18 +6015,21 @@ export default function DocTidyInvoiceAudit() {
                                     }
                                     const href = att.webViewLink
                                       || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
-                                    const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
+                                    /* File type icon — matches the branded icons used in the Message Details drawer */
+                                    const isExcel = /\.(xlsx|xls)$/i.test(att.filename)
+                                      || att.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      || att.mimeType === 'application/vnd.ms-excel'
+                                    const isCsv = /\.csv$/i.test(att.filename) || att.mimeType === 'text/csv'
 
-                                    /* File type icon — slightly larger than before */
-                                    const fileIcon = isPdf ? (
-                                      <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                        <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                      </svg>
-                                    ) : (
-                                      <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                      </svg>
-                                    )
+                                    const fileIcon = isExcel
+                                      ? <ExcelFileIcon className="h-3.5 w-3.5 shrink-0" />
+                                      : isCsv
+                                        ? <CsvFileIcon className="h-3.5 w-3.5 shrink-0" />
+                                        : (
+                                          <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                            <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                          </svg>
+                                        )
 
                                     return (
                                       <td key="attachments" className={`py-px ${isFirstInGroup ? 'px-3' : 'pl-5 pr-3'} ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
