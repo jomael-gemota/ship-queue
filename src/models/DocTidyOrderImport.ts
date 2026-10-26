@@ -91,6 +91,14 @@ export interface IMatchedInvoice {
   dropshipFee?: string;
   miscCharges?: string;
   totalCost?: string;
+  /**
+   * `'customer'` when the invoice was billed under a sibling order's PO (the
+   * vendor combined several orders from one customer onto one invoice). Absent
+   * means a direct PO # match.
+   */
+  matchedBy?: 'po' | 'customer';
+  /** The PO # printed on the invoice; only set for `matchedBy: 'customer'`. */
+  invoicePo?: string;
   /** When the cache was last written. */
   cachedAt: Date;
 }
@@ -159,6 +167,8 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
         dropshipFee:      { type: String },
         miscCharges:      { type: String },
         totalCost:        { type: String },
+        matchedBy:        { type: String, enum: ['po', 'customer'] },
+        invoicePo:        { type: String },
         cachedAt:         { type: Date, required: true },
       }, { _id: false })],
       default: [],

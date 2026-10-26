@@ -131,7 +131,15 @@ function normSkuForMatch(s: string): string {
 interface InvoiceMatch {
   job: ParseJobListItem
   item: Record<string, unknown> | null
+  /** Set when matched as a combined invoice: the PO # printed on the invoice. */
+  invoicePo?: string
 }
+
+const LINE_ITEM_KEYS = [
+  'line_items', 'items', 'products', 'line items',
+  'lineItems', 'order_items', 'orderItems',
+] as const
+const SKU_KEYS = ['sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'] as const
 
 /**
  * Find **all** parse jobs that match a given order import (PO # + SKU).
@@ -162,10 +170,7 @@ function findAllInvoiceMatches(
     const jobPo = normForMatch(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS))
     if (!jobPo || jobPo !== normPo) continue
 
-    const lineItems = extractJsonArray(json,
-      'line_items', 'items', 'products', 'line items',
-      'lineItems', 'order_items', 'orderItems'
-    )
+    const lineItems = extractJsonArray(json, ...LINE_ITEM_KEYS)
 
     if (lineItems.length === 0) {
       // No line items — PO match alone is sufficient
@@ -180,12 +185,7 @@ function findAllInvoiceMatches(
     }
 
     for (const item of lineItems) {
-      const itemSku = normSkuForMatch(
-        extractJsonField(item,
-          'sku', 'part_number', 'part_no', 'item_code',
-          'product_code', 'sku_number'
-        )
-      )
+      const itemSku = normSkuForMatch(extractJsonField(item, ...SKU_KEYS))
       if (itemSku === normSku) {
         matches.push({ job, item })
         break   // one match per job (same SKU won't appear twice in one invoice)
@@ -193,6 +193,46 @@ function findAllInvoiceMatches(
     }
   }
 
+  return matches
+}
+
+/**
+ * Combined-invoice fallback for an order with no direct PO match.
+ *
+ * Some vendors bill several orders from one customer on a single invoice that
+ * prints only one of the POs. The order matches such an invoice when another
+ * order with the same customer name matched it directly, and the invoice has a
+ * line item with this order's SKU that no direct match already claimed.
+ *
+ * Must stay in step with `cachesForInvoice` in
+ * `src/services/invoiceMatchCache.service.ts`.
+ */
+function findCombinedInvoiceMatches(
+  order: DocTidyOrderImport,
+  jobs: ParseJobListItem[],
+  orders: DocTidyOrderImport[],
+): InvoiceMatch[] {
+  const normSku = normSkuForMatch(order.orderSku)
+  const customer = normForMatch(order.customerName)
+  if (!normSku || !customer) return []
+
+  const matches: InvoiceMatch[] = []
+  for (const job of jobs) {
+    const json = job.jsonOutput ?? null
+    const rawPo = extractJsonField(json, ...PO_NUMBER_FIELD_KEYS)
+    const jobPo = normForMatch(rawPo)
+    if (!jobPo || jobPo === normForMatch(order.poNumber)) continue
+
+    const anchors = orders.filter((o) => normForMatch(o.poNumber) === jobPo)
+    if (!anchors.some((o) => normForMatch(o.customerName) === customer)) continue
+
+    const claimedSkus = new Set(anchors.map((o) => normSkuForMatch(o.orderSku)).filter(Boolean))
+    if (claimedSkus.has(normSku)) continue
+
+    const item = extractJsonArray(json, ...LINE_ITEM_KEYS)
+      .find((li) => normSkuForMatch(extractJsonField(li, ...SKU_KEYS)) === normSku)
+    if (item) matches.push({ job, item, invoicePo: rawPo })
+  }
   return matches
 }
 
@@ -2421,6 +2461,15 @@ function discrepancyCell(
         })}
       </div>
 
+      {inv.combinedInvoicePo && (
+        <div className="border-t border-white/10 bg-amber-500/5 px-3.5 py-2">
+          <p className="text-[10px] leading-relaxed text-amber-400">
+            Combined invoice: billed under PO {inv.combinedInvoicePo}, not this order's PO {order.poNumber}.
+            Matched because the same customer's order is on that invoice.
+          </p>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
         <p className="text-[10px] text-slate-600">
@@ -2435,6 +2484,14 @@ function discrepancyCell(
   // Collect only the badges that need attention (mismatches, pending, or unknown).
   // Matches are intentionally omitted — if nothing is collected the row is clean.
   const badges: React.ReactNode[] = []
+
+  if (inv.combinedInvoicePo)
+    badges.push(
+      <span key="po" title={`Billed under PO ${inv.combinedInvoicePo}`}
+        className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+        ⇄ PO
+      </span>
+    )
 
   // SKU: flag when order has a SKU but the invoice either returned a different
   // one or didn't extract one at all.
@@ -2554,6 +2611,8 @@ function resolveInvoiceFields(
     miscCharges: string
     totalCost: string
     jobId?: string
+    /** Non-empty only for combined-invoice matches. */
+    invoicePo: string
   }
 
   let perInvoice: PerInvoice[] = []
@@ -2574,6 +2633,7 @@ function resolveInvoiceFields(
       miscCharges:     c.miscCharges     ?? '',
       totalCost:       c.totalCost       ?? '',
       jobId:           c.jobId,
+      invoicePo:       c.matchedBy === 'customer' ? (c.invoicePo ?? '') : '',
     }))
   } else if (order.matchedInvoice) {
     // Backward compat: legacy singular cache
@@ -2592,6 +2652,7 @@ function resolveInvoiceFields(
       miscCharges:     c.miscCharges     ?? '',
       totalCost:       c.totalCost       ?? '',
       jobId:           c.jobId,
+      invoicePo:       '',
     }]
   } else if (matches.length > 0) {
     // Client-side fallback (no server cache yet)
@@ -2612,6 +2673,7 @@ function resolveInvoiceFields(
         miscCharges:     liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous'),
         totalCost:       liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
         jobId:           String(m.job._id),
+        invoicePo:       m.invoicePo ?? '',
       }
     })
   }
@@ -2633,6 +2695,7 @@ function resolveInvoiceFields(
       dropshipFee:     '',
       miscCharges:     '',
       totalCost:       '',
+      combinedInvoicePo: '',
     }
   }
 
@@ -2661,6 +2724,8 @@ function resolveInvoiceFields(
     dropshipFee:     sumNumericStrings(perInvoice.map((p) => p.dropshipFee)),
     miscCharges:     sumNumericStrings(perInvoice.map((p) => p.miscCharges)),
     totalCost:       sumNumericStrings(perInvoice.map((p) => p.totalCost)),
+    /** PO #(s) printed on invoices this order was matched to as a combined invoice. */
+    combinedInvoicePo: [...new Set(perInvoice.map((p) => p.invoicePo).filter(Boolean))].join(', '),
   }
 }
 
@@ -2738,6 +2803,7 @@ function auditColStr(
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
+      if (inv.combinedInvoicePo) issues.push(`⇄ PO ${inv.combinedInvoicePo}`)
       // SKU: missing invoice SKU for an order that has one counts as mismatch.
       if (order.orderSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
       // Qty: same.
@@ -4429,7 +4495,8 @@ export default function DocTidyInvoiceAudit() {
   const invoiceMatchMap = useMemo<Map<string, InvoiceMatch[]>>(() => {
     const map = new Map<string, InvoiceMatch[]>()
     for (const order of orderImports) {
-      map.set(order._id, findAllInvoiceMatches(order, invoiceJobs))
+      const direct = findAllInvoiceMatches(order, invoiceJobs)
+      map.set(order._id, direct.length > 0 ? direct : findCombinedInvoiceMatches(order, invoiceJobs, orderImports))
     }
     return map
   }, [orderImports, invoiceJobs])

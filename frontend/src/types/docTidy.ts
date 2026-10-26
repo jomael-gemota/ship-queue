@@ -988,6 +988,10 @@ export interface MatchedInvoiceCache {
   dropshipFee?: string
   miscCharges?: string
   totalCost?: string
+  /** `'customer'` = billed under a sibling order's PO; absent = direct PO match. */
+  matchedBy?: 'po' | 'customer'
+  /** PO # printed on the invoice; only set when `matchedBy === 'customer'`. */
+  invoicePo?: string
   cachedAt: string
 }
 

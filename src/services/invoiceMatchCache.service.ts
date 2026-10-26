@@ -159,7 +159,9 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
   if (!workspaceId) return 0;
 
   // Fetch every order import once and filter in JS so we can reuse `norm()`.
-  const candidates = await DocTidyOrderImport.find({ workspaceId }).select('_id poNumber orderSku').lean();
+  const candidates = await DocTidyOrderImport.find({ workspaceId })
+    .select('_id poNumber orderSku customerName matchedInvoices.jobId matchedInvoices.matchedBy')
+    .lean();
 
   const matched = invoices.flatMap((inv) =>
     cachesForInvoice(inv, job._id as Types.ObjectId, job.driveFileId ?? undefined, candidates)
@@ -177,12 +179,23 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
 
   // Step 1: remove any prior entries for this job (idempotent re-parse support).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pullOps: any[] = [...byOrder.values()].map(({ id }) => ({
-    updateOne: {
-      filter: { _id: id },
-      update: { $pull: { matchedInvoices: { jobId: job._id } } },
+  const pullOps: any[] = [...byOrder.values()].flatMap(({ id, caches }) => [
+    {
+      updateOne: {
+        filter: { _id: id },
+        update: { $pull: { matchedInvoices: { jobId: job._id } } },
+      },
     },
-  }));
+    // A direct PO match supersedes combined-invoice matches from other jobs.
+    ...(caches.some((c) => c.matchedBy !== 'customer')
+      ? [{
+          updateOne: {
+            filter: { _id: id },
+            update: { $pull: { matchedInvoices: { matchedBy: 'customer' } } },
+          },
+        }]
+      : []),
+  ]);
   await DocTidyOrderImport.bulkWrite(pullOps);
 
   // Step 2: append the fresh cache entries for this job.
@@ -208,14 +221,38 @@ function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown
   return invoices.length > 0 ? invoices : [json];
 }
 
-/** Cache entries for every order import matching one invoice by PO # (and SKU when present). */
+const SKU_KEYS = ['sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'];
+
+type MatchCandidate = {
+  _id: unknown;
+  poNumber?: string;
+  orderSku?: string;
+  customerName?: string;
+  matchedInvoices?: { jobId?: unknown; matchedBy?: string }[];
+};
+
+/**
+ * Cache entries for every order import matching one invoice.
+ *
+ * Direct matches: PO # equal (and SKU, when both sides have line-level data).
+ *
+ * Combined-invoice matches: some vendors bill several orders from the same
+ * customer on one invoice that prints only one of the POs. An order whose PO
+ * is not on the invoice still matches when all of these hold:
+ *  - another order with the same customer name matched this invoice directly,
+ *  - one of the invoice's line items has this order's SKU and was not already
+ *    claimed by a direct match,
+ *  - the order has no direct match from another invoice.
+ * Those entries are tagged `matchedBy: 'customer'` so the UI can flag them.
+ */
 function cachesForInvoice(
   json: Record<string, unknown>,
   jobId: Types.ObjectId,
   driveFileId: string | undefined,
-  candidates: { _id: unknown; poNumber?: string; orderSku?: string }[],
+  candidates: MatchCandidate[],
 ): { id: Types.ObjectId; cache: IMatchedInvoice }[] {
-  const jobPo = norm(extractField(json, ...PO_NUMBER_KEYS));
+  const rawPo = extractField(json, ...PO_NUMBER_KEYS);
+  const jobPo = norm(rawPo);
 
   // Extract document-level fields (same for every matched order from this invoice).
   const invoiceDate   = extractField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date');
@@ -230,50 +267,68 @@ function cachesForInvoice(
   );
 
   const matchedIds: { id: Types.ObjectId; cache: IMatchedInvoice }[] = [];
+  const claimedItems = new Set<Record<string, unknown>>();
+  const anchorCustomers = new Set<string>();
+
+  const buildCache = (
+    li: Record<string, unknown> | null,
+    combined: boolean,
+  ): IMatchedInvoice => ({
+    jobId,
+    driveFileId,
+    invoiceDate,
+    invoiceNumber,
+    terms,
+    ...(combined ? { matchedBy: 'customer' as const, invoicePo: rawPo } : {}),
+    invoiceSku:   li ? extractField(li, ...SKU_KEYS) : undefined,
+    itemCost:     li ? extractField(li, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price') : undefined,
+    invoiceQty:   li ? extractField(li, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty') : undefined,
+    discountedPrice: li ? extractField(li, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price') : undefined,
+    discountPct:  li ? extractField(li, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc') : undefined,
+    dropshipFee:  (li ? extractField(li, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') : '') || docDropship || undefined,
+    miscCharges:  (li ? extractField(li, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') : '') || docMisc || undefined,
+    totalCost:    (li ? extractField(li, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') : '') || docTotal || undefined,
+    cachedAt: new Date(),
+  });
+
+  const findItem = (normSku: string, skipClaimed: boolean) =>
+    lineItems.find(
+      (item) => (!skipClaimed || !claimedItems.has(item)) && norm(extractField(item, ...SKU_KEYS)) === normSku
+    ) ?? null;
 
   for (const order of candidates) {
     if (norm(order.poNumber) !== jobPo) continue;
 
-    // Find the line item whose SKU matches this order's SKU.
     const normSku = norm(order.orderSku);
     let matchedItem: Record<string, unknown> | null = null;
 
     if (lineItems.length > 0 && normSku) {
-      for (const item of lineItems) {
-        const itemSku = norm(
-          extractField(item as Record<string, unknown>,
-            'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'
-          )
-        );
-        if (itemSku === normSku) {
-          matchedItem = item as Record<string, unknown>;
-          break;
-        }
-      }
+      matchedItem = findItem(normSku, false);
       // If we have line items but none matched this SKU, skip (PO alone isn't enough).
       if (!matchedItem) continue;
+      claimedItems.add(matchedItem);
     }
 
-    const li = matchedItem;
+    const customer = norm(order.customerName);
+    if (customer) anchorCustomers.add(customer);
+    matchedIds.push({ id: order._id as Types.ObjectId, cache: buildCache(matchedItem, false) });
+  }
 
-    const cache: IMatchedInvoice = {
-      jobId,
-      driveFileId,
-      invoiceDate,
-      invoiceNumber,
-      terms,
-      invoiceSku:   li ? extractField(li, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number') : undefined,
-      itemCost:     li ? extractField(li, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price') : undefined,
-      invoiceQty:   li ? extractField(li, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty') : undefined,
-      discountedPrice: li ? extractField(li, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price') : undefined,
-      discountPct:  li ? extractField(li, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc') : undefined,
-      dropshipFee:  (li ? extractField(li, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') : '') || docDropship || undefined,
-      miscCharges:  (li ? extractField(li, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') : '') || docMisc || undefined,
-      totalCost:    (li ? extractField(li, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') : '') || docTotal || undefined,
-      cachedAt: new Date(),
-    };
+  if (lineItems.length === 0 || anchorCustomers.size === 0) return matchedIds;
 
-    matchedIds.push({ id: order._id as Types.ObjectId, cache });
+  for (const order of candidates) {
+    if (norm(order.poNumber) === jobPo) continue;
+    const normSku = norm(order.orderSku);
+    if (!normSku || !anchorCustomers.has(norm(order.customerName))) continue;
+    const hasDirectMatchElsewhere = (order.matchedInvoices ?? []).some(
+      (m) => m.matchedBy !== 'customer' && String(m.jobId) !== String(jobId)
+    );
+    if (hasDirectMatchElsewhere) continue;
+
+    const item = findItem(normSku, true);
+    if (!item) continue;
+    claimedItems.add(item);
+    matchedIds.push({ id: order._id as Types.ObjectId, cache: buildCache(item, true) });
   }
 
   return matchedIds;
