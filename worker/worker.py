@@ -52,6 +52,7 @@ from sku import (
     detect_vendor_name_from_text,
     extract_vendor_name,
     find_line_items,
+    resolve_job_workspace_id,
     resolve_vendor,
 )
 from tidy_agent import TokenType, extract_json, generate_table_data, stream_tidy
@@ -347,7 +348,12 @@ async def process_job(
         # can be scoped to this vendor (extraction — and thus the extracted
         # vendorName — hasn't happened yet). Unknown vendors fall back to a
         # global similarity search inside retrieve_examples.
-        detected_vendor = await detect_vendor_name_from_text(db, document_text)
+        # Vendors are registered per workspace, so a vendor registered elsewhere
+        # must not count as registered here.
+        workspace_id = await resolve_job_workspace_id(db, job)
+        detected_vendor = await detect_vendor_name_from_text(
+            db, document_text, workspace_id
+        )
 
         # If the detected vendor is registered, pull its setup-time sample SKU(s)
         # so Tidy can reproduce that vendor's SKU format(s) from the very first
@@ -355,7 +361,9 @@ async def process_job(
         # design-log 2026-06-26-multiple-vendor-sku-samples.md). A vendor may have
         # several samples; legacy single `skuSample` is merged in for compat.
         detected_vendor_doc = (
-            await resolve_vendor(db, detected_vendor) if detected_vendor else None
+            await resolve_vendor(db, detected_vendor, workspace_id)
+            if detected_vendor
+            else None
         )
         vendor_sku_samples: list[str] = []
         if detected_vendor_doc:
@@ -512,7 +520,7 @@ async def process_job(
                 if not candidate:
                     continue
                 fallback_name = fallback_name or candidate
-                resolved = await resolve_vendor(db, candidate)
+                resolved = await resolve_vendor(db, candidate, workspace_id)
                 if resolved:
                     vendor = resolved
                     break
