@@ -2294,7 +2294,17 @@ function discrepancyCell(
     if (order.dcCogs == null)
       return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: dash, status: null, pending: true }
     if (!dcCogs)
-      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: effectiveCostRaw || dash, status: undefined, noData: true }
+      // DC COGS was fetched but not found for this SKU ('n/a'). When the
+      // invoice already has an item cost, flag it as a mismatch so the user
+      // notices there is nothing to validate against. If neither side has a
+      // cost, leave it as noData (nothing to compare).
+      return {
+        key: 'cogs', label: 'COGS',
+        orderVal: dash,
+        invoiceVal: effectiveCostRaw || dash,
+        status: effectiveCostRaw ? false : undefined,
+        noData: !effectiveCostRaw,
+      }
     return {
       key: 'cogs', label: 'COGS',
       orderVal: dcCogs,
@@ -2308,15 +2318,18 @@ function discrepancyCell(
       key: 'sku', label: 'SKU',
       orderVal: order.orderSku || dash,
       invoiceVal: invoiceSku || dash,
-      status: invoiceSku ? skuMatch : undefined,
-      noData: !invoiceSku,
+      // If the invoice matched but extracted no SKU for this order line, treat
+      // it as a mismatch so the user notices a gap rather than seeing "All good".
+      status: invoiceSku ? skuMatch : (order.orderSku ? false : undefined),
+      noData: !invoiceSku && !order.orderSku,
     },
     {
       key: 'qty', label: 'Qty',
       orderVal: order.orderQty || dash,
       invoiceVal: invoiceQtyRaw || dash,
-      status: invoiceQtyRaw ? qtyMatch : undefined,
-      noData: !invoiceQtyRaw,
+      // Same: missing invoice qty when the order specifies one = mismatch.
+      status: invoiceQtyRaw ? qtyMatch : (order.orderQty ? false : undefined),
+      noData: !invoiceQtyRaw && !order.orderQty,
     },
     cogsRow,
   ]
@@ -2424,14 +2437,17 @@ function discrepancyCell(
   // Matches are intentionally omitted — if nothing is collected the row is clean.
   const badges: React.ReactNode[] = []
 
-  if (invoiceSku && !skuMatch)
+  // SKU: flag when order has a SKU but the invoice either returned a different
+  // one or didn't extract one at all.
+  if (order.orderSku && !skuMatch)
     badges.push(
       <span key="sku" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ SKU
       </span>
     )
 
-  if (invoiceQtyRaw && !qtyMatch)
+  // Qty: same logic — missing invoice qty for an order that has one = mismatch.
+  if (order.orderQty && !qtyMatch)
     badges.push(
       <span key="qty" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ Qty
@@ -2444,7 +2460,9 @@ function discrepancyCell(
         COGS…
       </span>
     )
-  else if (cogsMatch === false)
+  else if (cogsMatch === false || (!dcCogs && effectiveCostRaw))
+    // ✗ COGS covers both: values differ, OR DC COGS unavailable but invoice
+    // has an item cost (nothing to validate against = actionable gap).
     badges.push(
       <span key="cogs" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ COGS
@@ -2721,8 +2739,10 @@ function auditColStr(
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
-      if (inv.invoiceSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
-      if (inv.invoiceQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
+      // SKU: missing invoice SKU for an order that has one counts as mismatch.
+      if (order.orderSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
+      // Qty: same.
+      if (order.orderQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
       if (order.dcCogs == null) {
         issues.push('COGS pending')
       } else {
@@ -2733,6 +2753,9 @@ function auditColStr(
           const costNum = parseFloat(effectiveCost.replace(/[^0-9.-]/g, ''))
           const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
           if (!isNaN(costNum) && !isNaN(cogsNum) && Math.abs(costNum - cogsNum) >= 0.005) issues.push('✗ COGS')
+        } else if (!dcCogs && effectiveCost) {
+          // Invoice has a cost but DC COGS was not found for this SKU — flag it.
+          issues.push('✗ COGS')
         }
       }
       return issues.length === 0 ? 'All good' : issues.join(', ')
