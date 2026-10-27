@@ -4,7 +4,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import DocTidyOrderImport, { IDocTidyOrderImport } from '../models/DocTidyOrderImport';
-import { populateCogsForBatch, populateCogsForWorkspace, forceRefreshCogsForWorkspace } from '../services/dcCogs.service';
+import { syncDcCogs, countRowsNeedingCogs, getDcCogsHistory, normSku } from '../services/dcCogs.service';
 import { rebuildMatchCacheForWorkspace } from '../services/invoiceMatchCache.service';
 
 /* ── multer — memory storage; parsing happens in this controller ── */
@@ -194,8 +194,10 @@ export const listOrderImports = async (req: Request, res: Response): Promise<voi
       DocTidyOrderImport.countDocuments(filter),
     ]);
 
+    const history = await getDcCogsHistory(data.map((r) => r.orderSku));
+
     res.json({
-      data,
+      data: data.map((r) => ({ ...r, dcCogsHistory: r.orderSku ? history.get(normSku(r.orderSku)) ?? [] : [] })),
       pagination: {
         page: pg,
         pageSize: size,
@@ -275,16 +277,14 @@ export const uploadOrderImports = async (req: Request, res: Response): Promise<v
       count: created.length,
     });
 
-    // Fire-and-forget: populate DC COGS for the new batch in the background.
-    // This does NOT block the response — the frontend can re-fetch order
-    // imports after a moment to pick up the populated values.
-    void populateCogsForBatch(importBatchId);
+    // Fire-and-forget: the sync broadcasts `dc_cogs` once the new rows have costs.
+    void syncDcCogs();
   } catch (error) {
     fail(res, error, 'Failed to upload order imports');
   }
 };
 
-/* ── Re-trigger DC COGS lookup for all pending / previously-failed rows in a workspace ── */
+/* ── Re-sync DC COGS (all SKUs; the count reports this workspace's rows still without a cost) ── */
 export const refreshCogsForWorkspace = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId } = req.params;
@@ -293,17 +293,10 @@ export const refreshCogsForWorkspace = async (req: Request, res: Response): Prom
       return;
     }
 
-    // Count both truly-pending (null) and previously-failed ('n/a') rows so the
-    // caller sees how many will be attempted.  forceRefreshCogsForWorkspace resets
-    // 'n/a' rows back to null before running the population pass, ensuring rows
-    // that failed due to a case-mismatch or missing credentials are retried.
-    const pendingCount = await DocTidyOrderImport.countDocuments({
-      workspaceId,
-      dcCogs: { $in: [null, 'n/a'] },
-    });
+    const pendingCount = await countRowsNeedingCogs(workspaceId);
 
     // Fire-and-forget — response returns immediately with the count of rows queued.
-    void forceRefreshCogsForWorkspace(workspaceId);
+    void syncDcCogs();
 
     res.json({ queued: pendingCount });
   } catch (error) {

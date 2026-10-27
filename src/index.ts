@@ -24,6 +24,7 @@ import { seedHhB2bConfig } from './models/HHB2bConfig';
 import { seedBulkOrderConfig } from './models/BulkOrderConfig';
 import { seedModelPrices } from './models/DocTidyModelPrice';
 import { startTrueUpScheduler } from './services/docTidyTrueUp.service';
+import { startDcCogsRetryScheduler } from './services/dcCogs.service';
 import { repairHhB2bReferenceNumbers } from './services/hhCartDraft';
 
 const app = express();
@@ -118,6 +119,7 @@ const start = async () => {
   startHhB2bHealthScheduler();
   startBulkOrderHealthScheduler();
   startTrueUpScheduler();
+  startDcCogsRetryScheduler();
 };
 
 start();
