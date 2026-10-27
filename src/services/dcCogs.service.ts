@@ -1,8 +1,9 @@
 /**
- * DC Cost of Goods Sold — Channel Precision bt_costs API
+ * DC Cost of Goods Sold — Channel Precision pf/lookup/items API
  *
- * Thin wrapper around the same API used by the sm-tool btcostWorker.
- * Credentials are read from environment variables so they stay out of source.
+ * Looks up every order SKU in one exact-match batch request and keeps stored
+ * costs in sync with Data Central, recording each change in
+ * DocTidyDcCogsHistory. See design-log/2026-10-28-dc-cogs-batch-lookup-and-history.md.
  *
  * Required env vars:
  *   CHANNEL_PRECISION_API_KEY     — the Authorization header value
@@ -10,34 +11,28 @@
  */
 import axios from 'axios';
 import DocTidyOrderImport from '../models/DocTidyOrderImport';
+import DocTidyDcCogsHistory, { type IDocTidyDcCogsHistory } from '../models/DocTidyDcCogsHistory';
 import { broadcast } from './docTidyEvents';
 
 const API_KEY   = process.env.CHANNEL_PRECISION_API_KEY   ?? '';
 const CLIENT_ID = process.env.CHANNEL_PRECISION_CLIENT_ID ?? '';
-const BASE_URL  = 'https://api.dc.app.channelprecision.com/v1';
+const LOOKUP_URL = 'https://api.dc.app.channelprecision.com/v1/pf/lookup/items';
 
-/** `s` is a fuzzy search over ~2M cost rows and is routinely slow. */
-const REQUEST_TIMEOUT_MS = 30_000;
+/** The endpoint rejects more than 1000 item_ids per request. */
+const LOOKUP_CHUNK = 1000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
-/** A SKU recorded as not found ('n/a') is looked up again after this long. */
-const NOT_FOUND_RETRY_MS = 3 * 60 * 1000;
+/** How often the background scheduler re-syncs every SKU. */
+const SYNC_EVERY_MS = 3 * 60 * 1000;
 
-/** How often the background scheduler retries rows still missing a cost. */
-const RETRY_EVERY_MS = 3 * 60 * 1000;
+/** Entries attached to each order-import row in list responses. */
+const HISTORY_LIMIT = 20;
 
-/** Shape of one item returned by the bt_costs endpoint. */
-interface BtCostItem {
-  sku: string;
-  cost: number | string;
+interface PfLookupItem {
+  sku?: string | null;
+  cost?: number | string | null;
   /** Note: field is deliberately misspelled `mspr` in the upstream API. */
-  mspr?: number | string;
-  brand?: { secondary_brand_name?: string };
-  updated?: string;
-}
-
-interface BtCostResponse {
-  total: number;
-  items: BtCostItem[];
+  mspr?: number | string | null;
 }
 
 export interface CostResult {
@@ -45,228 +40,199 @@ export interface CostResult {
   msrp: string;
 }
 
-/**
- * `not_found` is a definitive answer from the API; `error` (timeout, 5xx, bad
- * credentials) says nothing about the SKU and must not be recorded as 'n/a'.
- */
-export type CogsLookup =
-  | { status: 'found'; result: CostResult }
-  | { status: 'not_found' }
-  | { status: 'error'; message: string };
-
-/** Fetch the most-recently-updated DC cost for a given SKU. */
-export async function fetchDcCogs(sku: string): Promise<CogsLookup> {
-  if (!sku?.trim()) return { status: 'not_found' };
-
-  try {
-    const res = await axios.get<BtCostResponse>(`${BASE_URL}/bt_costs`, {
-      params: { limit: 50, page: 1, s: sku.trim() },
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        'accept-language': 'en-US,en;q=0.9',
-        authorization: API_KEY,
-        'x-ps-client-id': CLIENT_ID,
-        Referer: 'https://dc.channelprecision.com/',
-      },
-      timeout: REQUEST_TIMEOUT_MS,
-    });
-
-    const data = res.data;
-    if (!data || data.total === 0 || !Array.isArray(data.items)) return { status: 'not_found' };
-
-    // Normalise both sides before comparing so "ABC-123" and "abc-123" are
-    // treated as the same SKU.  The upstream `s` search parameter is fuzzy,
-    // so the response may contain SKUs that differ only in case or whitespace.
-    const skuNorm = sku.trim().toUpperCase();
-    const matching = data.items.filter(
-      (item) => typeof item.sku === 'string' && item.sku.trim().toUpperCase() === skuNorm,
-    );
-    if (matching.length === 0) return { status: 'not_found' };
-
-    // Pick the most recently updated entry (mirrors btcostWorker's sort logic).
-    const sorted = [...matching].sort((a: BtCostItem, b: BtCostItem) => {
-      const aDate = a.updated ? new Date(a.updated).getTime() : 0;
-      const bDate = b.updated ? new Date(b.updated).getTime() : 0;
-      return bDate - aDate;
-    });
-
-    const item = sorted[0];
-    if (item.cost == null || item.cost === '') return { status: 'not_found' };
-    return {
-      status: 'found',
-      result: { cost: String(item.cost), msrp: item.mspr != null ? String(item.mspr) : '' },
-    };
-  } catch (err) {
-    return { status: 'error', message: (err as Error).message };
-  }
+export function normSku(sku: string): string {
+  return sku.trim().toUpperCase();
 }
 
-/** Rows that still need a cost: never fetched, or not found long enough ago to retry. */
-function needsCogsClause(): Record<string, unknown> {
-  return {
-    $or: [
-      { dcCogs: null },
-      { dcCogs: 'n/a', $or: [{ dcCogsAt: null }, { dcCogsAt: { $lt: new Date(Date.now() - NOT_FOUND_RETRY_MS) } }] },
-    ],
-  };
+function sameCost(a: string | null | undefined, b: string): boolean {
+  return a != null && a !== '' && Number(a) === Number(b);
 }
 
-/** Scopes currently being populated, so overlapping triggers do not stack API calls. */
-const running = new Set<string>();
-
 /**
- * Fills DC COGS for rows in `scope` that need one. Rows that already hold a
- * cost are never touched. SKUs whose cost is already stored on any row are
- * filled from that row instead of calling the API; the rest are looked up 5 at
- * a time. A failed lookup leaves the row as it was so it is retried later.
- *
- * Resolves `true` when the pass stopped because the DC API is unavailable.
+ * Live DC costs for `skus`, keyed by normSku. SKUs DC does not know are absent.
+ * Throws when a request fails, so callers can tell "not found" from "unknown".
  */
-async function _populateCogs(scopeKey: string, scope: Record<string, unknown>): Promise<boolean> {
-  if (!API_KEY || !CLIENT_ID) {
-    console.warn('[dcCogs] Skipping COGS population — CHANNEL_PRECISION_API_KEY or CHANNEL_PRECISION_CLIENT_ID is not configured.');
-    return false;
-  }
-  if (running.has(scopeKey)) return false;
-  running.add(scopeKey);
-
-  let apiUnavailable = false;
-  try {
-    const records = await DocTidyOrderImport.find({ ...scope, ...needsCogsClause() })
-      .select('orderSku workspaceId')
-      .lean();
-    if (records.length === 0) return false;
-
-    const uniqueSkus = [...new Set(records.map((r) => r.orderSku).filter(Boolean))];
-    const lookups = new Map<string, CogsLookup>();
-
-    const known = await DocTidyOrderImport.find({
-      orderSku: { $in: uniqueSkus },
-      dcCogs: { $nin: [null, 'n/a'] },
-    })
-      .sort({ dcCogsAt: -1 })
-      .select('orderSku dcCogs dcMsrp')
-      .lean();
-    for (const row of known) {
-      if (!lookups.has(row.orderSku) && row.dcCogs) {
-        lookups.set(row.orderSku, { status: 'found', result: { cost: row.dcCogs, msrp: row.dcMsrp ?? '' } });
-      }
-    }
-
-    const toFetch = uniqueSkus.filter((sku) => !lookups.has(sku));
-    const BATCH_SIZE = 5;
-    let errors = 0;
-    for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
-      const batch = toFetch.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(batch.map((sku) => fetchDcCogs(sku)));
-      batch.forEach((sku, idx) => lookups.set(sku, results[idx]));
-
-      const batchErrors = results.filter((r) => r.status === 'error');
-      errors += batchErrors.length;
-      // A whole batch failing means the API is down or timing out; the
-      // remaining SKUs would only fail the same way.
-      if (batchErrors.length === batch.length) {
-        apiUnavailable = true;
-        console.warn(
-          `[dcCogs] DC API unavailable (${(batchErrors[0] as { message: string }).message}); ` +
-          `${toFetch.length - i - batch.length} SKU(s) left pending for the next run.`
-        );
-        break;
-      }
-
-      if (i + BATCH_SIZE < toFetch.length) {
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    }
-    if (errors > 0) console.warn(`[dcCogs] ${errors} lookup(s) failed and were left pending.`);
-
-    const now = new Date();
-    const bulkOps = [...lookups.entries()].flatMap(([sku, lookup]) => {
-      if (lookup.status === 'error') return [];
-      return [{
-        updateMany: {
-          // The dcCogs guard ensures a stored cost is never overwritten.
-          filter: { ...scope, orderSku: sku, dcCogs: { $in: [null, 'n/a'] } } as Record<string, unknown>,
-          update: {
-            $set: lookup.status === 'found'
-              ? { dcCogs: lookup.result.cost, dcMsrp: lookup.result.msrp, dcCogsAt: now }
-              : { dcCogs: 'n/a', dcMsrp: '', dcCogsAt: now },
-          },
+export async function lookupDcCogs(skus: string[]): Promise<Map<string, CostResult>> {
+  const costs = new Map<string, CostResult>();
+  for (let i = 0; i < skus.length; i += LOOKUP_CHUNK) {
+    const res = await axios.post<{ items?: PfLookupItem[] }>(
+      LOOKUP_URL,
+      { item_type: 'SKU', domain: 'amazon.com', use_cache: false, item_ids: skus.slice(i, i + LOOKUP_CHUNK) },
+      {
+        headers: {
+          accept: 'application/json',
+          authorization: API_KEY,
+          'x-ps-client-id': CLIENT_ID,
+          Referer: 'https://dc.channelprecision.com/',
         },
-      }];
-    });
-
-    if (bulkOps.length > 0) {
-      await DocTidyOrderImport.bulkWrite(bulkOps);
-      for (const workspaceId of new Set(records.map((r) => String(r.workspaceId)))) {
-        broadcast({ type: 'dc_cogs', workspaceId });
+        timeout: REQUEST_TIMEOUT_MS,
+      },
+    );
+    // A SKU listed under several ASINs comes back once per ASIN; keep the first with a cost.
+    for (const item of res.data.items ?? []) {
+      if (typeof item.sku !== 'string' || item.cost == null || item.cost === '') continue;
+      const key = normSku(item.sku);
+      if (!costs.has(key)) {
+        costs.set(key, { cost: String(item.cost), msrp: item.mspr != null ? String(item.mspr) : '' });
       }
     }
-  } finally {
-    running.delete(scopeKey);
   }
-  return apiUnavailable;
+  return costs;
 }
+
+let syncing = false;
+let syncQueued = false;
 
 /**
- * Populate DC COGS for every record in an import batch that does not yet have
- * a value.  Runs in the background (fire-and-forget); callers should NOT await
- * this unless they explicitly want to block on it.
+ * Brings every order-import row's DC COGS in line with Data Central:
+ * missing costs are filled, changed costs are updated and recorded in history,
+ * and SKUs DC does not know are marked 'n/a' only if they have no cost yet.
+ * A failed lookup writes nothing, so a stored cost never disappears.
+ *
+ * Only one sync runs at a time; a call made during a sync queues one more.
  */
-export async function populateCogsForBatch(importBatchId: string): Promise<void> {
-  try {
-    await _populateCogs(`batch:${importBatchId}`, { importBatchId });
-  } catch (err) {
-    console.error('[dcCogs] Background population failed (batch):', err);
-  }
-}
-
-/**
- * Populate DC COGS for every record in a workspace that has never been fetched,
- * or was not found more than NOT_FOUND_RETRY_MS ago. Rows with a cost are left
- * alone. Runs in the background (fire-and-forget).
- */
-export async function populateCogsForWorkspace(workspaceId: string): Promise<void> {
-  try {
-    await _populateCogs(`workspace:${workspaceId}`, { workspaceId });
-  } catch (err) {
-    console.error('[dcCogs] Background population failed (workspace):', err);
-  }
-}
-
-/** Number of rows in a workspace that the next population pass would look up. */
-export async function countRowsNeedingCogs(workspaceId: string): Promise<number> {
-  return DocTidyOrderImport.countDocuments({ workspaceId, ...needsCogsClause() });
-}
-
-let retryTicking = false;
-
-/** One scheduler pass: populate every workspace that has rows missing a cost. */
-async function retryTick(): Promise<void> {
-  if (retryTicking) return;
-  retryTicking = true;
-  try {
-    const workspaceIds = await DocTidyOrderImport.distinct('workspaceId', needsCogsClause());
-    for (const workspaceId of workspaceIds) {
-      // Other workspaces would hit the same outage; wait for the next tick.
-      if (await _populateCogs(`workspace:${workspaceId}`, { workspaceId })) break;
-    }
-  } catch (err) {
-    console.error('[dcCogs] Scheduled retry failed:', err);
-  } finally {
-    retryTicking = false;
-  }
-}
-
-/**
- * Retries rows still missing a DC COGS every RETRY_EVERY_MS, so costs appear in
- * the Invoice Audit table without anyone having to reopen it.
- */
-export function startDcCogsRetryScheduler(): void {
+export async function syncDcCogs(): Promise<void> {
   if (!API_KEY || !CLIENT_ID) {
-    console.warn('[dcCogs] Retry scheduler not started — Channel Precision credentials are not configured.');
+    console.warn('[dcCogs] Skipping COGS sync — CHANNEL_PRECISION_API_KEY or CHANNEL_PRECISION_CLIENT_ID is not configured.');
     return;
   }
-  setInterval(() => void retryTick(), RETRY_EVERY_MS).unref();
-  console.log(`[dcCogs] Retrying missing DC COGS every ${Math.round(RETRY_EVERY_MS / 1000)}s`);
+  if (syncing) {
+    syncQueued = true;
+    return;
+  }
+  syncing = true;
+  try {
+    do {
+      syncQueued = false;
+      await syncOnce();
+    } while (syncQueued);
+  } catch (err) {
+    console.error('[dcCogs] Sync failed; stored costs left unchanged:', (err as Error).message);
+  } finally {
+    syncing = false;
+  }
+}
+
+async function syncOnce(): Promise<void> {
+  const records = await DocTidyOrderImport.find({ orderSku: { $nin: ['', null] } })
+    .select('orderSku dcCogs dcMsrp dcCogsAt workspaceId')
+    .lean();
+  if (records.length === 0) return;
+
+  const bySku = new Map<string, typeof records>();
+  for (const r of records) {
+    const key = normSku(r.orderSku);
+    if (!key) continue;
+    bySku.set(key, [...(bySku.get(key) ?? []), r]);
+  }
+
+  const rawSkus = [...new Set(records.map((r) => r.orderSku.trim()).filter(Boolean))];
+  const live = await lookupDcCogs(rawSkus);
+
+  const lastHistory = new Map<string, IDocTidyDcCogsHistory>();
+  const latest = await DocTidyDcCogsHistory.aggregate<{ _id: string; doc: IDocTidyDcCogsHistory }>([
+    { $match: { sku: { $in: [...bySku.keys()] } } },
+    { $sort: { recordedAt: -1 } },
+    { $group: { _id: '$sku', doc: { $first: '$$ROOT' } } },
+  ]);
+  for (const { _id, doc } of latest) lastHistory.set(_id, doc);
+
+  const now = new Date();
+  const historyInserts: Partial<IDocTidyDcCogsHistory>[] = [];
+  const bulkOps: Parameters<typeof DocTidyOrderImport.bulkWrite>[0] = [];
+  const touchedWorkspaces = new Set<string>();
+
+  for (const [sku, rows] of bySku) {
+    const variants = [...new Set(rows.map((r) => r.orderSku))];
+    const result = live.get(sku);
+
+    if (!result) {
+      const unfetched = rows.filter((r) => r.dcCogs == null);
+      if (unfetched.length) {
+        bulkOps.push({
+          updateMany: {
+            filter: { orderSku: { $in: variants }, dcCogs: null },
+            update: { $set: { dcCogs: 'n/a', dcMsrp: '', dcCogsAt: now } },
+          },
+        });
+        unfetched.forEach((r) => touchedWorkspaces.add(String(r.workspaceId)));
+      }
+      continue;
+    }
+
+    const last = lastHistory.get(sku);
+    if (!last) {
+      // First time this SKU is tracked: seed whatever cost Doc Tidy already held.
+      const stored = rows
+        .filter((r) => r.dcCogs && r.dcCogs !== 'n/a')
+        .sort((a, b) => (b.dcCogsAt?.getTime() ?? 0) - (a.dcCogsAt?.getTime() ?? 0))[0];
+      if (stored && !sameCost(stored.dcCogs, result.cost)) {
+        historyInserts.push({
+          sku, cost: stored.dcCogs!, msrp: stored.dcMsrp ?? '', recordedAt: stored.dcCogsAt ?? now, source: 'stored',
+        });
+      }
+      historyInserts.push({
+        sku, cost: result.cost, msrp: result.msrp,
+        recordedAt: stored && sameCost(stored.dcCogs, result.cost) ? stored.dcCogsAt ?? now : now,
+        source: 'dc_lookup',
+      });
+    } else if (!sameCost(last.cost, result.cost)) {
+      historyInserts.push({ sku, cost: result.cost, msrp: result.msrp, recordedAt: now, source: 'dc_lookup' });
+    }
+
+    const stale = rows.filter((r) => !sameCost(r.dcCogs, result.cost) || (r.dcMsrp ?? '') !== result.msrp);
+    if (stale.length) {
+      bulkOps.push({
+        updateMany: {
+          filter: { _id: { $in: stale.map((r) => r._id) } },
+          update: { $set: { dcCogs: result.cost, dcMsrp: result.msrp, dcCogsAt: now } },
+        },
+      });
+      stale.forEach((r) => touchedWorkspaces.add(String(r.workspaceId)));
+    }
+  }
+
+  if (historyInserts.length) await DocTidyDcCogsHistory.insertMany(historyInserts);
+  if (bulkOps.length) await DocTidyOrderImport.bulkWrite(bulkOps);
+  for (const workspaceId of touchedWorkspaces) broadcast({ type: 'dc_cogs', workspaceId });
+}
+
+/** Number of rows in a workspace without a DC cost yet. */
+export async function countRowsNeedingCogs(workspaceId: string): Promise<number> {
+  return DocTidyOrderImport.countDocuments({ workspaceId, dcCogs: { $in: [null, 'n/a'] } });
+}
+
+export interface DcCogsHistoryEntry {
+  cost: string;
+  msrp: string;
+  recordedAt: Date;
+  source: 'dc_lookup' | 'stored';
+}
+
+/** Cost history (newest first) for each SKU, keyed by normSku. */
+export async function getDcCogsHistory(skus: string[]): Promise<Map<string, DcCogsHistoryEntry[]>> {
+  const keys = [...new Set(skus.filter(Boolean).map(normSku))];
+  const history = new Map<string, DcCogsHistoryEntry[]>();
+  if (!keys.length) return history;
+
+  const docs = await DocTidyDcCogsHistory.find({ sku: { $in: keys } })
+    .sort({ recordedAt: -1 })
+    .select('sku cost msrp recordedAt source')
+    .lean();
+  for (const d of docs) {
+    const list = history.get(d.sku) ?? [];
+    if (list.length < HISTORY_LIMIT) list.push({ cost: d.cost, msrp: d.msrp, recordedAt: d.recordedAt, source: d.source });
+    history.set(d.sku, list);
+  }
+  return history;
+}
+
+/** Keeps DC COGS in sync every SYNC_EVERY_MS, even when nobody has the app open. */
+export function startDcCogsRetryScheduler(): void {
+  if (!API_KEY || !CLIENT_ID) {
+    console.warn('[dcCogs] Sync scheduler not started — Channel Precision credentials are not configured.');
+    return;
+  }
+  setInterval(() => void syncDcCogs(), SYNC_EVERY_MS).unref();
+  console.log(`[dcCogs] Syncing DC COGS every ${Math.round(SYNC_EVERY_MS / 1000)}s`);
 }

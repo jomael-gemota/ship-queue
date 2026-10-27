@@ -33,15 +33,15 @@ export interface IDocTidyOrderImport extends Document {
   importedByName?: string;
 
   /**
-   * DC cost of goods sold, fetched from the Channel Precision bt_costs API.
+   * DC cost of goods sold, from the Channel Precision pf/lookup/items API.
    * `null`  = not yet fetched
    * `"n/a"` = fetched but no matching SKU found
-   * Any other string = the cost value (e.g. "12.50")
+   * Any other string = the cost value (e.g. "12.50"), kept in sync with DC
    */
   dcCogs?: string | null;
   /** MSRP from the same API response (field name `mspr` in the source). */
   dcMsrp?: string | null;
-  /** When the COGS was last fetched (for staleness checks). */
+  /** When dcCogs was last written (first fetch or a change in DC). */
   dcCogsAt?: Date | null;
 
   /**
