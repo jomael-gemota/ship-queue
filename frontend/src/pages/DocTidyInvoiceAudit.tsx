@@ -2769,6 +2769,8 @@ function auditColStr(
     case 'customerName':  return order.customerName ?? ''
     case 'purchasedDate': return order.purchasedDate ?? ''
     case 'status':        return order.status ?? ''
+    case 'orderId':       return order.orderId ?? ''
+    case 'processedDate': return order.processedDate ?? ''
     case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     default: break
   }
@@ -4883,6 +4885,8 @@ export default function DocTidyInvoiceAudit() {
       }
       case 'purchasedDate': return textCell(order.purchasedDate ?? '')
       case 'status':        return textCell(order.status ?? '')
+      case 'orderId':       return monoCell(order.orderId ?? '')
+      case 'processedDate': return textCell(order.processedDate ?? '')
       case 'dcCogs': {
         if (order.dcCogs == null) {
           return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
