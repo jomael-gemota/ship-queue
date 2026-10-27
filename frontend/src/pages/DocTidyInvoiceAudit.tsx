@@ -4055,12 +4055,16 @@ export default function DocTidyInvoiceAudit() {
 
   /* SSE — subscribe while on the audit tab to auto-populate completed results */
   const refetchAllJobsSoon = useDebouncedRefetch(() => { void fetchAllJobsRef.current() })
+  const refetchOrderImportsSoon = useDebouncedRefetch(() => { void fetchOrderImportsRef.current() })
   useEffect(() => {
     if (workspaceTab !== 'audit' || !activeWorkspace) return
     return subscribeDocTidyEvents(
       (event) => {
         if (event.type === 'parse_status' && event.parseStatus === 'completed') {
           refetchAllJobsSoon()
+        }
+        if (event.type === 'dc_cogs' && event.workspaceId === activeWorkspace?._id) {
+          refetchOrderImportsSoon()
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
@@ -4084,7 +4088,7 @@ export default function DocTidyInvoiceAudit() {
       },
       () => {}
     )
-  }, [workspaceTab, activeWorkspace, refetchAllJobsSoon])
+  }, [workspaceTab, activeWorkspace, refetchAllJobsSoon, refetchOrderImportsSoon])
 
   /* SSE — refresh PDF imports when a parse job status changes */
   const fetchPdfImportsRef = useRef(fetchPdfImports)
