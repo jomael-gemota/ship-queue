@@ -25,6 +25,7 @@ import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   INVOICE_AUDIT_COLUMNS,
+  AUDIT_COL_ICON,
   WORKSPACE_EMAIL_COLUMNS,
   DEFAULT_AUDIT_COL_ORDER,
   DEFAULT_EMAIL_COL_ORDER,
@@ -294,9 +295,11 @@ function reorderCols<T>(arr: T[], src: T, dst: T): T[] {
 function DraggableTh({
   label,
   iconPath,
+  iconColor,
+  iconSrc,
   align = 'left',
   isDragging,
-  isDragTarget,
+   isDragTarget,
   hasActiveFilter,
   onDragStart,
   onDragOver,
@@ -306,6 +309,8 @@ function DraggableTh({
 }: {
   label: string
   iconPath?: string
+  iconColor?: string
+  iconSrc?: string
   align?: 'left' | 'center' | 'right'
   isDragging?: boolean
   isDragTarget?: boolean
@@ -368,14 +373,26 @@ function DraggableTh({
           <circle cx="6" cy="16" r="1.5" />
           <circle cx="14" cy="16" r="1.5" />
         </svg>
-        {iconPath && (
-          <svg
-            className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
-          </svg>
-        )}
+        {iconSrc
+          ? <img src={iconSrc} className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" alt="" aria-hidden />
+          : iconPath
+            ? iconColor
+              ? (
+                // Brand / logo icon — fill-based, preserves original colour
+                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill={isDragging ? 'currentColor' : iconColor} stroke="none" aria-hidden>
+                  <path d={iconPath} />
+                </svg>
+              )
+              : (
+                <svg
+                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+                </svg>
+              )
+            : null
+        }
         <span className="flex-1 min-w-0">{label}</span>
         {/* Column filter button — shown for every draggable column */}
         {onFilterClick && (
@@ -2207,22 +2224,57 @@ function MoveWorkspaceDialog({
 /** Generic empty-dash cell. */
 const emDash = <span className="text-[var(--text-200)]">—</span>
 
+/** Tiny inline SVG icon rendered inside a cell. Coral-blue, slightly muted, bold stroke. */
+function CellIcon({ d, className = '' }: { d: string; className?: string }) {
+  return (
+    <svg
+      className={`h-3 w-3 shrink-0 text-sky-400/40 ${className}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.75}
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  )
+}
+
 /** Text cell for codes / identifiers (SKU / PO # / invoice number). */
-function monoCell(value: string): React.ReactNode {
+function monoCell(value: string, icon?: string): React.ReactNode {
   if (!value) return emDash
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className="text-[10px] text-[var(--text-100)]">{value}</span>
+    </span>
+  )
   return <span className="text-[10px] text-[var(--text-100)]">{value}</span>
 }
 
-/** Plain text cell. */
-function textCell(value: string): React.ReactNode {
+/** Plain text cell, optionally with a leading icon. */
+function textCell(value: string, icon?: string): React.ReactNode {
   if (!value) return emDash
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className="text-[var(--text-100)]">{value}</span>
+    </span>
+  )
   return <span className="text-[var(--text-100)]">{value}</span>
 }
 
-/** Numeric / currency cell. */
-function numCell(value: string): React.ReactNode {
+/** Numeric / currency cell, optionally with a leading icon and/or bold value. */
+function numCell(value: string, icon?: string, bold?: boolean): React.ReactNode {
   if (!value) return emDash
-  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+  const textCls = `tabular-nums text-[var(--text-100)]${bold ? ' font-semibold' : ''}`
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className={textCls}>{value}</span>
+    </span>
+  )
+  return <span className={textCls}>{value}</span>
 }
 
 /** Tooltip card listing every DC COGS value a SKU has held, newest first. */
@@ -2301,7 +2353,8 @@ function dcCogsCell(order: DocTidyOrderImport): React.ReactNode {
   const history = order.dcCogsHistory ?? []
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="tabular-nums text-[var(--text-100)]">{order.dcCogs}</span>
+      <CellIcon d={AUDIT_COL_ICON.dollar} />
+      <span className="tabular-nums font-semibold text-[var(--text-100)]">{order.dcCogs}</span>
       {history.length > 0 && (
         <Tooltip trigger="click" richContent={<DcCogsHistoryCard cost={order.dcCogs} history={history} />}>
           <span
@@ -4966,25 +5019,37 @@ export default function DocTidyInvoiceAudit() {
   ): React.ReactNode => {
     // ── Order import fields (always from the DB row directly) ──
     switch (colId) {
-      case 'poNumber':      return monoCell(order.poNumber)
-      case 'orderSku':      return monoCell(order.orderSku)
-      case 'orderQty':      return numCell(order.orderQty)
-      case 'lesd':          return textCell(order.lesd ?? '')
+      case 'poNumber':      return monoCell(order.poNumber, AUDIT_COL_ICON.tag)
+      case 'orderSku':      return monoCell(order.orderSku, AUDIT_COL_ICON.barcode)
+      case 'orderQty':      return numCell(order.orderQty, AUDIT_COL_ICON.stack, true)
+      case 'lesd':          return textCell(order.lesd ?? '', AUDIT_COL_ICON.calendar)
       case 'customerName': {
         const name = order.customerName ?? ''
         if (!name) return emDash
         const words = name.trim().split(/\s+/)
         const display = words.length > 3 ? words.slice(0, 3).join(' ') + '…' : name
         return (
-          <span className="block max-w-[110px] truncate text-[var(--text-100)]" title={name}>
-            {display}
+          <span className="inline-flex items-center gap-1" title={name}>
+            <CellIcon d={AUDIT_COL_ICON.user} className="shrink-0" />
+            <span className="block max-w-[100px] truncate text-[var(--text-100)]">{display}</span>
           </span>
         )
       }
-      case 'purchasedDate': return textCell(order.purchasedDate ?? '')
-      case 'status':        return textCell(order.status ?? '')
-      case 'orderId':       return monoCell(order.orderId ?? '')
-      case 'processedDate': return textCell(order.processedDate ?? '')
+      case 'purchasedDate': return textCell(order.purchasedDate ?? '', AUDIT_COL_ICON.calendar)
+      case 'status':        return textCell(order.status ?? '', AUDIT_COL_ICON.checkCircle)
+      case 'orderId': {
+        const oid = order.orderId ?? ''
+        if (!oid) return emDash
+        return (
+          <span className="inline-flex items-center gap-1">
+            <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="#FF9900" stroke="none" aria-hidden>
+              <path d={AUDIT_COL_ICON.amazon} />
+            </svg>
+            <span className="text-[10px] text-[var(--text-100)]">{oid}</span>
+          </span>
+        )
+      }
+      case 'processedDate': return textCell(order.processedDate ?? '', AUDIT_COL_ICON.calendar)
       case 'dcCogs':        return dcCogsCell(order)
       default: break
     }
@@ -4993,8 +5058,8 @@ export default function DocTidyInvoiceAudit() {
     const inv = resolveInvoiceFields(order, matches)
 
     switch (colId) {
-      case 'invoiceSku':    return monoCell(inv.invoiceSku)
-      case 'invoiceDate':   return textCell(inv.invoiceDate)
+      case 'invoiceSku':    return monoCell(inv.invoiceSku, AUDIT_COL_ICON.barcode)
+      case 'invoiceDate':   return textCell(inv.invoiceDate, AUDIT_COL_ICON.calendar)
       case 'invoiceNumber': {
         if (!inv.invoiceNumber) return emDash
         if (inv.driveFileId) {
@@ -5032,14 +5097,15 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'terms':       return textCell(inv.terms)
+      case 'terms':       return textCell(inv.terms, AUDIT_COL_ICON.document)
       case 'itemCost': {
         const effectiveCost = resolveEffectiveCost(inv)
         if (!effectiveCost) return emDash
         const discounted = hasDiscount(inv)
         return (
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
-            <span className="text-[var(--text-100)]">{effectiveCost}</span>
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <CellIcon d={AUDIT_COL_ICON.dollar} />
+            <span className="font-semibold text-[var(--text-100)]">{effectiveCost}</span>
             {discounted && (
               <Tooltip richContent={(() => {
                   // Compute display discount pct
@@ -5106,7 +5172,7 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'invoiceQty':  return numCell(inv.invoiceQty)
+      case 'invoiceQty':  return numCell(inv.invoiceQty, AUDIT_COL_ICON.stack, true)
       case 'discountedCostPct': {
         if (!inv.discountedPrice && !inv.discountPct) return emDash
         // Strip any trailing % the AI may have already included before re-adding it.
@@ -5119,9 +5185,9 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'dropshipFee': return numCell(inv.dropshipFee)
-      case 'miscCharges': return numCell(inv.miscCharges)
-      case 'totalCost':   return numCell(inv.totalCost)
+      case 'dropshipFee': return numCell(inv.dropshipFee, AUDIT_COL_ICON.dollar)
+      case 'miscCharges': return numCell(inv.miscCharges, AUDIT_COL_ICON.dollar)
+      case 'totalCost':   return numCell(inv.totalCost, AUDIT_COL_ICON.dollar, true)
       case 'parsedAt': {
         // Show the earliest cachedAt across all matched invoices
         const cachedDates = [
@@ -5134,7 +5200,8 @@ export default function DocTidyInvoiceAudit() {
         }, undefined)
         if (!earliest) return emDash
         return (
-          <span title={formatDateTime(earliest)} className="text-[var(--text-200)]">
+          <span title={formatDateTime(earliest)} className="inline-flex items-center gap-1 text-[var(--text-200)]">
+            <CellIcon d={AUDIT_COL_ICON.clock} />
             {formatDate(earliest)}
           </span>
         )
@@ -7222,6 +7289,9 @@ export default function DocTidyInvoiceAudit() {
                         <DraggableTh
                           key={col.id}
                           label={col.label}
+                          iconPath={col.iconPath}
+                          iconColor={col.iconColor}
+                          iconSrc={col.iconSrc}
                           align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
