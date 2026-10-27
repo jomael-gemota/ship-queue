@@ -5222,9 +5222,9 @@ export default function DocTidyInvoiceAudit() {
     const json = job.jsonOutput ?? null
     switch (colId) {
       case 'poNumber':
-        return monoCell(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS))
+        return monoCell(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS), AUDIT_COL_ICON.tag)
       case 'invoiceDate':
-        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'), AUDIT_COL_ICON.calendar)
       case 'invoiceNumber': {
         const num = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
         if (!num) return emDash
@@ -5242,18 +5242,20 @@ export default function DocTidyInvoiceAudit() {
             </a>
           )
         }
-        return monoCell(num)
+        return monoCell(num, AUDIT_COL_ICON.tag)
       }
       case 'terms':
-        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'), AUDIT_COL_ICON.document)
       case 'totalCost':
         return numCell(extractJsonField(json,
           'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
-          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
+          AUDIT_COL_ICON.dollar, true)
       case 'parsedAt': {
         if (!job.completedAt) return emDash
         return (
-          <span title={formatDateTime(job.completedAt)} className="text-[var(--text-200)]">
+          <span title={formatDateTime(job.completedAt)} className="inline-flex items-center gap-1 text-[var(--text-200)]">
+            <CellIcon d={AUDIT_COL_ICON.clock} />
             {formatDate(job.completedAt)}
           </span>
         )
@@ -5748,7 +5750,7 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                     </svg>
                     {emailAdvancedCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[8px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-1 text-[8px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
                     )}
                   </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -6405,7 +6407,7 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                     </svg>
                     {pdfAdvancedCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] px-1 text-[8px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-1 text-[8px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
                     )}
                   </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
@@ -6904,7 +6906,7 @@ export default function DocTidyInvoiceAudit() {
                   <button
                     type="button"
                     onClick={() => { setEmailAdvPo(emailDraftPo); setEmailAdvInvoice(emailDraftInvoice); setEmailAdvVendor(emailDraftVendor); setEmailAdvancedOpen(false) }}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
                   >
                     Apply & Close
                   </button>
@@ -6994,7 +6996,7 @@ export default function DocTidyInvoiceAudit() {
                   <button
                     type="button"
                     onClick={() => { setPdfAdvPo(pdfDraftPo); setPdfAdvInvoice(pdfDraftInvoice); setPdfAdvVendor(pdfDraftVendor); setPdfAdvancedOpen(false) }}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
                   >
                     Apply & Close
                   </button>

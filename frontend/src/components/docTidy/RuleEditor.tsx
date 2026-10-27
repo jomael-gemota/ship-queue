@@ -63,7 +63,7 @@ function Section({
             invalid
               ? 'bg-rose-500 text-white'
               : open
-                ? 'bg-[var(--accent-200)] text-white'
+                ? 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white'
                 : 'bg-[var(--bg-300)] text-[var(--text-200)]'
           }`}
         >
@@ -766,7 +766,7 @@ export default function RuleEditor({
             type="button"
             onClick={submit}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {saving && <Spinner />}
             {isNew ? 'Create rule' : 'Save changes'}
