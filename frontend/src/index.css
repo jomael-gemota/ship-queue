@@ -30,6 +30,19 @@
   --bg-300:      #515c5c;   /* borders / dividers — Bovine */
 }
 
+/* ── Sidebar token overrides (light mode only) ──────────────────────────────
+   The light-mode sidebar bg (#62b5a0) is dark enough that the global dark-teal
+   text tokens have poor contrast. Scope lighter values here so every child
+   element picks them up automatically without touching individual class strings.
+   The html:not(.dark) selector keeps dark mode completely unaffected.        */
+html:not(.dark) [data-sidebar] {
+  --text-100:    #ffffff;               /* primary text — pure white */
+  --text-200:    rgba(255,255,255,0.78);/* secondary / section headers */
+  --accent-200:  #ffffff;               /* active nav text */
+  --primary-100: rgba(255,255,255,0.20);/* hover / active bg tint */
+  --bg-300:      rgba(255,255,255,0.22);/* collapsed divider lines */
+}
+
 html,
 body,
 #root {
