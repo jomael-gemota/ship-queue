@@ -1452,7 +1452,7 @@ function WorkspaceCard({
 
   return (
     <div onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)] overflow-hidden cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
         <div className="mb-4">
