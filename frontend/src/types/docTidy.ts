@@ -927,6 +927,14 @@ export type LineItemColumnId = never
 
 /* ──────────────────────────────────────── Order Imports ── */
 
+export interface DcCogsHistoryEntry {
+  cost: string
+  msrp: string
+  recordedAt: string
+  /** `stored` = the cost Doc Tidy held before history tracking began. */
+  source: 'dc_lookup' | 'stored'
+}
+
 /**
  * One order-line record imported from a CSV or XLSX file.
  * These are the **primary rows** in the Invoice Audit table.
@@ -956,6 +964,8 @@ export interface DocTidyOrderImport {
   dcCogs?: string | null
   dcMsrp?: string | null
   dcCogsAt?: string | null
+  /** Every DC COGS value this SKU has held, newest first. */
+  dcCogsHistory?: DcCogsHistoryEntry[]
   /**
    * Inline invoice match cache — written by the server the moment a matching
    * parse job completes.  When present the audit table reads these fields

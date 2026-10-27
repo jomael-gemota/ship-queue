@@ -63,6 +63,7 @@ import {
   isParseRunning,
   type ParseJobStatus,
   type DocTidyOrderImport,
+  type DcCogsHistoryEntry,
   type OrderImportsResponse,
   type RunAllResult,
   type DocTidyConfig,
@@ -2222,6 +2223,99 @@ function textCell(value: string): React.ReactNode {
 function numCell(value: string): React.ReactNode {
   if (!value) return emDash
   return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+}
+
+/** Tooltip card listing every DC COGS value a SKU has held, newest first. */
+function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHistoryEntry[] }) {
+  return (
+    <div style={{ minWidth: 300 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-400">$</span>
+          <p className="text-[10px] font-semibold text-slate-200">DC COGS history</p>
+        </div>
+        <span className="tabular-nums text-[10px] font-semibold text-slate-300">Current: {cost}</span>
+      </div>
+
+      {/* Column labels */}
+      <div className="flex items-center border-b border-white/5 px-3.5 py-1.5 gap-2.5">
+        <span className="w-5 shrink-0" />
+        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-slate-600">Date</span>
+        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Cost</span>
+        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Change</span>
+      </div>
+
+      {/* History rows */}
+      <div className="divide-y divide-white/5">
+        {history.map((entry, idx) => {
+          const older = history[idx + 1]
+          const delta = older ? Number(entry.cost) - Number(older.cost) : 0
+          const isLatest = idx === 0
+          return (
+            <div key={`${entry.recordedAt}-${idx}`} className="flex items-center gap-2.5 px-3.5 py-2.5">
+              {/* Status dot */}
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                isLatest ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-700/60 text-slate-500'
+              }`}>
+                {isLatest ? '✓' : '·'}
+              </span>
+
+              {/* Date + source tag */}
+              <span className="flex-1 min-w-0">
+                <span className="block truncate text-[10px] text-slate-300">{formatDateTime(entry.recordedAt)}</span>
+                {entry.source === 'stored' && (
+                  <span className="text-[9px] italic text-slate-600">first recorded</span>
+                )}
+              </span>
+
+              {/* Cost */}
+              <span className="w-16 shrink-0 text-right tabular-nums text-[10px] font-semibold text-slate-200">
+                {entry.cost}
+              </span>
+
+              {/* Delta */}
+              <span className={`w-12 shrink-0 text-right tabular-nums text-[10px] font-medium ${
+                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-slate-600'
+              }`}>
+                {older && delta !== 0 ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)}` : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="border-t border-white/10 bg-white/5 px-3.5 py-2 flex items-center justify-between">
+        <span className="text-[10px] text-slate-600">Source: Data Central</span>
+        <span className="text-[10px] text-slate-600">Click away to close</span>
+      </div>
+    </div>
+  )
+}
+
+function dcCogsCell(order: DocTidyOrderImport): React.ReactNode {
+  if (order.dcCogs == null) {
+    return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
+  }
+  if (order.dcCogs === 'n/a') return emDash
+  const history = order.dcCogsHistory ?? []
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="tabular-nums text-[var(--text-100)]">{order.dcCogs}</span>
+      {history.length > 0 && (
+        <Tooltip trigger="click" richContent={<DcCogsHistoryCard cost={order.dcCogs} history={history} />}>
+          <span
+            className="flex h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-sky-500/15 text-sky-500 transition-colors hover:bg-sky-500/30"
+            title="DC COGS history"
+          >
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </Tooltip>
+      )}
+    </span>
+  )
 }
 
 /** Extract a scalar from a line-item object (wraps extractJsonField). */
@@ -4891,13 +4985,7 @@ export default function DocTidyInvoiceAudit() {
       case 'status':        return textCell(order.status ?? '')
       case 'orderId':       return monoCell(order.orderId ?? '')
       case 'processedDate': return textCell(order.processedDate ?? '')
-      case 'dcCogs': {
-        if (order.dcCogs == null) {
-          return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
-        }
-        if (order.dcCogs === 'n/a') return emDash
-        return numCell(order.dcCogs)
-      }
+      case 'dcCogs':        return dcCogsCell(order)
       default: break
     }
 
