@@ -20,6 +20,11 @@ export interface IDocTidyWorkspace extends Document {
    */
   auditColumnOrder?: string[];
   /**
+   * Default-layout version `auditColumnOrder` was saved against. Orders saved
+   * under an older version are ignored so a revised default reaches everyone.
+   */
+  auditColumnOrderVersion?: number;
+  /**
    * Per-workspace column order for the Workspace Emails table.
    * Absent or empty → fall back to DEFAULT_EMAIL_COL_ORDER.
    */
@@ -50,6 +55,7 @@ const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
     createdByUserId: { type: String },
     createdByName: { type: String },
     auditColumnOrder: { type: [String], default: undefined },
+    auditColumnOrderVersion: { type: Number },
     wsEmailColumnOrder: { type: [String], default: undefined },
     pdfImportColOrder: { type: [String], default: undefined },
     importMode: {

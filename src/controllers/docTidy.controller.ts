@@ -671,6 +671,9 @@ export const bulkDeleteMessages = async (req: Request, res: Response): Promise<v
 
 /* -------------------------------------------------------- workspace-scoped UI prefs */
 
+/** Bump when the Invoice Audit default column layout changes, to discard saved orders. */
+const AUDIT_COLUMN_ORDER_VERSION = 2;
+
 /**
  * Returns per-workspace column order preferences.
  * Requires a `workspaceId` query param. Any authenticated user may call this.
@@ -681,9 +684,10 @@ export const getUiPrefs = async (req: Request, res: Response): Promise<void> => 
 
     if (workspaceId && isValidObjectId(workspaceId)) {
       const ws = await DocTidyWorkspace.findById(workspaceId).lean();
+      const auditOrderCurrent = ws?.auditColumnOrderVersion === AUDIT_COLUMN_ORDER_VERSION;
       res.json({
         data: {
-          auditColumnOrder: ws?.auditColumnOrder ?? [],
+          auditColumnOrder: auditOrderCurrent ? ws?.auditColumnOrder ?? [] : [],
           wsEmailColumnOrder: ws?.wsEmailColumnOrder ?? [],
           pdfImportColOrder: ws?.pdfImportColOrder ?? [],
         },
@@ -726,7 +730,10 @@ export const putUiPrefs = async (req: Request, res: Response): Promise<void> => 
         return;
       }
 
-      if (Array.isArray(auditColumnOrder)) ws.auditColumnOrder = auditColumnOrder;
+      if (Array.isArray(auditColumnOrder)) {
+        ws.auditColumnOrder = auditColumnOrder;
+        ws.auditColumnOrderVersion = AUDIT_COLUMN_ORDER_VERSION;
+      }
       if (Array.isArray(wsEmailColumnOrder)) ws.wsEmailColumnOrder = wsEmailColumnOrder;
       if (Array.isArray(pdfImportColOrder)) ws.pdfImportColOrder = pdfImportColOrder;
       await ws.save();
