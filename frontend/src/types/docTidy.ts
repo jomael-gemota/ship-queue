@@ -162,6 +162,7 @@ export interface RunRuleResult {
   updated: number
   attachmentsUploaded: number
   attachmentErrors: number
+  duplicatesMerged: number
   query: string
 }
 

@@ -28,6 +28,11 @@ export interface GmailAttachmentMeta {
 
 export interface ParsedGmailMessage {
   gmailMessageId: string;
+  /**
+   * The sender-assigned `Message-ID` header. Shared by every copy of one email,
+   * so mail delivered once per group alias can be recognised as a duplicate.
+   */
+  rfc822MessageId?: string;
   threadId?: string;
   from: string;
   fromName?: string;
@@ -290,6 +295,7 @@ export async function getMessage(
 
   return {
     gmailMessageId: msg.id ?? messageId,
+    rfc822MessageId: header(msg.payload, 'Message-ID').trim() || undefined,
     threadId: msg.threadId ?? undefined,
     from,
     fromName,
@@ -301,6 +307,21 @@ export async function getMessage(
     attachments: acc.attachments,
     recipientsRaw,
   };
+}
+
+/** Fetches only the `Message-ID` header; much cheaper than a full `getMessage`. */
+export async function getRfc822MessageId(
+  refreshToken: string | null | undefined,
+  messageId: string
+): Promise<string | undefined> {
+  const gmail = buildGmailClient(refreshToken);
+  const res = await gmail.users.messages.get({
+    userId: 'me',
+    id: messageId,
+    format: 'metadata',
+    metadataHeaders: ['Message-ID'],
+  });
+  return header(res.data.payload, 'Message-ID').trim() || undefined;
 }
 
 /** Downloads a single attachment's bytes. */
