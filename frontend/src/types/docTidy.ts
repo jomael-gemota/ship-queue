@@ -162,6 +162,7 @@ export interface RunRuleResult {
   updated: number
   attachmentsUploaded: number
   attachmentErrors: number
+  duplicatesMerged: number
   query: string
 }
 
@@ -604,6 +605,8 @@ export type InvoiceAuditColumnId =
   | 'customerName'
   | 'purchasedDate'
   | 'status'
+  | 'orderId'
+  | 'processedDate'
   // ── Invoice fields (from parsed PDFs) ──
   | 'invoiceSku'
   | 'invoiceDate'
@@ -637,30 +640,30 @@ export interface InvoiceAuditColumn {
   mono?: boolean
 }
 
+/** Declared in the default display order (Actions is a fixed column rendered before these). */
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
-  // ── Order fields ──
+  { id: 'processedDate',      section: 'order',    label: 'Processed Date',  description: 'Date the order was processed (from the imported order file)',      defaultVisible: true,                center: true },
   { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true    },
+  { id: 'orderId',            section: 'order',    label: 'Order ID',        description: 'Order ID from the imported order file',                            defaultVisible: true,  mono: true    },
+  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',     description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true, center: true },
+  { id: 'invoiceNumber',      section: 'invoice',  label: 'Invoice #',       description: 'Invoice number from the matched invoice',                          defaultVisible: true,  mono: true                   },
+  { id: 'terms',              section: 'invoice',  label: 'Terms',           description: 'Payment terms (e.g. Net 30) from the matched invoice',             defaultVisible: true                               },
+  { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',    description: 'Date printed on the matched invoice',                              defaultVisible: true                               },
   { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true    },
+  { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',     description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true                   },
   { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true, center: true },
+  { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',     description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true, center: true },
+  { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',       description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true, center: true },
+  { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',         description: 'Distribution center cost of goods sold, from Data Central',        defaultVisible: true,  numeric: true, center: true },
+  { id: 'discountedCostPct',  section: 'invoice',  label: 'Disc. Cost/%',    description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true, center: true },
   { id: 'lesd',               section: 'order',    label: 'LESD',            description: 'Latest Expected Ship Date from the imported order file',            defaultVisible: true,                center: true },
   { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true                               },
   { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true,                center: true },
   { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true,                center: true },
-  // ── Invoice fields ──
-  { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',     description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true                   },
-  { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',    description: 'Date printed on the matched invoice',                              defaultVisible: true                               },
-  { id: 'invoiceNumber',      section: 'invoice',  label: 'Invoice #',       description: 'Invoice number from the matched invoice',                          defaultVisible: true,  mono: true                   },
-  { id: 'terms',              section: 'invoice',  label: 'Terms',           description: 'Payment terms (e.g. Net 30) from the matched invoice',             defaultVisible: false                              },
-  { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',       description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true, center: true },
-  { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',         description: 'Distribution center cost of goods sold (future source)',           defaultVisible: false, numeric: true, center: true },
-  { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',     description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true, center: true },
-  { id: 'discountedCostPct',  section: 'invoice',  label: 'Disc. Cost/%',    description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true, center: true },
-  { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',          description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true, center: true },
-  { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',   description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true, center: true },
+  { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',          description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: true,  numeric: true, center: true },
+  { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',   description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: true,  numeric: true, center: true },
   { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',      description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true, center: true },
   { id: 'parsedAt',           section: 'invoice',  label: 'Parsed',          description: 'Date the Tidy Agent last parsed and matched this invoice',           defaultVisible: true,                center: true },
-  // ── Computed ──
-  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',     center: true,       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
 ]
 
 /** Default order mirrors the declaration order in INVOICE_AUDIT_COLUMNS. */
@@ -670,14 +673,14 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v5 key — bumped from v4 when "Parsed" (parsedAt) column was added (2026-10-02).
- * Old v4 preferences are ignored so the new column appears in its correct position
- * (after Total Cost, before Discrepancy) rather than being appended at the far right.
+ * v6 key — bumped from v5 when the default column set was revised and Order ID /
+ * Processed Date were added (2026-10-28). Old preferences are ignored so every
+ * workspace starts from the new defaults.
  *
  * The key is workspace-scoped: `<base>.<workspaceId>` so changing
  * visibility in Workspace A never touches Workspace B's preferences.
  */
-const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v5'
+const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v6'
 
 function auditColStorageKey(workspaceId: string): string {
   return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`
@@ -685,9 +688,8 @@ function auditColStorageKey(workspaceId: string): string {
 
 /**
  * Column visibility overrides applied to `header-only` workspaces.
- * Only PO #, Invoice #, Invoice Date, Terms, and Total Cost are shown;
- * everything else is hidden.  `terms` receives an explicit `true` because
- * its `defaultVisible` is `false` in the full-workspace definition.
+ * Only PO #, Invoice #, Invoice Date, Terms, Total Cost and Parsed are shown;
+ * everything else is hidden.
  */
 const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean>> = {
   // Order columns — hide all except poNumber
@@ -697,6 +699,8 @@ const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean
   customerName:      false,
   purchasedDate:     false,
   status:            false,
+  orderId:           false,
+  processedDate:     false,
   // Invoice columns — show only invoiceDate, invoiceNumber, terms, totalCost
   invoiceSku:        false,
   itemCost:          false,
@@ -705,7 +709,6 @@ const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean
   discountedCostPct: false,
   dropshipFee:       false,
   miscCharges:       false,
-  terms:             true,   // normally hidden — force-show for header-only
   // Computed
   discrepancy:       false,
 }

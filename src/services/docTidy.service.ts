@@ -33,6 +33,8 @@ export interface RunRuleResult {
   updated: number;
   attachmentsUploaded: number;
   attachmentErrors: number;
+  /** Extra copies of an already-stored email, folded into its row. */
+  duplicatesMerged: number;
   query: string;
 }
 
@@ -200,18 +202,27 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
     updated: 0,
     attachmentsUploaded: 0,
     attachmentErrors: 0,
+    duplicatesMerged: 0,
     query,
   };
 
   // One indexed lookup for the whole batch, rather than a round trip per id.
   let ids = allIds;
   if (options.skipKnown && allIds.length) {
-    const known = await DocTidyMessage.find({ gmailMessageId: { $in: allIds } })
-      .select('gmailMessageId')
+    const known = await DocTidyMessage.find({
+      $or: [{ gmailMessageId: { $in: allIds } }, { aliasGmailMessageIds: { $in: allIds } }],
+    })
+      .select('gmailMessageId aliasGmailMessageIds')
       .lean();
-    const seen = new Set(known.map((doc) => doc.gmailMessageId));
+    const seen = new Set(known.flatMap((doc) => [doc.gmailMessageId, ...(doc.aliasGmailMessageIds ?? [])]));
     ids = allIds.filter((id) => !seen.has(id));
   }
+
+  // Duplicate copies are only folded together within one workspace, so two
+  // workspaces receiving the same email each keep their own row.
+  const workspaceRuleIds = (
+    await DocTidyRule.find({ workspaceId: rule.workspaceId ?? null }).select('_id').lean()
+  ).map((r) => r._id);
 
   for (const id of ids) {
     const msg = await getMessage(refreshToken, id);
@@ -220,6 +231,26 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
     result.matched += 1;
 
     const existing = await DocTidyMessage.findOne({ gmailMessageId: msg.gmailMessageId });
+
+    // The same email addressed to several group aliases lands in the mailbox
+    // once per alias, each copy with its own Gmail id.
+    if (!existing && msg.rfc822MessageId) {
+      const original = await DocTidyMessage.findOne({
+        rfc822MessageId: msg.rfc822MessageId,
+        ruleId: { $in: workspaceRuleIds },
+      })
+        .select('_id')
+        .lean();
+      if (original) {
+        await DocTidyMessage.updateOne(
+          { _id: original._id },
+          { $addToSet: { to: { $each: msg.to }, aliasGmailMessageIds: msg.gmailMessageId } }
+        );
+        result.duplicatesMerged += 1;
+        continue;
+      }
+    }
+
     const keptAttachments = filterAttachments(msg, rule);
 
     // Only upload the first time we see a message; a re-run must not duplicate
@@ -272,10 +303,12 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
           ruleId: rule._id,
           ruleName: rule.name,
           documentType: rule.documentType ?? 'other',
+          rfc822MessageId: msg.rfc822MessageId,
           threadId: msg.threadId,
           from: msg.from,
           fromName: msg.fromName,
-          to: msg.to,
+          // Keep addresses merged in from alias copies on a re-run.
+          to: [...new Set([...(existing?.to ?? []), ...msg.to])],
           subject: msg.subject,
           snippet: msg.snippet,
           bodyText: msg.bodyText,

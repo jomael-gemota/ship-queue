@@ -29,6 +29,13 @@ export interface IDocTidyMessage extends Document {
   documentType?: DocumentType;
 
   gmailMessageId: string;
+  /** Sender-assigned `Message-ID` header; identical across per-alias copies. */
+  rfc822MessageId?: string;
+  /**
+   * Gmail ids of extra copies of this email (one per group alias it was sent
+   * to) that were folded into this row instead of being imported again.
+   */
+  aliasGmailMessageIds: string[];
   threadId?: string;
 
   from: string;
@@ -68,6 +75,8 @@ const DocTidyMessageSchema = new Schema<IDocTidyMessage>(
     documentType: { type: String, enum: DOCUMENT_TYPES, default: 'other' },
 
     gmailMessageId: { type: String, required: true, unique: true },
+    rfc822MessageId: { type: String, index: true },
+    aliasGmailMessageIds: { type: [String], default: [], index: true },
     threadId: { type: String },
 
     from: { type: String, required: true },

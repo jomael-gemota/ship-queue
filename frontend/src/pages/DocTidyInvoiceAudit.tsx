@@ -2769,6 +2769,8 @@ function auditColStr(
     case 'customerName':  return order.customerName ?? ''
     case 'purchasedDate': return order.purchasedDate ?? ''
     case 'status':        return order.status ?? ''
+    case 'orderId':       return order.orderId ?? ''
+    case 'processedDate': return order.processedDate ?? ''
     case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     default: break
   }
@@ -4883,6 +4885,8 @@ export default function DocTidyInvoiceAudit() {
       }
       case 'purchasedDate': return textCell(order.purchasedDate ?? '')
       case 'status':        return textCell(order.status ?? '')
+      case 'orderId':       return monoCell(order.orderId ?? '')
+      case 'processedDate': return textCell(order.processedDate ?? '')
       case 'dcCogs': {
         if (order.dcCogs == null) {
           return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
@@ -6254,18 +6258,18 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
-                  {/* Second row: stats + bulk actions (left) · rows per page + pagination (right) */}
+                  {/* Stats — right side of row 1 */}
+                  {pdfImportsPagination.total > 0 && (
+                    <span className="ml-auto text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{pdfImportsPagination.parsedCount.toLocaleString()}</span>
+                      <span className="opacity-50">/</span>
+                      <span>{pdfImportsPagination.total.toLocaleString()}</span>
+                      {' '}file{pdfImportsPagination.total === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {/* Selection action row — only visible when rows are selected */}
+                  {(pdfSelectedIds.size > 0 || anySelectedPdfRunning) && (
                   <div className="flex w-full items-center gap-2">
-                    {/* Stats: total / parsed / pending */}
-                    {pdfImportsPagination.total > 0 && (
-                      <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
-                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
-                        <span className="opacity-30">·</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
-                        <span className="opacity-30">·</span>
-                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
-                      </span>
-                    )}
                     {/* Abort Jobs */}
                     {anySelectedPdfRunning && (
                       <button
@@ -6326,6 +6330,7 @@ export default function DocTidyInvoiceAudit() {
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {/* ── Table ── */}
