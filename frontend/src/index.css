@@ -16,16 +16,17 @@
 }
 
 .dark {
-  --primary-100: #1f3a5f;
-  --primary-200: #4d648d;
-  --primary-300: #acc2ef;
-  --accent-100: #3d5a80;
-  --accent-200: #cee8ff;
-  --text-100: #ffffff;
-  --text-200: #e0e0e0;
-  --bg-100: #0f1c2e;
-  --bg-200: #1f2b3e;
-  --bg-300: #374357;
+  /* ── Teal-on-black palette ─────────────────────────────────────────────── */
+  --primary-100: #0d5060;   /* hover / active background */
+  --primary-200: #12768a;   /* theme-toggle active pill, interactive elevations */
+  --primary-300: #515c5c;   /* muted / disabled — Bovine */
+  --accent-100:  #12768a;   /* row handles, icon accents — Alpine Landing */
+  --accent-200:  #cedadb;   /* active nav text, row-hover accent border */
+  --text-100:    #cedadb;   /* primary text — Light Detroit */
+  --text-200:    #6dadbe;   /* secondary / muted text — Water Music */
+  --bg-100:      #030a0a;   /* main background — Eight Ball */
+  --bg-200:      #0e2527;   /* elevated: alt rows, table headers */
+  --bg-300:      #515c5c;   /* borders / dividers — Bovine */
 }
 
 html,
