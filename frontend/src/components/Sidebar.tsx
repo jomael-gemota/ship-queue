@@ -144,9 +144,9 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
   const { pathname } = useLocation()
 
   return (
-    <aside className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
-      <div className="h-16 px-3 flex items-center gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
-        <span className="h-9 w-9 shrink-0 rounded-xl bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border border-[var(--bg-300)] dark:border-[var(--bg-300)] p-1 flex items-center justify-center">
+    <aside data-sidebar className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[#4da08e] dark:border-[#1a4f53] bg-[#62b5a0] dark:bg-[#0b3f43] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
+      <div className="h-16 px-3 flex items-center gap-3 border-b border-[#4da08e] dark:border-[#1a4f53]">
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border border-[#4da08e] dark:border-[#1a4f53] p-1 flex items-center justify-center">
           <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
         </span>
         <div className={`${isOpen ? 'opacity-100' : 'opacity-0'} transition-opacity duration-150 min-w-0 overflow-hidden`}>
@@ -186,7 +186,7 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Invoice Auditing</p>
             </div>
           ) : (
-            <div className="border-t border-[var(--bg-300)] my-1" />
+            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
           )}
           {INVOICE_AUDIT_ITEMS.map((item) => (
             <NavLink
@@ -211,7 +211,7 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Ordering</p>
             </div>
           ) : (
-            <div className="border-t border-[var(--bg-300)] my-1" />
+            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
           )}
           {ORDERING_ITEMS.map((item) => {
             const active = item.active(pathname)
@@ -238,7 +238,7 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Admin</p>
             </div>
           ) : (
-            <div className="border-t border-[var(--bg-300)] my-1" />
+            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
           )}
           {ADMIN_ITEMS.map((item) => (
             <NavLink
@@ -259,7 +259,7 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
           ))}
         </nav>
 
-        <div className="mt-auto p-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+        <div className="mt-auto p-3 border-t border-[#4da08e] dark:border-[#1a4f53]">
           {user && isOpen && (
             <div className="flex items-center gap-2.5 mb-2.5">
               {user.avatar ? (

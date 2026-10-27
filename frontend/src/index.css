@@ -3,29 +3,44 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --primary-100: #d4eaf7;
-  --primary-200: #b6ccd8;
-  --primary-300: #3b3c3d;
-  --accent-100: #71c4ef;
-  --accent-200: #00668c;
-  --text-100: #1d1c1c;
-  --text-200: #313d44;
-  --bg-100: #fffefb;
-  --bg-200: #f5f4f1;
-  --bg-300: #cccbc8;
+  /* ── Soft Seafoam light palette ─────────────────────────────────────────── */
+  --primary-100: #c5f0e4;   /* hover / active background — light seafoam */
+  --primary-200: #a2e6d2;   /* elevated interactive, active pill */
+  --primary-300: #4a8a72;   /* muted mid-tone (disabled, placeholder) */
+  --accent-100:  #6dc4a8;   /* subtle icon accents, row handles */
+  --accent-200:  #1e7a5e;   /* buttons, active nav text — deep teal */
+  --text-100:    #0f2e24;   /* primary text — near-black teal */
+  --text-200:    #3d6b5a;   /* secondary / muted text — dark teal-green */
+  --bg-100:      #f0fdfb;   /* main background — near-white seafoam */
+  --bg-200:      #e8faf5;   /* secondary background */
+  --bg-300:      #a2e6d2;   /* borders / dividers — medium seafoam */
 }
 
 .dark {
-  --primary-100: #1f3a5f;
-  --primary-200: #4d648d;
-  --primary-300: #acc2ef;
-  --accent-100: #3d5a80;
-  --accent-200: #cee8ff;
-  --text-100: #ffffff;
-  --text-200: #e0e0e0;
-  --bg-100: #0f1c2e;
-  --bg-200: #1f2b3e;
-  --bg-300: #374357;
+  /* ── Teal-on-black palette ─────────────────────────────────────────────── */
+  --primary-100: #0d5060;   /* hover / active background */
+  --primary-200: #12768a;   /* theme-toggle active pill, interactive elevations */
+  --primary-300: #515c5c;   /* muted / disabled — Bovine */
+  --accent-100:  #12768a;   /* row handles, icon accents — Alpine Landing */
+  --accent-200:  #cedadb;   /* active nav text, row-hover accent border */
+  --text-100:    #cedadb;   /* primary text — Light Detroit */
+  --text-200:    #6dadbe;   /* secondary / muted text — Water Music */
+  --bg-100:      #030a0a;   /* main background — Eight Ball */
+  --bg-200:      #0e2527;   /* elevated: alt rows, table headers */
+  --bg-300:      #515c5c;   /* borders / dividers — Bovine */
+}
+
+/* ── Sidebar token overrides (light mode only) ──────────────────────────────
+   The light-mode sidebar bg (#62b5a0) is dark enough that the global dark-teal
+   text tokens have poor contrast. Scope lighter values here so every child
+   element picks them up automatically without touching individual class strings.
+   The html:not(.dark) selector keeps dark mode completely unaffected.        */
+html:not(.dark) [data-sidebar] {
+  --text-100:    #ffffff;               /* primary text — pure white */
+  --text-200:    rgba(255,255,255,0.78);/* secondary / section headers */
+  --accent-200:  #ffffff;               /* active nav text */
+  --primary-100: rgba(255,255,255,0.20);/* hover / active bg tint */
+  --bg-300:      rgba(255,255,255,0.22);/* collapsed divider lines */
 }
 
 html,

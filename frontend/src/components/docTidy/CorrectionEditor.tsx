@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { authApi } from '../../lib/api'
 import { diffOutputs } from '../../lib/correctionDiff'
 import { Spinner } from './docTidyUi'
@@ -341,11 +341,153 @@ function TabularCorrectionEditor({
         type="button"
         onClick={() => void save()}
         disabled={!diff.hasChanges || saving}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {saving && <Spinner />}
-        Save correction
+        {saving ? <Spinner className="h-4 w-4" /> : (
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+        )}
+        {saving ? 'Saving…' : 'Save correction'}
       </button>
+    </div>
+  )
+}
+
+/* ──────────────── JSON syntax tokeniser (VSCode Dark+ palette) ── */
+
+type JsonTokenType = 'key' | 'string' | 'number' | 'keyword' | 'punctuation' | 'plain'
+
+function tokenizeJson(json: string): Array<{ type: JsonTokenType; value: string }> {
+  const out: Array<{ type: JsonTokenType; value: string }> = []
+  let i = 0
+  while (i < json.length) {
+    if (/\s/.test(json[i])) {
+      let j = i + 1
+      while (j < json.length && /\s/.test(json[j])) j++
+      out.push({ type: 'plain', value: json.slice(i, j) })
+      i = j; continue
+    }
+    if (json[i] === '"') {
+      let j = i + 1
+      while (j < json.length) {
+        if (json[j] === '\\') { j += 2; continue }
+        if (json[j] === '"') { j++; break }
+        j++
+      }
+      const str = json.slice(i, j)
+      const isKey = /^\s*:/.test(json.slice(j))
+      out.push({ type: isKey ? 'key' : 'string', value: str })
+      i = j; continue
+    }
+    const numM = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(json.slice(i))
+    if (numM) { out.push({ type: 'number', value: numM[0] }); i += numM[0].length; continue }
+    const kwM = /^(true|false|null)/.exec(json.slice(i))
+    if (kwM) { out.push({ type: 'keyword', value: kwM[0] }); i += kwM[0].length; continue }
+    out.push({ type: 'punctuation', value: json[i] }); i++
+  }
+  return out
+}
+
+const TOKEN_COLOR: Record<JsonTokenType, string> = {
+  key:         '#9cdcfe',
+  string:      '#ce9178',
+  number:      '#b5cea8',
+  keyword:     '#569cd6',
+  punctuation: '#d4d4d4',
+  plain:       '#d4d4d4',
+}
+
+/**
+ * Syntax-highlighted + editable JSON editor using the overlay technique:
+ * a transparent <textarea> sits on top of a <pre> that renders the same
+ * value with VSCode Dark+ colouring. Scroll positions are kept in sync.
+ */
+function JsonEditor({
+  value,
+  onChange,
+  rows = 16,
+}: {
+  value: string
+  onChange: (v: string) => void
+  rows?: number
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const preRef      = useRef<HTMLPreElement>(null)
+  const tokens      = useMemo(() => tokenizeJson(value), [value])
+
+  /** Keep the highlight layer scrolled to the same position as the textarea. */
+  const syncScroll = () => {
+    if (textareaRef.current && preRef.current) {
+      preRef.current.scrollTop  = textareaRef.current.scrollTop
+      preRef.current.scrollLeft = textareaRef.current.scrollLeft
+    }
+  }
+
+  // Shared layout values — both layers must be pixel-identical.
+  const sharedStyle: React.CSSProperties = {
+    fontFamily:  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+    fontSize:    '11px',
+    lineHeight:  '20px',
+    padding:     '14px',
+    margin:      0,
+    whiteSpace:  'pre',
+    wordWrap:    'normal' as const,
+    overflowWrap: 'normal' as const,
+    tabSize:     2,
+  }
+
+  return (
+    <div
+      className="relative rounded-lg border border-[var(--bg-300)] focus-within:border-[var(--accent-200)] focus-within:ring-1 focus-within:ring-[var(--accent-200)] transition-colors"
+      style={{ background: '#1e1e1e' }}
+    >
+      {/* ── Highlight layer — pointer-events disabled, no scrollbar ── */}
+      <pre
+        ref={preRef}
+        aria-hidden
+        style={{
+          ...sharedStyle,
+          position:      'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          overflow:      'hidden',
+          pointerEvents: 'none',
+          userSelect:    'none',
+          color:         '#d4d4d4',
+          background:    'transparent',
+          border:        'none',
+          borderRadius:  0,
+          zIndex:        0,
+        }}
+      >
+        {tokens.map((tok, idx) => (
+          <span key={idx} style={{ color: TOKEN_COLOR[tok.type] }}>{tok.value}</span>
+        ))}
+      </pre>
+
+      {/* ── Edit layer — transparent text so highlight shows through ── */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={syncScroll}
+        spellCheck={false}
+        rows={rows}
+        style={{
+          ...sharedStyle,
+          position:   'relative',
+          zIndex:     1,
+          display:    'block',
+          width:      '100%',
+          resize:     'none',
+          background: 'transparent',
+          color:      'transparent',
+          caretColor: '#aeafad',
+          outline:    'none',
+          border:     'none',
+          overflow:   'auto',
+        }}
+      />
     </div>
   )
 }
@@ -427,22 +569,34 @@ function JsonCorrectionEditor({
 
   return (
     <div className="space-y-3">
+      {/* ── Single editable JSON editor ── */}
       <div>
-        <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
-          Corrected output
-        </label>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          spellCheck={false}
-          rows={14}
-          className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-3 font-mono text-xs leading-relaxed text-[var(--text-100)] focus:border-[var(--accent-200)] focus:outline-none"
-        />
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="text-xs font-semibold text-[var(--text-100)]">
+            Extracted JSON
+            <span className="ml-1.5 font-normal text-[var(--text-200)]">
+              — edit directly, then save your correction.
+            </span>
+          </label>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(draft)}
+            title="Copy JSON to clipboard"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--bg-300)] px-2 py-1 text-[11px] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+            </svg>
+            Copy
+          </button>
+        </div>
+        <JsonEditor value={draft} onChange={setDraft} rows={16} />
         {parsed.error && (
           <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{parsed.error}</p>
         )}
       </div>
 
+      {/* ── Note ── */}
       <div>
         <label className="mb-1 block text-xs font-semibold text-[var(--text-100)]">
           What was wrong?
@@ -459,6 +613,7 @@ function JsonCorrectionEditor({
         />
       </div>
 
+      {/* ── Diff ── */}
       {parsed.value && (
         <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-3">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)]">
@@ -475,10 +630,14 @@ function JsonCorrectionEditor({
         type="button"
         onClick={() => void save()}
         disabled={!canSave}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {saving && <Spinner />}
-        Save correction
+        {saving ? <Spinner className="h-4 w-4" /> : (
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+        )}
+        {saving ? 'Saving…' : 'Save correction'}
       </button>
     </div>
   )
@@ -511,32 +670,55 @@ export default function CorrectionEditor({
   const hasTables = tables.length > 0
 
   type Mode = 'json' | 'tabular'
-  const [mode, setMode] = useState<Mode>('json')
+  // Default to the Table sub-tab when the agent produced table output.
+  const [mode, setMode] = useState<Mode>(() => hasTables ? 'tabular' : 'json')
   // Note is shared so switching mode doesn't discard what the user typed.
   const [note, setNote] = useState('')
 
-  // Reset shared note when the job changes.
+  // Reset mode and note when the job changes (e.g. re-run or different file).
   useEffect(() => {
     setNote('')
-  }, [jobId])
+    setMode(hasTables ? 'tabular' : 'json')
+  }, [jobId, hasTables])
 
   return (
     <div className="space-y-3">
       {/* Mode toggle — only shown when the agent produced table output */}
       {hasTables && (
-        <div className="flex gap-1">
-          {(['json', 'tabular'] as const).map((m) => (
+        <div className="inline-flex rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] p-0.5">
+          {/* Table first, JSON second */}
+          {([
+            {
+              id: 'tabular' as const,
+              label: 'Table',
+              icon: (
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75.125c0-.621.504-1.125 1.125-1.125m0 0h1.5m-1.5 0H3.375m0 0c0-.622.504-1.125 1.125-1.125H18.75M3.375 18.375V7.5m0 10.875H18.75M6 7.5h12M6 7.5V4.875m0 2.625v2.25M6 7.5H3.375M6 10.125H3.375m2.625 0h.008v.008H6v-.008zm0 0H18.75m-12.75 0v2.25m0-2.25H3.375" />
+                </svg>
+              ),
+            },
+            {
+              id: 'json' as const,
+              label: 'JSON',
+              icon: (
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+              ),
+            },
+          ] as const).map((m) => (
             <button
-              key={m}
+              key={m.id}
               type="button"
-              onClick={() => setMode(m)}
-              className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                mode === m
-                  ? 'bg-[var(--primary-100)] text-[var(--accent-200)]'
-                  : 'text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]'
+              onClick={() => setMode(m.id)}
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                mode === m.id
+                  ? 'bg-[var(--bg-100)] text-[var(--accent-200)] shadow-sm'
+                  : 'text-[var(--text-200)] hover:text-[var(--text-100)]'
               }`}
             >
-              {m === 'json' ? 'JSON' : 'Table'}
+              {m.icon}
+              {m.label}
             </button>
           ))}
         </div>

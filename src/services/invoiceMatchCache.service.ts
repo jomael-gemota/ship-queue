@@ -2,7 +2,8 @@
  * Invoice Match Cache
  *
  * When a parse job completes, this service:
- *   1. Extracts the PO # and line items from the job's jsonOutput.
+ *   1. Extracts the PO # and line items from the job's jsonOutput — once per
+ *      invoice for spreadsheet batch files (`invoices[]`).
  *   2. Finds every DocTidyOrderImport in the same workspace whose poNumber +
  *      orderSku normalise-match the invoice data.
  *   3. Appends a cache entry to `matchedInvoices[]` on each matching order
@@ -30,7 +31,24 @@ function norm(s: unknown): string {
   return String(s ?? '').trim().toLowerCase().replace(/[\s#_-]+/g, '');
 }
 
-const normKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '');
+const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_FIELD_KEYS` in `frontend/src/types/docTidy.ts`.
+ */
+export const PO_NUMBER_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+];
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -46,8 +64,9 @@ function searchScopes(obj: Record<string, unknown>): Record<string, unknown>[] {
 
 /**
  * Pull the first non-empty scalar from a JSON object by candidate keys, in
- * priority order. Keys match after lowercasing and stripping `_`, `-` and
- * spaces, so camelCase and snake_case agent output are equivalent.
+ * priority order. Keys match after lowercasing and stripping every
+ * non-alphanumeric character, so camelCase, snake_case and printed labels
+ * (`Customer PO #`) are equivalent.
  *
  * Must stay identical to `extractJsonField` in `frontend/src/types/docTidy.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.
@@ -132,19 +151,108 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
 
   if (!job || job.status !== 'completed' || !job.jsonOutput) return 0;
 
-  const json = job.jsonOutput as Record<string, unknown>;
-
-  // Extract PO # from the invoice JSON.
-  const jobPo = norm(
-    extractField(json,
-      'po_number', 'purchase_order_number', 'po_no', 'po',
-      'purchase_order', 'order_number', 'order_no'
-    )
-  );
-  if (!jobPo) return 0;
+  const invoices = invoiceDocuments(job.jsonOutput as Record<string, unknown>)
+    .filter((inv) => norm(extractField(inv, ...PO_NUMBER_KEYS)));
+  if (invoices.length === 0) return 0;
 
   const workspaceId = await resolveWorkspaceId(job);
   if (!workspaceId) return 0;
+
+  // Fetch every order import once and filter in JS so we can reuse `norm()`.
+  const candidates = await DocTidyOrderImport.find({ workspaceId })
+    .select('_id poNumber orderSku customerName matchedInvoices.jobId matchedInvoices.matchedBy')
+    .lean();
+
+  const matched = invoices.flatMap((inv) =>
+    cachesForInvoice(inv, job._id as Types.ObjectId, job.driveFileId ?? undefined, candidates)
+  );
+  if (matched.length === 0) return 0;
+
+  // An order can match several invoices of one batch file (split shipment), so
+  // all of this job's entries for an order are replaced together.
+  const byOrder = new Map<string, { id: Types.ObjectId; caches: IMatchedInvoice[] }>();
+  for (const { id, cache } of matched) {
+    const entry = byOrder.get(String(id)) ?? { id, caches: [] };
+    entry.caches.push(cache);
+    byOrder.set(String(id), entry);
+  }
+
+  // Step 1: remove any prior entries for this job (idempotent re-parse support).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pullOps: any[] = [...byOrder.values()].flatMap(({ id, caches }) => [
+    {
+      updateOne: {
+        filter: { _id: id },
+        update: { $pull: { matchedInvoices: { jobId: job._id } } },
+      },
+    },
+    // A direct PO match supersedes combined-invoice matches from other jobs.
+    ...(caches.some((c) => c.matchedBy !== 'customer')
+      ? [{
+          updateOne: {
+            filter: { _id: id },
+            update: { $pull: { matchedInvoices: { matchedBy: 'customer' } } },
+          },
+        }]
+      : []),
+  ]);
+  await DocTidyOrderImport.bulkWrite(pullOps);
+
+  // Step 2: append the fresh cache entries for this job.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pushOps: any[] = [...byOrder.values()].map(({ id, caches }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $push: { matchedInvoices: { $each: caches } } },
+    },
+  }));
+  const result = await DocTidyOrderImport.bulkWrite(pushOps);
+  return result.modifiedCount;
+}
+
+/**
+ * The invoices in a job's output: each element of `invoices[]` for a
+ * spreadsheet batch file, otherwise the output itself.
+ *
+ * Must stay identical to `invoiceDocuments` in `frontend/src/types/docTidy.ts`.
+ */
+function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown>[] {
+  const invoices = Array.isArray(json.invoices) ? json.invoices.filter(isObject) : [];
+  return invoices.length > 0 ? invoices : [json];
+}
+
+const SKU_KEYS = ['sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'];
+
+type MatchCandidate = {
+  _id: unknown;
+  poNumber?: string;
+  orderSku?: string;
+  customerName?: string;
+  matchedInvoices?: { jobId?: unknown; matchedBy?: string }[];
+};
+
+/**
+ * Cache entries for every order import matching one invoice.
+ *
+ * Direct matches: PO # equal (and SKU, when both sides have line-level data).
+ *
+ * Combined-invoice matches: some vendors bill several orders from the same
+ * customer on one invoice that prints only one of the POs. An order whose PO
+ * is not on the invoice still matches when all of these hold:
+ *  - another order with the same customer name matched this invoice directly,
+ *  - one of the invoice's line items has this order's SKU and was not already
+ *    claimed by a direct match,
+ *  - the order has no direct match from another invoice.
+ * Those entries are tagged `matchedBy: 'customer'` so the UI can flag them.
+ */
+function cachesForInvoice(
+  json: Record<string, unknown>,
+  jobId: Types.ObjectId,
+  driveFileId: string | undefined,
+  candidates: MatchCandidate[],
+): { id: Types.ObjectId; cache: IMatchedInvoice }[] {
+  const rawPo = extractField(json, ...PO_NUMBER_KEYS);
+  const jobPo = norm(rawPo);
 
   // Extract document-level fields (same for every matched order from this invoice).
   const invoiceDate   = extractField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date');
@@ -158,79 +266,72 @@ export async function writeMatchCacheForJob(jobId: string): Promise<number> {
     'line_items', 'items', 'products', 'line items', 'lineItems', 'order_items', 'orderItems'
   );
 
-  // Find all order imports in this workspace whose PO # normalises to `jobPo`.
-  // We fetch them all and filter in JS so we can reuse `norm()`.
-  const candidates = await DocTidyOrderImport.find({ workspaceId }).select('_id poNumber orderSku').lean();
-
   const matchedIds: { id: Types.ObjectId; cache: IMatchedInvoice }[] = [];
+  const claimedItems = new Set<Record<string, unknown>>();
+  const anchorCustomers = new Set<string>();
+
+  const buildCache = (
+    li: Record<string, unknown> | null,
+    combined: boolean,
+  ): IMatchedInvoice => ({
+    jobId,
+    driveFileId,
+    invoiceDate,
+    invoiceNumber,
+    terms,
+    ...(combined ? { matchedBy: 'customer' as const, invoicePo: rawPo } : {}),
+    invoiceSku:   li ? extractField(li, ...SKU_KEYS) : undefined,
+    itemCost:     li ? extractField(li, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price') : undefined,
+    invoiceQty:   li ? extractField(li, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty') : undefined,
+    discountedPrice: li ? extractField(li, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price') : undefined,
+    discountPct:  li ? extractField(li, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc') : undefined,
+    dropshipFee:  (li ? extractField(li, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') : '') || docDropship || undefined,
+    miscCharges:  (li ? extractField(li, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') : '') || docMisc || undefined,
+    totalCost:    (li ? extractField(li, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') : '') || docTotal || undefined,
+    cachedAt: new Date(),
+  });
+
+  const findItem = (normSku: string, skipClaimed: boolean) =>
+    lineItems.find(
+      (item) => (!skipClaimed || !claimedItems.has(item)) && norm(extractField(item, ...SKU_KEYS)) === normSku
+    ) ?? null;
 
   for (const order of candidates) {
     if (norm(order.poNumber) !== jobPo) continue;
 
-    // Find the line item whose SKU matches this order's SKU.
     const normSku = norm(order.orderSku);
     let matchedItem: Record<string, unknown> | null = null;
 
     if (lineItems.length > 0 && normSku) {
-      for (const item of lineItems) {
-        const itemSku = norm(
-          extractField(item as Record<string, unknown>,
-            'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'
-          )
-        );
-        if (itemSku === normSku) {
-          matchedItem = item as Record<string, unknown>;
-          break;
-        }
-      }
+      matchedItem = findItem(normSku, false);
       // If we have line items but none matched this SKU, skip (PO alone isn't enough).
       if (!matchedItem) continue;
+      claimedItems.add(matchedItem);
     }
 
-    const li = matchedItem;
-
-    const cache: IMatchedInvoice = {
-      jobId:    job._id as Types.ObjectId,
-      driveFileId:   job.driveFileId ?? undefined,
-      invoiceDate,
-      invoiceNumber,
-      terms,
-      invoiceSku:   li ? extractField(li, 'sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number') : undefined,
-      itemCost:     li ? extractField(li, 'unit_price', 'price', 'rate', 'cost', 'unit_cost', 'item_cost', 'list_price') : undefined,
-      invoiceQty:   li ? extractField(li, 'quantity', 'qty', 'units', 'ordered_quantity', 'order_qty') : undefined,
-      discountedPrice: li ? extractField(li, 'discounted_price', 'sale_price', 'net_price', 'after_discount', 'final_price', 'net_unit_price', 'your_price') : undefined,
-      discountPct:  li ? extractField(li, 'discount_percent', 'discount_pct', 'discount_rate', 'discount', 'disc_pct', 'disc') : undefined,
-      dropshipFee:  (li ? extractField(li, 'dropship_fee', 'ds_fee', 'drop_ship_fee', 'dropship fee', 'dropship') : '') || docDropship || undefined,
-      miscCharges:  (li ? extractField(li, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') : '') || docMisc || undefined,
-      totalCost:    (li ? extractField(li, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') : '') || docTotal || undefined,
-      cachedAt: new Date(),
-    };
-
-    matchedIds.push({ id: order._id as Types.ObjectId, cache });
+    const customer = norm(order.customerName);
+    if (customer) anchorCustomers.add(customer);
+    matchedIds.push({ id: order._id as Types.ObjectId, cache: buildCache(matchedItem, false) });
   }
 
-  if (matchedIds.length === 0) return 0;
+  if (lineItems.length === 0 || anchorCustomers.size === 0) return matchedIds;
 
-  // Step 1: remove any prior entry for this job (idempotent re-parse support).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pullOps: any[] = matchedIds.map(({ id }) => ({
-    updateOne: {
-      filter: { _id: id },
-      update: { $pull: { matchedInvoices: { jobId: job._id } } },
-    },
-  }));
-  await DocTidyOrderImport.bulkWrite(pullOps);
+  for (const order of candidates) {
+    if (norm(order.poNumber) === jobPo) continue;
+    const normSku = norm(order.orderSku);
+    if (!normSku || !anchorCustomers.has(norm(order.customerName))) continue;
+    const hasDirectMatchElsewhere = (order.matchedInvoices ?? []).some(
+      (m) => m.matchedBy !== 'customer' && String(m.jobId) !== String(jobId)
+    );
+    if (hasDirectMatchElsewhere) continue;
 
-  // Step 2: append the fresh cache entry for this job.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pushOps: any[] = matchedIds.map(({ id, cache }) => ({
-    updateOne: {
-      filter: { _id: id },
-      update: { $push: { matchedInvoices: cache } },
-    },
-  }));
-  const result = await DocTidyOrderImport.bulkWrite(pushOps);
-  return result.modifiedCount;
+    const item = findItem(normSku, true);
+    if (!item) continue;
+    claimedItems.add(item);
+    matchedIds.push({ id: order._id as Types.ObjectId, cache: buildCache(item, true) });
+  }
+
+  return matchedIds;
 }
 
 /* ─────────────────── workspace-wide backfill (for Resync) ─────────────── */

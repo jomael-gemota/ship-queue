@@ -1,10 +1,28 @@
 import { formatBytes } from '../../lib/format'
-import { PdfIcon } from '../labels/labelUi'
+import { CsvFileIcon, ExcelFileIcon, PdfIcon } from '../labels/labelUi'
 import { ParseStatusChip } from './docTidyUi'
 import { isParseRunning, type DocTidyMessage } from '../../types/docTidy'
 
-/** Attachments the agent can read; anything else can't be sent for parsing. */
-export const PARSEABLE = /\.(pdf)$/i
+/** Choose the right file-type icon based on filename / MIME type. */
+function AttachmentIcon({ filename, mimeType, className }: { filename: string; mimeType: string; className?: string }) {
+  const isExcel =
+    /\.(xlsx|xls)$/i.test(filename) ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.ms-excel'
+  const isCsv =
+    /\.csv$/i.test(filename) ||
+    mimeType === 'text/csv'
+
+  if (isExcel) return <ExcelFileIcon className={className} />
+  if (isCsv)   return <CsvFileIcon className={className} />
+  return <PdfIcon className={className} />
+}
+
+/**
+ * Attachments the agent can read; anything else can't be sent for parsing.
+ * Mirrors `src/lib/parseableFiles.ts`.
+ */
+export const PARSEABLE = /\.(pdf|csv|xlsx|xls)$/i
 
 /**
  * A message's attachments — each rendered as a polished card showing the
@@ -40,8 +58,8 @@ export default function AttachmentCell({
             key={`${message._id}-${i}`}
             className="flex items-start gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)] p-3"
           >
-            {/* PDF icon */}
-            <PdfIcon className="mt-0.5 h-9 w-9 shrink-0" />
+            {/* File-type icon */}
+            <AttachmentIcon filename={att.filename} mimeType={att.mimeType} className="mt-0.5 h-9 w-9 shrink-0" />
 
             {/* File info */}
             <div className="min-w-0 flex-1">

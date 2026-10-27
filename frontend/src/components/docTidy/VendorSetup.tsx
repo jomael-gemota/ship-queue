@@ -102,7 +102,7 @@ export default function VendorSetup({
         type="button"
         onClick={submit}
         disabled={saving || !name.trim()}
-        className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving && <Spinner />}
         Register vendor

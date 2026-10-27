@@ -162,6 +162,7 @@ export interface RunRuleResult {
   updated: number
   attachmentsUploaded: number
   attachmentErrors: number
+  duplicatesMerged: number
   query: string
 }
 
@@ -186,6 +187,8 @@ export interface DocTidyEvent {
     | 'worker_status'
     | 'poll_status'
     | 'ui_prefs'
+    /** DC COGS were written for `workspaceId`; the Invoice Audit table refetches. */
+    | 'dc_cogs'
     /** Token usage was recorded; the admin usage dashboard refetches. */
     | 'usage'
   imported?: number
@@ -270,6 +273,8 @@ export interface DocTidyParseJob extends ParseJobSummary {
   tableOutput?: TableOutput | null
   documentTextSample?: string
   requestedByName?: string
+  /** Where this job originated — present on jobs created after 2026-09-22. */
+  source?: 'email' | 'pdf-import'
   createdAt: string
   updatedAt: string
 }
@@ -570,6 +575,18 @@ export interface ParseJobListItem {
   source?: 'email' | 'pdf-import'
 }
 
+/**
+ * One Invoice Audit row's worth of a parse job. A spreadsheet batch file holds
+ * several invoices, so its job yields one of these per invoice, each with that
+ * invoice as `jsonOutput`. `_id` stays the real job id.
+ */
+export interface InvoiceRowJob extends ParseJobListItem {
+  rowKey: string
+  /** Position and count within a batch file; absent for single-invoice jobs. */
+  invoiceIndex?: number
+  invoiceCount?: number
+}
+
 export interface ParseJobsResponse {
   data: ParseJobListItem[]
   pagination: {
@@ -590,6 +607,8 @@ export type InvoiceAuditColumnId =
   | 'customerName'
   | 'purchasedDate'
   | 'status'
+  | 'orderId'
+  | 'processedDate'
   // ── Invoice fields (from parsed PDFs) ──
   | 'invoiceSku'
   | 'invoiceDate'
@@ -621,32 +640,57 @@ export interface InvoiceAuditColumn {
   center?: boolean
   /** Render cell value in monospace. */
   mono?: boolean
+  /** SVG path `d` attribute rendered as a 14 × 14 icon in the column header. */
+  iconPath?: string
+  /**
+   * When set, the icon is rendered with `fill={iconColor}` instead of stroke.
+   * Use for brand/logo SVG paths (e.g. Amazon orange "#FF9900").
+   */
+  iconColor?: string
+  /** Image URL rendered as a 14 × 14 icon in the column header (takes priority over iconPath). */
+  iconSrc?: string
 }
 
+/** Declared in the default display order (Actions is a fixed column rendered before these). */
+// ─── Shared icon path constants ────────────────────────────────────────────
+export const AUDIT_COL_ICON = {
+  amazon: 'M.045 18.02c.072-.116.187-.124.348-.022 3.636 2.11 7.594 3.166 11.87 3.166 2.852 0 5.668-.533 8.447-1.595l.315-.14c.138-.06.234-.1.293-.13.226-.088.39-.046.525.13.12.174.09.336-.12.48-.256.19-.6.41-1.006.654-1.244.743-2.64 1.316-4.185 1.726-1.53.406-3.045.61-4.516.61-2.265 0-4.41-.396-6.435-1.187-2.02-.794-3.82-1.91-5.43-3.35-.1-.074-.15-.15-.15-.22 0-.047.02-.09.05-.13zm6.565-6.218c0-1.005.247-1.863.743-2.577.495-.71 1.17-1.25 2.04-1.615.796-.335 1.756-.575 2.912-.72.39-.046 1.033-.103 1.92-.174v-.37c0-.93-.105-1.558-.3-1.875-.302-.43-.78-.65-1.44-.65h-.182c-.48.046-.896.196-1.246.46-.35.27-.575.63-.675 1.096-.06.3-.206.465-.435.51l-2.52-.315c-.248-.06-.372-.18-.372-.39 0-.046.007-.09.022-.15.247-1.29.855-2.25 1.82-2.88.976-.616 2.1-.975 3.39-1.05h.54c1.65 0 2.957.434 3.888 1.29.135.15.27.3.405.48.12.165.224.314.283.45.075.134.15.33.195.57.06.254.105.42.135.51.03.104.062.3.076.615.01.313.02.493.02.553v5.28c0 .376.06.72.165 1.036.105.313.21.54.315.674l.51.674c.09.136.136.256.136.36 0 .12-.06.226-.18.314-1.2 1.05-1.86 1.62-1.963 1.71-.165.135-.375.15-.63.045-.195-.166-.375-.332-.526-.496l-.31-.347c-.06-.074-.166-.21-.317-.42l-.3-.435c-.81.886-1.603 1.44-2.4 1.665-.494.15-1.093.227-1.83.227-1.11 0-2.04-.343-2.76-1.034-.72-.69-1.08-1.665-1.08-2.94l-.05-.076zm3.753-.438c0 .566.14 1.02.425 1.364.285.34.675.512 1.155.512.045 0 .106-.007.195-.02.09-.016.134-.023.166-.023.614-.16 1.08-.553 1.424-1.178.165-.28.285-.58.36-.91.09-.32.12-.59.135-.8.015-.195.015-.54.015-1.005v-.54c-.84 0-1.484.06-1.92.18-1.275.36-1.92 1.17-1.92 2.43l-.035-.02zm9.162 7.027c.03-.06.075-.11.132-.17.362-.243.714-.41 1.05-.5.55-.133 1.09-.222 1.612-.24.14-.012.28 0 .41.03.65.06 1.05.168 1.172.33.063.09.09.228.09.39v.15c0 .51-.14 1.11-.415 1.8-.278.69-.664 1.248-1.156 1.68-.073.06-.14.09-.197.09-.03 0-.06 0-.09-.012-.09-.044-.107-.12-.064-.24.54-1.26.806-2.143.806-2.64 0-.15-.03-.27-.087-.344-.145-.166-.55-.257-1.224-.257-.243 0-.533.016-.87.046-.363.045-.7.09-1 .135-.09 0-.148-.014-.18-.044-.03-.03-.036-.047-.02-.077 0-.017.006-.03.02-.063v-.06z',
+  tag:          'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3z M6 6h.008v.008H6V6z',
+  hash:         'M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5l-3.9 19.5m-2.1-19.5l-3.9 19.5',
+  barcode:      'M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z',
+  stack:        'M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3',
+  dollar:       'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  calendar:     'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5',
+  clock:        'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
+  user:         'M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z',
+  checkCircle:  'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  document:     'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+  exclamation:  'M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z',
+} as const
+
 export const INVOICE_AUDIT_COLUMNS: InvoiceAuditColumn[] = [
-  // ── Order fields ──
-  { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true    },
-  { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true    },
-  { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true, center: true },
-  { id: 'lesd',               section: 'order',    label: 'LESD',            description: 'Latest Expected Ship Date from the imported order file',            defaultVisible: true,                center: true },
-  { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true                               },
-  { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true,                center: true },
-  { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true,                center: true },
-  // ── Invoice fields ──
-  { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',     description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true                   },
-  { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',    description: 'Date printed on the matched invoice',                              defaultVisible: true                               },
-  { id: 'invoiceNumber',      section: 'invoice',  label: 'Invoice #',       description: 'Invoice number from the matched invoice',                          defaultVisible: true,  mono: true                   },
-  { id: 'terms',              section: 'invoice',  label: 'Terms',           description: 'Payment terms (e.g. Net 30) from the matched invoice',             defaultVisible: false                              },
-  { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',       description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true, center: true },
-  { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',         description: 'Distribution center cost of goods sold (future source)',           defaultVisible: false, numeric: true, center: true },
-  { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',     description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true, center: true },
-  { id: 'discountedCostPct',  section: 'invoice',  label: 'Disc. Cost/%',    description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true, center: true },
-  { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',          description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: false, numeric: true, center: true },
-  { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',   description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: false, numeric: true, center: true },
-  { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',      description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true, center: true },
-  { id: 'parsedAt',           section: 'invoice',  label: 'Parsed',          description: 'Date the Tidy Agent last parsed and matched this invoice',           defaultVisible: true,                center: true },
-  // ── Computed ──
-  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',     center: true,       description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true },
+  { id: 'processedDate',      section: 'order',    label: 'Processed Date',  description: 'Date the order was processed (from the imported order file)',      defaultVisible: true,                center: true,   iconPath: AUDIT_COL_ICON.calendar    },
+  { id: 'poNumber',           section: 'order',    label: 'PO #',            description: 'Purchase order number from the imported order file',               defaultVisible: true,  mono: true,                 iconPath: AUDIT_COL_ICON.tag         },
+  { id: 'orderId',            section: 'order',    label: 'Order ID',        description: 'Order ID from the imported order file',                            defaultVisible: true,  mono: true,                 iconPath: AUDIT_COL_ICON.hash        },
+  { id: 'discrepancy',        section: 'computed', label: 'Discrepancy',     description: 'Flags mismatches: Order SKU vs Invoice SKU, Order Qty vs Invoice Qty', defaultVisible: true, center: true,            iconPath: AUDIT_COL_ICON.exclamation },
+  { id: 'invoiceNumber',      section: 'invoice',  label: 'Invoice #',       description: 'Invoice number from the matched invoice',                          defaultVisible: true,  mono: true,                 iconPath: AUDIT_COL_ICON.tag         },
+  { id: 'terms',              section: 'invoice',  label: 'Terms',           description: 'Payment terms (e.g. Net 30) from the matched invoice',             defaultVisible: true,                             iconPath: AUDIT_COL_ICON.document    },
+  { id: 'invoiceDate',        section: 'invoice',  label: 'Invoice Date',    description: 'Date printed on the matched invoice',                              defaultVisible: true,                             iconPath: AUDIT_COL_ICON.calendar    },
+  { id: 'orderSku',           section: 'order',    label: 'Order SKU',       description: 'SKU as it appears in the imported order file',                     defaultVisible: true,  mono: true,                 iconPath: AUDIT_COL_ICON.barcode     },
+  { id: 'invoiceSku',         section: 'invoice',  label: 'Invoice SKU',     description: 'SKU extracted from the matched invoice line item',                 defaultVisible: true,  mono: true,                 iconPath: AUDIT_COL_ICON.barcode     },
+  { id: 'orderQty',           section: 'order',    label: 'Order Qty',       description: 'Quantity ordered (from the imported order file)',                  defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.stack       },
+  { id: 'invoiceQty',         section: 'invoice',  label: 'Invoice Qty',     description: 'Quantity on the matched invoice line item',                        defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.stack       },
+  { id: 'itemCost',           section: 'invoice',  label: 'Item Cost',       description: 'Unit price / item cost from the matched invoice line item',        defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'dcCogs',             section: 'invoice',  label: 'DC COGS',         description: 'Distribution center cost of goods sold, from Data Central',        defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'discountedCostPct',  section: 'invoice',  label: 'Disc. Cost/%',    description: 'Discounted unit price and discount percentage from the invoice',   defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'lesd',               section: 'order',    label: 'LESD',            description: 'Latest Expected Ship Date from the imported order file',            defaultVisible: true,                center: true, iconPath: AUDIT_COL_ICON.calendar    },
+  { id: 'customerName',       section: 'order',    label: 'Customer Name',   description: 'Customer name from the imported order file',                       defaultVisible: true,                             iconPath: AUDIT_COL_ICON.user        },
+  { id: 'purchasedDate',      section: 'order',    label: 'Purchased Date',  description: 'Date the order was purchased (from the imported order file)',      defaultVisible: true,                center: true, iconPath: AUDIT_COL_ICON.calendar    },
+  { id: 'status',             section: 'order',    label: 'Status',          description: 'Order status from the imported order file',                        defaultVisible: true,                center: true, iconPath: AUDIT_COL_ICON.checkCircle },
+  { id: 'dropshipFee',        section: 'invoice',  label: 'DS Fee',          description: 'Dropship fee extracted from the matched invoice',                  defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'miscCharges',        section: 'invoice',  label: 'Misc. Charges',   description: 'Miscellaneous charges extracted from the matched invoice',         defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'totalCost',          section: 'invoice',  label: 'Total Cost',      description: 'Total line cost including tax and dropship fees',                  defaultVisible: true,  numeric: true, center: true, iconPath: AUDIT_COL_ICON.dollar      },
+  { id: 'parsedAt',           section: 'invoice',  label: 'Parsed',          description: 'Date the Tidy Agent last parsed and matched this invoice',           defaultVisible: true,                center: true, iconPath: AUDIT_COL_ICON.clock       },
 ]
 
 /** Default order mirrors the declaration order in INVOICE_AUDIT_COLUMNS. */
@@ -656,14 +700,14 @@ export const DEFAULT_AUDIT_COL_ORDER: InvoiceAuditColumnId[] = INVOICE_AUDIT_COL
 export const DEFAULT_EMAIL_COL_ORDER: WorkspaceEmailColumnId[] = WORKSPACE_EMAIL_COLUMNS.map((c) => c.id)
 
 /**
- * v5 key — bumped from v4 when "Parsed" (parsedAt) column was added (2026-10-02).
- * Old v4 preferences are ignored so the new column appears in its correct position
- * (after Total Cost, before Discrepancy) rather than being appended at the far right.
+ * v6 key — bumped from v5 when the default column set was revised and Order ID /
+ * Processed Date were added (2026-10-28). Old preferences are ignored so every
+ * workspace starts from the new defaults.
  *
  * The key is workspace-scoped: `<base>.<workspaceId>` so changing
  * visibility in Workspace A never touches Workspace B's preferences.
  */
-const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v5'
+const AUDIT_COL_STORAGE_KEY_BASE = 'docTidy.invoiceAudit.columns.v6'
 
 function auditColStorageKey(workspaceId: string): string {
   return `${AUDIT_COL_STORAGE_KEY_BASE}.${workspaceId}`
@@ -671,9 +715,8 @@ function auditColStorageKey(workspaceId: string): string {
 
 /**
  * Column visibility overrides applied to `header-only` workspaces.
- * Only PO #, Invoice #, Invoice Date, Terms, and Total Cost are shown;
- * everything else is hidden.  `terms` receives an explicit `true` because
- * its `defaultVisible` is `false` in the full-workspace definition.
+ * Only PO #, Invoice #, Invoice Date, Terms, Total Cost and Parsed are shown;
+ * everything else is hidden.
  */
 const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean>> = {
   // Order columns — hide all except poNumber
@@ -683,6 +726,8 @@ const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean
   customerName:      false,
   purchasedDate:     false,
   status:            false,
+  orderId:           false,
+  processedDate:     false,
   // Invoice columns — show only invoiceDate, invoiceNumber, terms, totalCost
   invoiceSku:        false,
   itemCost:          false,
@@ -691,7 +736,6 @@ const HEADER_ONLY_COLUMN_OVERRIDES: Partial<Record<InvoiceAuditColumnId, boolean
   discountedCostPct: false,
   dropshipFee:       false,
   miscCharges:       false,
-  terms:             true,   // normally hidden — force-show for header-only
   // Computed
   discrepancy:       false,
 }
@@ -763,7 +807,24 @@ export function saveCollapsedWeeks(keys: Set<string>): void {
   }
 }
 
-const normJsonKey = (s: string) => s.toLowerCase().replace(/[_\-\s]+/g, '')
+const normJsonKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Keys that carry the buyer's PO number, in priority order. Customer PO Number
+ * and Customer Reference are treated as the PO for every workspace.
+ *
+ * Must stay identical to `PO_NUMBER_KEYS` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export const PO_NUMBER_FIELD_KEYS = [
+  'po_number', 'purchase_order_number', 'po_no', 'po',
+  'customer_po_number', 'customer_po_no', 'customer_po',
+  'cust_po_number', 'cust_po_no', 'cust_po',
+  'customer_purchase_order', 'customer_purchase_order_number',
+  'your_po', 'your_po_number', 'buyer_po', 'client_po',
+  'customer_reference_number', 'customer_reference', 'customer_ref_no', 'customer_ref',
+  'cust_ref', 'your_reference', 'your_ref',
+  'purchase_order', 'order_number', 'order_no',
+]
 
 const isJsonObject = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -812,7 +873,8 @@ function jsonSearchScopes(json: Record<string, unknown>): Record<string, unknown
 /**
  * Extract a scalar value from a free-form AI JSON output, trying multiple
  * common field-name variants in priority order. Keys are normalised to
- * lowercase with all separators (`_`, `-`, spaces) stripped before comparison.
+ * lowercase with every non-alphanumeric character (`_`, `-`, spaces, `#`, `.`)
+ * stripped before comparison.
  *
  * Must stay identical to `extractField` in `src/services/invoiceMatchCache.service.ts`,
  * or a row's cached and fallback Invoice Audit values will disagree.
@@ -833,6 +895,32 @@ export function extractJsonField(
     }
   }
   return ''
+}
+
+/**
+ * The invoices in a job's output: each element of `invoices[]` for a
+ * spreadsheet batch file, otherwise the output itself.
+ *
+ * Must stay identical to `invoiceDocuments` in `src/services/invoiceMatchCache.service.ts`.
+ */
+export function invoiceDocuments(json: Record<string, unknown>): Record<string, unknown>[] {
+  const invoices = Array.isArray(json.invoices) ? json.invoices.filter(isJsonObject) : []
+  return invoices.length > 0 ? invoices : [json]
+}
+
+/** Expands spreadsheet batch jobs into one row-job per invoice; other jobs pass through. */
+export function expandInvoiceJobs(jobs: ParseJobListItem[]): InvoiceRowJob[] {
+  return jobs.flatMap((job) => {
+    const docs = isJsonObject(job.jsonOutput) ? invoiceDocuments(job.jsonOutput) : []
+    if (docs.length === 0 || docs[0] === job.jsonOutput) return [{ ...job, rowKey: job._id }]
+    return docs.map((doc, i) => ({
+      ...job,
+      jsonOutput: doc,
+      rowKey: `${job._id}:${i}`,
+      invoiceIndex: i,
+      invoiceCount: docs.length,
+    }))
+  })
 }
 
 /**
@@ -864,6 +952,14 @@ export type LineItemColumnId = never
 
 /* ──────────────────────────────────────── Order Imports ── */
 
+export interface DcCogsHistoryEntry {
+  cost: string
+  msrp: string
+  recordedAt: string
+  /** `stored` = the cost Doc Tidy held before history tracking began. */
+  source: 'dc_lookup' | 'stored'
+}
+
 /**
  * One order-line record imported from a CSV or XLSX file.
  * These are the **primary rows** in the Invoice Audit table.
@@ -893,6 +989,8 @@ export interface DocTidyOrderImport {
   dcCogs?: string | null
   dcMsrp?: string | null
   dcCogsAt?: string | null
+  /** Every DC COGS value this SKU has held, newest first. */
+  dcCogsHistory?: DcCogsHistoryEntry[]
   /**
    * Inline invoice match cache — written by the server the moment a matching
    * parse job completes.  When present the audit table reads these fields
@@ -930,6 +1028,10 @@ export interface MatchedInvoiceCache {
   dropshipFee?: string
   miscCharges?: string
   totalCost?: string
+  /** `'customer'` = billed under a sibling order's PO; absent = direct PO match. */
+  matchedBy?: 'po' | 'customer'
+  /** PO # printed on the invoice; only set when `matchedBy === 'customer'`. */
+  invoicePo?: string
   cachedAt: string
 }
 

@@ -8,13 +8,11 @@ import {
   DocumentTypeBadge,
   PaginationArrows,
   ParseProgressBadge,
-  ParseStatusChip,
   Spinner,
   Th,
   avatarColour,
 } from '../components/docTidy/docTidyUi'
-import { ErrorIcon, SuccessIcon } from '../components/labels/labelUi'
-import AttachmentIcons from '../components/docTidy/AttachmentIcons'
+import { CsvFileIcon, ErrorIcon, ExcelFileIcon, SuccessIcon } from '../components/labels/labelUi'
 import { PARSEABLE } from '../components/docTidy/AttachmentCell'
 import MessageDetailDrawer from '../components/docTidy/MessageDetailDrawer'
 import ParseJobPanel from '../components/docTidy/ParseJobPanel'
@@ -27,6 +25,7 @@ import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
 import {
   INVOICE_AUDIT_COLUMNS,
+  AUDIT_COL_ICON,
   WORKSPACE_EMAIL_COLUMNS,
   DEFAULT_AUDIT_COL_ORDER,
   DEFAULT_EMAIL_COL_ORDER,
@@ -37,11 +36,15 @@ import {
   saveCollapsedWeeks,
   extractJsonField,
   extractJsonArray,
+  expandInvoiceJobs,
+  PO_NUMBER_FIELD_KEYS,
   documentTypeOf,
   DOCUMENT_TYPE_LABELS,
   PARSE_STATUS_LABELS,
+  type DocTidyAttachment,
   type DocTidyMessage,
   type DocTidyMessagesResponse,
+  type ParseJobSummary,
   type DocTidyWorkspace,
   type DocTidyEmailSource,
   type DocTidySpsSource,
@@ -51,6 +54,7 @@ import {
   type WorkspaceEmailColumn,
   type WorkspaceEmailColumnId,
   type ParseJobListItem,
+  type InvoiceRowJob,
   type ParseJobsResponse,
   type PdfImport,
   type PdfImportColumn,
@@ -60,6 +64,7 @@ import {
   isParseRunning,
   type ParseJobStatus,
   type DocTidyOrderImport,
+  type DcCogsHistoryEntry,
   type OrderImportsResponse,
   type RunAllResult,
   type DocTidyConfig,
@@ -128,7 +133,15 @@ function normSkuForMatch(s: string): string {
 interface InvoiceMatch {
   job: ParseJobListItem
   item: Record<string, unknown> | null
+  /** Set when matched as a combined invoice: the PO # printed on the invoice. */
+  invoicePo?: string
 }
+
+const LINE_ITEM_KEYS = [
+  'line_items', 'items', 'products', 'line items',
+  'lineItems', 'order_items', 'orderItems',
+] as const
+const SKU_KEYS = ['sku', 'part_number', 'part_no', 'item_code', 'product_code', 'sku_number'] as const
 
 /**
  * Find **all** parse jobs that match a given order import (PO # + SKU).
@@ -156,18 +169,10 @@ function findAllInvoiceMatches(
 
   for (const job of jobs) {
     const json = job.jsonOutput ?? null
-    const jobPo = normForMatch(
-      extractJsonField(json,
-        'po_number', 'purchase_order_number', 'po_no', 'po',
-        'purchase_order', 'order_number', 'order_no'
-      )
-    )
+    const jobPo = normForMatch(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS))
     if (!jobPo || jobPo !== normPo) continue
 
-    const lineItems = extractJsonArray(json,
-      'line_items', 'items', 'products', 'line items',
-      'lineItems', 'order_items', 'orderItems'
-    )
+    const lineItems = extractJsonArray(json, ...LINE_ITEM_KEYS)
 
     if (lineItems.length === 0) {
       // No line items — PO match alone is sufficient
@@ -182,12 +187,7 @@ function findAllInvoiceMatches(
     }
 
     for (const item of lineItems) {
-      const itemSku = normSkuForMatch(
-        extractJsonField(item,
-          'sku', 'part_number', 'part_no', 'item_code',
-          'product_code', 'sku_number'
-        )
-      )
+      const itemSku = normSkuForMatch(extractJsonField(item, ...SKU_KEYS))
       if (itemSku === normSku) {
         matches.push({ job, item })
         break   // one match per job (same SKU won't appear twice in one invoice)
@@ -195,6 +195,46 @@ function findAllInvoiceMatches(
     }
   }
 
+  return matches
+}
+
+/**
+ * Combined-invoice fallback for an order with no direct PO match.
+ *
+ * Some vendors bill several orders from one customer on a single invoice that
+ * prints only one of the POs. The order matches such an invoice when another
+ * order with the same customer name matched it directly, and the invoice has a
+ * line item with this order's SKU that no direct match already claimed.
+ *
+ * Must stay in step with `cachesForInvoice` in
+ * `src/services/invoiceMatchCache.service.ts`.
+ */
+function findCombinedInvoiceMatches(
+  order: DocTidyOrderImport,
+  jobs: ParseJobListItem[],
+  orders: DocTidyOrderImport[],
+): InvoiceMatch[] {
+  const normSku = normSkuForMatch(order.orderSku)
+  const customer = normForMatch(order.customerName)
+  if (!normSku || !customer) return []
+
+  const matches: InvoiceMatch[] = []
+  for (const job of jobs) {
+    const json = job.jsonOutput ?? null
+    const rawPo = extractJsonField(json, ...PO_NUMBER_FIELD_KEYS)
+    const jobPo = normForMatch(rawPo)
+    if (!jobPo || jobPo === normForMatch(order.poNumber)) continue
+
+    const anchors = orders.filter((o) => normForMatch(o.poNumber) === jobPo)
+    if (!anchors.some((o) => normForMatch(o.customerName) === customer)) continue
+
+    const claimedSkus = new Set(anchors.map((o) => normSkuForMatch(o.orderSku)).filter(Boolean))
+    if (claimedSkus.has(normSku)) continue
+
+    const item = extractJsonArray(json, ...LINE_ITEM_KEYS)
+      .find((li) => normSkuForMatch(extractJsonField(li, ...SKU_KEYS)) === normSku)
+    if (item) matches.push({ job, item, invoicePo: rawPo })
+  }
   return matches
 }
 
@@ -255,9 +295,11 @@ function reorderCols<T>(arr: T[], src: T, dst: T): T[] {
 function DraggableTh({
   label,
   iconPath,
+  iconColor,
+  iconSrc,
   align = 'left',
   isDragging,
-  isDragTarget,
+   isDragTarget,
   hasActiveFilter,
   onDragStart,
   onDragOver,
@@ -267,6 +309,8 @@ function DraggableTh({
 }: {
   label: string
   iconPath?: string
+  iconColor?: string
+  iconSrc?: string
   align?: 'left' | 'center' | 'right'
   isDragging?: boolean
   isDragTarget?: boolean
@@ -329,14 +373,26 @@ function DraggableTh({
           <circle cx="6" cy="16" r="1.5" />
           <circle cx="14" cy="16" r="1.5" />
         </svg>
-        {iconPath && (
-          <svg
-            className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
-          </svg>
-        )}
+        {iconSrc
+          ? <img src={iconSrc} className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" alt="" aria-hidden />
+          : iconPath
+            ? iconColor
+              ? (
+                // Brand / logo icon — fill-based, preserves original colour
+                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill={isDragging ? 'currentColor' : iconColor} stroke="none" aria-hidden>
+                  <path d={iconPath} />
+                </svg>
+              )
+              : (
+                <svg
+                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+                </svg>
+              )
+            : null
+        }
         <span className="flex-1 min-w-0">{label}</span>
         {/* Column filter button — shown for every draggable column */}
         {onFilterClick && (
@@ -1396,7 +1452,7 @@ function WorkspaceCard({
 
   return (
     <div onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)] overflow-hidden cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
         <div className="mb-4">
@@ -1414,7 +1470,7 @@ function WorkspaceCard({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
         <span className="text-[10px] text-[var(--text-200)]">
           Created {new Date(workspace.createdAt).toLocaleDateString()}
         </span>
@@ -2168,22 +2224,151 @@ function MoveWorkspaceDialog({
 /** Generic empty-dash cell. */
 const emDash = <span className="text-[var(--text-200)]">—</span>
 
+/** Tiny inline SVG icon rendered inside a cell. Coral-blue, slightly muted, bold stroke. */
+function CellIcon({ d, className = '' }: { d: string; className?: string }) {
+  return (
+    <svg
+      className={`h-3 w-3 shrink-0 text-sky-400/40 ${className}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.75}
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  )
+}
+
 /** Text cell for codes / identifiers (SKU / PO # / invoice number). */
-function monoCell(value: string): React.ReactNode {
+function monoCell(value: string, icon?: string): React.ReactNode {
   if (!value) return emDash
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className="text-[10px] text-[var(--text-100)]">{value}</span>
+    </span>
+  )
   return <span className="text-[10px] text-[var(--text-100)]">{value}</span>
 }
 
-/** Plain text cell. */
-function textCell(value: string): React.ReactNode {
+/** Plain text cell, optionally with a leading icon. */
+function textCell(value: string, icon?: string): React.ReactNode {
   if (!value) return emDash
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className="text-[var(--text-100)]">{value}</span>
+    </span>
+  )
   return <span className="text-[var(--text-100)]">{value}</span>
 }
 
-/** Numeric / currency cell. */
-function numCell(value: string): React.ReactNode {
+/** Numeric / currency cell, optionally with a leading icon and/or bold value. */
+function numCell(value: string, icon?: string, bold?: boolean): React.ReactNode {
   if (!value) return emDash
-  return <span className="tabular-nums text-[var(--text-100)]">{value}</span>
+  const textCls = `tabular-nums text-[var(--text-100)]${bold ? ' font-semibold' : ''}`
+  if (icon) return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={icon} />
+      <span className={textCls}>{value}</span>
+    </span>
+  )
+  return <span className={textCls}>{value}</span>
+}
+
+/** Tooltip card listing every DC COGS value a SKU has held, newest first. */
+function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHistoryEntry[] }) {
+  return (
+    <div style={{ minWidth: 300 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-400">$</span>
+          <p className="text-[10px] font-semibold text-slate-200">DC COGS history</p>
+        </div>
+        <span className="tabular-nums text-[10px] font-semibold text-slate-300">Current: {cost}</span>
+      </div>
+
+      {/* Column labels */}
+      <div className="flex items-center border-b border-white/5 px-3.5 py-1.5 gap-2.5">
+        <span className="w-5 shrink-0" />
+        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-slate-600">Date</span>
+        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Cost</span>
+        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Change</span>
+      </div>
+
+      {/* History rows */}
+      <div className="divide-y divide-white/5">
+        {history.map((entry, idx) => {
+          const older = history[idx + 1]
+          const delta = older ? Number(entry.cost) - Number(older.cost) : 0
+          const isLatest = idx === 0
+          return (
+            <div key={`${entry.recordedAt}-${idx}`} className="flex items-center gap-2.5 px-3.5 py-2.5">
+              {/* Status dot */}
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                isLatest ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-700/60 text-slate-500'
+              }`}>
+                {isLatest ? '✓' : '·'}
+              </span>
+
+              {/* Date + source tag */}
+              <span className="flex-1 min-w-0">
+                <span className="block truncate text-[10px] text-slate-300">{formatDateTime(entry.recordedAt)}</span>
+                {entry.source === 'stored' && (
+                  <span className="text-[9px] italic text-slate-600">first recorded</span>
+                )}
+              </span>
+
+              {/* Cost */}
+              <span className="w-16 shrink-0 text-right tabular-nums text-[10px] font-semibold text-slate-200">
+                {entry.cost}
+              </span>
+
+              {/* Delta */}
+              <span className={`w-12 shrink-0 text-right tabular-nums text-[10px] font-medium ${
+                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-slate-600'
+              }`}>
+                {older && delta !== 0 ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)}` : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="border-t border-white/10 bg-white/5 px-3.5 py-2 flex items-center justify-between">
+        <span className="text-[10px] text-slate-600">Source: Data Central</span>
+        <span className="text-[10px] text-slate-600">Click away to close</span>
+      </div>
+    </div>
+  )
+}
+
+function dcCogsCell(order: DocTidyOrderImport): React.ReactNode {
+  if (order.dcCogs == null) {
+    return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
+  }
+  if (order.dcCogs === 'n/a') return emDash
+  const history = order.dcCogsHistory ?? []
+  return (
+    <span className="inline-flex items-center gap-1">
+      <CellIcon d={AUDIT_COL_ICON.dollar} />
+      <span className="tabular-nums font-semibold text-[var(--text-100)]">{order.dcCogs}</span>
+      {history.length > 0 && (
+        <Tooltip trigger="click" richContent={<DcCogsHistoryCard cost={order.dcCogs} history={history} />}>
+          <span
+            className="flex h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-sky-500/15 text-sky-500 transition-colors hover:bg-sky-500/30"
+            title="DC COGS history"
+          >
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+        </Tooltip>
+      )}
+    </span>
+  )
 }
 
 /** Extract a scalar from a line-item object (wraps extractJsonField). */
@@ -2295,7 +2480,17 @@ function discrepancyCell(
     if (order.dcCogs == null)
       return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: dash, status: null, pending: true }
     if (!dcCogs)
-      return { key: 'cogs', label: 'COGS', orderVal: dash, invoiceVal: effectiveCostRaw || dash, status: undefined, noData: true }
+      // DC COGS was fetched but not found for this SKU ('n/a'). When the
+      // invoice already has an item cost, flag it as a mismatch so the user
+      // notices there is nothing to validate against. If neither side has a
+      // cost, leave it as noData (nothing to compare).
+      return {
+        key: 'cogs', label: 'COGS',
+        orderVal: dash,
+        invoiceVal: effectiveCostRaw || dash,
+        status: effectiveCostRaw ? false : undefined,
+        noData: !effectiveCostRaw,
+      }
     return {
       key: 'cogs', label: 'COGS',
       orderVal: dcCogs,
@@ -2309,15 +2504,18 @@ function discrepancyCell(
       key: 'sku', label: 'SKU',
       orderVal: order.orderSku || dash,
       invoiceVal: invoiceSku || dash,
-      status: invoiceSku ? skuMatch : undefined,
-      noData: !invoiceSku,
+      // If the invoice matched but extracted no SKU for this order line, treat
+      // it as a mismatch so the user notices a gap rather than seeing "All good".
+      status: invoiceSku ? skuMatch : (order.orderSku ? false : undefined),
+      noData: !invoiceSku && !order.orderSku,
     },
     {
       key: 'qty', label: 'Qty',
       orderVal: order.orderQty || dash,
       invoiceVal: invoiceQtyRaw || dash,
-      status: invoiceQtyRaw ? qtyMatch : undefined,
-      noData: !invoiceQtyRaw,
+      // Same: missing invoice qty when the order specifies one = mismatch.
+      status: invoiceQtyRaw ? qtyMatch : (order.orderQty ? false : undefined),
+      noData: !invoiceQtyRaw && !order.orderQty,
     },
     cogsRow,
   ]
@@ -2410,6 +2608,15 @@ function discrepancyCell(
         })}
       </div>
 
+      {inv.combinedInvoicePo && (
+        <div className="border-t border-white/10 bg-amber-500/5 px-3.5 py-2">
+          <p className="text-[10px] leading-relaxed text-amber-400">
+            Combined invoice: billed under PO {inv.combinedInvoicePo}, not this order's PO {order.poNumber}.
+            Matched because the same customer's order is on that invoice.
+          </p>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
         <p className="text-[10px] text-slate-600">
@@ -2425,14 +2632,25 @@ function discrepancyCell(
   // Matches are intentionally omitted — if nothing is collected the row is clean.
   const badges: React.ReactNode[] = []
 
-  if (invoiceSku && !skuMatch)
+  if (inv.combinedInvoicePo)
+    badges.push(
+      <span key="po" title={`Billed under PO ${inv.combinedInvoicePo}`}
+        className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+        ⇄ PO
+      </span>
+    )
+
+  // SKU: flag when order has a SKU but the invoice either returned a different
+  // one or didn't extract one at all.
+  if (order.orderSku && !skuMatch)
     badges.push(
       <span key="sku" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ SKU
       </span>
     )
 
-  if (invoiceQtyRaw && !qtyMatch)
+  // Qty: same logic — missing invoice qty for an order that has one = mismatch.
+  if (order.orderQty && !qtyMatch)
     badges.push(
       <span key="qty" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ Qty
@@ -2445,7 +2663,9 @@ function discrepancyCell(
         COGS…
       </span>
     )
-  else if (cogsMatch === false)
+  else if (cogsMatch === false || (!dcCogs && effectiveCostRaw))
+    // ✗ COGS covers both: values differ, OR DC COGS unavailable but invoice
+    // has an item cost (nothing to validate against = actionable gap).
     badges.push(
       <span key="cogs" className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">
         ✗ COGS
@@ -2538,6 +2758,8 @@ function resolveInvoiceFields(
     miscCharges: string
     totalCost: string
     jobId?: string
+    /** Non-empty only for combined-invoice matches. */
+    invoicePo: string
   }
 
   let perInvoice: PerInvoice[] = []
@@ -2558,6 +2780,7 @@ function resolveInvoiceFields(
       miscCharges:     c.miscCharges     ?? '',
       totalCost:       c.totalCost       ?? '',
       jobId:           c.jobId,
+      invoicePo:       c.matchedBy === 'customer' ? (c.invoicePo ?? '') : '',
     }))
   } else if (order.matchedInvoice) {
     // Backward compat: legacy singular cache
@@ -2576,6 +2799,7 @@ function resolveInvoiceFields(
       miscCharges:     c.miscCharges     ?? '',
       totalCost:       c.totalCost       ?? '',
       jobId:           c.jobId,
+      invoicePo:       '',
     }]
   } else if (matches.length > 0) {
     // Client-side fallback (no server cache yet)
@@ -2596,6 +2820,7 @@ function resolveInvoiceFields(
         miscCharges:     liVal(item, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous') || extractJsonField(json, 'misc_charges', 'miscellaneous_charges', 'misc_fees', 'other_charges', 'misc', 'miscellaneous'),
         totalCost:       liVal(item, 'total', 'line_total', 'subtotal', 'extended_price', 'total_cost', 'extended_amount', 'ext_price') || extractJsonField(json, 'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount', 'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
         jobId:           String(m.job._id),
+        invoicePo:       m.invoicePo ?? '',
       }
     })
   }
@@ -2617,6 +2842,7 @@ function resolveInvoiceFields(
       dropshipFee:     '',
       miscCharges:     '',
       totalCost:       '',
+      combinedInvoicePo: '',
     }
   }
 
@@ -2645,6 +2871,8 @@ function resolveInvoiceFields(
     dropshipFee:     sumNumericStrings(perInvoice.map((p) => p.dropshipFee)),
     miscCharges:     sumNumericStrings(perInvoice.map((p) => p.miscCharges)),
     totalCost:       sumNumericStrings(perInvoice.map((p) => p.totalCost)),
+    /** PO #(s) printed on invoices this order was matched to as a combined invoice. */
+    combinedInvoicePo: [...new Set(perInvoice.map((p) => p.invoicePo).filter(Boolean))].join(', '),
   }
 }
 
@@ -2657,8 +2885,7 @@ function headerOnlyColStr(colId: InvoiceAuditColumnId, job: ParseJobListItem): s
   const json = job.jsonOutput ?? null
   switch (colId) {
     case 'poNumber':
-      return extractJsonField(json,
-        'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no')
+      return extractJsonField(json, ...PO_NUMBER_FIELD_KEYS)
     case 'invoiceDate':
       return extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date')
     case 'invoiceNumber':
@@ -2689,6 +2916,8 @@ function auditColStr(
     case 'customerName':  return order.customerName ?? ''
     case 'purchasedDate': return order.purchasedDate ?? ''
     case 'status':        return order.status ?? ''
+    case 'orderId':       return order.orderId ?? ''
+    case 'processedDate': return order.processedDate ?? ''
     case 'dcCogs':        return (order.dcCogs && order.dcCogs !== 'n/a') ? order.dcCogs : ''
     default: break
   }
@@ -2723,8 +2952,11 @@ function auditColStr(
     case 'discrepancy': {
       if (!inv.hasMatch) return 'No match'
       const issues: string[] = []
-      if (inv.invoiceSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
-      if (inv.invoiceQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
+      if (inv.combinedInvoicePo) issues.push(`⇄ PO ${inv.combinedInvoicePo}`)
+      // SKU: missing invoice SKU for an order that has one counts as mismatch.
+      if (order.orderSku && normSkuForMatch(order.orderSku) !== normSkuForMatch(inv.invoiceSku)) issues.push('✗ SKU')
+      // Qty: same.
+      if (order.orderQty && normForMatch(order.orderQty) !== normForMatch(inv.invoiceQty)) issues.push('✗ Qty')
       if (order.dcCogs == null) {
         issues.push('COGS pending')
       } else {
@@ -2735,6 +2967,9 @@ function auditColStr(
           const costNum = parseFloat(effectiveCost.replace(/[^0-9.-]/g, ''))
           const cogsNum = parseFloat(dcCogs.replace(/[^0-9.-]/g, ''))
           if (!isNaN(costNum) && !isNaN(cogsNum) && Math.abs(costNum - cogsNum) >= 0.005) issues.push('✗ COGS')
+        } else if (!dcCogs && effectiveCost) {
+          // Invoice has a cost but DC COGS was not found for this SKU — flag it.
+          issues.push('✗ COGS')
         }
       }
       return issues.length === 0 ? 'All good' : issues.join(', ')
@@ -2769,6 +3004,62 @@ function emailEffectiveParseStatus(msg: DocTidyMessage): ParseJobStatus | 'none'
   if (jobs.some((j) => j.status === 'pending'))    return 'pending'
   if (jobs.some((j) => j.status === 'failed'))     return 'failed'
   return 'completed'
+}
+
+/**
+ * One row in the expanded Emails table — one per parseable attachment per message.
+ * Messages with no parseable attachments produce a single row with `attachment: null`.
+ */
+interface EmailAttachmentRow {
+  /** Unique React key. */
+  rowKey: string
+  msg: DocTidyMessage
+  /** `null` when the message has no parseable attachments. */
+  attachmentIndex: number | null
+  attachment: DocTidyAttachment | null
+  parseJob: ParseJobSummary | undefined
+  /** First row in a multi-attachment group gets full email metadata; others get a continuation style. */
+  isFirstInGroup: boolean
+  /** Number of parseable attachments for this message (0 when none). */
+  groupSize: number
+}
+
+/**
+ * Expands a list of messages into one row per parseable attachment.
+ * Messages with no parseable attachments produce one placeholder row.
+ */
+function expandEmailRows(messages: DocTidyMessage[]): EmailAttachmentRow[] {
+  const result: EmailAttachmentRow[] = []
+  for (const msg of messages) {
+    const parseable = msg.attachments
+      .map((att, i) => ({ att, i }))
+      .filter(({ att }) => PARSEABLE.test(att.filename))
+
+    if (parseable.length === 0) {
+      result.push({
+        rowKey: msg._id,
+        msg,
+        attachmentIndex: null,
+        attachment: null,
+        parseJob: undefined,
+        isFirstInGroup: true,
+        groupSize: 0,
+      })
+    } else {
+      parseable.forEach(({ att, i }, groupIdx) => {
+        result.push({
+          rowKey: `${msg._id}:${i}`,
+          msg,
+          attachmentIndex: i,
+          attachment: att,
+          parseJob: msg.parseJobs?.find((j) => j.attachmentIndex === i),
+          isFirstInGroup: groupIdx === 0,
+          groupSize: parseable.length,
+        })
+      })
+    }
+  }
+  return result
 }
 
 /** Maps a `PdfImport` column to a plain string for column-filter comparisons. */
@@ -3039,9 +3330,27 @@ export default function DocTidyInvoiceAudit() {
   const [emailDateFrom, setEmailDateFrom] = useState('')
   const [emailDateTo, setEmailDateTo] = useState('')
   const [emailParseStatusFilter, setEmailParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
+  /* Email advanced search */
+  const [emailAdvancedOpen, setEmailAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
+  const [emailAdvPo, setEmailAdvPo] = useState('')
+  const [emailAdvInvoice, setEmailAdvInvoice] = useState('')
+  const [emailAdvVendor, setEmailAdvVendor] = useState('')
+  const [emailAdvDebounced, setEmailAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [emailDraftPo, setEmailDraftPo] = useState('')
+  const [emailDraftInvoice, setEmailDraftInvoice] = useState('')
+  const [emailDraftVendor, setEmailDraftVendor] = useState('')
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [viewMessage, setViewMessage] = useState<DocTidyMessage | null>(null)
-  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set())
+  /**
+   * Per-attachment-row selection.  Key format mirrors `EmailAttachmentRow.rowKey`:
+   *   - `${msg._id}:${attachmentIndex}` for parseable-attachment rows
+   *   - `${msg._id}` for placeholder rows (messages with no parseable attachments)
+   */
+  const [selectedEmailKeys, setSelectedEmailKeys] = useState<Set<string>>(new Set())
+  /** Keys of individual attachment parse requests in flight: `${msgId}:${attachmentIndex}`. */
+  const [emailSendingKeys, setEmailSendingKeys] = useState<Set<string>>(new Set())
   const selectAllEmailRef = useRef<HTMLInputElement>(null)
 
   const emailCheckboxClass =
@@ -3135,6 +3444,17 @@ export default function DocTidyInvoiceAudit() {
   const [pdfDateFrom, setPdfDateFrom] = useState('')
   const [pdfDateTo, setPdfDateTo] = useState('')
   const [pdfParseStatusFilter, setPdfParseStatusFilter] = useState<'' | 'none' | ParseJobStatus>('')
+  /* PDF advanced search */
+  const [pdfAdvancedOpen, setPdfAdvancedOpen] = useState(false)
+  /* Applied state — drives the actual server query */
+  const [pdfAdvPo, setPdfAdvPo] = useState('')
+  const [pdfAdvInvoice, setPdfAdvInvoice] = useState('')
+  const [pdfAdvVendor, setPdfAdvVendor] = useState('')
+  const [pdfAdvDebounced, setPdfAdvDebounced] = useState({ po: '', invoice: '', vendor: '' })
+  /* Draft state — bound to modal inputs; only copied to applied on "Apply & Close" */
+  const [pdfDraftPo, setPdfDraftPo] = useState('')
+  const [pdfDraftInvoice, setPdfDraftInvoice] = useState('')
+  const [pdfDraftVendor, setPdfDraftVendor] = useState('')
   const [pdfUploading, setPdfUploading] = useState(false)
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [pdfSendingIds, setPdfSendingIds] = useState<Set<string>>(new Set())
@@ -3179,7 +3499,7 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Header-only parse-job delete ── */
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set())
-  const [confirmDeleteJob, setConfirmDeleteJob] = useState<ParseJobListItem | null>(null)
+  const [confirmDeleteJob, setConfirmDeleteJob] = useState<InvoiceRowJob | null>(null)
   const [jobDeleting, setJobDeleting] = useState(false)
   const [confirmBulkDeleteJobs, setConfirmBulkDeleteJobs] = useState(false)
   const [jobBulkDeleting, setJobBulkDeleting] = useState(false)
@@ -3202,6 +3522,12 @@ export default function DocTidyInvoiceAudit() {
       })
     })
   }, [emailMessages, emailColFilters, emailParseStatusFilter])
+
+  /** One row per parseable attachment (or one placeholder row for messages without any). */
+  const expandedEmailRows = useMemo(
+    () => expandEmailRows(filteredEmailMessages),
+    [filteredEmailMessages],
+  )
 
   const filteredPdfImports = useMemo(() => {
     const activeEntries = Object.entries(pdfColFilters).filter(
@@ -3228,8 +3554,14 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [pdfSearch])
 
+  /* Debounce pdf advanced search inputs */
+  useEffect(() => {
+    const t = setTimeout(() => setPdfAdvDebounced({ po: pdfAdvPo, invoice: pdfAdvInvoice, vendor: pdfAdvVendor }), 400)
+    return () => clearTimeout(t)
+  }, [pdfAdvPo, pdfAdvInvoice, pdfAdvVendor])
+
   /* Reset page + selection when filters change */
-  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter])
+  useEffect(() => { setPdfPage(1); setPdfSelectedIds(new Set()) }, [pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfPageSize, pdfParseStatusFilter, pdfAdvDebounced])
 
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
   const pdfFetchGenRef = useRef(0)
@@ -3247,6 +3579,12 @@ export default function DocTidyInvoiceAudit() {
       if (pdfDebouncedSearch) params.set('search', pdfDebouncedSearch)
       if (pdfDateFrom) params.set('dateFrom', pdfDateFrom)
       if (pdfDateTo) params.set('dateTo', pdfDateTo)
+      // Advanced search: PO #, invoice #, vendor
+      const pdfAdvPoTerms = [...new Set(pdfAdvDebounced.po.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      const pdfAdvInvTerms = [...new Set(pdfAdvDebounced.invoice.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      if (pdfAdvPoTerms.length) params.set('poNumbers', pdfAdvPoTerms.join(','))
+      if (pdfAdvInvTerms.length) params.set('invoiceNumbers', pdfAdvInvTerms.join(','))
+      if (pdfAdvDebounced.vendor.trim()) params.set('vendor', pdfAdvDebounced.vendor.trim())
       const res = await authApi.get<{ data: PdfImport[]; pagination: { total: number; pages: number; parsedCount: number } }>(
         `/doc-tidy/pdf-imports?${params.toString()}`
       )
@@ -3259,16 +3597,16 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       if (gen === pdfFetchGenRef.current) setPdfImportsLoading(false)
     }
-  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo])
+  }, [activeWorkspace, pdfPage, pdfPageSize, pdfDebouncedSearch, pdfDateFrom, pdfDateTo, pdfAdvDebounced])
 
   useEffect(() => {
     if (workspaceTab === 'pdf-imports') void fetchPdfImports()
   }, [workspaceTab, fetchPdfImports])
 
   const handlePdfFilesSelected = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files).filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
+    const fileArray = Array.from(files).filter((f) => PARSEABLE.test(f.name))
     if (fileArray.length === 0) {
-      setPdfUploadError('Please select PDF files only.')
+      setPdfUploadError('Please select PDF, CSV or Excel (.xlsx, .xls) files only.')
       return
     }
     if (!activeWorkspace) return
@@ -3321,7 +3659,13 @@ export default function DocTidyInvoiceAudit() {
     setEmailDeleting(true)
     try {
       await authApi.delete(`/doc-tidy/messages/${msg._id}`)
-      setSelectedEmailIds((prev) => { const next = new Set(prev); next.delete(msg._id); return next })
+      setSelectedEmailKeys((prev) => {
+        const next = new Set(prev)
+        for (const k of next) {
+          if ((k.includes(':') ? k.split(':')[0] : k) === msg._id) next.delete(k)
+        }
+        return next
+      })
       setConfirmDeleteEmail(null)
       void fetchEmails(true)
     } catch (err) {
@@ -3334,13 +3678,15 @@ export default function DocTidyInvoiceAudit() {
 
   /* ── Emails: bulk delete selected messages ── */
   const handleBulkDeleteEmails = async () => {
-    const ids = Array.from(selectedEmailIds)
+    // Derive unique message IDs from the row-level key set
+    const msgIds = new Set(Array.from(selectedEmailKeys).map((k) => k.includes(':') ? k.split(':')[0] : k))
+    const ids = Array.from(msgIds)
     setEmailBulkDeleting(true)
     try {
       await authApi.post('/doc-tidy/messages/bulk-delete', { ids })
-      setEmailMessages((prev) => prev.filter((m) => !selectedEmailIds.has(m._id)))
+      setEmailMessages((prev) => prev.filter((m) => !msgIds.has(m._id)))
       setEmailPagination((prev) => ({ ...prev, total: Math.max(0, prev.total - ids.length) }))
-      setSelectedEmailIds(new Set())
+      setSelectedEmailKeys(new Set())
       setConfirmBulkDeleteEmails(false)
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Failed to delete selected messages', 'error')
@@ -3403,18 +3749,22 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /* ── Emails: bulk send selected messages to Tidy Agent for parsing ── */
+  /* ── Emails: bulk send selected attachment rows to Tidy Agent for parsing ── */
   const handleBulkSendEmailsToAgent = async () => {
-    const selectedMsgs = emailMessages.filter((m) => selectedEmailIds.has(m._id))
+    // Only keys with `:` represent parseable attachment rows; skip placeholder rows
     const tasks: Array<{ msgId: string; index: number }> = []
-    for (const msg of selectedMsgs) {
-      for (let i = 0; i < msg.attachments.length; i++) {
-        const att = msg.attachments[i]
-        if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-        const job = msg.parseJobs?.find((j) => j.attachmentIndex === i)
-        if (job && (job.status === 'pending' || job.status === 'processing')) continue
-        tasks.push({ msgId: msg._id, index: i })
-      }
+    for (const key of selectedEmailKeys) {
+      if (!key.includes(':')) continue
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) continue
+      const att = msg.attachments[attachmentIndex]
+      if (!att || !PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      if (job && (job.status === 'pending' || job.status === 'processing')) continue
+      tasks.push({ msgId, index: attachmentIndex })
     }
     if (tasks.length === 0) return
     setEmailBulkSending(true)
@@ -3450,14 +3800,18 @@ export default function DocTidyInvoiceAudit() {
     }
   }
 
-  /** Abort all running/pending parse jobs across selected email rows. */
+  /** Abort running/pending parse jobs for each selected attachment row. */
   const handleBulkAbortEmails = async () => {
     const jobIds: string[] = []
-    for (const msg of emailMessages) {
-      if (!selectedEmailIds.has(msg._id)) continue
-      for (const job of msg.parseJobs ?? []) {
-        if (job.status === 'pending' || job.status === 'processing') jobIds.push(job._id)
-      }
+    for (const key of selectedEmailKeys) {
+      if (!key.includes(':')) continue
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) continue
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      if (job && (job.status === 'pending' || job.status === 'processing')) jobIds.push(job._id)
     }
     if (jobIds.length === 0) return
     setEmailBulkAborting(true)
@@ -3493,29 +3847,42 @@ export default function DocTidyInvoiceAudit() {
   const allPdfOnPageSelected = filteredPdfImports.length > 0 && filteredPdfImports.every((i) => pdfSelectedIds.has(i._id))
   const somePdfOnPageSelected = filteredPdfImports.some((i) => pdfSelectedIds.has(i._id))
 
-  /** True when every parseable attachment across all selected emails already has a completed parse job. */
-  const allSelectedEmailsCompleted =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .every((m) => {
-        let hasParseable = false
-        for (let i = 0; i < m.attachments.length; i++) {
-          const att = m.attachments[i]
-          if (!PARSEABLE.test(att.filename) || !att.driveFileId || att.uploadError) continue
-          hasParseable = true
-          const job = m.parseJobs?.find((j) => j.attachmentIndex === i)
-          if (!job || job.status !== 'completed') return false
-        }
-        return hasParseable
-      })
+  /** Keys in the selection that represent parseable attachment rows (`msgId:index` format). */
+  const selectedAttachmentKeys = useMemo(
+    () => Array.from(selectedEmailKeys).filter((k) => k.includes(':')),
+    [selectedEmailKeys],
+  )
 
-  /** True when at least one selected email has a running (pending/processing) parse job. */
+  /** Unique message IDs touched by the current selection — used for bulk delete. */
+  const selectedMsgIdsForDelete = useMemo(
+    () => new Set(Array.from(selectedEmailKeys).map((k) => k.includes(':') ? k.split(':')[0] : k)),
+    [selectedEmailKeys],
+  )
+
+  /** True when every selected attachment row already has a completed parse job. */
+  const allSelectedEmailsCompleted =
+    selectedAttachmentKeys.length > 0 &&
+    selectedAttachmentKeys.every((key) => {
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) return false
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      return job?.status === 'completed'
+    })
+
+  /** True when at least one selected attachment row has a running/pending parse job. */
   const anySelectedEmailRunning =
-    selectedEmailIds.size > 0 &&
-    emailMessages
-      .filter((m) => selectedEmailIds.has(m._id))
-      .some((m) => m.parseJobs?.some((j) => j.status === 'pending' || j.status === 'processing'))
+    selectedAttachmentKeys.some((key) => {
+      const colonIdx = key.indexOf(':')
+      const msgId = key.slice(0, colonIdx)
+      const attachmentIndex = parseInt(key.slice(colonIdx + 1), 10)
+      const msg = emailMessages.find((m) => m._id === msgId)
+      if (!msg) return false
+      const job = msg.parseJobs?.find((j) => j.attachmentIndex === attachmentIndex)
+      return job?.status === 'pending' || job?.status === 'processing'
+    })
 
   /** True when at least one selected PDF import has a running parse job. */
   const anySelectedPdfRunning =
@@ -3556,10 +3923,14 @@ export default function DocTidyInvoiceAudit() {
     })
   }
 
-  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || Object.values(pdfColFilters).some((s) => s?.size))
+  const emailAdvancedActive = !!(emailAdvPo.trim() || emailAdvInvoice.trim() || emailAdvVendor.trim())
+  const emailAdvancedCount = [emailAdvPo, emailAdvInvoice, emailAdvVendor].filter((s) => s.trim()).length
+  const pdfAdvancedActive = !!(pdfAdvPo.trim() || pdfAdvInvoice.trim() || pdfAdvVendor.trim())
+  const pdfAdvancedCount = [pdfAdvPo, pdfAdvInvoice, pdfAdvVendor].filter((s) => s.trim()).length
+  const pdfHasActiveFilters = Boolean(pdfSearch || pdfDateFrom || pdfDateTo || pdfParseStatusFilter || pdfAdvancedActive || Object.values(pdfColFilters).some((s) => s?.size))
   const orderedPdfCols = pdfColOrder
     .map((id) => PDF_IMPORT_COLUMNS.find((c) => c.id === id))
-    .filter((c): c is PdfImportColumn => Boolean(c))
+    .filter((c): c is PdfImportColumn => c != null && c.id !== 'parseStatus')
 
   /* ── Load workspaces on mount ── */
   const loadWorkspaces = useCallback(async () => {
@@ -3696,8 +4067,14 @@ export default function DocTidyInvoiceAudit() {
     return () => clearTimeout(t)
   }, [emailSearch])
 
+  /* Debounce email advanced search inputs */
+  useEffect(() => {
+    const t = setTimeout(() => setEmailAdvDebounced({ po: emailAdvPo, invoice: emailAdvInvoice, vendor: emailAdvVendor }), 400)
+    return () => clearTimeout(t)
+  }, [emailAdvPo, emailAdvInvoice, emailAdvVendor])
+
   /* Reset email page when filters change */
-  useEffect(() => { setEmailPage(1); setSelectedEmailIds(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter])
+  useEffect(() => { setEmailPage(1); setSelectedEmailKeys(new Set()) }, [emailDebouncedSearch, emailDateFrom, emailDateTo, emailPageSize, emailParseStatusFilter, emailAdvDebounced])
 
   /* ── Manually trigger all enabled rules and refresh the email list ── */
   const handleFetchEmails = async () => {
@@ -3746,6 +4123,12 @@ export default function DocTidyInvoiceAudit() {
       if (emailDebouncedSearch) params.set('search', emailDebouncedSearch)
       if (emailDateFrom) params.set('dateFrom', emailDateFrom)
       if (emailDateTo) params.set('dateTo', emailDateTo)
+      // Advanced search: PO #, invoice #, vendor
+      const emailAdvPoTerms = [...new Set(emailAdvDebounced.po.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      const emailAdvInvTerms = [...new Set(emailAdvDebounced.invoice.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))]
+      if (emailAdvPoTerms.length) params.set('poNumbers', emailAdvPoTerms.join(','))
+      if (emailAdvInvTerms.length) params.set('invoiceNumbers', emailAdvInvTerms.join(','))
+      if (emailAdvDebounced.vendor.trim()) params.set('vendor', emailAdvDebounced.vendor.trim())
       const res = await authApi.get<DocTidyMessagesResponse>(`/doc-tidy/messages?${params.toString()}`)
       if (gen !== emailFetchGenRef.current) return  // stale response — a newer fetch is in flight
       setEmailMessages(res.data)
@@ -3756,7 +4139,7 @@ export default function DocTidyInvoiceAudit() {
     } finally {
       if (gen === emailFetchGenRef.current && !silent) setEmailLoading(false)
     }
-  }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo])
+  }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo, emailAdvDebounced])
 
   useEffect(() => {
     if (workspaceTab === 'emails') void fetchEmails()
@@ -3819,12 +4202,16 @@ export default function DocTidyInvoiceAudit() {
 
   /* SSE — subscribe while on the audit tab to auto-populate completed results */
   const refetchAllJobsSoon = useDebouncedRefetch(() => { void fetchAllJobsRef.current() })
+  const refetchOrderImportsSoon = useDebouncedRefetch(() => { void fetchOrderImportsRef.current() })
   useEffect(() => {
     if (workspaceTab !== 'audit' || !activeWorkspace) return
     return subscribeDocTidyEvents(
       (event) => {
         if (event.type === 'parse_status' && event.parseStatus === 'completed') {
           refetchAllJobsSoon()
+        }
+        if (event.type === 'dc_cogs' && event.workspaceId === activeWorkspace?._id) {
+          refetchOrderImportsSoon()
         }
         if (event.type === 'worker_status') {
           setWorkerOnline(event.workerOnline ?? false)
@@ -3848,7 +4235,7 @@ export default function DocTidyInvoiceAudit() {
       },
       () => {}
     )
-  }, [workspaceTab, activeWorkspace, refetchAllJobsSoon])
+  }, [workspaceTab, activeWorkspace, refetchAllJobsSoon, refetchOrderImportsSoon])
 
   /* SSE — refresh PDF imports when a parse job status changes */
   const fetchPdfImportsRef = useRef(fetchPdfImports)
@@ -3873,34 +4260,48 @@ export default function DocTidyInvoiceAudit() {
       .catch(() => setWorkerOnline(false))
   }, [activeWorkspace])
 
-  /* Indeterminate state on the select-all checkbox */
+  /* Indeterminate state on the select-all checkbox — operates at the attachment-row level */
   const allEmailsOnPageSelected =
-    filteredEmailMessages.length > 0 && filteredEmailMessages.every((m) => selectedEmailIds.has(m._id))
-  const someEmailsOnPageSelected = filteredEmailMessages.some((m) => selectedEmailIds.has(m._id))
+    expandedEmailRows.length > 0 && expandedEmailRows.every((r) => selectedEmailKeys.has(r.rowKey))
+  const someEmailsOnPageSelected = expandedEmailRows.some((r) => selectedEmailKeys.has(r.rowKey))
   useEffect(() => {
     if (selectAllEmailRef.current) {
       selectAllEmailRef.current.indeterminate = someEmailsOnPageSelected && !allEmailsOnPageSelected
     }
   }, [someEmailsOnPageSelected, allEmailsOnPageSelected])
 
-  const toggleEmailRow = (id: string) => {
-    setSelectedEmailIds((prev) => {
+  const toggleEmailKey = (rowKey: string) => {
+    setSelectedEmailKeys((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(rowKey)) next.delete(rowKey)
+      else next.add(rowKey)
       return next
     })
   }
   const toggleAllEmailsOnPage = () => {
-    setSelectedEmailIds((prev) => {
+    setSelectedEmailKeys((prev) => {
       const next = new Set(prev)
-      for (const msg of filteredEmailMessages) {
-        if (allEmailsOnPageSelected) next.delete(msg._id)
-        else next.add(msg._id)
+      for (const row of expandedEmailRows) {
+        if (allEmailsOnPageSelected) next.delete(row.rowKey)
+        else next.add(row.rowKey)
       }
       return next
     })
   }
+
+  /** Send a single attachment to the parse agent. Key format: `${msgId}:${attachmentIndex}`. */
+  const handleSingleAttachmentParse = useCallback(async (msgId: string, attachmentIndex: number) => {
+    const key = `${msgId}:${attachmentIndex}`
+    setEmailSendingKeys((prev) => { const s = new Set(prev); s.add(key); return s })
+    try {
+      await authApi.post(`/doc-tidy/messages/${msgId}/attachments/${attachmentIndex}/parse`)
+      void fetchEmails(true)
+    } catch {
+      // Error will be visible via job status on next refresh
+    } finally {
+      setEmailSendingKeys((prev) => { const s = new Set(prev); s.delete(key); return s })
+    }
+  }, [authApi, fetchEmails])
 
   /* ── Audit search debounce ── */
   useEffect(() => {
@@ -4069,9 +4470,9 @@ export default function DocTidyInvoiceAudit() {
     setEmailDateFrom('')
     setEmailDateTo('')
     setEmailMessages([])
-    setSelectedEmailIds(new Set())
+    setSelectedEmailKeys(new Set())
 
-    // Reload workspace-scoped column visibility from localStorage.
+  //  Reload workspace-scoped column visibility from localStorage.
     // Pass importMode so header-only workspaces start with line-item columns hidden.
     setColVisibility(loadAuditColumnVisibility(ws._id, ws.importMode))
 
@@ -4164,6 +4565,7 @@ export default function DocTidyInvoiceAudit() {
   const leaveOrg = () => {
     setActiveOrg(null)
     setView('organizations')
+    setWsSearch('')
     navigate('/doc-tidy/invoice-audit')
   }
 
@@ -4234,6 +4636,9 @@ export default function DocTidyInvoiceAudit() {
     saveCollapsedWeeks(collapsedWeeks)
   }, [collapsedWeeks])
 
+  /** Parse jobs as invoice rows — spreadsheet batch files contribute one per invoice. */
+  const invoiceJobs = useMemo(() => expandInvoiceJobs(jobs), [jobs])
+
   /**
    * Pre-compute all invoice matches for every loaded order import row.
    * Keyed by order._id for O(1) lookup in the render loop.
@@ -4243,10 +4648,11 @@ export default function DocTidyInvoiceAudit() {
   const invoiceMatchMap = useMemo<Map<string, InvoiceMatch[]>>(() => {
     const map = new Map<string, InvoiceMatch[]>()
     for (const order of orderImports) {
-      map.set(order._id, findAllInvoiceMatches(order, jobs))
+      const direct = findAllInvoiceMatches(order, invoiceJobs)
+      map.set(order._id, direct.length > 0 ? direct : findCombinedInvoiceMatches(order, invoiceJobs, orderImports))
     }
     return map
-  }, [orderImports, jobs])
+  }, [orderImports, invoiceJobs])
 
   /** Fast lookup of parse jobs by id — used to check vendorNeedsSetup in table rows. */
   const jobsById = useMemo(() => {
@@ -4263,8 +4669,8 @@ export default function DocTidyInvoiceAudit() {
   const getColUniqueValues = useCallback((colId: InvoiceAuditColumnId): Map<string, number> => {
     const vals = new Map<string, number>()
     if (isHeaderOnly) {
-      // Header-only workspaces: rows are parse jobs, not order imports
-      for (const job of jobs) {
+      // Header-only workspaces: rows are parsed invoices, not order imports
+      for (const job of invoiceJobs) {
         const val = headerOnlyColStr(colId, job).trim()
         vals.set(val, (vals.get(val) ?? 0) + 1)
       }
@@ -4276,7 +4682,7 @@ export default function DocTidyInvoiceAudit() {
       }
     }
     return vals
-  }, [isHeaderOnly, jobs, orderImports, invoiceMatchMap])
+  }, [isHeaderOnly, invoiceJobs, orderImports, invoiceMatchMap])
 
   /**
    * Client-side filter applied on top of the server-fetched `orderImports`.
@@ -4323,20 +4729,20 @@ export default function DocTidyInvoiceAudit() {
   const activeFilterCount = Object.values(colFilters).filter((s) => s != null && s.size > 0).length
 
   /**
-   * For header-only workspaces: completed parse jobs filtered by the active
+   * For header-only workspaces: parsed invoices filtered by the active
    * date range (using invoice date extracted from the job's JSON output).
    */
   const filteredHeaderOnlyJobs = useMemo(() => {
-    if (!isHeaderOnly) return jobs
+    if (!isHeaderOnly) return invoiceJobs
 
     const activeColEntries = Object.entries(colFilters).filter(
       (entry): entry is [InvoiceAuditColumnId, Set<string>] => entry[1] != null && entry[1].size > 0
     )
     const hasDateFilter = Boolean(auditDateFrom || auditDateTo)
 
-    if (activeColEntries.length === 0 && !hasDateFilter) return jobs
+    if (activeColEntries.length === 0 && !hasDateFilter) return invoiceJobs
 
-    return jobs.filter((job) => {
+    return invoiceJobs.filter((job) => {
       // ── Column filters ──
       if (activeColEntries.length > 0) {
         const passesCol = activeColEntries.every(([colId, allowed]) => {
@@ -4359,20 +4765,27 @@ export default function DocTidyInvoiceAudit() {
 
       return true
     })
-  }, [isHeaderOnly, jobs, colFilters, auditDateFrom, auditDateTo])
+  }, [isHeaderOnly, invoiceJobs, colFilters, auditDateFrom, auditDateTo])
 
   /* ── Org / workspace grouping ── */
+  /** Search query for filtering workspace cards on the organizations and workspaces views. */
+  const [wsSearch, setWsSearch] = useState('')
+
   /** Workspaces that have no organization assignment (visible to all users). */
-  const unassignedWorkspaces = useMemo(
-    () => workspaces.filter((w) => !w.organizationId),
-    [workspaces]
-  )
+  const unassignedWorkspaces = useMemo(() => {
+    const all = workspaces.filter((w) => !w.organizationId)
+    if (!wsSearch.trim()) return all
+    const q = wsSearch.trim().toLowerCase()
+    return all.filter((w) => w.name.toLowerCase().includes(q))
+  }, [workspaces, wsSearch])
 
   /** Workspaces belonging to the currently active organization. */
-  const orgWorkspaces = useMemo(
-    () => (activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []),
-    [workspaces, activeOrg]
-  )
+  const orgWorkspaces = useMemo(() => {
+    const all = activeOrg ? workspaces.filter((w) => w.organizationId === activeOrg._id) : []
+    if (!wsSearch.trim()) return all
+    const q = wsSearch.trim().toLowerCase()
+    return all.filter((w) => w.name.toLowerCase().includes(q))
+  }, [workspaces, activeOrg, wsSearch])
 
   /* ── Email column filter helpers ── */
   const getEmailColUniqueValues = useCallback((colId: WorkspaceEmailColumnId): Map<string, number> => {
@@ -4480,7 +4893,7 @@ export default function DocTidyInvoiceAudit() {
   }
 
   /* ── Header-only parse-job delete handlers ── */
-  const handleDeleteParseJob = async (job: ParseJobListItem) => {
+  const handleDeleteParseJob = async (job: InvoiceRowJob) => {
     setJobDeleting(true)
     try {
       await authApi.delete(`/doc-tidy/parse-jobs/${job._id}`)
@@ -4520,9 +4933,9 @@ export default function DocTidyInvoiceAudit() {
 
       if (isHeaderOnly) {
         // ── Header-only workspaces: rows are parse jobs, not order imports ──
-        let exportJobs: ParseJobListItem[]
+        let exportJobs: InvoiceRowJob[]
         if (mode === 'selection') {
-          exportJobs = jobs.filter((j) => selectedJobIds.has(j._id))
+          exportJobs = invoiceJobs.filter((j) => selectedJobIds.has(j._id))
         } else {
           // 'all' — use the already-filtered in-memory list so the export
           // matches exactly what the user sees in the table (filters, date range).
@@ -4606,30 +5019,38 @@ export default function DocTidyInvoiceAudit() {
   ): React.ReactNode => {
     // ── Order import fields (always from the DB row directly) ──
     switch (colId) {
-      case 'poNumber':      return monoCell(order.poNumber)
-      case 'orderSku':      return monoCell(order.orderSku)
-      case 'orderQty':      return numCell(order.orderQty)
-      case 'lesd':          return textCell(order.lesd ?? '')
+      case 'poNumber':      return monoCell(order.poNumber, AUDIT_COL_ICON.tag)
+      case 'orderSku':      return monoCell(order.orderSku, AUDIT_COL_ICON.barcode)
+      case 'orderQty':      return numCell(order.orderQty, AUDIT_COL_ICON.stack, true)
+      case 'lesd':          return textCell(order.lesd ?? '', AUDIT_COL_ICON.calendar)
       case 'customerName': {
         const name = order.customerName ?? ''
         if (!name) return emDash
         const words = name.trim().split(/\s+/)
         const display = words.length > 3 ? words.slice(0, 3).join(' ') + '…' : name
         return (
-          <span className="block max-w-[110px] truncate text-[var(--text-100)]" title={name}>
-            {display}
+          <span className="inline-flex items-center gap-1" title={name}>
+            <CellIcon d={AUDIT_COL_ICON.user} className="shrink-0" />
+            <span className="block max-w-[100px] truncate text-[var(--text-100)]">{display}</span>
           </span>
         )
       }
-      case 'purchasedDate': return textCell(order.purchasedDate ?? '')
-      case 'status':        return textCell(order.status ?? '')
-      case 'dcCogs': {
-        if (order.dcCogs == null) {
-          return <span className="text-[10px] italic text-[var(--text-200)]">pending…</span>
-        }
-        if (order.dcCogs === 'n/a') return emDash
-        return numCell(order.dcCogs)
+      case 'purchasedDate': return textCell(order.purchasedDate ?? '', AUDIT_COL_ICON.calendar)
+      case 'status':        return textCell(order.status ?? '', AUDIT_COL_ICON.checkCircle)
+      case 'orderId': {
+        const oid = order.orderId ?? ''
+        if (!oid) return emDash
+        return (
+          <span className="inline-flex items-center gap-1">
+            <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="#FF9900" stroke="none" aria-hidden>
+              <path d={AUDIT_COL_ICON.amazon} />
+            </svg>
+            <span className="text-[10px] text-[var(--text-100)]">{oid}</span>
+          </span>
+        )
       }
+      case 'processedDate': return textCell(order.processedDate ?? '', AUDIT_COL_ICON.calendar)
+      case 'dcCogs':        return dcCogsCell(order)
       default: break
     }
 
@@ -4637,8 +5058,8 @@ export default function DocTidyInvoiceAudit() {
     const inv = resolveInvoiceFields(order, matches)
 
     switch (colId) {
-      case 'invoiceSku':    return monoCell(inv.invoiceSku)
-      case 'invoiceDate':   return textCell(inv.invoiceDate)
+      case 'invoiceSku':    return monoCell(inv.invoiceSku, AUDIT_COL_ICON.barcode)
+      case 'invoiceDate':   return textCell(inv.invoiceDate, AUDIT_COL_ICON.calendar)
       case 'invoiceNumber': {
         if (!inv.invoiceNumber) return emDash
         if (inv.driveFileId) {
@@ -4676,14 +5097,15 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'terms':       return textCell(inv.terms)
+      case 'terms':       return textCell(inv.terms, AUDIT_COL_ICON.document)
       case 'itemCost': {
         const effectiveCost = resolveEffectiveCost(inv)
         if (!effectiveCost) return emDash
         const discounted = hasDiscount(inv)
         return (
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
-            <span className="text-[var(--text-100)]">{effectiveCost}</span>
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <CellIcon d={AUDIT_COL_ICON.dollar} />
+            <span className="font-semibold text-[var(--text-100)]">{effectiveCost}</span>
             {discounted && (
               <Tooltip richContent={(() => {
                   // Compute display discount pct
@@ -4750,7 +5172,7 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'invoiceQty':  return numCell(inv.invoiceQty)
+      case 'invoiceQty':  return numCell(inv.invoiceQty, AUDIT_COL_ICON.stack, true)
       case 'discountedCostPct': {
         if (!inv.discountedPrice && !inv.discountPct) return emDash
         // Strip any trailing % the AI may have already included before re-adding it.
@@ -4763,9 +5185,9 @@ export default function DocTidyInvoiceAudit() {
           </span>
         )
       }
-      case 'dropshipFee': return numCell(inv.dropshipFee)
-      case 'miscCharges': return numCell(inv.miscCharges)
-      case 'totalCost':   return numCell(inv.totalCost)
+      case 'dropshipFee': return numCell(inv.dropshipFee, AUDIT_COL_ICON.dollar)
+      case 'miscCharges': return numCell(inv.miscCharges, AUDIT_COL_ICON.dollar)
+      case 'totalCost':   return numCell(inv.totalCost, AUDIT_COL_ICON.dollar, true)
       case 'parsedAt': {
         // Show the earliest cachedAt across all matched invoices
         const cachedDates = [
@@ -4778,7 +5200,8 @@ export default function DocTidyInvoiceAudit() {
         }, undefined)
         if (!earliest) return emDash
         return (
-          <span title={formatDateTime(earliest)} className="text-[var(--text-200)]">
+          <span title={formatDateTime(earliest)} className="inline-flex items-center gap-1 text-[var(--text-200)]">
+            <CellIcon d={AUDIT_COL_ICON.clock} />
             {formatDate(earliest)}
           </span>
         )
@@ -4799,10 +5222,9 @@ export default function DocTidyInvoiceAudit() {
     const json = job.jsonOutput ?? null
     switch (colId) {
       case 'poNumber':
-        return monoCell(extractJsonField(json,
-          'po_number', 'purchase_order_number', 'po_no', 'po', 'purchase_order', 'order_number', 'order_no'))
+        return monoCell(extractJsonField(json, ...PO_NUMBER_FIELD_KEYS), AUDIT_COL_ICON.tag)
       case 'invoiceDate':
-        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'))
+        return textCell(extractJsonField(json, 'invoice_date', 'date', 'billing_date', 'bill_date', 'invoice date'), AUDIT_COL_ICON.calendar)
       case 'invoiceNumber': {
         const num = extractJsonField(json, 'invoice_number', 'invoice_no', 'invoice_num', 'inv_number', 'inv_no', 'invoice#', 'invoice')
         if (!num) return emDash
@@ -4820,18 +5242,20 @@ export default function DocTidyInvoiceAudit() {
             </a>
           )
         }
-        return monoCell(num)
+        return monoCell(num, AUDIT_COL_ICON.tag)
       }
       case 'terms':
-        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'))
+        return textCell(extractJsonField(json, 'payment_terms', 'terms', 'net_terms', 'payment terms'), AUDIT_COL_ICON.document)
       case 'totalCost':
         return numCell(extractJsonField(json,
           'total_cost', 'total_costs', 'total', 'grand_total', 'total_amount',
-          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'))
+          'total_value', 'invoice_total', 'amount_due', 'balance_due', 'total_due', 'total_invoice'),
+          AUDIT_COL_ICON.dollar, true)
       case 'parsedAt': {
         if (!job.completedAt) return emDash
         return (
-          <span title={formatDateTime(job.completedAt)} className="text-[var(--text-200)]">
+          <span title={formatDateTime(job.completedAt)} className="inline-flex items-center gap-1 text-[var(--text-200)]">
+            <CellIcon d={AUDIT_COL_ICON.clock} />
             {formatDate(job.completedAt)}
           </span>
         )
@@ -4925,6 +5349,35 @@ export default function DocTidyInvoiceAudit() {
             )}
           </div>
 
+          {/* ── Workspace search bar ── */}
+          {!wsLoading && (unassignedWorkspaces.length > 0 || wsSearch) && (
+            <div className="relative max-w-sm">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={wsSearch}
+                onChange={(e) => setWsSearch(e.target.value)}
+                placeholder="Search workspaces…"
+                className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-8 pr-8 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              />
+              {wsSearch && (
+                <button
+                  onClick={() => setWsSearch('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* ── Divider between organizations and unassigned workspaces ── */}
           {!orgLoading && organizations.length > 0 && (wsLoading || unassignedWorkspaces.length > 0) && (
             <div className="flex items-center gap-3">
@@ -4976,6 +5429,8 @@ export default function DocTidyInvoiceAudit() {
                     </div>
                   ))}
                 </div>
+              ) : unassignedWorkspaces.length === 0 && wsSearch ? (
+                <p className="text-xs text-[var(--text-200)]">No workspaces match <span className="font-medium text-[var(--text-100)]">"{wsSearch}"</span>.</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {unassignedWorkspaces.map((ws) => (
@@ -5046,6 +5501,35 @@ export default function DocTidyInvoiceAudit() {
             </span>
           </div>
 
+          {/* Search bar */}
+          {!wsLoading && (orgWorkspaces.length > 0 || wsSearch) && (
+            <div className="relative max-w-sm">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={wsSearch}
+                onChange={(e) => setWsSearch(e.target.value)}
+                placeholder="Search workspaces…"
+                className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-8 pr-8 text-[11px] text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              />
+              {wsSearch && (
+                <button
+                  onClick={() => setWsSearch('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           {wsLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -5067,6 +5551,8 @@ export default function DocTidyInvoiceAudit() {
                 </div>
               ))}
             </div>
+          ) : orgWorkspaces.length === 0 && wsSearch ? (
+            <p className="text-xs text-[var(--text-200)]">No workspaces match <span className="font-medium text-[var(--text-100)]">"{wsSearch}"</span>.</p>
           ) : orgWorkspaces.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--bg-300)] bg-[var(--bg-100)] py-20 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--primary-100)] text-[var(--accent-200)] mb-4">
@@ -5139,7 +5625,7 @@ export default function DocTidyInvoiceAudit() {
             {([
               ['audit',       'Invoice Audit', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['emails',      'Emails',        'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
-              ['pdf-imports', 'PDF Imports',   'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+              ['pdf-imports', 'CSV/PDF Imports',   'M9 12h6m-6 4h4m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
               ['rules',       'Rules',         'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z'],
               ['vendors',     'Vendors',       'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
             ] as const).map(([tab, label, icon]) => (
@@ -5212,7 +5698,7 @@ export default function DocTidyInvoiceAudit() {
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
                 {/* Toolbar */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
                   <div className="relative">
                     <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -5245,10 +5731,28 @@ export default function DocTidyInvoiceAudit() {
                     <option value="completed">Parsed</option>
                     <option value="failed">Failed</option>
                   </select>
-                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter) && (
-                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter('') }}
+                  {(emailSearch || emailDateFrom || emailDateTo || emailParseStatusFilter || emailAdvancedActive) && (
+                    <button onClick={() => { setEmailSearch(''); setEmailDateFrom(''); setEmailDateTo(''); setEmailParseStatusFilter(''); setEmailAdvPo(''); setEmailAdvInvoice(''); setEmailAdvVendor(''); setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
+                  {/* Advanced Search toggle */}
+                  <button
+                    type="button"
+                    onClick={() => { setEmailDraftPo(emailAdvPo); setEmailDraftInvoice(emailAdvInvoice); setEmailDraftVendor(emailAdvVendor); setEmailAdvancedOpen(true) }}
+                    title="Advanced Search — filter by PO number, invoice number, or vendor"
+                    className={`relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors ${
+                      emailAdvancedActive
+                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
+                        : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
+                    }`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+                    </svg>
+                    {emailAdvancedCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-1 text-[8px] leading-[14px] text-white text-center">{emailAdvancedCount}</span>
+                    )}
+                  </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
                   {/* Fetch Emails icon button */}
                   <button type="button" onClick={() => void handleFetchEmails()} disabled={emailFetching}
@@ -5313,85 +5817,79 @@ export default function DocTidyInvoiceAudit() {
                       }
                     </span>
                   )}
-                  {/* Right: stats + bulk actions + rows per page + pagination */}
-                  <div className="ml-auto flex items-center gap-2">
-                    {/* Stats: parsed / total emails */}
-                    {emailPagination.total > 0 && (
-                      <span className="text-[10px] text-[var(--text-200)] whitespace-nowrap">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
-                        <span className="opacity-50">/</span>
-                        <span>{emailPagination.total.toLocaleString()}</span>
-                        {' '}email{emailPagination.total === 1 ? '' : 's'}
-                      </span>
-                    )}
-                    {/* Abort Jobs */}
-                    {anySelectedEmailRunning && (
-                      <button
-                        type="button"
-                        title={`Abort running parse jobs across ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'}`}
-                        onClick={() => void handleBulkAbortEmails()}
-                        disabled={emailBulkAborting}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
-                      >
-                        {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                  {/* Stats — right side of row 1 */}
+                  {emailPagination.total > 0 && (
+                    <span className="ml-auto text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{emailPagination.parsedCount.toLocaleString()}</span>
+                      <span className="opacity-50">/</span>
+                      <span>{emailPagination.total.toLocaleString()}</span>
+                      {' '}email{emailPagination.total === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {/* Selection action row — only visible when rows are selected */}
+                  {(selectedEmailKeys.size > 0 || anySelectedEmailRunning) && (
+                    <div className="flex w-full items-center gap-2">
+                      {/* Abort Jobs */}
+                      {anySelectedEmailRunning && (
+                        <button
+                          type="button"
+                          title={`Abort running parse jobs for ${selectedEmailKeys.size} selected attachment${selectedEmailKeys.size === 1 ? '' : 's'}`}
+                          onClick={() => void handleBulkAbortEmails()}
+                          disabled={emailBulkAborting}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/15"
+                        >
+                          {emailBulkAborting ? <Spinner className="h-3 w-3" /> : (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          Abort Jobs
+                        </button>
+                      )}
+                      {/* Send to Tidy Agent */}
+                      {selectedEmailKeys.size > 0 && (
+                        <button
+                          type="button"
+                          title={
+                            !workerOnline
+                              ? 'Tidy Agent is offline'
+                              : allSelectedEmailsCompleted
+                                ? `Rerun Tidy Agent on ${selectedAttachmentKeys.length} already-parsed attachment${selectedAttachmentKeys.length === 1 ? '' : 's'}`
+                                : `Send ${selectedAttachmentKeys.length} selected attachment${selectedAttachmentKeys.length === 1 ? '' : 's'} to Tidy Agent`
+                          }
+                          onClick={() => void handleBulkSendEmailsToAgent()}
+                          disabled={emailBulkSending || workerOnline === false}
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            allSelectedEmailsCompleted
+                              ? 'bg-amber-500 text-white hover:bg-amber-600'
+                              : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
+                          }`}
+                        >
+                          {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
+                            <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                              <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                            </svg>
+                          )}
+                          {allSelectedEmailsCompleted
+                            ? `Rerun ${selectedAttachmentKeys.length}`
+                            : `Send ${selectedAttachmentKeys.length} to Agent`}
+                        </button>
+                      )}
+                      {/* Bulk delete emails */}
+                      {selectedEmailKeys.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmBulkDeleteEmails(true)}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
+                        >
                           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        )}
-                        Abort Jobs
-                      </button>
-                    )}
-                    {/* Send to Tidy Agent */}
-                    {selectedEmailIds.size > 0 && (
-                      <button
-                        type="button"
-                        title={
-                          !workerOnline
-                            ? 'Tidy Agent is offline'
-                            : allSelectedEmailsCompleted
-                              ? `Rerun Tidy Agent on ${selectedEmailIds.size} already-parsed message${selectedEmailIds.size === 1 ? '' : 's'}`
-                              : `Send ${selectedEmailIds.size} selected message${selectedEmailIds.size === 1 ? '' : 's'} to Tidy Agent`
-                        }
-                        onClick={() => void handleBulkSendEmailsToAgent()}
-                        disabled={emailBulkSending || workerOnline === false}
-                        className={`inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          allSelectedEmailsCompleted
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-[var(--accent-200)] dark:bg-[var(--accent-100)] text-white hover:opacity-90'
-                        }`}
-                      >
-                        {emailBulkSending ? <Spinner className="h-3 w-3" /> : (
-                          <svg className="h-3 w-3 opacity-90" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                          </svg>
-                        )}
-                        {allSelectedEmailsCompleted
-                          ? `Rerun ${selectedEmailIds.size}`
-                          : `Send ${selectedEmailIds.size} to Agent`}
-                      </button>
-                    )}
-                    {/* Bulk delete emails */}
-                    {selectedEmailIds.size > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmBulkDeleteEmails(true)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-medium text-white transition-colors hover:bg-rose-700"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete {selectedEmailIds.size}
-                      </button>
-                    )}
-                    <span className="whitespace-nowrap">Rows per page:</span>
-                    <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
-                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {emailPagination.pages > 0 && (
-                      <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
-                    )}
-                  </div>
+                          Delete {selectedMsgIdsForDelete.size}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Table */}
@@ -5538,44 +6036,126 @@ export default function DocTidyInvoiceAudit() {
                           </td>
                         </tr>
                       ) : (
-                        filteredEmailMessages.map((msg) => {
-                          const isSelected = selectedEmailIds.has(msg._id)
+                        // eslint-disable-next-line react-hooks/refs -- handleSingleAttachmentParse transitively reads a ref (fetchGenRef inside fetchEmails) but only from an async callback, not during render
+                        expandedEmailRows.map((row) => {
+                          const { msg, attachment, attachmentIndex, parseJob, isFirstInGroup, groupSize, rowKey } = row
+                          const isSelected = selectedEmailKeys.has(rowKey)
                           const senderSeed = msg.fromName || msg.from
+                          const sendKey = attachmentIndex !== null ? `${msg._id}:${attachmentIndex}` : null
+                          const isSending = sendKey !== null && emailSendingKeys.has(sendKey)
+                          const jobRunning = parseJob ? isParseRunning(parseJob.status) : false
+
+                          /* Single-attachment action button */
+                          const attachmentAction = (() => {
+                            if (attachmentIndex === null) return null
+                            if (isSending) {
+                              return (
+                                <span className="inline-flex h-7 w-7 items-center justify-center">
+                                  <svg className="h-3.5 w-3.5 animate-spin text-sky-500" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                  </svg>
+                                </span>
+                              )
+                            }
+                            if (jobRunning && parseJob) {
+                              return (
+                                <ParseProgressBadge
+                                  jobId={parseJob._id}
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                />
+                              )
+                            }
+                            if (parseJob?.status === 'completed') {
+                              return (
+                                <button
+                                  type="button"
+                                  title="Completed — click to view"
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-emerald-500 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                >
+                                  <SuccessIcon className="h-5 w-5" />
+                                </button>
+                              )
+                            }
+                            if (parseJob?.status === 'failed') {
+                              return (
+                                <button
+                                  type="button"
+                                  title={parseJob.error ?? 'Failed — click to view'}
+                                  onClick={() => setOpenJobId(parseJob._id)}
+                                  className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-400"
+                                >
+                                  <ErrorIcon className="h-4 w-4" />
+                                </button>
+                              )
+                            }
+                            // No job yet — show send button
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => void handleSingleAttachmentParse(msg._id, attachmentIndex)}
+                                title="Send to Tidy Agent"
+                                aria-label="Send to Tidy Agent"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-900/20 dark:hover:text-sky-400 cursor-pointer"
+                              >
+                                <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 10.5v7.5a2.25 2.25 0 0 0 2.25 2.25h12.75a2.25 2.25 0 0 0 2.25-2.25v-7.5M2.25 10.5 12 15l9.75-4.5M2.25 10.5v-.75A2.25 2.25 0 0 1 4.5 7.5h9.75" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 5.25 21 2.25m0 0h-3.75m3.75 0v3.75" />
+                                </svg>
+                              </button>
+                            )
+                          })()
+
                           return (
-                            <tr key={msg._id}
+                            <tr key={rowKey}
                               onClick={() => setViewMessage(msg)}
                               className={`group cursor-pointer align-middle transition-all duration-100 hover:relative hover:z-[1] hover:shadow-[0_2px_8px_rgba(0,0,0,0.14),0_-1px_2px_rgba(0,0,0,0.06)] ${
-                                isSelected
-                                  ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
-                                  : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                                !isFirstInGroup
+                                  ? isSelected
+                                    ? 'border-l-[3px] border-l-[var(--accent-200)]/50 bg-[var(--primary-100)]/25 hover:bg-[var(--primary-100)]/45'
+                                    : 'border-l-[3px] border-l-[var(--accent-200)]/25 bg-[var(--bg-200)]/50 hover:bg-[var(--bg-200)]/80'
+                                  : groupSize > 1
+                                    ? isSelected
+                                      ? 'border-l-[3px] border-l-[var(--accent-200)]/50 bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : 'border-l-[3px] border-l-[var(--accent-200)]/25 odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
+                                    : isSelected
+                                      ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]'
+                                      : 'odd:bg-[var(--bg-100)] even:bg-[var(--bg-200)] hover:bg-[var(--bg-100)]'
                               }`}
                             >
-                              {/* Checkbox — always first */}
+                              {/* Checkbox — every row gets its own independent checkbox keyed by rowKey */}
                               <td className="px-3 py-px" onClick={(e) => e.stopPropagation()}>
-                                <input type="checkbox" checked={isSelected} onChange={() => toggleEmailRow(msg._id)}
-                                  aria-label={`Select ${msg.subject || 'message'}`}
-                                  className={emailCheckboxClass} />
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleEmailKey(rowKey)}
+                                  aria-label={
+                                    attachment
+                                      ? `Select ${attachment.filename}`
+                                      : `Select ${msg.subject || 'message'}`
+                                  }
+                                  className={emailCheckboxClass}
+                                />
                               </td>
 
-                              {/* Actions — second column, right after the checkbox */}
+                              {/* Actions — single-attachment parse button + delete (first row only) */}
                               <td className="px-3 py-px text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-0.5">
-                                  <AttachmentIcons
-                                    message={msg}
-                                    onOpenJob={setOpenJobId}
-                                    onChanged={() => void fetchEmails(true)}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteEmail(msg)}
-                                    title="Delete this message"
-                                    aria-label="Delete message"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
-                                  >
-                                    <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
+                                  {attachmentAction}
+                                  {isFirstInGroup && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteEmail(msg)}
+                                      title="Delete this message"
+                                      aria-label="Delete message"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 cursor-pointer"
+                                    >
+                                      <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
 
@@ -5592,125 +6172,144 @@ export default function DocTidyInvoiceAudit() {
                                 switch (col.id) {
                                   case 'received':
                                     return (
-                                      <td key="received" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={formatDateTime(msg.sentAt)}>
-                                        {formatDate(msg.sentAt)}
+                                      <td key="received" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${emailColDragCls}`} title={isFirstInGroup ? formatDateTime(msg.sentAt) : undefined}>
+                                        {isFirstInGroup ? formatDate(msg.sentAt) : null}
                                       </td>
                                     )
                                   case 'from':
                                     return (
                                       <td key="from" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
-                                        <div className="flex min-w-0 items-center gap-2">
-                                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white ${avatarColour(senderSeed)}`}>
-                                            {senderSeed.charAt(0).toUpperCase()}
-                                          </span>
-                                          <div className="min-w-0 truncate text-[var(--text-100)]"
-                                            title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
-                                            {msg.fromName || msg.from}
+                                        {isFirstInGroup ? (
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white ${avatarColour(senderSeed)}`}>
+                                              {senderSeed.charAt(0).toUpperCase()}
+                                            </span>
+                                            <div className="min-w-0 truncate text-[var(--text-100)]"
+                                              title={msg.fromName ? `${msg.fromName} <${msg.from}>` : msg.from}>
+                                              {msg.fromName || msg.from}
+                                            </div>
                                           </div>
-                                        </div>
+                                        ) : (
+                                          /* CSS-drawn L-connector: a small rounded-bl box that reads as "↳ sub-item" */
+                                          <div className="flex items-center pl-2" aria-hidden>
+                                            <span className="inline-block h-3 w-3 shrink-0 rounded-bl-[3px] border-b-[1.5px] border-l-[1.5px] border-[var(--text-200)]/25" />
+                                          </div>
+                                        )}
                                       </td>
                                     )
                                   case 'to':
                                     return (
                                       <td key="to" className={`px-3 py-px min-w-0 max-w-[180px] ${emailColDragCls}`}>
-                                        {msg.to && msg.to.length > 0 ? (
-                                          <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
-                                            {msg.to[0]}
-                                            {msg.to.length > 1 && (
-                                              <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
-                                                +{msg.to.length - 1}
-                                              </span>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        {isFirstInGroup ? (
+                                          msg.to && msg.to.length > 0 ? (
+                                            <div className="truncate text-[var(--text-200)]" title={msg.to.join(', ')}>
+                                              {msg.to[0]}
+                                              {msg.to.length > 1 && (
+                                                <span className="ml-1 rounded-full bg-[var(--bg-300)] px-1.5 py-0.5 text-[10px] text-[var(--text-200)]">
+                                                  +{msg.to.length - 1}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="italic text-[var(--text-200)]">—</span>
+                                          )
+                                        ) : null}
                                       </td>
                                     )
                                   case 'subject':
                                     return (
                                       <td key="subject" className={`px-3 py-px min-w-0 ${emailColDragCls}`}>
-                                        <div className="truncate text-[var(--text-100)]" title={msg.subject}>
-                                          {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
-                                        </div>
+                                        {isFirstInGroup ? (
+                                          <div className="truncate text-[var(--text-100)]" title={msg.subject}>
+                                            {msg.subject || <span className="italic text-[var(--text-200)]">(no subject)</span>}
+                                          </div>
+                                        ) : null}
                                       </td>
                                     )
                                   case 'documentType':
                                     return (
                                       <td key="documentType" className={`px-3 py-px whitespace-nowrap ${emailColDragCls}`}>
-                                        <DocumentTypeBadge value={msg.documentType} />
+                                        {isFirstInGroup ? <DocumentTypeBadge value={msg.documentType} /> : null}
                                       </td>
                                     )
                                   case 'rule':
                                     return (
                                       <td key="rule" className={`px-3 py-px ${emailColDragCls}`}>
-                                        {msg.ruleName ? (
-                                          <span title={msg.ruleName}
-                                            className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] text-[var(--accent-200)]">
-                                            <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
-                                            </svg>
-                                            <span className="truncate">{msg.ruleName}</span>
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        {isFirstInGroup ? (
+                                          msg.ruleName ? (
+                                            <span title={msg.ruleName}
+                                              className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-[var(--primary-100)] px-2 py-0.5 text-[10px] text-[var(--accent-200)]">
+                                              <svg className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
+                                              </svg>
+                                              <span className="truncate">{msg.ruleName}</span>
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] italic text-[var(--text-200)]">—</span>
+                                          )
+                                        ) : null}
                                       </td>
                                     )
-                                  case 'attachments':
-                                    return (
-                                      <td key="attachments" className={`px-3 py-px ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
-                                        {msg.attachments && msg.attachments.length > 0 ? (
-                                          <div className="space-y-0.5">
-                                            {msg.attachments.map((att, ai) => {
-                                              const href = att.webViewLink
-                                                || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
-                                              const isPdf = att.mimeType === 'application/pdf' || /\.pdf$/i.test(att.filename)
-                                              return (
-                                                <div key={ai} className="flex items-center gap-1.5">
-                                                  {href ? (
-                                                    <a href={href} target="_blank" rel="noopener noreferrer"
-                                                      onClick={(e) => e.stopPropagation()} title={att.filename}
-                                                      className="inline-flex items-center gap-1 text-[var(--accent-200)] hover:underline">
-                                                      {isPdf ? (
-                                                        <svg className="h-3 w-3 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                        </svg>
-                                                      ) : (
-                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                        </svg>
-                                                      )}
-                                                      <span className="truncate max-w-[140px] text-[10px]">{att.filename}</span>
-                                                    </a>
-                                                  ) : (
-                                                    <>
-                                                      {isPdf ? (
-                                                        <svg className="h-3 w-3 shrink-0 text-rose-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                                          <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                                        </svg>
-                                                      ) : (
-                                                        <svg className="h-3 w-3 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                        </svg>
-                                                      )}
-                                                      <span className="truncate max-w-[140px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
-                                                    </>
-                                                  )}
-                                                  {att.size > 0 && (
-                                                    <span className="shrink-0 text-[10px] text-[var(--text-200)]">
-                                                      {formatBytes(att.size)}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              )
-                                            })}
-                                          </div>
-                                        ) : (
+                                  case 'attachments': {
+                                    /* One attachment per row — show only the row's attachment */
+                                    const att = attachment
+                                    if (!att) {
+                                      return (
+                                        <td key="attachments" className={`px-3 py-px ${emailColDragCls}`}>
                                           <span className="italic text-[var(--text-200)]">—</span>
-                                        )}
+                                        </td>
+                                      )
+                                    }
+                                    const href = att.webViewLink
+                                      || (att.driveFileId ? `https://drive.google.com/file/d/${att.driveFileId}/view` : null)
+                                    /* File type icon — matches the branded icons used in the Message Details drawer */
+                                    const isExcel = /\.(xlsx|xls)$/i.test(att.filename)
+                                      || att.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      || att.mimeType === 'application/vnd.ms-excel'
+                                    const isCsv = /\.csv$/i.test(att.filename) || att.mimeType === 'text/csv'
+
+                                    const fileIcon = isExcel
+                                      ? <ExcelFileIcon className="h-3.5 w-3.5 shrink-0" />
+                                      : isCsv
+                                        ? <CsvFileIcon className="h-3.5 w-3.5 shrink-0" />
+                                        : (
+                                          <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                            <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                          </svg>
+                                        )
+
+                                    return (
+                                      <td key="attachments" className={`py-px ${isFirstInGroup ? 'px-3' : 'pl-5 pr-3'} ${emailColDragCls}`} onClick={(e) => e.stopPropagation()}>
+                                        {/* Continuation rows get a subtle pill wrapper to look like a nested sub-item */}
+                                        <div className={`flex items-center gap-1.5 ${!isFirstInGroup ? 'rounded-md bg-[var(--bg-300)]/40 px-2 py-[3px]' : ''}`}>
+                                          {href ? (
+                                            <a href={href} target="_blank" rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()} title={att.filename}
+                                              className="inline-flex min-w-0 items-center gap-1.5 text-[var(--accent-200)] hover:underline">
+                                              {fileIcon}
+                                              <span className="truncate max-w-[160px] text-[10px]">{att.filename}</span>
+                                            </a>
+                                          ) : (
+                                            <div className="inline-flex min-w-0 items-center gap-1.5">
+                                              {fileIcon}
+                                              <span className="truncate max-w-[160px] text-[10px] text-[var(--text-100)]" title={att.filename}>{att.filename}</span>
+                                            </div>
+                                          )}
+                                          {att.size > 0 && (
+                                            <span className="shrink-0 text-[9px] text-[var(--text-200)] tabular-nums">
+                                              {formatBytes(att.size)}
+                                            </span>
+                                          )}
+                                          {/* First row of a multi-attachment group: show total count chip */}
+                                          {isFirstInGroup && groupSize > 1 && (
+                                            <span className="shrink-0 rounded-full bg-[var(--accent-200)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--accent-200)]">
+                                              {groupSize} files
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                     )
+                                  }
                                   default:
                                     return null
                                 }
@@ -5722,6 +6321,18 @@ export default function DocTidyInvoiceAudit() {
                       )}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Pagination footer */}
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                  <span className="whitespace-nowrap">Rows per page:</span>
+                  <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {emailPagination.pages > 0 && (
+                    <PaginationArrows page={emailPage} pages={emailPagination.pages} onChange={setEmailPage} />
+                  )}
                 </div>
 
               </div>
@@ -5744,7 +6355,7 @@ export default function DocTidyInvoiceAudit() {
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
                 {/* Toolbar */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
                   <div className="relative">
                     <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -5778,30 +6389,48 @@ export default function DocTidyInvoiceAudit() {
                     <option value="failed">Failed</option>
                   </select>
                   {pdfHasActiveFilters && (
-                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter('') }}
+                    <button onClick={() => { setPdfSearch(''); setPdfDateFrom(''); setPdfDateTo(''); setPdfParseStatusFilter(''); setPdfAdvPo(''); setPdfAdvInvoice(''); setPdfAdvVendor(''); setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
                       className="text-[var(--accent-200)] hover:underline cursor-pointer whitespace-nowrap">Clear</button>
                   )}
+                  {/* Advanced Search toggle */}
+                  <button
+                    type="button"
+                    onClick={() => { setPdfDraftPo(pdfAdvPo); setPdfDraftInvoice(pdfAdvInvoice); setPdfDraftVendor(pdfAdvVendor); setPdfAdvancedOpen(true) }}
+                    title="Advanced Search — filter by PO number, invoice number, or vendor"
+                    className={`relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors ${
+                      pdfAdvancedActive
+                        ? 'border-[var(--accent-200)] bg-[var(--primary-100)] text-[var(--accent-200)]'
+                        : 'border-[var(--bg-300)] text-[var(--text-200)] hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]'
+                    }`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+                    </svg>
+                    {pdfAdvancedCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[14px] rounded-full bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-1 text-[8px] leading-[14px] text-white text-center">{pdfAdvancedCount}</span>
+                    )}
+                  </button>
                   <div className="h-4 w-px bg-[var(--bg-300)]" />
-                  {/* Import PDFs icon button */}
+                  {/* Import files icon button */}
                   <button type="button" onClick={() => { setPdfUploadError(null); setShowPdfUploadModal(true) }}
-                    title="Import PDFs — upload PDF files to parse"
+                    title="Import files — upload PDF, CSV or Excel files to parse"
                     className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-[var(--bg-300)] text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] hover:text-[var(--text-100)]">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
-                  {/* Right: stats + bulk actions + rows per page + pagination */}
-                  <div className="ml-auto flex items-center gap-2">
-                    {/* Stats: total / parsed / pending */}
-                    {pdfImportsPagination.total > 0 && (
-                      <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
-                        <span>{pdfImportsPagination.total.toLocaleString()} file{pdfImportsPagination.total === 1 ? '' : 's'}</span>
-                        <span className="opacity-30">·</span>
-                        <span className="text-emerald-600 dark:text-emerald-400">{pdfImportsPagination.parsedCount.toLocaleString()} parsed</span>
-                        <span className="opacity-30">·</span>
-                        <span className="text-amber-600 dark:text-amber-400">{(pdfImportsPagination.total - pdfImportsPagination.parsedCount).toLocaleString()} pending</span>
-                      </span>
-                    )}
+                  {/* Stats — right side of row 1 */}
+                  {pdfImportsPagination.total > 0 && (
+                    <span className="ml-auto text-[10px] text-[var(--text-200)] whitespace-nowrap">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{pdfImportsPagination.parsedCount.toLocaleString()}</span>
+                      <span className="opacity-50">/</span>
+                      <span>{pdfImportsPagination.total.toLocaleString()}</span>
+                      {' '}file{pdfImportsPagination.total === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {/* Selection action row — only visible when rows are selected */}
+                  {(pdfSelectedIds.size > 0 || anySelectedPdfRunning) && (
+                  <div className="flex w-full items-center gap-2">
                     {/* Abort Jobs */}
                     {anySelectedPdfRunning && (
                       <button
@@ -5861,15 +6490,8 @@ export default function DocTidyInvoiceAudit() {
                         Delete {pdfSelectedIds.size}
                       </button>
                     )}
-                    <span className="whitespace-nowrap">Rows per page:</span>
-                    <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
-                      className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                      {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {pdfImportsPagination.pages > 0 && (
-                      <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
-                    )}
                   </div>
+                  )}
                 </div>
 
                 {/* ── Table ── */}
@@ -5896,11 +6518,15 @@ export default function DocTidyInvoiceAudit() {
                         {Array.from({ length: 20 }).map((_, i) => (
                           <tr key={i} className={i % 2 === 0 ? 'bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]'}>
                             <td className="px-3 py-1.5"><div className="h-3.5 w-3.5 animate-pulse rounded bg-[var(--bg-300)]" /></td>
+                            <td className="px-3 py-1.5">
+                              <div className="flex justify-center gap-2">
+                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
+                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
+                              </div>
+                            </td>
                             {orderedPdfCols.map((col, ci) => (
                               <td key={col.id} className="px-3 py-1.5">
-                                {col.id === 'parseStatus' ? (
-                                  <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--bg-300)]" />
-                                ) : col.id === 'filename' ? (
+                                {col.id === 'filename' ? (
                                   <div className="h-3 animate-pulse rounded bg-[var(--bg-300)]"
                                     style={{ width: `${6 + ((i + ci) % 5) * 2}rem` }} />
                                 ) : (
@@ -5909,12 +6535,6 @@ export default function DocTidyInvoiceAudit() {
                                 )}
                               </td>
                             ))}
-                            <td className="px-3 py-1.5">
-                              <div className="flex justify-center gap-2">
-                                <div className="h-5 w-20 animate-pulse rounded bg-[var(--bg-300)]" />
-                                <div className="h-5 w-14 animate-pulse rounded bg-[var(--bg-300)]" />
-                              </div>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -5929,12 +6549,12 @@ export default function DocTidyInvoiceAudit() {
                       </div>
                       <div>
                         <p className="text-[10px] font-medium text-[var(--text-100)]">
-                          {pdfHasActiveFilters ? 'No files match' : 'No PDFs imported yet'}
+                          {pdfHasActiveFilters ? 'No files match' : 'No files imported yet'}
                         </p>
                         <p className="mt-0.5 text-[10px] text-[var(--text-200)]">
                           {pdfHasActiveFilters
                             ? 'Try adjusting or clearing the filters.'
-                            : 'Click "Import PDFs" above to upload files.'}
+                            : 'Click the import button above to upload PDF, CSV or Excel files.'}
                         </p>
                       </div>
                       {pdfHasActiveFilters && (
@@ -5978,6 +6598,7 @@ export default function DocTidyInvoiceAudit() {
                               className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)] disabled:cursor-not-allowed disabled:opacity-40"
                             />
                           </Th>
+                          <Th label="Actions" align="center" className="min-w-[200px]" />
                           {orderedPdfCols.map((col) => (
                             <DraggableTh
                               key={col.id}
@@ -6008,7 +6629,6 @@ export default function DocTidyInvoiceAudit() {
                               }}
                             />
                           ))}
-                          <Th label="Actions" align="center" className="min-w-[200px]" />
                         </tr>
                       </thead>
                       <tbody>
@@ -6043,78 +6663,6 @@ export default function DocTidyInvoiceAudit() {
                                   className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent-200)]"
                                 />
                               </td>
-
-                              {orderedPdfCols.map((col) => {
-                                const cls = `${dragCls(col.id)}`
-                                switch (col.id) {
-                                  case 'imported':
-                                    return (
-                                      <td key="imported" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
-                                        {formatDate(imp.createdAt)}
-                                      </td>
-                                    )
-                                  case 'importedBy':
-                                    return (
-                                      <td key="importedBy" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`}>
-                                        {imp.uploadedByName ?? <span className="italic">—</span>}
-                                      </td>
-                                    )
-                                  case 'size':
-                                    return (
-                                      <td key="size" className={`px-3 py-px whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
-                                        {formatBytes(imp.size)}
-                                      </td>
-                                    )
-                                  case 'filename':
-                                    return (
-                                      <td key="filename" className={`px-3 py-px min-w-0 max-w-[300px] ${cls}`}>
-                                        {imp.driveWebViewLink ? (
-                                          <a
-                                            href={imp.driveWebViewLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            title={`Open ${imp.filename} in Google Drive`}
-                                            className="inline-flex items-center gap-1.5 min-w-0 group"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                            </svg>
-                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
-                                          </a>
-                                        ) : (
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
-                                            </svg>
-                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
-                                          </div>
-                                        )}
-                                      </td>
-                                    )
-                                  default:
-                                    return null
-                                  case 'parseStatus':
-                                    return (
-                                      <td key="parseStatus" className={`px-3 py-px whitespace-nowrap ${cls}`}>
-                                        {imp.parseJob ? (
-                                          <div className="flex flex-col gap-0.5">
-                                            <ParseStatusChip status={imp.parseJob.status} />
-                                            {imp.parseJob.completedAt && (
-                                              <span title={formatDateTime(imp.parseJob.completedAt)} className="text-[10px] text-[var(--text-200)]">
-                                                {formatDate(imp.parseJob.completedAt)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ring-1 ring-inset bg-slate-100 text-slate-500 ring-slate-200/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5">
-                                            Not sent
-                                          </span>
-                                        )}
-                                      </td>
-                                    )
-                                }
-                              })}
 
                               {/* Actions — mirrors the Emails tab AttachmentIcons states */}
                               <td className="px-3 py-px text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -6199,6 +6747,59 @@ export default function DocTidyInvoiceAudit() {
                                   </button>
                                 </div>
                               </td>
+
+                              {orderedPdfCols.map((col) => {
+                                const cls = `${dragCls(col.id)}`
+                                switch (col.id) {
+                                  case 'imported':
+                                    return (
+                                      <td key="imported" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`} title={formatDateTime(imp.createdAt)}>
+                                        {formatDate(imp.createdAt)}
+                                      </td>
+                                    )
+                                  case 'importedBy':
+                                    return (
+                                      <td key="importedBy" className={`px-3 py-px whitespace-nowrap text-[var(--text-200)] ${cls}`}>
+                                        {imp.uploadedByName ?? <span className="italic">—</span>}
+                                      </td>
+                                    )
+                                  case 'size':
+                                    return (
+                                      <td key="size" className={`px-3 py-px whitespace-nowrap text-right tabular-nums text-[var(--text-200)] ${cls}`}>
+                                        {formatBytes(imp.size)}
+                                      </td>
+                                    )
+                                  case 'filename':
+                                    return (
+                                      <td key="filename" className={`px-3 py-px min-w-0 max-w-[300px] ${cls}`}>
+                                        {imp.driveWebViewLink ? (
+                                          <a
+                                            href={imp.driveWebViewLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`Open ${imp.filename} in Google Drive`}
+                                            className="inline-flex items-center gap-1.5 min-w-0 group"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--accent-200)] no-underline group-hover:underline underline-offset-2" title={imp.filename}>{imp.filename}</span>
+                                          </a>
+                                        ) : (
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <svg className="h-3.5 w-3.5 shrink-0 text-rose-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                                              <path d="M7 3a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5H7zm5 1.5L17.5 10H12V4.5zM9 13h6v1.5H9V13zm0 3h4v1.5H9V16z"/>
+                                            </svg>
+                                            <span className="truncate text-[var(--text-100)]" title={imp.filename}>{imp.filename}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return null
+                                }
+                              })}
                             </tr>
                           )
                         })}
@@ -6206,10 +6807,203 @@ export default function DocTidyInvoiceAudit() {
                     </table>
                   )}
                 </div>
+
+                {/* Pagination footer */}
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                  <span className="whitespace-nowrap">Rows per page:</span>
+                  <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {pdfImportsPagination.pages > 0 && (
+                    <PaginationArrows page={pdfPage} pages={pdfImportsPagination.pages} onChange={setPdfPage} />
+                  )}
+                </div>
+
               </div>
             </div>
           )}
           {/* ── end workspaceTab === 'pdf-imports' ── */}
+
+          {/* ══ Advanced Search Modal — Emails ══ */}
+          {emailAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setEmailAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — Emails"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter emails by parsed invoice data</p>
+                  </div>
+                  {/* X — dismiss without applying */}
+                  <button
+                    type="button"
+                    onClick={() => setEmailAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={emailDraftPo}
+                      onChange={(e) => setEmailDraftPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={emailDraftInvoice}
+                      onChange={(e) => setEmailDraftInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={emailDraftVendor}
+                      onChange={(e) => setEmailDraftVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
+                  <button
+                    type="button"
+                    onClick={() => { setEmailDraftPo(''); setEmailDraftInvoice(''); setEmailDraftVendor('') }}
+                    disabled={!emailDraftPo.trim() && !emailDraftInvoice.trim() && !emailDraftVendor.trim()}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
+                  <button
+                    type="button"
+                    onClick={() => { setEmailAdvPo(emailDraftPo); setEmailAdvInvoice(emailDraftInvoice); setEmailAdvVendor(emailDraftVendor); setEmailAdvancedOpen(false) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ Advanced Search Modal — PDF Imports ══ */}
+          {pdfAdvancedOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Backdrop — dismiss without applying */}
+              <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => setPdfAdvancedOpen(false)} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Advanced Search — PDF Imports"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Advanced Search</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Filter imported files by parsed invoice data</p>
+                  </div>
+                  {/* X — dismiss without applying */}
+                  <button
+                    type="button"
+                    onClick={() => setPdfAdvancedOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] hover:bg-[var(--bg-200)] hover:text-[var(--text-100)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Body — bound to DRAFT state; nothing fires until Apply */}
+                <div className="px-5 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">PO Numbers</label>
+                    <textarea
+                      value={pdfDraftPo}
+                      onChange={(e) => setPdfDraftPo(e.target.value)}
+                      placeholder={"12345\n67890"}
+                      rows={3}
+                      autoFocus
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Invoice Numbers</label>
+                    <textarea
+                      value={pdfDraftInvoice}
+                      onChange={(e) => setPdfDraftInvoice(e.target.value)}
+                      placeholder={"INV-001\nINV-002"}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">One per line or comma-separated</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-[var(--text-100)]">Vendor</label>
+                    <input
+                      type="text"
+                      value={pdfDraftVendor}
+                      onChange={(e) => setPdfDraftVendor(e.target.value)}
+                      placeholder="Vendor name…"
+                      className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] px-3 py-2 text-xs text-[var(--text-100)] placeholder:text-[var(--text-200)]/50 focus:border-[var(--accent-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)]/40"
+                    />
+                    <p className="text-[10px] text-[var(--text-200)]">Substring match against parsed vendor name</p>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-4">
+                  {/* Clears draft only — does not fire a search */}
+                  <button
+                    type="button"
+                    onClick={() => { setPdfDraftPo(''); setPdfDraftInvoice(''); setPdfDraftVendor('') }}
+                    disabled={!pdfDraftPo.trim() && !pdfDraftInvoice.trim() && !pdfDraftVendor.trim()}
+                    className="text-xs text-[var(--accent-200)] hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    Clear all
+                  </button>
+                  {/* Apply — commits draft → applied state, triggers the server query */}
+                  <button
+                    type="button"
+                    onClick={() => { setPdfAdvPo(pdfDraftPo); setPdfAdvInvoice(pdfDraftInvoice); setPdfAdvVendor(pdfDraftVendor); setPdfAdvancedOpen(false) }}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    Apply & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ══ PDF Import Upload Modal ══ */}
           {showPdfUploadModal && (
@@ -6218,14 +7012,14 @@ export default function DocTidyInvoiceAudit() {
               <div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Import PDFs"
+                aria-label="Import files"
                 className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
               >
                 {/* Modal header */}
                 <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import PDFs</h3>
-                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF only · Max 50 MB each</p>
+                    <h3 className="text-sm font-semibold text-[var(--text-100)]">Import files</h3>
+                    <p className="mt-0.5 text-xs text-[var(--text-200)]">Multiple files accepted · PDF, CSV or Excel · Max 50 MB each</p>
                   </div>
                   <button
                     type="button"
@@ -6250,7 +7044,7 @@ export default function DocTidyInvoiceAudit() {
                   <input
                     ref={pdfFileInputRef}
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                     multiple
                     className="hidden"
                     onChange={(e) => {
@@ -6291,7 +7085,7 @@ export default function DocTidyInvoiceAudit() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-[var(--text-100)]">
-                            Click or drop PDF files here
+                            Click or drop PDF, CSV or Excel files here
                           </p>
                           <p className="mt-1 text-xs text-[var(--text-200)]">Multiple files accepted · uploads to Drive + parsed on demand</p>
                         </div>
@@ -6315,7 +7109,7 @@ export default function DocTidyInvoiceAudit() {
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
               {/* Toolbar */}
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                 {/* Search */}
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -6395,8 +7189,8 @@ export default function DocTidyInvoiceAudit() {
                     </svg>
                   )}
                 </button>
-                {/* Right: row count + bulk delete + rows per page + pagination */}
-                <div className="ml-auto flex items-center gap-2">
+                {/* Second row: stats + bulk actions (left) · rows per page + pagination (right) */}
+                <div className="flex w-full items-center gap-2">
                   {/* Row count / filter count / selection count */}
                   {orderPagination.total > 0 && (
                     <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-200)]">
@@ -6443,14 +7237,6 @@ export default function DocTidyInvoiceAudit() {
                       </svg>
                       Delete {selectedJobIds.size}
                     </button>
-                  )}
-                  <span className="whitespace-nowrap">Rows per page:</span>
-                  <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
-                    {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  {orderPagination.pages > 0 && (
-                    <PaginationArrows page={orderPage} pages={orderPagination.pages} onChange={setOrderPage} />
                   )}
                 </div>
               </div>
@@ -6505,6 +7291,9 @@ export default function DocTidyInvoiceAudit() {
                         <DraggableTh
                           key={col.id}
                           label={col.label}
+                          iconPath={col.iconPath}
+                          iconColor={col.iconColor}
+                          iconSrc={col.iconSrc}
                           align={col.center ? 'center' : col.numeric ? 'right' : 'left'}
                           isDragging={auditDragSrc === col.id}
                           isDragTarget={auditDragTarget === col.id}
@@ -6591,7 +7380,7 @@ export default function DocTidyInvoiceAudit() {
                             const isEven = rowIdx % 2 === 0
                             const isSelected = selectedJobIds.has(job._id)
                             return (
-                              <tr key={job._id}
+                              <tr key={job.rowKey}
                                 className={`group transition-colors align-middle ${isSelected ? 'bg-[var(--primary-100)]/70 hover:bg-[var(--primary-100)]' : isEven ? 'bg-[var(--bg-100)] hover:bg-[var(--primary-100)]/50' : 'bg-[var(--bg-200)] hover:bg-[var(--primary-100)]/50'}`}>
                                 <td className="px-2.5 py-0.5" onClick={(e) => e.stopPropagation()}>
                                   <input type="checkbox" checked={isSelected}
@@ -6827,6 +7616,18 @@ export default function DocTidyInvoiceAudit() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Pagination footer */}
+              <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                <span className="whitespace-nowrap">Rows per page:</span>
+                <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {orderPagination.pages > 0 && (
+                  <PaginationArrows page={orderPage} pages={orderPagination.pages} onChange={setOrderPage} />
+                )}
               </div>
 
             </div>
@@ -7177,10 +7978,10 @@ export default function DocTidyInvoiceAudit() {
       {/* ── Confirm bulk delete: emails ── */}
       {confirmBulkDeleteEmails && (
         <ConfirmDeleteDialog
-          title={`Delete ${selectedEmailIds.size} selected message${selectedEmailIds.size !== 1 ? 's' : ''}?`}
+          title={`Delete ${selectedMsgIdsForDelete.size} selected message${selectedMsgIdsForDelete.size !== 1 ? 's' : ''}?`}
           description={
             <span className="text-[var(--text-200)]">
-              {selectedEmailIds.size} message{selectedEmailIds.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
+              {selectedMsgIdsForDelete.size} message{selectedMsgIdsForDelete.size !== 1 ? 's' : ''}, their attachments, and associated parse jobs will be permanently removed. This cannot be undone.
             </span>
           }
           deleting={emailBulkDeleting}
@@ -7251,7 +8052,11 @@ export default function DocTidyInvoiceAudit() {
             <>
               <span className="font-medium text-[var(--text-100)]">{confirmDeleteJob.filename}</span>
               <br />
-              <span className="text-[var(--text-200)]">The parse job and its extracted data will be permanently removed. This cannot be undone.</span>
+              <span className="text-[var(--text-200)]">
+                {confirmDeleteJob.invoiceCount
+                  ? `This file holds ${confirmDeleteJob.invoiceCount} invoices — deleting its parse job removes all ${confirmDeleteJob.invoiceCount} rows and their extracted data. This cannot be undone.`
+                  : 'The parse job and its extracted data will be permanently removed. This cannot be undone.'}
+              </span>
             </>
           }
           deleting={jobDeleting}

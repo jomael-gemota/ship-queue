@@ -33,15 +33,15 @@ export interface IDocTidyOrderImport extends Document {
   importedByName?: string;
 
   /**
-   * DC cost of goods sold, fetched from the Channel Precision bt_costs API.
+   * DC cost of goods sold, from the Channel Precision pf/lookup/items API.
    * `null`  = not yet fetched
    * `"n/a"` = fetched but no matching SKU found
-   * Any other string = the cost value (e.g. "12.50")
+   * Any other string = the cost value (e.g. "12.50"), kept in sync with DC
    */
   dcCogs?: string | null;
   /** MSRP from the same API response (field name `mspr` in the source). */
   dcMsrp?: string | null;
-  /** When the COGS was last fetched (for staleness checks). */
+  /** When dcCogs was last written (first fetch or a change in DC). */
   dcCogsAt?: Date | null;
 
   /**
@@ -91,6 +91,14 @@ export interface IMatchedInvoice {
   dropshipFee?: string;
   miscCharges?: string;
   totalCost?: string;
+  /**
+   * `'customer'` when the invoice was billed under a sibling order's PO (the
+   * vendor combined several orders from one customer onto one invoice). Absent
+   * means a direct PO # match.
+   */
+  matchedBy?: 'po' | 'customer';
+  /** The PO # printed on the invoice; only set for `matchedBy: 'customer'`. */
+  invoicePo?: string;
   /** When the cache was last written. */
   cachedAt: Date;
 }
@@ -159,6 +167,8 @@ const DocTidyOrderImportSchema = new Schema<IDocTidyOrderImport>(
         dropshipFee:      { type: String },
         miscCharges:      { type: String },
         totalCost:        { type: String },
+        matchedBy:        { type: String, enum: ['po', 'customer'] },
+        invoicePo:        { type: String },
         cachedAt:         { type: Date, required: true },
       }, { _id: false })],
       default: [],

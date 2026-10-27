@@ -604,7 +604,8 @@ export const upsertVendor = async (req: Request, res: Response): Promise<void> =
       const messageIds = messages.map((m) => m._id);
       await DocTidyParseJob.updateMany(
         {
-          messageId: { $in: messageIds },
+          // PDF-import jobs have no rule chain; they carry workspaceId directly.
+          $or: [{ messageId: { $in: messageIds } }, { workspaceId }],
           vendorName: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
           vendorNeedsSetup: true,
         },

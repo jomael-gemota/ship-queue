@@ -1,0 +1,19 @@
+# Railway / Nixpacks build configuration
+#
+# NODE_OPTIONS: raise the V8 heap ceiling for the build process.
+# Without this, tsc + vite bundling a large TSX file (>400 KB) exhausts
+# the default ~1.5 GB heap, which kills the BuildKit gRPC daemon with
+# "grpc server closed unexpectedly".
+
+[variables]
+NODE_OPTIONS = "--max-old-space-size=4096"
+NODE_ENV = "production"
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"

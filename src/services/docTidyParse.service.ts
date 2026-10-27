@@ -6,10 +6,12 @@ import DocTidyParseJob, { type IDocTidyParseJob } from '../models/DocTidyParseJo
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { downloadDriveFile } from './googleDrive.service';
 import { announceParseStatus, hasWorker, sendToWorker } from './docTidyWorkerRegistry';
+import { PARSEABLE_FILES_LABEL, isParseableFilename } from '../lib/parseableFiles';
 
 /**
- * GridFS bucket holding PDFs mirrored out of Drive. Named explicitly because the
- * worker opens the same bucket by name (see `worker/collections.py`).
+ * GridFS bucket holding documents (PDF, CSV, Excel) mirrored out of Drive. Named
+ * explicitly because the worker opens the same bucket by name (see
+ * `worker/mongo_collections.py`).
  */
 export const PDF_BUCKET = 'doctidy_pdfs';
 
@@ -63,6 +65,9 @@ async function resolveAttachment(
 
   const attachment = message.attachments?.[attachmentIndex];
   if (!attachment) throw new ParseRequestError('Attachment not found on this message', 404);
+  if (!isParseableFilename(attachment.filename)) {
+    throw new ParseRequestError(`Tidy can only read ${PARSEABLE_FILES_LABEL} files`, 422);
+  }
   if (!attachment.driveFileId) {
     throw new ParseRequestError(
       'This attachment was never stored in Drive, so there is nothing to parse',
