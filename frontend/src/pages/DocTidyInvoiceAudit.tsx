@@ -1452,7 +1452,7 @@ function WorkspaceCard({
 
   return (
     <div onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)] cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       {/* Body */}
       <div className="flex-1 px-5 pt-5 pb-4">
         <div className="mb-4">
@@ -1470,7 +1470,7 @@ function WorkspaceCard({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t border-[var(--bg-300)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
         <span className="text-[10px] text-[var(--text-200)]">
           Created {new Date(workspace.createdAt).toLocaleDateString()}
         </span>
@@ -5698,7 +5698,7 @@ export default function DocTidyInvoiceAudit() {
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
                 {/* Toolbar */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
                   <div className="relative">
                     <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -6324,7 +6324,7 @@ export default function DocTidyInvoiceAudit() {
                 </div>
 
                 {/* Pagination footer */}
-                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
                     className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -6355,7 +6355,7 @@ export default function DocTidyInvoiceAudit() {
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
                 {/* Toolbar */}
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
                   <div className="relative">
                     <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -6809,7 +6809,7 @@ export default function DocTidyInvoiceAudit() {
                 </div>
 
                 {/* Pagination footer */}
-                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+                <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
                     className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
@@ -7109,7 +7109,7 @@ export default function DocTidyInvoiceAudit() {
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
 
               {/* Toolbar */}
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                 {/* Search */}
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2 text-[var(--text-200)]">
@@ -7619,7 +7619,7 @@ export default function DocTidyInvoiceAudit() {
               </div>
 
               {/* Pagination footer */}
-              <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
+              <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                 <span className="whitespace-nowrap">Rows per page:</span>
                 <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
                   className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
