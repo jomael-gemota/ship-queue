@@ -19,6 +19,8 @@ export interface DocTidyEvent {
     | 'worker_status'
     | 'poll_status'
     | 'ui_prefs'
+    /** DC COGS were written for `workspaceId`; the Invoice Audit table refetches. */
+    | 'dc_cogs'
     /** Token usage was recorded; the admin usage dashboard refetches. Carries no data. */
     | 'usage';
   /** Number of newly stored messages, for `imported`. */
