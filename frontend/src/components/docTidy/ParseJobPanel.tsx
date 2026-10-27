@@ -209,7 +209,7 @@ export default function ParseJobPanel({
               onClick={rerun}
               disabled={rerunning || isParseRunning(status)}
               title={isParseRunning(status) ? 'Agent is already running' : 'Send this document to Tidy Agent again'}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {rerunning ? (
                 <Spinner className="h-3.5 w-3.5" />
@@ -251,7 +251,7 @@ export default function ParseJobPanel({
               {item.icon}
               {item.label}
               {item.id === 'corrections' && corrections.length > 0 && (
-                <span className="ml-0.5 min-w-[18px] rounded-full bg-[var(--accent-200)] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+                <span className="ml-0.5 min-w-[18px] rounded-full bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
                   {corrections.length}
                 </span>
               )}

@@ -235,7 +235,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
             {isAdmin && !config?.mailboxConnected && (
               <button
                 onClick={connect}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
               >
                 Connect mailbox
               </button>
@@ -400,7 +400,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
                       onClick={() => saveFolder(currentFolderId)}
                       disabled={saving || !currentFolderId}
                       title={currentFolderId ? undefined : 'Open a folder to select it'}
-                      className="rounded-lg bg-[var(--accent-200)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       {saving ? 'Saving…' : 'Use this folder'}
                     </button>

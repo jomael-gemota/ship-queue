@@ -344,7 +344,7 @@ function VendorEditor({
             type="button"
             onClick={() => void save()}
             disabled={saving || (!isNew && !hasChanges)}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--accent-200)] dark:bg-[var(--accent-100)] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving && <Spinner />}
             {isNew ? 'Save vendor' : 'Save changes'}
