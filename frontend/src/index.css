@@ -3,16 +3,17 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --primary-100: #d4eaf7;
-  --primary-200: #b6ccd8;
-  --primary-300: #3b3c3d;
-  --accent-100: #71c4ef;
-  --accent-200: #00668c;
-  --text-100: #1d1c1c;
-  --text-200: #313d44;
-  --bg-100: #fffefb;
-  --bg-200: #f5f4f1;
-  --bg-300: #cccbc8;
+  /* ── Sage Whisper light palette ─────────────────────────────────────────── */
+  --primary-100: #e2ebe0;   /* hover / active background — light sage */
+  --primary-200: #c8d8c5;   /* elevated interactive, active pill */
+  --primary-300: #4a6a4a;   /* muted mid-tone (disabled, placeholder) */
+  --accent-100:  #8aad87;   /* subtle icon accents, row handles */
+  --accent-200:  #3a6e3e;   /* buttons, active nav text — forest green */
+  --text-100:    #1a2e1a;   /* primary text — near-black forest */
+  --text-200:    #4a6450;   /* secondary / muted text — dark sage */
+  --bg-100:      #f8faf7;   /* main background — near-white sage */
+  --bg-200:      #f2f5f0;   /* secondary background */
+  --bg-300:      #c8d8c5;   /* borders / dividers — medium sage */
 }
 
 .dark {
