@@ -245,7 +245,7 @@ export default function HHSportswearOrders() {
 
       <div className="hh-table-scroll">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]">
+          <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 ">
             <tr className="text-left">
               <Th>
                 <HeaderLabel icon={<IdIcon className="h-3.5 w-3.5" />} text="Order ID" />
@@ -285,7 +285,7 @@ export default function HHSportswearOrders() {
               <HHRowActionsHeader />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
+          <tbody className="divide-y divide-[var(--bg-300)] text-[13px]">
             {filteredOrders.length === 0 ? (
               <tr>
                 <Td colSpan={orderDetails ? 11 : 12} className="py-10 text-center text-[var(--text-200)]">

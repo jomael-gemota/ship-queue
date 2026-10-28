@@ -23,7 +23,7 @@ const COUNT_NOUNS = {
 } as const
 
 const selectClass =
-  'cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
+  'cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-1.5 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
 
 export function HHFilterBar() {
   const {
@@ -45,7 +45,7 @@ export function HHFilterBar() {
     <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-100)] px-4 py-2.5 dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
       {showStatus && (
         <>
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-details-filter">
+          <label className="text-sm font-medium text-[var(--text-200)]" htmlFor="hh-details-filter">
             Details
           </label>
           <select
@@ -62,7 +62,7 @@ export function HHFilterBar() {
             ))}
           </select>
 
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]" htmlFor="hh-cart-filter">
+          <label className="text-sm font-medium text-[var(--text-200)]" htmlFor="hh-cart-filter">
             Cart
           </label>
           <select
@@ -82,7 +82,7 @@ export function HHFilterBar() {
       )}
 
       <div className="relative min-w-[220px] max-w-md flex-1">
-        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-[var(--text-200)]">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
@@ -97,13 +97,13 @@ export function HHFilterBar() {
           value={searchInput}
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder={SEARCH_PLACEHOLDERS[level]}
-          className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-9 pr-9 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] py-1.5 pl-9 pr-9 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
         />
         {searchInput && (
           <button
             type="button"
             onClick={() => handleSearchChange('')}
-            className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-[var(--text-100)]"
+            className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
             aria-label="Clear search"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -128,7 +128,7 @@ export function HHFilterBar() {
             Clear search and filters
           </button>
         )}
-        <span className="text-xs text-gray-500 sm:text-sm dark:text-[var(--text-200)]">
+        <span className="text-xs text-[var(--text-200)] sm:text-sm dark:text-[var(--text-200)]">
           {total.toLocaleString()} {total === 1 ? singular : plural}
         </span>
       </div>

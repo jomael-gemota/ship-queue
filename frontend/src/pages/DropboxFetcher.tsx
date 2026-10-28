@@ -264,6 +264,19 @@ export default function DropboxFetcher() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0061ff] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4z"/>
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">Dropbox</h1>
+          <p className="text-sm text-[var(--text-200)]">Browse Dropbox folders and fetch CSV order files.</p>
+        </div>
+      </div>
+
       {error && (
         <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
           <span className="flex-1">{error}</span>

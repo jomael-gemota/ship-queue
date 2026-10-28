@@ -475,7 +475,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search all fields…"
-            className="h-8 w-100 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] pl-8 pr-3 text-xs text-[var(--text-200)] placeholder-slate-400 dark:placeholder-[var(--primary-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] transition-colors"
+            className="h-8 w-100 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] pl-8 pr-3 text-xs text-[var(--text-200)] placeholder:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] transition-colors"
           />
           {search && (
             <button
