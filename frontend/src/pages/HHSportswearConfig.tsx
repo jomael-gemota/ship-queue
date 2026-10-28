@@ -9,12 +9,12 @@ import { THOROGOOD_SKU_SAMPLES, thorogoodPortalSkuCandidates } from '../lib/hhTh
 import { HH_SKU_SAMPLES, hhCartSku, normalizeHhSkuTokens } from '../lib/hhSkuExclude'
 
 const inputClass =
-  'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:cursor-default disabled:opacity-80 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
+  'w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-[var(--text-100)] placeholder:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:cursor-default disabled:opacity-80 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]'
 
-const labelClass = 'block text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
-const hintClass = 'block text-xs text-slate-500 dark:text-[var(--text-200)]'
+const labelClass = 'block text-sm font-medium text-[var(--text-100)]'
+const hintClass = 'block text-xs text-[var(--text-200)]'
 const quietButtonClass =
-  'inline-flex cursor-pointer items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--bg-300)] dark:text-[var(--text-100)] dark:hover:bg-[var(--primary-100)]'
+  'inline-flex cursor-pointer items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3.5 py-2 text-sm font-medium text-[var(--text-200)] transition-colors hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-[var(--bg-300)] dark:text-[var(--text-100)] dark:hover:bg-[var(--primary-100)]'
 
 const MAX_CHECK_TIMES = 12
 
@@ -176,7 +176,7 @@ function sameCheckTimes(current: string[], saved: string[]): boolean {
 
 function ReadOnlyBadge() {
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
+    <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-[var(--text-200)] dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
       Read-only
     </span>
   )
@@ -239,9 +239,9 @@ function ConfigSection({
         >
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</span>
+              <span className="text-sm font-semibold text-[var(--text-100)]">{title}</span>
               {dirty ? (
-                <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
+                <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-[var(--text-200)] dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]">
                   Unsaved
                 </span>
               ) : null}
@@ -255,7 +255,7 @@ function ConfigSection({
               <span className="min-h-0 overflow-hidden">
                 <span
                   className={`mt-0.5 block truncate text-xs ${
-                    summaryAlert ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-[var(--text-200)]'
+                    summaryAlert ? 'text-red-700 dark:text-red-300' : 'text-[var(--text-200)]'
                   }`}
                 >
                   {summaryText}
@@ -264,7 +264,7 @@ function ConfigSection({
             </span>
           </span>
           <svg
-            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform dark:text-[var(--text-200)] ${motionClass} ${
+            className={`h-4 w-4 shrink-0 text-[var(--text-200)] transition-transform dark:text-[var(--text-200)] ${motionClass} ${
               open ? 'rotate-180' : ''
             }`}
             fill="none"
@@ -290,7 +290,7 @@ function ConfigSection({
               open ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            <p className="mb-4 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+            <p className="mb-4 text-xs leading-5 text-[var(--text-200)]">{description}</p>
             <fieldset disabled={!canEdit} className="m-0 min-w-0 space-y-4 border-0 p-0">
               {children}
             </fieldset>
@@ -304,7 +304,7 @@ function ConfigSection({
 function sessionPillClass(status: HHSessionCheck['status']): string {
   if (status === 'ok') return 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
   if (status === 'auth' || status === 'down') return 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300'
-  return 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
+  return 'bg-slate-100 text-[var(--text-200)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]'
 }
 
 function ConfigChoice({
@@ -792,7 +792,7 @@ export default function HHSportswearConfig() {
   )
 
   if (loadState === 'loading') {
-    return <p className="px-5 py-8 text-sm text-slate-500 dark:text-[var(--text-200)]">Loading configurations…</p>
+    return <p className="px-5 py-8 text-sm text-[var(--text-200)]">Loading configurations…</p>
   }
 
   if (loadState === 'error') {
@@ -813,12 +813,12 @@ export default function HHSportswearConfig() {
       >
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            <h2 className="text-base font-semibold text-[var(--text-100)]">
               {brandDef.name} B2B
             </h2>
             {canEdit ? null : <ReadOnlyBadge />}
           </div>
-          <p className="max-w-2xl text-sm leading-6 text-slate-500 dark:text-[var(--text-200)]">
+          <p className="max-w-2xl text-sm leading-6 text-[var(--text-200)]">
             Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session. Cart
             drafts are created on Thorogood and stay drafts. Place Order starts off.
           </p>
@@ -963,7 +963,7 @@ export default function HHSportswearConfig() {
             </div>
           </div>
           <div className="space-y-2">
-            <div className="hidden font-mono text-[11px] uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
+            <div className="hidden font-mono text-[11px] uppercase tracking-wide text-[var(--text-200)] sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
               <span>Seller Central</span>
               <span>Portal codes</span>
             </div>
@@ -976,11 +976,11 @@ export default function HHSportswearConfig() {
                     key={sample}
                     className="grid grid-cols-1 gap-0.5 font-mono text-xs sm:grid-cols-2 sm:gap-3"
                   >
-                    <span className="truncate text-slate-500 dark:text-[var(--text-200)]">{sample}</span>
+                    <span className="truncate text-[var(--text-200)]">{sample}</span>
                     <span>
-                      <span className="text-slate-800 dark:text-[var(--text-100)]">{primary || '—'}</span>
+                      <span className="text-[var(--text-100)]">{primary || '—'}</span>
                       {rest.length > 0 ? (
-                        <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-[var(--text-200)]">
+                        <span className="mt-0.5 block text-[11px] text-[var(--text-200)]">
                           also {rest.join(', ')}
                         </span>
                       ) : null}
@@ -1060,7 +1060,7 @@ export default function HHSportswearConfig() {
             aria-label="Session cookie"
           />
           {saved?.hasCookie ? (
-            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)]">
+            <label className="flex items-center gap-2 text-sm text-[var(--text-200)]">
               <input
                 type="checkbox"
                 checked={clearCookie}
@@ -1109,7 +1109,7 @@ export default function HHSportswearConfig() {
                       type="button"
                       disabled={busy}
                       onClick={() => setCheckTimes(checkTimes.filter((_, itemIndex) => itemIndex !== index))}
-                      className="cursor-pointer px-2 py-2 text-sm font-medium text-slate-600 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--text-200)]"
+                      className="cursor-pointer px-2 py-2 text-sm font-medium text-[var(--text-200)] underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--text-200)]"
                     >
                       Remove
                     </button>
@@ -1183,7 +1183,7 @@ export default function HHSportswearConfig() {
               saveError
                 ? 'text-sm text-red-600 dark:text-red-400'
                 : dirty
-                  ? 'text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
+                  ? 'text-sm font-medium text-[var(--text-100)]'
                   : saveNotice
                     ? 'text-sm text-emerald-700 dark:text-emerald-300'
                     : hintClass
@@ -1232,12 +1232,12 @@ export default function HHSportswearConfig() {
     >
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+          <h2 className="text-base font-semibold text-[var(--text-100)]">
             B2B {brandLabel} account
           </h2>
           {canEdit ? null : <ReadOnlyBadge />}
         </div>
-        <p className="max-w-2xl text-sm text-slate-500 dark:text-[var(--text-200)]">
+        <p className="max-w-2xl text-sm text-[var(--text-200)]">
           {brandDef.cookieJarKey
             ? `Cart drafts go to this ${brandDef.supplier} account. Cookie Jar refreshes the session from Sphere. A cookie pasted below overrides that session.`
             : `Cart drafts go to this ${brandDef.supplier} account. The session is a cookie you paste from a logged-in browser. Sphere does not refresh it.`}
@@ -1321,7 +1321,7 @@ export default function HHSportswearConfig() {
             onClick={() => setPlaceOrderEnabled((current) => !current)}
             className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               busy || !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-            } ${placeOrderEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+            } ${placeOrderEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-300)]'}`}
           >
             <span
               className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
@@ -1386,15 +1386,15 @@ export default function HHSportswearConfig() {
           </div>
         </div>
         <div className="space-y-2">
-          <div className="hidden font-mono text-[11px] uppercase tracking-wide text-slate-400 sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
+          <div className="hidden font-mono text-[11px] uppercase tracking-wide text-[var(--text-200)] sm:grid sm:grid-cols-2 sm:gap-3 dark:text-[var(--text-200)]">
             <span>Seller Central</span>
             <span>Cart SKU</span>
           </div>
           <ul className="space-y-1.5">
             {HH_SKU_SAMPLES.map((sample) => (
               <li key={sample} className="grid grid-cols-1 gap-0.5 font-mono text-xs sm:grid-cols-2 sm:gap-3">
-                <span className="truncate text-slate-500 dark:text-[var(--text-200)]">{sample}</span>
-                <span className="text-slate-800 dark:text-[var(--text-100)]">
+                <span className="truncate text-[var(--text-200)]">{sample}</span>
+                <span className="text-[var(--text-100)]">
                   {hhCartSku(sample, skuPreviewPrefixes, skuPreviewSuffixes) || '—'}
                 </span>
               </li>
@@ -1473,7 +1473,7 @@ export default function HHSportswearConfig() {
           aria-label="Session cookie"
         />
         {saved?.hasCookie ? (
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)]">
+          <label className="flex items-center gap-2 text-sm text-[var(--text-200)]">
             <input
               type="checkbox"
               checked={clearCookie}
@@ -1522,7 +1522,7 @@ export default function HHSportswearConfig() {
                     type="button"
                     disabled={busy}
                     onClick={() => setCheckTimes(checkTimes.filter((_, itemIndex) => itemIndex !== index))}
-                    className="cursor-pointer px-2 py-2 text-sm font-medium text-slate-600 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--text-200)]"
+                    className="cursor-pointer px-2 py-2 text-sm font-medium text-[var(--text-200)] underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-[var(--text-200)]"
                   >
                     Remove
                   </button>
@@ -1596,7 +1596,7 @@ export default function HHSportswearConfig() {
             saveError
               ? 'text-sm text-red-600 dark:text-red-400'
               : dirty
-                ? 'text-sm font-medium text-slate-700 dark:text-[var(--text-100)]'
+                ? 'text-sm font-medium text-[var(--text-100)]'
                 : saveNotice
                   ? 'text-sm text-emerald-700 dark:text-emerald-300'
                   : hintClass

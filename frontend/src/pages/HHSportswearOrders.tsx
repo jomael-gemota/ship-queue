@@ -144,12 +144,12 @@ export default function HHSportswearOrders() {
   }
 
   if (loadState === 'loading') {
-    return <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">Loading group…</p>
+    return <p className="px-5 py-10 text-center text-sm text-[var(--text-200)]">Loading group…</p>
   }
 
   if (loadState === 'error') {
     return (
-      <div className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+      <div className="px-5 py-10 text-center text-sm text-[var(--text-200)]">
         <p>{loadError || 'Failed to load group.'}</p>
         <button
           type="button"
@@ -163,21 +163,21 @@ export default function HHSportswearOrders() {
   }
 
   if (!group) {
-    return <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">Group not found.</p>
+    return <p className="px-5 py-10 text-center text-sm text-[var(--text-200)]">Group not found.</p>
   }
 
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
         <div className="min-w-0">
-          <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+          <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-[var(--text-100)]">
             <span>{formatCreatedAt(group.createdAt)}</span>
             <HHDetailsSummary orders={group.children} />
             <HHCartSummary orders={group.children} />
             <HHVerifiedSummary orders={group.children} />
             <HHPlacedSummary orders={group.children} />
           </h2>
-          <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-200)]">
             <span>
               {group.children.length} order{group.children.length === 1 ? '' : 's'}
             </span>
@@ -292,7 +292,7 @@ export default function HHSportswearOrders() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {filteredOrders.length === 0 ? (
               <tr>
-                <Td colSpan={orderDetails ? 11 : 12} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={orderDetails ? 11 : 12} className="py-10 text-center text-[var(--text-200)]">
                   {group.children.length === 0
                     ? 'No orders in this group.'
                     : selectedDetailsStatus || selectedCartStatus
@@ -320,10 +320,10 @@ export default function HHSportswearOrders() {
                     <Td compact className="whitespace-nowrap font-mono">
                       <SellerCentralOrderId orderId={order.orderId} />
                     </Td>
-                    <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
+                    <Td compact className="whitespace-nowrap font-mono text-[var(--text-200)]">
                       {order.po}
                     </Td>
-                    <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
+                    <Td compact className="whitespace-nowrap font-mono text-[var(--text-200)]">
                       {order.referenceNumber || '—'}
                     </Td>
                     <Td compact className="max-w-[320px]">

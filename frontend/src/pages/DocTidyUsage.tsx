@@ -91,7 +91,7 @@ function LiveBadge({ live }: { live: boolean }) {
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
         live
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-          : 'bg-slate-200 text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
+          : 'bg-slate-200 text-[var(--text-200)] dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
       }`}
       title={live ? 'Updates as usage is recorded' : 'Reconnecting to the live stream…'}
     >

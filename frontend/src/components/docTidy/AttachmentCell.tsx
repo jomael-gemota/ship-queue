@@ -76,7 +76,7 @@ export default function AttachmentCell({
                 </a>
               ) : (
                 <span
-                  className="break-all text-sm font-medium text-slate-600 dark:text-[var(--text-200)]"
+                  className="break-all text-sm font-medium text-[var(--text-200)]"
                   title={att.uploadError || att.filename}
                 >
                   {att.filename}
@@ -85,7 +85,7 @@ export default function AttachmentCell({
 
               {/* Meta row: size + parse status */}
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <span className="text-[10px] text-slate-400">{formatBytes(att.size)}</span>
+                <span className="text-[10px] text-[var(--text-200)]">{formatBytes(att.size)}</span>
 
                 {job && (
                   <button

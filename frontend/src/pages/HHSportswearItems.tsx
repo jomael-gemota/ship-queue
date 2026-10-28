@@ -97,7 +97,7 @@ function ImageIcon({ className = '' }: { className?: string }) {
 function ItemImage({ item }: { item: HHLineItem }) {
   if (!item.imageUrl) {
     return (
-      <div className="flex h-14 w-14 items-center justify-center rounded border border-[var(--bg-300)] bg-[var(--bg-200)] text-[10px] text-slate-400 dark:text-[var(--text-200)]">
+      <div className="flex h-14 w-14 items-center justify-center rounded border border-[var(--bg-300)] bg-[var(--bg-200)] text-[10px] text-[var(--text-200)]">
         —
       </div>
     )
@@ -129,16 +129,16 @@ function ProceedsCell({
   return (
     <div className="ml-auto w-max text-right text-[12px] leading-5">
       <p>
-        <span className="text-slate-500 dark:text-[var(--text-200)]">Item subtotal: </span>
-        <span className="tabular-nums text-slate-700 dark:text-[var(--text-100)]">{formatCurrency(subtotal)}</span>
+        <span className="text-[var(--text-200)]">Item subtotal: </span>
+        <span className="tabular-nums text-[var(--text-100)]">{formatCurrency(subtotal)}</span>
       </p>
       <p>
-        <span className="text-slate-500 dark:text-[var(--text-200)]">Tax: </span>
-        <span className="tabular-nums text-slate-700 dark:text-[var(--text-100)]">{formatCurrency(tax)}</span>
+        <span className="text-[var(--text-200)]">Tax: </span>
+        <span className="tabular-nums text-[var(--text-100)]">{formatCurrency(tax)}</span>
       </p>
       <p className={emphasizeTotal ? 'font-semibold' : ''}>
-        <span className="text-slate-500 dark:text-[var(--text-200)]">Item total: </span>
-        <span className="tabular-nums text-slate-800 dark:text-[var(--text-100)]">{formatCurrency(total)}</span>
+        <span className="text-[var(--text-200)]">Item total: </span>
+        <span className="tabular-nums text-[var(--text-100)]">{formatCurrency(total)}</span>
       </p>
     </div>
   )
@@ -174,11 +174,11 @@ function HHItemExcludeControls({
   if (item.excluded) {
     return (
       <div className="mt-1.5 space-y-1">
-        <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-700/70 dark:text-slate-200">
+        <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-[var(--text-200)] dark:bg-slate-700/70 dark:text-slate-200">
           Excluded from cart
         </span>
         {item.excludeNote ? (
-          <p className="max-w-xs text-xs font-normal leading-snug text-slate-600 dark:text-[var(--text-200)]">
+          <p className="max-w-xs text-xs font-normal leading-snug text-[var(--text-200)]">
             {item.excludeNote}
           </p>
         ) : null}
@@ -210,7 +210,7 @@ function HHItemExcludeControls({
           placeholder="Why? Workwear, OOS…"
           aria-label="Exclude note"
           onChange={(event) => onNoteChange(event.target.value)}
-          className="w-full resize-y rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 text-[13px] leading-5 text-slate-800 outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          className="w-full resize-y rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 text-[13px] leading-5 text-[var(--text-100)] outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
         />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <button
@@ -290,13 +290,13 @@ function HHItemCartSku({
   return (
     <div className="mt-1.5 max-w-[16rem] space-y-1" onClick={(event) => event.stopPropagation()}>
       {differs ? (
-        <p className="text-xs font-normal normal-case leading-snug text-slate-500 dark:text-[var(--text-200)]">
+        <p className="text-xs font-normal normal-case leading-snug text-[var(--text-200)]">
           <Tooltip content={cartSkuReason(item, cart, affixes, orderDetails)}>
             <span className="cursor-help border-b border-dotted border-slate-400 dark:border-[var(--text-200)]">
               Cart SKU
             </span>
           </Tooltip>{' '}
-          <span className="font-mono text-slate-700 dark:text-[var(--text-100)]">{cart}</span>
+          <span className="font-mono text-[var(--text-100)]">{cart}</span>
         </p>
       ) : null}
       {locked ? null : editing ? (
@@ -308,7 +308,7 @@ function HHItemCartSku({
             aria-label="Cart SKU"
             placeholder={automatic || item.sku}
             onChange={(event) => onValueChange(event.target.value)}
-            className="w-full rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 font-mono text-[13px] text-slate-800 outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+            className="w-full rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 font-mono text-[13px] text-[var(--text-100)] outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
           />
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <button type="button" disabled={busy} onClick={onSave} className={linkClass}>
@@ -403,12 +403,12 @@ export default function HHSportswearItems() {
   }, [filteredItems])
 
   if (loadState === 'loading') {
-    return <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">Loading order…</p>
+    return <p className="px-5 py-10 text-center text-sm text-[var(--text-200)]">Loading order…</p>
   }
 
   if (loadState === 'error') {
     return (
-      <div className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+      <div className="px-5 py-10 text-center text-sm text-[var(--text-200)]">
         <p>{loadError || 'Failed to load order.'}</p>
         <button
           type="button"
@@ -422,7 +422,7 @@ export default function HHSportswearItems() {
   }
 
   if (!match) {
-    return <p className="px-5 py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">Order not found.</p>
+    return <p className="px-5 py-10 text-center text-sm text-[var(--text-200)]">Order not found.</p>
   }
 
   const { order } = match
@@ -476,7 +476,7 @@ export default function HHSportswearItems() {
     <>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-4 dark:border-[var(--bg-300)]">
         <div className="min-w-0">
-          <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+          <h2 className="inline-flex flex-wrap items-center gap-2 text-base font-semibold text-[var(--text-100)]">
             <SellerCentralOrderId
               orderId={order.orderId}
               iconClassName="h-4 w-4 shrink-0"
@@ -514,7 +514,7 @@ export default function HHSportswearItems() {
               />
             ) : null}
           </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <p className="mt-1 text-sm text-[var(--text-200)]">
             PO {order.po}
             {order.referenceNumber ? ` · Ref ${order.referenceNumber}` : ''}
             {' · '}
@@ -563,7 +563,7 @@ export default function HHSportswearItems() {
           <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
             {filteredItems.length === 0 ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-[var(--text-200)]">
                   {order.items.length === 0
                     ? 'No line items.'
                     : searchInput.trim()
@@ -589,8 +589,8 @@ export default function HHSportswearItems() {
                     <Td compact className="w-16 align-middle">
                       <ItemImage item={item} />
                     </Td>
-                    <Td compact className="max-w-sm text-slate-800 dark:text-[var(--text-100)]">
-                      <span className={`break-words ${excluded ? 'text-slate-500 dark:text-[var(--text-200)]' : ''}`} title={item.title}>
+                    <Td compact className="max-w-sm text-[var(--text-100)]">
+                      <span className={`break-words ${excluded ? 'text-[var(--text-200)]' : ''}`} title={item.title}>
                         {item.title}
                       </span>
                       <HHItemExcludeControls
@@ -619,7 +619,7 @@ export default function HHSportswearItems() {
                         onInclude={() => saveExclude(item, false)}
                       />
                     </Td>
-                    <Td compact className="font-mono text-slate-600 dark:text-[var(--text-200)]">
+                    <Td compact className="font-mono text-[var(--text-200)]">
                       <span
                         className={`whitespace-nowrap ${unmatched ? 'font-medium text-red-700 dark:text-red-300' : ''}`}
                       >
@@ -661,13 +661,13 @@ export default function HHSportswearItems() {
                         />
                       )}
                     </Td>
-                    <Td compact className="whitespace-nowrap font-mono text-slate-600 dark:text-[var(--text-200)]">
+                    <Td compact className="whitespace-nowrap font-mono text-[var(--text-200)]">
                       {item.asin}
                     </Td>
-                    <Td compact className="whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-[var(--text-100)]">
+                    <Td compact className="whitespace-nowrap text-right tabular-nums text-[var(--text-100)]">
                       {item.quantity}
                     </Td>
-                    <Td compact className="whitespace-nowrap text-right tabular-nums text-slate-700 dark:text-[var(--text-100)]">
+                    <Td compact className="whitespace-nowrap text-right tabular-nums text-[var(--text-100)]">
                       {formatCurrency(item.unitPrice)}
                     </Td>
                     <Td compact className="align-middle">
@@ -686,15 +686,15 @@ export default function HHSportswearItems() {
           {filteredItems.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-[var(--bg-300)] bg-[var(--bg-200)] text-[13px] font-semibold dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]">
-                <Td compact colSpan={4} className="text-slate-800 dark:text-[var(--text-100)]">
+                <Td compact colSpan={4} className="text-[var(--text-100)]">
                   Total
                   {excludedCount > 0 ? (
-                    <span className="ml-2 text-xs font-medium text-slate-500 dark:text-[var(--text-200)]">
+                    <span className="ml-2 text-xs font-medium text-[var(--text-200)]">
                       Includes {excludedCount} excluded from cart
                     </span>
                   ) : null}
                 </Td>
-                <Td compact className="whitespace-nowrap text-right tabular-nums text-slate-800 dark:text-[var(--text-100)]">
+                <Td compact className="whitespace-nowrap text-right tabular-nums text-[var(--text-100)]">
                   {totals.quantity}
                 </Td>
                 <Td compact>{null}</Td>

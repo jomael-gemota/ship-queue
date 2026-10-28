@@ -35,13 +35,13 @@ export function Th({
 
   return (
     <th
-      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap ${textAlign} ${className}`}
+      className={`sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-r border-b-[var(--bg-300)] border-r-[var(--bg-300)] last:border-r-0 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap ${textAlign} ${className}`}
     >
       {children ?? (
         <span className={`flex items-center gap-1.5 ${flexAlign}`}>
           {iconPath && (
             <svg
-              className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]"
+              className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -57,7 +57,7 @@ export function Th({
 }
 
 const paginationButtonClass =
-  'p-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-slate-900 dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+  'p-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
 
 /** First / prev / next / last controls with a "Page X of Y" label. */
 export function PaginationArrows({
@@ -137,7 +137,7 @@ const DOCUMENT_TYPE_STYLES: Record<DocumentType, string> = {
   invoice:
     'bg-violet-100 text-violet-800 ring-violet-200/70 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-400/20',
   other:
-    'bg-slate-200 text-slate-700 ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
+    'bg-slate-200 text-[var(--text-200)] ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
 }
 
 /** Colour-coded document type label used by the rules list and results table. */
@@ -171,7 +171,7 @@ export function DocumentTypeBadge({
 
 const PARSE_STATUS_STYLES: Record<ParseJobStatus, string> = {
   pending:
-    'bg-slate-200 text-slate-700 ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
+    'bg-slate-200 text-[var(--text-200)] ring-slate-300/70 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)] dark:ring-white/5',
   processing:
     'bg-sky-100 text-sky-800 ring-sky-200/70 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-400/20',
   completed:
@@ -234,7 +234,7 @@ export function ToggleSwitch({
     >
       <span
         className={`relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors ${
-          checked ? 'bg-[var(--accent-200)]' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
+          checked ? 'bg-[var(--accent-200)]' : 'bg-[var(--bg-300)]'
         }`}
       >
         <span
