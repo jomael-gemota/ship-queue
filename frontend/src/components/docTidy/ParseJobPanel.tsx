@@ -12,6 +12,10 @@ import {
 
 type Tab = 'reasoning' | 'corrections'
 
+/** Must match the error the server stores when a parse is aborted
+ *  (`abortParseJob` in `src/controllers/docTidyParse.controller.ts`). */
+const PARSE_STOPPED_MESSAGE = 'Parsing was stopped by the user.'
+
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
     id: 'reasoning',
@@ -56,6 +60,9 @@ export default function ParseJobPanel({
   const [corrections, setCorrections] = useState<DocTidyCorrection[]>([])
   const [rerunning, setRerunning] = useState(false)
   const [aborting, setAborting] = useState(false)
+  // Set once Stop succeeds, so the panel reflects it without waiting on the
+  // stream, which may be stalled inside a long model call.
+  const [stopped, setStopped] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [epoch, setEpoch] = useState(0)
 
@@ -122,6 +129,7 @@ export default function ParseJobPanel({
       }
       await loadJob()
       onChanged()
+      setStopped(false)
       // The job id is unchanged, so bumping the epoch is what reconnects the
       // stream to the new run rather than leaving it on the closed one.
       setEpoch((n) => n + 1)
@@ -138,6 +146,7 @@ export default function ParseJobPanel({
     setActionError(null)
     try {
       await authApi.post(`/doc-tidy/parse-jobs/${jobId}/abort`)
+      setStopped(true)
       await loadJob()
       onChanged()
     } catch (err) {
@@ -147,10 +156,15 @@ export default function ParseJobPanel({
     }
   }
 
-  const status = stream.status === 'idle' ? (job?.status ?? 'pending') : stream.status
+  const status = stopped
+    ? 'failed'
+    : stream.status === 'idle'
+      ? (job?.status ?? 'pending')
+      : stream.status
   const json = stream.json ?? job?.jsonOutput ?? null
   const table = stream.table ?? job?.tableOutput ?? null
   const errorMessage = stream.error ?? job?.error ?? null
+  const stoppedByUser = stopped || errorMessage === PARSE_STOPPED_MESSAGE
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -176,7 +190,9 @@ export default function ParseJobPanel({
             </div>
             <p className="mt-0.5 truncate text-xs text-[var(--text-200)]">
               {job?.vendorName ? `${job.vendorName} · ` : ''}
-              {job?.completedAt
+              {status === 'failed' && stoppedByUser
+                ? `Stopped${job?.completedAt ? ` ${new Date(job.completedAt).toLocaleString()}` : ''}`
+                : job?.completedAt
                 ? `Parsed ${new Date(job.completedAt).toLocaleString()}`
                 : isParseRunning(status)
                   ? 'Tidy Agent is working on this now'
@@ -263,7 +279,13 @@ export default function ParseJobPanel({
           {actionError && (
             <p className="text-xs text-rose-600 dark:text-rose-400">{actionError}</p>
           )}
-          {status === 'failed' && errorMessage && (
+          {status === 'failed' && stoppedByUser && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-300">
+              You stopped this parse. Tidy Agent discarded its work on this document —
+              click <span className="font-semibold">Re-run Agent</span> to start it again.
+            </div>
+          )}
+          {status === 'failed' && !stoppedByUser && errorMessage && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/15 dark:text-rose-300">
               {errorMessage}
             </div>
