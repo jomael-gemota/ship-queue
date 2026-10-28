@@ -569,7 +569,7 @@ export function HHBatchHeaderMenu({
               <div
                 role="menu"
                 aria-label="Batch actions"
-                className="fixed z-[60] min-w-[13.75rem] overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] py-1 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+                className="fixed z-[60] min-w-[13.75rem] overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] py-1 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]"
                 style={{ top: coords.top, right: coords.right }}
               >
                 <button
@@ -1067,7 +1067,7 @@ export function HHShipViaChip({
               <div
                 role="dialog"
                 aria-label="Ship Via"
-                className="fixed z-[60] w-[22rem] rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-3 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+                className="fixed z-[60] w-[22rem] rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-3 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]"
                 style={{ top: coords.top, left: Math.max(8, coords.left) }}
               >
                 <p className="text-xs leading-5 text-slate-600 dark:text-[var(--text-200)]">{detail}</p>
@@ -1791,7 +1791,7 @@ export function HHConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className={`relative z-10 w-full space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl ${isResync || isPlace ? 'max-w-lg' : 'max-w-sm'}`}>
+      <div className={`relative z-10 w-full space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-xl ${isResync || isPlace ? 'max-w-lg' : 'max-w-sm'}`}>
         <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{copy.title}</h3>
         <div className="text-sm text-slate-500 dark:text-[var(--text-200)]">{copy.body}</div>
         {isResync && (

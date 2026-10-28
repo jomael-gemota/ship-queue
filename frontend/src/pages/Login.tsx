@@ -85,7 +85,7 @@ export default function Login() {
               </div>
 
               <div className="mb-6 flex items-center gap-4">
-                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-2 shadow-lg shadow-[rgba(59,60,61,0.2)]">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-2 shadow-lg shadow-[rgba(59,60,61,0.2)]">
                   <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
                 </div>
                 <div>
@@ -117,7 +117,7 @@ export default function Login() {
           <section className="relative bg-[var(--bg-200)] p-6 sm:p-8 lg:p-10">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(113,196,239,0.16),transparent_40%)]" />
 
-            <div className="relative rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-[0_24px_50px_-28px_rgba(59,60,61,0.35)] backdrop-blur sm:p-7">
+            <div className="relative rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-[0_24px_50px_-28px_rgba(59,60,61,0.35)] backdrop-blur sm:p-7">
               <div className="mb-5 h-1 w-14 rounded-full bg-[var(--accent-100)]" />
               <p className="inline-flex rounded-full border border-[var(--primary-200)] bg-[var(--primary-100)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-200)]">
                 Sign In

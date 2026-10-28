@@ -784,7 +784,7 @@ export function ConfirmDeleteBatchModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+      <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl p-6 space-y-4">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
             <TrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
@@ -864,7 +864,7 @@ export function ConfirmCreateLabelsModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={creating ? undefined : onCancel} />
-      <div className="relative z-10 w-full max-w-lg rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl p-6 space-y-4">
+      <div className="relative z-10 w-full max-w-lg rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl p-6 space-y-4">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
             <PrinterIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />

@@ -569,7 +569,7 @@ function PriceEditor({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5 shadow-xl">
+      <div className="relative z-10 w-full max-w-lg space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5 shadow-xl">
         <div>
           <h2 className="text-base font-semibold text-[var(--text-100)]">
             {initial === 'new' ? 'Add model price' : `Edit ${initial.model}`}
@@ -1179,7 +1179,7 @@ export default function DocTidyUsage() {
             How much Doc Tidy's AI has cost, by organization and workspace. Days follow UTC, like OpenAI's bill.
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] p-1">
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1">
           {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
             <button
               key={key}

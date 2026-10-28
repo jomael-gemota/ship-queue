@@ -372,7 +372,7 @@ export function HHImportButton() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="hh-import-title"
-            className="relative z-10 max-h-[calc(100vh-2rem)] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl"
+            className="relative z-10 max-h-[calc(100vh-2rem)] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-xl"
           >
             <div className="flex items-start justify-between gap-3">
               <h3 id="hh-import-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">

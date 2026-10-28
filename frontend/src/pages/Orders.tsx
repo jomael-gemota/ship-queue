@@ -815,7 +815,7 @@ export default function Orders() {
       {isSyncing && syncState && <SyncProgressBar state={syncState} />}
 
       {/* Table card */}
-      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-100)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm overflow-hidden">
+      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-200)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm overflow-hidden">
         {/* Indeterminate loading bar — shown while the table is syncing */}
         {syncingActive && (
           <div className="h-0.5 w-full overflow-hidden bg-sky-100 dark:bg-[var(--primary-200)]">

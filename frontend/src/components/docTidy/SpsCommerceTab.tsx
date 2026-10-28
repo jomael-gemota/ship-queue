@@ -407,7 +407,7 @@ export default function SpsCommerceTab({ workspaceId }: Props) {
       </div>
 
       {/* ── View mode toggle ── */}
-      <div className="flex items-center gap-1 self-start rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-0.5">
+      <div className="flex items-center gap-1 self-start rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-0.5">
         {(['transactions', 'files'] as ViewMode[]).map((mode) => (
           <button
             key={mode}

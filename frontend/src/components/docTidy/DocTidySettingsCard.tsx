@@ -172,7 +172,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
   const currentFolderId = crumbs.length > 0 ? crumbs[crumbs.length - 1].id : null
 
   return (
-    <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-5">
+    <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
       <div className="flex items-start gap-3 mb-4">
         <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
           <svg className="h-6 w-6 text-[var(--accent-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -330,7 +330,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
               )}
 
               {browserOpen && (
-                <div className="mt-3 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                <div className="mt-3 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
                   {/* Breadcrumbs */}
                   <div className="flex flex-wrap items-center gap-1 border-b border-[var(--bg-300)] px-3 py-2 text-xs">
                     <button
