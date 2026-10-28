@@ -110,10 +110,10 @@ function CompareValue({ value, mismatch }: { value: string; mismatch: boolean })
     <span
       className={`inline-block max-w-full break-words font-mono text-[13px] leading-5 ${
         empty
-          ? 'text-slate-400 dark:text-[var(--text-200)]'
+          ? 'text-[var(--text-200)]'
           : mismatch
             ? 'rounded-md bg-white/80 px-1.5 py-0.5 font-medium text-red-800 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900/60'
-            : 'text-slate-700 dark:text-[var(--text-100)]'
+            : 'text-[var(--text-100)]'
       }`}
     >
       {value}
@@ -195,7 +195,7 @@ function CompareTable({
   const groups = groupedCompareRows(rows)
   return (
     <table className="w-full border-separate border-spacing-0 text-sm">
-      <thead className="sticky top-0 z-[1] bg-[var(--bg-100)] text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:bg-[var(--bg-100)] dark:text-[var(--text-200)]">
+      <thead className="sticky top-0 z-[1] bg-[var(--bg-100)] text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-200)] dark:bg-[var(--bg-100)] dark:text-[var(--text-200)]">
         <tr>
           <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">Field</th>
           <th className="border-b border-[var(--bg-300)] px-3 py-2.5 font-semibold">Order details</th>
@@ -226,7 +226,7 @@ function CompareTable({
               }
             >
               <td
-                className={`whitespace-nowrap border-l-2 px-3 py-2.5 text-[13px] font-medium text-slate-600 dark:text-[var(--text-100)] ${
+                className={`whitespace-nowrap border-l-2 px-3 py-2.5 text-[13px] font-medium text-[var(--text-200)] dark:text-[var(--text-100)] ${
                   row.match ? 'border-transparent' : 'border-red-500'
                 }`}
               >
@@ -235,7 +235,7 @@ function CompareTable({
               <td className="px-3 py-2.5">
                 <CompareValue value={row.expected} mismatch={!row.match} />
               </td>
-              <td className="px-1 py-2.5 text-center text-xs font-semibold text-slate-400 dark:text-[var(--text-200)]">
+              <td className="px-1 py-2.5 text-center text-xs font-semibold text-[var(--text-200)]">
                 {row.match ? '=' : '→'}
               </td>
               <td className="px-3 py-2.5">
@@ -273,14 +273,14 @@ function SummaryList({
           <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className={`h-2 w-2 shrink-0 rounded-full ${pip}`} aria-hidden="true" />
-              <span className="truncate font-mono text-[13px] text-slate-800 dark:text-[var(--text-100)]">
+              <span className="truncate font-mono text-[13px] text-[var(--text-100)]">
                 {row.orderId}
               </span>
             </div>
             {result === 'match' || result === 'review' ? (
               <VerifiedOpenButton result={result} onClick={() => onOpenOrder(row)} />
             ) : (
-              <span className="max-w-[12rem] truncate text-right text-xs text-slate-400 dark:text-[var(--text-200)]">
+              <span className="max-w-[12rem] truncate text-right text-xs text-[var(--text-200)]">
                 {row.error || row.skipped || '—'}
               </span>
             )}
@@ -312,11 +312,11 @@ function DetailBody({
       {result.error ? (
         <p className="px-3 py-2 text-sm text-red-600 dark:text-red-400">{result.error}</p>
       ) : result.skipped ? (
-        <p className="px-3 py-2 text-sm text-slate-500 dark:text-[var(--text-200)]">
+        <p className="px-3 py-2 text-sm text-[var(--text-200)]">
           {result.skipped}. Cart status: {hhCartStatusLabel(result.cartStatus)}.
         </p>
       ) : result.rows.length === 0 ? (
-        <p className="px-3 py-2 text-sm text-slate-500 dark:text-[var(--text-200)]">
+        <p className="px-3 py-2 text-sm text-[var(--text-200)]">
           {result.cartStatus === 'ready'
             ? 'Last check matched. Refresh to load field-by-field from the live cart.'
             : 'No fields to compare.'}
@@ -339,7 +339,7 @@ function DetailBody({
                 ? `${mismatchCount} field${mismatchCount === 1 ? '' : 's'} differ from ${source}`
                 : `All fields match ${source}`}
             </p>
-            <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+            <p className="text-xs text-[var(--text-200)]">
               {matchedCount} matched
               {orderDetails
                 ? ' · Place Order stays off'
@@ -414,17 +414,17 @@ function CompareModal({
               <button
                 type="button"
                 onClick={onBack}
-                className="mt-0.5 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[var(--bg-200)] hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
+                className="mt-0.5 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
                 aria-label="Back to batch"
               >
                 <BackIcon className="h-4 w-4" />
               </button>
             ) : null}
             <div className="min-w-0">
-              <h3 id="hh-compare-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              <h3 id="hh-compare-title" className="text-base font-semibold text-[var(--text-100)]">
                 {title}
               </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">{subtitle}</p>
+              <p className="mt-1 text-xs text-[var(--text-200)]">{subtitle}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -432,7 +432,7 @@ function CompareModal({
               type="button"
               onClick={onRefresh}
               disabled={busy}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]"
             >
               {busy ? <Spinner className="h-3.5 w-3.5" /> : null}
               {busy ? 'Checking…' : 'Refresh'}
@@ -440,7 +440,7 @@ function CompareModal({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-[var(--bg-200)] hover:text-slate-600 dark:hover:text-[var(--text-100)]"
+              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
               aria-label="Close"
             >
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -642,7 +642,7 @@ export function HHVerifiedCell({
   const { open, setOpen, close, busy, error, results, live, runCompare } = useCompareModal(groupId, order.id)
 
   if (!verified) {
-    return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+    return <span className="text-[var(--text-200)]">—</span>
   }
 
   const detail = results?.[0] ?? hhStoredCartCompare(order)

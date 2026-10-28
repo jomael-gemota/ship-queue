@@ -47,6 +47,28 @@ html:not(.dark) [data-sidebar] {
   --bg-300:      rgba(255,255,255,0.22); /* collapsed divider lines */
 }
 
+/* ── Light-mode element roles ───────────────────────────────────────────────
+   Mirrors the .dark block so the palette is consistently applied in both
+   modes without per-component overrides.                                     */
+:root {
+  color-scheme: light;
+  scrollbar-color: var(--bg-300) var(--bg-200);
+}
+
+::selection {
+  background-color: var(--primary-100);
+  color: var(--text-100);
+}
+
+:is(input, select, textarea):focus {
+  border-color: var(--accent-200);
+  outline: none;
+}
+
+:is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--accent-200);
+}
+
 html,
 body,
 #root {

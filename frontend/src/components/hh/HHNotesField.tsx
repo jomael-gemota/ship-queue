@@ -127,9 +127,9 @@ export function HHNotesField({
               save()
             }
           }}
-          className="w-full resize-y rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 text-[13px] leading-5 text-slate-800 outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          className="w-full resize-y rounded-md border border-[var(--accent-200)] bg-[var(--bg-100)] px-2 py-1.5 text-[13px] leading-5 text-[var(--text-100)] outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
         />
-        <p className="mt-1 text-[11px] text-slate-400 dark:text-[var(--text-200)]">
+        <p className="mt-1 text-[11px] text-[var(--text-200)]">
           Enter to save · Esc to cancel
         </p>
         {error ? <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{error}</p> : null}
@@ -150,13 +150,13 @@ export function HHNotesField({
       <span
         className={`min-w-0 flex-1 ${
           isPlaceholder
-            ? 'truncate font-medium text-slate-500 dark:text-[var(--text-200)]'
-            : 'whitespace-pre-wrap break-words font-medium text-slate-800 dark:text-[var(--text-100)]'
+            ? 'truncate font-medium text-[var(--text-200)]'
+            : 'whitespace-pre-wrap break-words font-medium text-[var(--text-100)]'
         }`}
       >
         {display || 'Add a note…'}
       </span>
-      <PencilIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 opacity-0 transition-opacity group-hover/notes:opacity-100 group-focus-visible/notes:opacity-100 dark:text-[var(--text-200)]" />
+      <PencilIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-200)] opacity-0 transition-opacity group-hover/notes:opacity-100 group-focus-visible/notes:opacity-100 dark:text-[var(--text-200)]" />
     </button>
   )
 }

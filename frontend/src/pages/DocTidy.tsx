@@ -409,7 +409,7 @@ export default function DocTidy() {
                 className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                   live
                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
-                    : 'bg-slate-100 text-slate-500 dark:bg-slate-500/10 dark:text-slate-400'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-500/10 dark:text-[var(--text-200)]'
                 }`}
                 title={
                   live

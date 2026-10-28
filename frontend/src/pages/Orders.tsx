@@ -638,7 +638,7 @@ export default function Orders() {
   const startItem = (page - 1) * pageSize + 1
   const endItem = Math.min(page * pageSize, pagination.total)
   const paginationButtonClass =
-    'p-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-slate-900 dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+    'p-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
 
   const renderPaginationArrows = () => (
     <div className="flex items-center gap-1">
@@ -727,7 +727,7 @@ export default function Orders() {
               className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] sm:text-xs font-medium ${
                 syncConfig.enabled
                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
+                  : 'bg-[var(--bg-300)] text-[var(--text-200)]'
               }`}
               title={
                 syncConfig.enabled
@@ -815,7 +815,7 @@ export default function Orders() {
       {isSyncing && syncState && <SyncProgressBar state={syncState} />}
 
       {/* Table card */}
-      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-200)] rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] shadow-sm overflow-hidden">
+      <div className="bg-[var(--bg-100)] dark:bg-[var(--bg-200)] rounded-xl border border-[var(--bg-300)] shadow-sm overflow-hidden">
         {/* Indeterminate loading bar — shown while the table is syncing */}
         {syncingActive && (
           <div className="h-0.5 w-full overflow-hidden bg-sky-100 dark:bg-[var(--primary-200)]">
@@ -830,7 +830,7 @@ export default function Orders() {
           <select
             value={selectedStatus}
             onChange={(e) => handleStatusChange(e.target.value as OrderStatus | '')}
-            className="text-sm border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+            className="text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
           >
             <option value="">All Statuses</option>
             {ORDER_STATUSES.map((s) => (
@@ -856,7 +856,7 @@ export default function Orders() {
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search order #, customer, ship-to"
-              className="w-full text-sm border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              className="w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
             {searchInput && (
               <button
@@ -927,7 +927,7 @@ export default function Orders() {
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -972,50 +972,50 @@ export default function Orders() {
             <table className={`w-full text-[13px] border-separate border-spacing-0 transition-[filter] duration-300 ${syncingActive ? 'blur-[1.5px]' : ''}`}>
               <thead>
                 <tr className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order #"
                       iconPath="M9 12h6m-6 4h6m1-10H8m8 0V5a2 2 0 00-2-2H8a2 2 0 00-2 2v1m10 0a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Date"
                       iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Customer"
                       iconPath="M16 14a4 4 0 10-8 0m8 0a4 4 0 018 0m-8 0H8m8 0v1a3 3 0 01-3 3H11a3 3 0 01-3-3v-1m6-6a4 4 0 11-8 0 4 4 0 018 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Ship To"
                       iconPath="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Property Type"
                       iconPath="M3 10l9-7 9 7v10a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2V10z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Status"
                       iconPath="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Items"
                       iconPath="M20 13V7a2 2 0 00-2-2h-3V3H9v2H6a2 2 0 00-2 2v6m16 0l-2 7H6l-2-7m16 0H4"
                       align="right"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Total"
                       iconPath="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5S13.657 14 12 14m0-8v2m0 6v2m9-4a9 9 0 11-18 0 9 9 0 0118 0z"
@@ -1024,7 +1024,7 @@ export default function Orders() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+              <tbody className="divide-y divide-[var(--bg-300)]">
                 {initialLoading ? (
                   <tr>
                     <td colSpan={8} className="p-0">
@@ -1272,7 +1272,7 @@ export default function Orders() {
                                   </button>
                                 </div>
                               ) : (loadedItems?.length ?? 0) > 0 ? (
-                                <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)]">
+                                <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)]">
                                   <table className="w-full text-[10px] leading-tight whitespace-nowrap">
                                     <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
                                       <tr>
@@ -1453,7 +1453,7 @@ export default function Orders() {
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>

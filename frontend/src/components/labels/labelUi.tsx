@@ -77,7 +77,7 @@ export function UploaderAvatar({
   }
   return (
     <span
-      className={`${dim} rounded-full bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)] font-semibold flex items-center justify-center shrink-0 select-none`}
+      className={`${dim} rounded-full bg-[var(--bg-300)] text-[var(--text-200)] font-semibold flex items-center justify-center shrink-0 select-none`}
     >
       {(label || '?').charAt(0).toUpperCase()}
     </span>
@@ -325,7 +325,7 @@ export function SellerCentralOrderId({
       rel="noreferrer"
       title="Open in Seller Central"
       aria-label={`Open order ${id} in Seller Central`}
-      className={`inline-flex items-center gap-1.5 rounded-sm text-slate-800 hover:text-[var(--accent-100)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)] dark:text-[var(--text-100)] dark:hover:text-[var(--accent-200)] ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-sm text-[var(--text-100)] hover:text-[var(--accent-100)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-200)] dark:text-[var(--text-100)] dark:hover:text-[var(--accent-200)] ${className}`}
     >
       <AmazonIcon className={iconClassName} />
       {id}
@@ -379,7 +379,7 @@ function BatchShipDatePicker({
         className={`h-4 w-4 shrink-0 ${isSet ? 'text-[var(--accent-200)]' : 'text-amber-500 dark:text-amber-400'}`}
       />
       <span
-        className={`text-xs font-semibold uppercase tracking-wide ${isSet ? 'text-slate-700 dark:text-[var(--text-100)]' : 'text-amber-700 dark:text-amber-300'}`}
+        className={`text-xs font-semibold uppercase tracking-wide ${isSet ? 'text-[var(--text-100)]' : 'text-amber-700 dark:text-amber-300'}`}
       >
         Ship Date
       </span>
@@ -391,10 +391,10 @@ function BatchShipDatePicker({
           const next = e.target.value
           if (next && next !== value) onApply(next)
         }}
-        className={`h-8 rounded-md border bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-2 text-xs font-medium text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${isSet ? 'border-[var(--bg-300)] dark:border-[var(--bg-300)]' : 'border-amber-400 dark:border-amber-500/70'}`}
+        className={`h-8 rounded-md border bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-2 text-xs font-medium text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${isSet ? 'border-[var(--bg-300)] dark:border-[var(--bg-300)]' : 'border-amber-400 dark:border-amber-500/70'}`}
       />
       {applying ? (
-        <Spinner className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <Spinner className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" />
       ) : !isSet ? (
         <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold text-amber-700 dark:text-amber-300">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
@@ -449,7 +449,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
       {/* Toolbar: tab switcher + ship-date picker + search bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-0.5">
+          <div className="inline-flex rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-0.5">
             <TabButton active={isShipping} onClick={() => setTab('shipping')} icon={<BoxIcon className="h-3.5 w-3.5" />}>
               Shipping Details
             </TabButton>
@@ -467,7 +467,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
         </div>
 
         <div className="relative">
-          <svg className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-200)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
           </svg>
           <input
@@ -475,12 +475,12 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search all fields…"
-            className="h-8 w-100 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] pl-8 pr-3 text-xs text-slate-700 dark:text-[var(--text-200)] placeholder-slate-400 dark:placeholder-[var(--primary-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] transition-colors"
+            className="h-8 w-100 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] pl-8 pr-3 text-xs text-[var(--text-200)] placeholder-slate-400 dark:placeholder-[var(--primary-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] transition-colors"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-[var(--text-100)] cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] cursor-pointer"
               aria-label="Clear search"
             >
               <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -510,7 +510,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
               <col className="w-[10%]" />
             </colgroup>
           )}
-          <thead className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]">
+          <thead className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-[var(--text-200)]">
             <tr className="text-left border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
               {isShipping ? (
                 <>
@@ -547,15 +547,15 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+          <tbody className="divide-y divide-[var(--bg-300)]">
             {loading ? (
-              <tr><Td className="text-slate-400" colSpan={colCount}>Loading…</Td></tr>
+              <tr><Td className="text-[var(--text-200)]" colSpan={colCount}>Loading…</Td></tr>
             ) : items.length === 0 ? (
-              <tr><Td className="text-slate-400" colSpan={colCount}>No items in this batch.</Td></tr>
+              <tr><Td className="text-[var(--text-200)]" colSpan={colCount}>No items in this batch.</Td></tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <Td className="text-slate-400" colSpan={colCount}>
-                  No items match <span className="font-medium text-slate-600 dark:text-[var(--text-200)]">"{search}"</span>.
+                <Td className="text-[var(--text-200)]" colSpan={colCount}>
+                  No items match <span className="font-medium text-[var(--text-200)]">"{search}"</span>.
                 </Td>
               </tr>
             ) : (
@@ -578,9 +578,9 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                 if (isShipping) {
                   return (
                     <tr key={l._id} className={`align-top ${rowBg}`}>
-                      <TdWrap className="font-medium text-slate-800 dark:text-[var(--text-100)]">
+                      <TdWrap className="font-medium text-[var(--text-100)]">
                         <span className="flex items-start gap-1.5">
-                          <BoxIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
+                          <BoxIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" />
                           <span className="min-w-0 break-words">{l.poNumber}</span>
                         </span>
                       </TdWrap>
@@ -600,7 +600,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                       <TdWrap className="break-words">{l.serviceCode ? serviceName(l.serviceCode) : '—'}</TdWrap>
                       <TdWrap className="break-words">{l.shipDate || '—'}</TdWrap>
                       <TdWrap><SkuCell skus={l.skus} /></TdWrap>
-                      <TdWrap className="font-medium text-slate-800 dark:text-[var(--text-100)]">{l.qty != null ? l.qty : '—'}</TdWrap>
+                      <TdWrap className="font-medium text-[var(--text-100)]">{l.qty != null ? l.qty : '—'}</TdWrap>
                       <TdWrap className="break-words">{formatWeight(l.weight)}</TdWrap>
                       <TdWrap className="break-words">
                         {l.dimensions ? `${l.dimensions.length}×${l.dimensions.width}×${l.dimensions.height} ${l.dimensions.units}` : '—'}
@@ -626,9 +626,9 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                 return (
                   <tr key={l._id} className={rowBg}>
                     {/* Frozen lead columns */}
-                    <Td className={`${PO_STICKY} z-10 ${stickyBg} font-medium text-slate-800 dark:text-[var(--text-100)]`}>
+                    <Td className={`${PO_STICKY} z-10 ${stickyBg} font-medium text-[var(--text-100)]`}>
                       <span className="inline-flex items-center gap-1.5">
-                        <BoxIcon className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" />
+                        <BoxIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" />
                         <span>{l.poNumber}</span>
                       </span>
                     </Td>
@@ -656,13 +656,13 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
                             target="_blank"
                             rel="noreferrer"
                             title="Open in Google Drive"
-                            className="inline-flex items-center gap-1 text-slate-500 dark:text-[var(--text-200)] hover:underline"
+                            className="inline-flex items-center gap-1 text-[var(--text-200)] hover:underline"
                           >
                             <GoogleDriveIcon className="h-3.5 w-3.5 shrink-0" />
                             Drive
                           </a>
                         )}
-                        {l.status !== 'created' && !l.driveFileLink && <span className="text-slate-400">—</span>}
+                        {l.status !== 'created' && !l.driveFileLink && <span className="text-[var(--text-200)]">—</span>}
                       </div>
                     </Td>
                   </tr>
@@ -675,7 +675,7 @@ export function BatchItemsTable({ items, loading, downloadingId, onDownloadPdf, 
 
       {/* Search result count hint */}
       {query && filteredItems.length > 0 && (
-        <div className="border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-2 text-xs text-slate-400 dark:text-[var(--text-200)] bg-[var(--bg-200)] dark:bg-transparent">
+        <div className="border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-2 text-xs text-[var(--text-200)] bg-[var(--bg-200)] dark:bg-transparent">
           {filteredItems.length} of {items.length} item{items.length === 1 ? '' : 's'} match
         </div>
       )}
@@ -690,7 +690,7 @@ function ThWrap({ children, className = '' }: { children: React.ReactNode; class
 
 /** Wrapping body cell used by the width-filling Shipping Details tab. */
 function TdWrap({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-2 py-2.5 align-top text-[13px] text-slate-700 dark:text-[var(--text-200)] border-r last:border-r-0 border-[var(--bg-300)] dark:border-[var(--bg-300)] ${className}`}>{children}</td>
+  return <td className={`px-2 py-2.5 align-top text-[13px] text-[var(--text-200)] border-r last:border-r-0 border-[var(--bg-300)] dark:border-[var(--bg-300)] ${className}`}>{children}</td>
 }
 
 function TabButton({
@@ -709,8 +709,8 @@ function TabButton({
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
         active
-          ? 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-900 dark:text-[var(--text-100)] shadow-sm'
-          : 'text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)]'
+          ? 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-[var(--text-100)] shadow-sm'
+          : 'text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]'
       }`}
     >
       {icon}
@@ -748,7 +748,7 @@ export function ExportCsvButton({ busy, onClick, size = 'md' }: { busy?: boolean
       onClick={onClick}
       disabled={busy}
       title="Export as CSV"
-      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
+      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <CsvIcon className={iconSize} />}
     </button>
@@ -763,7 +763,7 @@ export function ExportZipButton({ busy, onClick, size = 'md', disabled, title = 
       onClick={onClick}
       disabled={busy || disabled}
       title={title}
-      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
+      className={`inline-flex items-center justify-center rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer ${sizing}`}
     >
       {busy ? <Spinner className={iconSize} /> : <ZipIcon className={iconSize} />}
     </button>
@@ -790,9 +790,9 @@ export function ConfirmDeleteBatchModal({
             <TrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
           </span>
           <div>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Delete batch?</h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
-              Batch <span className="font-mono font-medium text-slate-700 dark:text-[var(--text-100)]">{batchShortId}</span> and all its items will be permanently deleted. This cannot be undone.
+            <h3 className="text-base font-semibold text-[var(--text-100)]">Delete batch?</h3>
+            <p className="mt-1 text-sm text-[var(--text-200)]">
+              Batch <span className="font-mono font-medium text-[var(--text-100)]">{batchShortId}</span> and all its items will be permanently deleted. This cannot be undone.
             </p>
           </div>
         </div>
@@ -800,7 +800,7 @@ export function ConfirmDeleteBatchModal({
           <button
             onClick={onCancel}
             disabled={deleting}
-            className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
@@ -870,8 +870,8 @@ export function ConfirmCreateLabelsModal({
             <PrinterIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{title}</h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <h3 className="text-base font-semibold text-[var(--text-100)]">{title}</h3>
+            <p className="mt-1 text-sm text-[var(--text-200)]">
               {subtitle}
             </p>
           </div>
@@ -885,31 +885,31 @@ export function ConfirmCreateLabelsModal({
         )}
 
         {loading ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <div className="flex items-center gap-2 py-6 text-sm text-[var(--text-200)]">
             <Spinner className="h-4 w-4" />
             Checking live orders in ShipStation…
           </div>
         ) : summary ? (
           <>
             {/* Enforced settings */}
-            <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-3 space-y-2 text-sm">
+            <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] p-3 space-y-2 text-sm">
               <div className="flex items-start gap-2">
-                <StoreIcon className="h-4 w-4 shrink-0 mt-0.5 text-slate-400 dark:text-[var(--text-200)]" />
+                <StoreIcon className="h-4 w-4 shrink-0 mt-0.5 text-[var(--text-200)]" />
                 <div className="min-w-0">
-                  <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)]">Ship From</div>
-                  <div className="font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+                  <div className="text-xs uppercase tracking-wide text-[var(--text-200)]">Ship From</div>
+                  <div className="font-medium text-[var(--text-100)] break-words">
                     {summary.expectedWarehouseName || 'Belleville'}
                   </div>
                   {shipFromLine && (
-                    <div className="text-xs text-slate-500 dark:text-[var(--text-200)] break-words">{shipFromLine}</div>
+                    <div className="text-xs text-[var(--text-200)] break-words">{shipFromLine}</div>
                   )}
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <ShieldIcon className="h-4 w-4 shrink-0 mt-0.5 text-slate-400 dark:text-[var(--text-200)]" />
+                <ShieldIcon className="h-4 w-4 shrink-0 mt-0.5 text-[var(--text-200)]" />
                 <div className="min-w-0">
-                  <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)]">Insurance</div>
-                  <div className="font-medium capitalize text-slate-800 dark:text-[var(--text-100)]">
+                  <div className="text-xs uppercase tracking-wide text-[var(--text-200)]">Insurance</div>
+                  <div className="font-medium capitalize text-[var(--text-100)]">
                     {summary.expectedInsuranceProvider} (no insurance)
                   </div>
                 </div>
@@ -940,15 +940,15 @@ export function ConfirmCreateLabelsModal({
 
             {/* Per-row attention list */}
             {attention.length > 0 && (
-              <div className="max-h-48 overflow-auto rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+              <div className="max-h-48 overflow-auto rounded-lg border border-[var(--bg-300)] divide-y divide-[var(--bg-300)]">
                 {attention.map((i) => (
                   <div key={i.labelId} className="px-3 py-2 text-xs">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-medium text-slate-700 dark:text-[var(--text-100)] break-words">{i.poNumber}</span>
+                      <span className="font-mono font-medium text-[var(--text-100)] break-words">{i.poNumber}</span>
                       <PreflightStatusBadge status={i.status} />
                     </div>
                     {i.status === 'will_correct' && (
-                      <ul className="mt-1 space-y-0.5 text-slate-500 dark:text-[var(--text-200)]">
+                      <ul className="mt-1 space-y-0.5 text-[var(--text-200)]">
                         {i.willCorrectWarehouse && (
                           <li>
                             Ship From: <span className="text-amber-700 dark:text-amber-400">{i.liveWarehouseName || i.liveWarehouseId || 'unknown'}</span>
@@ -973,7 +973,7 @@ export function ConfirmCreateLabelsModal({
             )}
 
             {summary.creatable === 0 && (
-              <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+              <p className="text-sm text-[var(--text-200)]">
                 No labels can be created.
               </p>
             )}
@@ -984,7 +984,7 @@ export function ConfirmCreateLabelsModal({
           <button
             onClick={onCancel}
             disabled={creating}
-            className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
+            className="rounded-lg px-3.5 py-2 text-sm font-medium text-[var(--text-200)] bg-[var(--bg-200)] hover:bg-[var(--bg-300)] transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
@@ -1092,7 +1092,7 @@ export function BatchStatusBadge({ status }: { status: LabelBatchStatus }) {
       )
     default:
       return (
-        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--primary-100)] dark:bg-[var(--bg-300)] px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:text-[var(--text-200)]">
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--primary-100)] dark:bg-[var(--bg-300)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-200)]">
           <ClockIcon className="h-3.5 w-3.5 shrink-0" /> Drafted for Review
         </span>
       )
@@ -1126,7 +1126,7 @@ export function ItemStatusBadge({ status, error, found }: { status: LabelRecord[
     )
   }
   return (
-    <span className="inline-flex items-center gap-1 text-slate-500 dark:text-[var(--text-200)] text-xs font-medium">
+    <span className="inline-flex items-center gap-1 text-[var(--text-200)] text-xs font-medium">
       <ClockIcon className="h-3.5 w-3.5" /> Drafted
     </span>
   )
@@ -1139,14 +1139,14 @@ export function Th({ children, className = '' }: { children: React.ReactNode; cl
 export function HeaderLabel({ icon, text, className = '' }: { icon: React.ReactNode; text: string; className?: string }) {
   return (
     <span className={`flex items-center gap-1.5 min-w-0 ${className}`}>
-      <span className="shrink-0 text-slate-400 dark:text-[var(--text-200)]">{icon}</span>
+      <span className="shrink-0 text-[var(--text-200)]">{icon}</span>
       <span className="min-w-0 break-words">{text}</span>
     </span>
   )
 }
 
 export function Td({ children, className = '', colSpan, compact }: { children: React.ReactNode; className?: string; colSpan?: number; compact?: boolean }) {
-  return <td colSpan={colSpan} className={`px-4 ${compact ? 'py-2' : 'py-3'} text-slate-700 dark:text-[var(--text-200)] ${className}`}>{children}</td>
+  return <td colSpan={colSpan} className={`px-4 ${compact ? 'py-2' : 'py-3'} text-[var(--text-200)] ${className}`}>{children}</td>
 }
 
 export function StepBadge({ n }: { n: number }) {
@@ -1169,7 +1169,7 @@ export function AddressCell({ addr }: { addr?: LabelAddress }) {
   ].filter(Boolean) as string[]
   if (lines.length === 0) return <span className="text-slate-500">—</span>
   return (
-    <div className="text-[13px] leading-snug space-y-0.5 text-slate-700 dark:text-[var(--text-200)]">
+    <div className="text-[13px] leading-snug space-y-0.5 text-[var(--text-200)]">
       {lines.map((line, i) => <div key={i}>{line}</div>)}
     </div>
   )
@@ -1179,12 +1179,12 @@ export function SkuCell({ skus }: { skus?: LabelSku[] }) {
   const lines = skusToLines(skus)
   if (lines.length === 0) return <span className="text-slate-500">—</span>
   return (
-    <div className="space-y-0.5 text-[13px] leading-snug text-slate-700 dark:text-[var(--text-200)]">
+    <div className="space-y-0.5 text-[13px] leading-snug text-[var(--text-200)]">
       {skus!.map((s, i) => (
         <div key={i} className="break-words">
           <span className="font-mono">{s.sku || '—'}</span>
           {s.quantity != null && (
-            <span className="ml-1 text-slate-400 dark:text-[var(--text-200)]">×{s.quantity}</span>
+            <span className="ml-1 text-[var(--text-200)]">×{s.quantity}</span>
           )}
         </div>
       ))}
@@ -1240,14 +1240,14 @@ function PropertyCell({
           if (next && next !== value) onChange(next)
         }}
         title={item.propertyOverride ? 'Manually overridden' : 'Change address type'}
-        className="h-7 max-w-full rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-1.5 text-[12px] text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+        className="h-7 max-w-full rounded-md border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-1.5 text-[12px] text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-[var(--accent-200)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
       >
         {!value && <option value="" disabled>—</option>}
         <option value="residential">Residential</option>
         <option value="commercial">Commercial</option>
       </select>
       {saving ? (
-        <Spinner className="h-3 w-3 shrink-0 text-slate-400" />
+        <Spinner className="h-3 w-3 shrink-0 text-[var(--text-200)]" />
       ) : (
         item.propertyOverride && (
           <span className="text-[11px] font-semibold text-amber-500" title="Manually overridden">*</span>

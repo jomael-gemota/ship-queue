@@ -286,21 +286,23 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       <div className="space-y-6">
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm overflow-hidden">
+        <div className="h-1 bg-[var(--accent-100)] opacity-60" />
+        <div className="p-5">
         <div className="flex items-start gap-3 mb-4">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
             <GoogleDriveLogo className="h-6 w-6" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Google Drive</h2>
-            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Google Drive</h2>
+            <p className="text-sm text-[var(--text-200)]">
               Created shipping-label PDFs (named by PO#) are uploaded to your Google Drive.
             </p>
           </div>
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <p className="text-sm text-[var(--text-200)]">Loading…</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -308,7 +310,7 @@ export default function Settings() {
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                   settings?.driveConnected
                     ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                    : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
+                    : 'bg-[var(--bg-300)] text-[var(--text-200)]'
                 }`}
               >
                 {settings?.driveConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
@@ -343,7 +345,7 @@ export default function Settings() {
                     </button>
                     <button
                       onClick={() => setConfirmDisconnect(false)}
-                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+                      className="text-xs text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -362,7 +364,7 @@ export default function Settings() {
 
             {settings?.driveConnected && (
               <>
-                <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)] mb-4">
+                <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] mb-4">
                   {/* Connected account row */}
                   <div className="flex items-center gap-3 p-4">
                     {settings.driveAccountAvatar ? (
@@ -372,14 +374,14 @@ export default function Settings() {
                         className="h-9 w-9 shrink-0 rounded-full object-cover"
                       />
                     ) : (
-                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-[var(--bg-300)] text-slate-500 dark:text-[var(--text-200)] text-sm font-medium">
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--bg-300)] text-[var(--text-200)] text-sm font-medium">
                         {(settings.driveAccountName || '?')[0].toUpperCase()}
                       </span>
                     )}
                     <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected account</p>
-                      <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">{settings.driveAccountName}</p>
-                      <p className="text-xs text-slate-500 dark:text-[var(--text-200)] truncate">{settings.driveAccountEmail}</p>
+                      <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">Connected account</p>
+                      <p className="text-sm font-medium text-[var(--text-100)] truncate">{settings.driveAccountName}</p>
+                      <p className="text-xs text-[var(--text-200)] truncate">{settings.driveAccountEmail}</p>
                       <button
                         onClick={async () => {
                           try {
@@ -397,11 +399,11 @@ export default function Settings() {
                     </div>
                     {settings.driveConnectedAt && (
                       <div className="ml-auto shrink-0 text-right">
-                        <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected on</p>
-                        <p className="text-xs font-medium text-slate-600 dark:text-[var(--text-200)] whitespace-nowrap">
+                        <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">Connected on</p>
+                        <p className="text-xs font-medium text-[var(--text-200)] whitespace-nowrap">
                           {new Date(settings.driveConnectedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                         </p>
-                        <p className="text-xs text-slate-400 dark:text-[var(--text-200)] whitespace-nowrap">
+                        <p className="text-xs text-[var(--text-200)] whitespace-nowrap">
                           {new Date(settings.driveConnectedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
@@ -414,12 +416,12 @@ export default function Settings() {
                       <FolderIcon className="h-5 w-5 text-amber-500" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Destination folder</p>
-                      <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+                      <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">Destination folder</p>
+                      <p className="text-sm font-medium text-[var(--text-100)] break-words">
                         {settings.driveFolderName || 'My Drive (root)'}
                       </p>
                       {settings.driveFolderId && (
-                        <p className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)] font-mono mt-1 break-all">
+                        <p className="inline-flex items-center gap-1 text-xs text-[var(--text-200)] font-mono mt-1 break-all">
                           <HashIcon className="h-3 w-3 shrink-0" />
                           {settings.driveFolderId}
                         </p>
@@ -460,7 +462,7 @@ export default function Settings() {
                     <button
                       onClick={openBrowser}
                       disabled={driveExpired}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <FolderSearchIcon className="h-4 w-4" />
                       Browse folders
@@ -469,7 +471,7 @@ export default function Settings() {
                       <button
                         onClick={() => saveFolder(null)}
                         disabled={saving}
-                        className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] disabled:opacity-50 cursor-pointer"
+                        className="text-sm text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] disabled:opacity-50 cursor-pointer"
                       >
                         Reset to root
                       </button>
@@ -483,7 +485,7 @@ export default function Settings() {
                       value={manualId}
                       onChange={(e) => setManualId(e.target.value)}
                       placeholder="Or paste a Drive folder URL / ID"
-                      className="flex-1 min-w-[240px] rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-200)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+                      className="flex-1 min-w-[240px] rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm text-[var(--text-200)] placeholder:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
                     />
                     <button
                       onClick={() => saveFolder(extractFolderId(manualId))}
@@ -496,7 +498,7 @@ export default function Settings() {
 
                 {/* Folder browser */}
                 {browserOpen && (
-                  <div className="mt-4 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] overflow-hidden">
+                  <div className="mt-4 rounded-lg border border-[var(--bg-300)] overflow-hidden">
                     <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-sm">
                       <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">
                         <GoogleDriveLogo className="h-3.5 w-3.5" />
@@ -504,23 +506,23 @@ export default function Settings() {
                       </button>
                       {crumbs.map((c, i) => (
                         <span key={c.id} className="flex items-center gap-1">
-                          <span className="text-slate-400">/</span>
+                          <span className="text-[var(--text-200)]">/</span>
                           <button onClick={() => goToCrumb(i)} className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">{c.name}</button>
                         </span>
                       ))}
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+                    <div className="max-h-64 overflow-y-auto divide-y divide-[var(--bg-300)]">
                       {foldersLoading ? (
-                        <p className="px-3 py-3 text-sm text-slate-400">Loading folders…</p>
+                        <p className="px-3 py-3 text-sm text-[var(--text-200)]">Loading folders…</p>
                       ) : folders.length === 0 ? (
-                        <p className="px-3 py-3 text-sm text-slate-400">No subfolders here.</p>
+                        <p className="px-3 py-3 text-sm text-[var(--text-200)]">No subfolders here.</p>
                       ) : (
                         folders.map((f) => (
                           <button
                             key={f.id}
                             onClick={() => enterFolder(f)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
                           >
                             {f.isSharedDrive ? (
                               <GoogleDriveLogo className="h-4 w-4 shrink-0" />
@@ -529,7 +531,7 @@ export default function Settings() {
                             )}
                             <span className="truncate">{f.name}</span>
                             {f.isSharedDrive && (
-                              <span className="ml-auto shrink-0 text-xs text-slate-400 dark:text-[var(--text-200)]">Shared drive</span>
+                              <span className="ml-auto shrink-0 text-xs text-[var(--text-200)]">Shared drive</span>
                             )}
                           </button>
                         ))
@@ -537,14 +539,14 @@ export default function Settings() {
                     </div>
 
                     <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-100)]">
-                      <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[var(--text-200)] min-w-0">
+                      <span className="inline-flex items-center gap-1.5 text-sm text-[var(--text-200)] min-w-0">
                         <FolderIcon className="h-4 w-4 shrink-0 text-amber-500" />
                         <span className="truncate">
                           {currentFolderId ? `Current: ${crumbs[crumbs.length - 1].name}` : 'Current: My Drive (root)'}
                         </span>
                       </span>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setBrowserOpen(false)} className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer">Cancel</button>
+                        <button onClick={() => setBrowserOpen(false)} className="text-sm text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] cursor-pointer">Cancel</button>
                         <button
                           onClick={() => saveFolder(currentFolderId ?? 'root')}
                           disabled={saving}
@@ -560,12 +562,13 @@ export default function Settings() {
             )}
 
             {!settings?.driveConnected && (
-              <p className="text-xs text-slate-400 dark:text-[var(--text-200)]">
+              <p className="text-xs text-[var(--text-200)]">
                 Connecting re-authenticates with Google and grants Drive access so labels can be saved to your Drive.
               </p>
             )}
           </>
         )}
+        </div>
       </section>
       <CookieJarSection
         isAdmin={isAdmin}
@@ -576,21 +579,23 @@ export default function Settings() {
 
       <div className="space-y-6">
       {/* Dropbox connection — powers the Dropbox Fetcher page */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm overflow-hidden">
+        <div className="h-1 bg-[var(--accent-100)] opacity-60" />
+        <div className="p-5">
         <div className="flex items-start gap-3 mb-4">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
             <DropboxLogo className="h-6 w-6" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Dropbox</h2>
-            <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Dropbox</h2>
+            <p className="text-sm text-[var(--text-200)]">
               Connect your Dropbox to use the Dropbox Fetcher — browse folders and extract shareable links for files.
             </p>
           </div>
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <p className="text-sm text-[var(--text-200)]">Loading…</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -598,7 +603,7 @@ export default function Settings() {
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                   settings?.dropboxConnected
                     ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                    : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
+                    : 'bg-[var(--bg-300)] text-[var(--text-200)]'
                 }`}
               >
                 {settings?.dropboxConnected ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <UnplugIcon className="h-3.5 w-3.5" />}
@@ -626,7 +631,7 @@ export default function Settings() {
                     </button>
                     <button
                       onClick={() => setDropboxConfirmDisconnect(false)}
-                      className="text-xs text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+                      className="text-xs text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -644,16 +649,16 @@ export default function Settings() {
             </div>
 
             {settings?.dropboxConnected ? (
-              <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+              <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
                 <div className="flex items-center gap-3 p-4">
                   <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0061FF]/10 dark:bg-[#0061FF]/20">
                     <DropboxLogo className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected account</p>
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">{settings.dropboxAccountName || 'Dropbox account'}</p>
+                    <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">Connected account</p>
+                    <p className="text-sm font-medium text-[var(--text-100)] truncate">{settings.dropboxAccountName || 'Dropbox account'}</p>
                     {settings.dropboxAccountEmail && (
-                      <p className="text-xs text-slate-500 dark:text-[var(--text-200)] truncate">{settings.dropboxAccountEmail}</p>
+                      <p className="text-xs text-[var(--text-200)] truncate">{settings.dropboxAccountEmail}</p>
                     )}
                     <button
                       onClick={connectDropbox}
@@ -665,11 +670,11 @@ export default function Settings() {
                   </div>
                   {settings.dropboxConnectedAt && (
                     <div className="ml-auto shrink-0 text-right">
-                      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">Connected on</p>
-                      <p className="text-xs font-medium text-slate-600 dark:text-[var(--text-200)] whitespace-nowrap">
+                      <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">Connected on</p>
+                      <p className="text-xs font-medium text-[var(--text-200)] whitespace-nowrap">
                         {new Date(settings.dropboxConnectedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-[var(--text-200)] whitespace-nowrap">
+                      <p className="text-xs text-[var(--text-200)] whitespace-nowrap">
                         {new Date(settings.dropboxConnectedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -677,43 +682,46 @@ export default function Settings() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-400 dark:text-[var(--text-200)]">
+              <p className="text-xs text-[var(--text-200)]">
                 Connecting authorises Ship Queue to read your Dropbox folders and create shareable file links on your behalf.
               </p>
             )}
           </>
         )}
+        </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm overflow-hidden">
+        <div className="h-1 bg-[var(--accent-100)] opacity-60" />
+        <div className="p-5">
           <div className="flex items-start gap-3 mb-4">
-            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
               <ShipStationMark className="h-6 w-6 text-[#003311] dark:text-emerald-400" />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Automatic order syncing</h2>
+                <h2 className="text-base font-semibold text-[var(--text-100)]">Automatic order syncing</h2>
                 {!isAdmin && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-[var(--text-200)]">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-[var(--text-200)]">
                     Read-only
                   </span>
                 )}
               </div>
-              <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+              <p className="text-sm text-[var(--text-200)]">
                 Pull new ShipStation orders on the server on a schedule — runs even when nobody has the app open.
               </p>
             </div>
           </div>
 
           {!syncLoaded ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <p className="text-sm text-[var(--text-200)]">Loading…</p>
           ) : (
-            <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+            <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)]">
               {/* Enable toggle */}
               <div className="flex items-center gap-3 p-4">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Background auto-sync</p>
-                  <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  <p className="text-sm font-medium text-[var(--text-100)]">Background auto-sync</p>
+                  <p className="text-xs text-[var(--text-200)]">
                     When on, the server keeps orders up to date automatically.
                   </p>
                 </div>
@@ -726,7 +734,7 @@ export default function Settings() {
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                     isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
                   } ${
-                    syncEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
+                    syncEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-300)]'
                   }`}
                 >
                   <span
@@ -740,8 +748,8 @@ export default function Settings() {
               {/* Interval */}
               <div className="flex items-center gap-3 p-4">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Sync interval</p>
-                  <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  <p className="text-sm font-medium text-[var(--text-100)]">Sync interval</p>
+                  <p className="text-xs text-[var(--text-200)]">
                     How often the server checks for new orders (1–1440 minutes).
                   </p>
                 </div>
@@ -753,9 +761,9 @@ export default function Settings() {
                     value={syncMinutes}
                     onChange={(e) => setSyncMinutes(e.target.value)}
                     disabled={!isAdmin || !syncEnabled}
-                    className="w-20 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-100)] text-right focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
+                    className="w-20 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-[var(--text-100)] text-right focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
                   />
-                  <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">min</span>
+                  <span className="text-sm text-[var(--text-200)]">min</span>
                 </div>
               </div>
 
@@ -771,12 +779,13 @@ export default function Settings() {
                   </button>
                 </div>
               ) : (
-                <p className="p-4 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                <p className="p-4 text-xs text-[var(--text-200)]">
                   Only an admin can change these settings.
                 </p>
               )}
             </div>
           )}
+        </div>
         </section>
 
         <DocTidySettingsCard isAdmin={isAdmin} />

@@ -141,30 +141,30 @@ export default function CookieJarSection({
   }
 
   return (
-    <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
+    <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
       <div className="flex items-start gap-3 mb-4">
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
           <CookieJarMark className="h-6 w-6 text-amber-700 dark:text-amber-400" />
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Cookie Jar</h2>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Cookie Jar</h2>
             {!isAdmin && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-[var(--text-200)]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-[var(--text-200)]">
                 Read-only
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <p className="text-sm text-[var(--text-200)]">
             Schedule one cookie at a time. The worker stores the latest value; this page never shows it.
           </p>
         </div>
       </div>
 
       {!loaded ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-[var(--text-200)]">Loading…</p>
       ) : jars.length === 0 ? (
-        <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+        <p className="text-sm text-[var(--text-200)]">
           No cookie jobs yet. They are created by the Cookie Jar worker.
         </p>
       ) : (
@@ -221,14 +221,14 @@ function CookieJarEditor({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <label htmlFor="cookie-jar-picker" className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">
+        <label htmlFor="cookie-jar-picker" className="text-sm font-medium text-[var(--text-100)]">
           Cookie
         </label>
         <select
           id="cookie-jar-picker"
           value={jar.key}
           onChange={(event) => onSelect(event.target.value)}
-          className="w-full cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] sm:max-w-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          className="w-full cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-3 py-2 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] sm:max-w-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
         >
           {jars.map((item) => {
             const itemDraft = drafts[item.key] ?? toDraft(item)
@@ -243,11 +243,11 @@ function CookieJarEditor({
         </select>
       </div>
 
-      <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+      <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)]">
                 <div className="flex items-start gap-3 p-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Enabled</p>
-                    <p className="text-xs text-slate-500 dark:text-[var(--text-200)] font-mono break-all">{jar.key}</p>
+                    <p className="text-sm font-medium text-[var(--text-100)]">Enabled</p>
+                    <p className="text-xs text-[var(--text-200)] font-mono break-all">{jar.key}</p>
                   </div>
                   <button
                     type="button"
@@ -259,7 +259,7 @@ function CookieJarEditor({
                     className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                       isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
                     } ${
-                      draft.enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'
+                      draft.enabled ? 'bg-emerald-500' : 'bg-[var(--bg-300)]'
                     }`}
                   >
                     <span
@@ -272,8 +272,8 @@ function CookieJarEditor({
 
                 <div className="flex items-center gap-3 p-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Name</p>
-                    <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">Shown in the Cookie menu. Does not change which fetcher runs.</p>
+                    <p className="text-sm font-medium text-[var(--text-100)]">Name</p>
+                    <p className="text-xs text-[var(--text-200)]">Shown in the Cookie menu. Does not change which fetcher runs.</p>
                   </div>
                   <input
                     type="text"
@@ -281,15 +281,15 @@ function CookieJarEditor({
                     onChange={(e) => onUpdateDraft(jar.key, { name: e.target.value })}
                     disabled={!isAdmin}
                     maxLength={80}
-                    className="w-48 max-w-full rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
+                    className="w-48 max-w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
                   />
                 </div>
 
                 {!jar.manual && (
                 <div className="flex items-center gap-3 p-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">Cron schedule</p>
-                    <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    <p className="text-sm font-medium text-[var(--text-100)]">Cron schedule</p>
+                    <p className="text-xs text-[var(--text-200)]">
                       Five fields in Philippines time, e.g. 0 0,6,12,18 * * * (12:00 AM, 6:00 AM, 12:00 PM, 6:00 PM).
                     </p>
                   </div>
@@ -299,13 +299,13 @@ function CookieJarEditor({
                     onChange={(e) => onUpdateDraft(jar.key, { cron: e.target.value })}
                     disabled={!isAdmin || !draft.enabled}
                     spellCheck={false}
-                    className="w-48 max-w-full rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm font-mono text-slate-700 dark:text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
+                    className="w-48 max-w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-3 py-2 text-sm font-mono text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-50"
                   />
                 </div>
                 )}
 
                 {jar.manual && (
-                  <p className="px-4 py-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  <p className="px-4 py-3 text-xs text-[var(--text-200)]">
                     {hhJarHelp(jar.key) ||
                       'Manual session. Prefer Dropship (B2B) → Configurations. Not refreshed by Sphere.'}
                   </p>
@@ -334,7 +334,7 @@ function CookieJarEditor({
                       type="button"
                       onClick={() => onRun(jar)}
                       disabled={saving || running}
-                      className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-4 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-100)] hover:bg-[var(--bg-200)] dark:hover:bg-[var(--bg-300)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] px-4 py-2 text-sm font-medium text-[var(--text-100)] hover:bg-[var(--bg-200)] dark:hover:bg-[var(--bg-300)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
                     >
                       {running ? 'Running…' : 'Run now'}
                     </button>
@@ -349,7 +349,7 @@ function CookieJarEditor({
                     </button>
                   </div>
                 ) : (
-                  <p className="p-4 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                  <p className="p-4 text-xs text-[var(--text-200)]">
                     Only an admin can change these settings.
                   </p>
                 )}
@@ -369,8 +369,8 @@ function StatusCell({
 }) {
   return (
     <div>
-      <p className="uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">{label}</p>
-      <p className={`font-medium ${tone === 'ok' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-[var(--text-100)]'}`}>
+      <p className="uppercase tracking-wide text-[var(--text-200)] mb-0.5">{label}</p>
+      <p className={`font-medium ${tone === 'ok' ? 'text-emerald-700 dark:text-emerald-400' : 'text-[var(--text-100)]'}`}>
         {value}
       </p>
     </div>

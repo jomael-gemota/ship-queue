@@ -384,7 +384,7 @@ function DraggableTh({
         // ── Drag source: tinted background + opacity so it's obvious what's being moved
         isDragging
           ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300'
-          : 'cursor-grab bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
+          : 'cursor-grab bg-[var(--bg-200)] text-[var(--text-200)]',
         // ── Drop target: thick sky-blue left bar as an insertion indicator
         isDragTarget
           ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10'
@@ -418,7 +418,7 @@ function DraggableTh({
               )
               : (
                 <svg
-                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
+                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-[var(--text-200)]'}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
@@ -2349,9 +2349,9 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
       {/* Column labels */}
       <div className="flex items-center border-b border-white/5 px-3.5 py-1.5 gap-2.5">
         <span className="w-5 shrink-0" />
-        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-slate-600">Date</span>
-        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Cost</span>
-        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Change</span>
+        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Date</span>
+        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Cost</span>
+        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Change</span>
       </div>
 
       {/* History rows */}
@@ -2373,7 +2373,7 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
               <span className="flex-1 min-w-0">
                 <span className="block truncate text-[10px] text-slate-300">{formatDateTime(entry.recordedAt)}</span>
                 {entry.source === 'stored' && (
-                  <span className="text-[9px] italic text-slate-600">first recorded</span>
+                  <span className="text-[9px] italic text-[var(--text-200)]">first recorded</span>
                 )}
               </span>
 
@@ -2384,7 +2384,7 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
 
               {/* Delta */}
               <span className={`w-12 shrink-0 text-right tabular-nums text-[10px] font-medium ${
-                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-slate-600'
+                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-[var(--text-200)]'
               }`}>
                 {older && delta !== 0 ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)}` : '—'}
               </span>
@@ -2394,8 +2394,8 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
       </div>
 
       <div className="border-t border-white/10 bg-white/5 px-3.5 py-2 flex items-center justify-between">
-        <span className="text-[10px] text-slate-600">Source: Data Central</span>
-        <span className="text-[10px] text-slate-600">Click away to close</span>
+        <span className="text-[10px] text-[var(--text-200)]">Source: Data Central</span>
+        <span className="text-[10px] text-[var(--text-200)]">Click away to close</span>
       </div>
     </div>
   )
@@ -2480,7 +2480,7 @@ function discrepancyCell(
       <Tooltip trigger="click" richContent={
         <div className="px-3.5 py-3 space-y-1.5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary-200)] text-[10px] text-[var(--text-200)]">–</span>
             <p className="text-[10px] font-semibold text-slate-300">No invoice matched</p>
           </div>
           <p className="text-[10px] text-slate-500 leading-relaxed">
@@ -2592,16 +2592,16 @@ function discrepancyCell(
             {hasAnyMismatch ? 'Discrepancies found' : 'All checks passed'}
           </p>
         </div>
-        <span className="text-[10px] text-slate-600">Click away to close</span>
+        <span className="text-[10px] text-[var(--text-200)]">Click away to close</span>
       </div>
 
       {/* Column labels */}
       <div className="flex items-center gap-2.5 border-b border-white/5 px-3.5 py-1.5">
         <span className="w-5 shrink-0" />
-        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600">Check</span>
-        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Check</span>
+        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">
           <span className="flex-1">Order</span>
-          <span className="text-slate-700">→</span>
+          <span className="text-[var(--text-200)]">→</span>
           <span className="flex-1">Invoice</span>
         </div>
       </div>
@@ -2644,7 +2644,7 @@ function discrepancyCell(
               {isPending ? (
                 <span className="italic text-[10px] text-amber-400">Pending DC COGS…</span>
               ) : isNoData ? (
-                <span className="italic text-[10px] text-slate-600">
+                <span className="italic text-[10px] text-[var(--text-200)]">
                   {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
                 </span>
               ) : (
@@ -2652,7 +2652,7 @@ function discrepancyCell(
                   {/* Order value */}
                   <span className="flex-1 truncate text-slate-300">{row.orderVal}</span>
                   {/* Arrow */}
-                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-slate-600'}`}>→</span>
+                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-[var(--text-200)]'}`}>→</span>
                   {/* Invoice value */}
                   <span className={`flex-1 truncate font-semibold ${isMismatch ? 'text-rose-400' : 'text-emerald-400'}`}>
                     {row.invoiceVal}
@@ -2675,7 +2675,7 @@ function discrepancyCell(
 
       {/* Footer */}
       <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
-        <p className="text-[10px] text-slate-600">
+        <p className="text-[10px] text-[var(--text-200)]">
           {hasAnyMismatch
             ? 'Review highlighted values — invoice differs from order.'
             : 'Order data matches the matched invoice.'}
@@ -2744,7 +2744,7 @@ function discrepancyCell(
     <Tooltip trigger="click" richContent={discrepancyTooltip}>
       <span className="inline-flex flex-wrap items-center gap-1">
         {badges}
-        <svg className="h-2.5 w-2.5 shrink-0 text-slate-400 dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+        <svg className="h-2.5 w-2.5 shrink-0 text-[var(--text-200)] dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
         </svg>
       </span>
@@ -5197,7 +5197,7 @@ export default function DocTidyInvoiceAudit() {
                     <div>
                       {/* Header */}
                       <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)]">
                           Discount Breakdown
                         </p>
                       </div>
@@ -5206,8 +5206,8 @@ export default function DocTidyInvoiceAudit() {
                         {inv.itemCost && (
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
-                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">$</span>
-                              <span className="text-[10px] text-slate-400">List price</span>
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary-200)] text-[10px] text-[var(--text-200)]">$</span>
+                              <span className="text-[10px] text-[var(--text-200)]">List price</span>
                             </div>
                             <span className="tabular-nums text-[10px] text-slate-300 line-through decoration-slate-600">
                               {inv.itemCost}
@@ -5218,7 +5218,7 @@ export default function DocTidyInvoiceAudit() {
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
                               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-400">%</span>
-                              <span className="text-[10px] text-slate-400">Discount</span>
+                              <span className="text-[10px] text-[var(--text-200)]">Discount</span>
                             </div>
                             <span className="tabular-nums text-[10px] font-semibold text-amber-400">
                               {pctDisplay} off

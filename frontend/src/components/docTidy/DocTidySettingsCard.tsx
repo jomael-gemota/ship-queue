@@ -186,14 +186,14 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Doc Tidy mailbox</h2>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Doc Tidy mailbox</h2>
             {!isAdmin && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-[var(--text-200)]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-300)] px-2 py-0.5 text-xs font-medium text-[var(--text-200)]">
                 Read-only
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <p className="text-sm text-[var(--text-200)]">
             The shared mailbox that Doc Tidy rules read from, and the Drive folder that extracted
             attachments are copied into. This is app-wide — everyone shares one connection.
           </p>
@@ -218,7 +218,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-[var(--text-200)]">Loading…</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -226,7 +226,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                 config?.mailboxConnected
                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-slate-200 dark:bg-[var(--bg-300)] text-slate-600 dark:text-[var(--text-200)]'
+                  : 'bg-[var(--bg-300)] text-[var(--text-200)]'
               }`}
             >
               {config?.mailboxConnected ? 'Connected' : 'Not connected'}
@@ -257,7 +257,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
                   </button>
                   <button
                     onClick={() => setConfirmDisconnect(false)}
-                    className="text-xs text-slate-500 hover:text-slate-700 dark:text-[var(--text-200)] cursor-pointer"
+                    className="text-xs text-slate-500 hover:text-[var(--text-200)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -274,14 +274,14 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
 
           <div className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] divide-y divide-[var(--bg-300)]">
             <div className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">
+              <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">
                 Mailbox
               </p>
-              <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+              <p className="text-sm font-medium text-[var(--text-100)] break-words">
                 {config?.mailboxEmail || 'Not connected'}
               </p>
               {config?.connectedAt && (
-                <p className="text-xs text-slate-500 dark:text-[var(--text-200)] mt-0.5">
+                <p className="text-xs text-[var(--text-200)] mt-0.5">
                   Connected {new Date(config.connectedAt).toLocaleString()}
                   {config.connectedByName && ` by ${config.connectedByName}`}
                 </p>
@@ -297,14 +297,14 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
             </div>
 
             <div className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-0.5">
+              <p className="text-xs uppercase tracking-wide text-[var(--text-200)] mb-0.5">
                 Attachment destination
               </p>
-              <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] break-words">
+              <p className="text-sm font-medium text-[var(--text-100)] break-words">
                 {config?.driveFolderName || 'Mailbox Drive (root)'}
               </p>
               {config?.driveFolderId && (
-                <p className="mt-1 font-mono text-xs text-slate-400 dark:text-[var(--text-200)] break-all">
+                <p className="mt-1 font-mono text-xs text-[var(--text-200)] break-all">
                   {config.driveFolderId}
                 </p>
               )}
@@ -341,7 +341,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
                     </button>
                     {crumbs.map((crumb, i) => (
                       <span key={crumb.id} className="flex items-center gap-1">
-                        <span className="text-slate-400">/</span>
+                        <span className="text-[var(--text-200)]">/</span>
                         <button
                           onClick={() => goToCrumb(i)}
                           className="text-[var(--accent-200)] hover:underline cursor-pointer"
@@ -354,20 +354,20 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
 
                   <div className="max-h-56 overflow-y-auto">
                     {foldersLoading ? (
-                      <p className="px-3 py-6 text-center text-xs text-slate-400">
+                      <p className="px-3 py-6 text-center text-xs text-[var(--text-200)]">
                         <span className="inline-flex items-center gap-2">
                           <Spinner className="h-3 w-3" /> Loading folders…
                         </span>
                       </p>
                     ) : folders.length === 0 ? (
-                      <p className="px-3 py-6 text-center text-xs text-slate-400">No sub-folders here.</p>
+                      <p className="px-3 py-6 text-center text-xs text-[var(--text-200)]">No sub-folders here.</p>
                     ) : (
                       <ul className="divide-y divide-[var(--bg-300)]">
                         {folders.map((folder) => (
                           <li key={folder.id}>
                             <button
                               onClick={() => enterFolder(folder)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-200)] hover:bg-[var(--bg-200)] cursor-pointer"
                             >
                               <svg
                                 className="h-4 w-4 shrink-0 text-amber-500"
@@ -411,7 +411,7 @@ export default function DocTidySettingsCard({ isAdmin }: { isAdmin: boolean }) {
           </div>
 
           {!config?.mailboxConnected && (
-            <p className="mt-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
+            <p className="mt-3 text-xs text-[var(--text-200)]">
               {isAdmin
                 ? 'Sign in as the shared invoice mailbox when prompted. Doc Tidy requests read-only Gmail access plus Drive access for storing attachments.'
                 : 'Only an admin can connect the Doc Tidy mailbox.'}
