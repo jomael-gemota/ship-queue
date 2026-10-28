@@ -111,7 +111,9 @@ register them.
 
 Give the vendor's name and, if you can, paste **one real SKU** from their
 paperwork. That sample is a head start: the agent copies its shape on this
-vendor's very first document, before you've corrected anything at all.
+vendor's very first document, before you've corrected anything at all. It also
+checks its own SKUs against the sample afterwards and reformats any that don't
+match; the Reasoning tab says when it does.
 
 The **Vendors** tab lists everyone registered, their sample SKUs, and how many
 corrections each has contributed. That last number is the useful one — it's the
