@@ -47,6 +47,38 @@ def extract_vendor_name(json_data: dict) -> str | None:
     return None
 
 
+# "." and "/" are left out: they appear inside values (a "7.5" or "7 1/2" size),
+# so treating them as separators would make every size change look off-format.
+_SKU_SEPARATOR_RE = re.compile(r"[^A-Za-z0-9./]+")
+
+
+def _sku_shape(sku: str) -> tuple[list[str], str | None]:
+    """Separator sequence and, when the SKU has one, its leading alphabetic prefix."""
+    separators = _SKU_SEPARATOR_RE.findall(sku)
+    segments = _SKU_SEPARATOR_RE.split(sku)
+    prefix = segments[0].upper() if separators and segments[0].isalpha() else None
+    return separators, prefix
+
+
+def sku_matches_samples(sku, samples) -> bool:
+    """Whether ``sku`` has the same shape as at least one vendor sample SKU.
+
+    A heuristic, not a validator: a sample can't say which parts are literal, so
+    only the separator layout and an alphabetic leading segment (e.g. ``ORV`` in
+    ``ORV-2P920911``) are compared.
+    """
+    if not isinstance(sku, str) or not sku.strip():
+        return False
+    shape = _sku_shape(sku.strip())
+    for sample in samples or []:
+        if not isinstance(sample, str) or not sample.strip():
+            continue
+        separators, prefix = _sku_shape(sample.strip())
+        if shape[0] == separators and (prefix is None or shape[1] == prefix):
+            return True
+    return False
+
+
 def normalize_vendor_name(name: str) -> str:
     """Canonical key for vendor matching: lowercased, collapsed whitespace."""
     return re.sub(r"\s+", " ", name.strip().lower())

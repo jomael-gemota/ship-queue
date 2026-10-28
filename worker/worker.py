@@ -54,8 +54,15 @@ from sku import (
     find_line_items,
     resolve_job_workspace_id,
     resolve_vendor,
+    sku_matches_samples,
 )
-from tidy_agent import TokenType, extract_json, generate_table_data, stream_tidy
+from tidy_agent import (
+    TokenType,
+    conform_skus,
+    extract_json,
+    generate_table_data,
+    stream_tidy,
+)
 from usage import set_usage_sink
 
 # ── Environment profile ───────────────────────────────────────────────────────
@@ -216,6 +223,64 @@ async def _read_invoice_batches(sheet, invoice_groups, run_tidy, emit_thinking, 
     return invoices
 
 
+async def _conform_to_sample_format(
+    documents: list[dict],
+    sku_samples: list[str],
+    vendor_name: str | None,
+    step_start,
+    step_done,
+    job_id: str,
+) -> None:
+    """Make every line-item SKU follow the vendor's sample format.
+
+    The model is told the format up front but still drops it on some runs, so
+    the output is checked and, when any row is off, the SKUs are rewritten in one
+    small call. Non-fatal: on failure the model's original SKUs are kept.
+    """
+    line_items = [
+        item
+        for doc in documents
+        for item in find_line_items(doc)[1]
+        if isinstance(item, dict)
+    ]
+    off_format = [
+        item for item in line_items if not sku_matches_samples(item.get("sku"), sku_samples)
+    ]
+    if not off_format:
+        return
+
+    vname = vendor_name or "this vendor"
+    logger.info(
+        "Job %s: %d of %d SKUs don't match %s's sample format; conforming",
+        job_id, len(off_format), len(line_items), vname,
+    )
+    await step_start(
+        f"Tell the user {len(off_format)} SKU(s) don't match {vname}'s sample format "
+        "yet, so you're fixing them.",
+        f"{len(off_format)} SKU(s) don't match {vname}'s format yet — fixing them...",
+    )
+    try:
+        async with get_job_semaphore():
+            skus = await conform_skus(line_items, sku_samples)
+    except Exception as exc:
+        logger.warning("Job %s: SKU conform pass failed: %s", job_id, exc)
+        await step_done(
+            "Tell the user you couldn't reformat the SKUs this time and kept them as read.",
+            "I couldn't reformat them this time, so I kept the SKUs as I read them.",
+        )
+        return
+
+    changed = 0
+    for item, sku in zip(line_items, skus):
+        if item.get("sku") != sku:
+            item["sku"] = sku
+            changed += 1
+    await step_done(
+        f"Tell the user you rewrote {changed} SKU(s) to match {vname}'s format.",
+        f"Done — {changed} SKU(s) now follow {vname}'s format.",
+    )
+
+
 def _ensure_sheet_po_number(invoice: dict, sheet, rows) -> str | None:
     """Like `ensure_po_number`, but a spreadsheet's PO column outranks the text pattern."""
     po = ensure_po_number(invoice)
@@ -354,31 +419,53 @@ async def process_job(
         detected_vendor = await detect_vendor_name_from_text(
             db, document_text, workspace_id
         )
+        # A vendor the user confirmed for this job (e.g. via the setup card) is
+        # preserved across re-runs.
+        existing_vendor_name = (job or {}).get("vendorName")
 
         # If the detected vendor is registered, pull its setup-time sample SKU(s)
         # so Tidy can reproduce that vendor's SKU format(s) from the very first
         # run — cold-start anchors that complement retrieved corrections (see
         # design-log 2026-06-26-multiple-vendor-sku-samples.md). A vendor may have
         # several samples; legacy single `skuSample` is merged in for compat.
-        detected_vendor_doc = (
+        # When the name isn't printed verbatim, the confirmed vendor stands in, or
+        # registering it would never steer the run.
+        guidance_vendor = detected_vendor
+        guidance_vendor_doc = (
             await resolve_vendor(db, detected_vendor, workspace_id)
             if detected_vendor
             else None
         )
+        if not guidance_vendor_doc and existing_vendor_name:
+            guidance_vendor_doc = await resolve_vendor(db, existing_vendor_name, workspace_id)
+            if guidance_vendor_doc:
+                guidance_vendor = guidance_vendor_doc.get("name") or existing_vendor_name
         vendor_sku_samples: list[str] = []
-        if detected_vendor_doc:
-            vendor_sku_samples = list(detected_vendor_doc.get("skuSamples") or [])
-            legacy_sample = detected_vendor_doc.get("skuSample")
+        if guidance_vendor_doc:
+            vendor_sku_samples = list(guidance_vendor_doc.get("skuSamples") or [])
+            legacy_sample = guidance_vendor_doc.get("skuSample")
             if legacy_sample:
                 vendor_sku_samples.append(legacy_sample)
+
+        if vendor_sku_samples:
+            listed = ", ".join(dict.fromkeys(vendor_sku_samples))
+            await step_start(
+                f"Tell the user you recognise {guidance_vendor} and will build its SKUs "
+                f"in the format of its sample SKU ({listed}).",
+                f"I know {guidance_vendor} — I'll build its SKUs like {listed}.",
+            )
+            await step_done(
+                "Tell the user the vendor's SKU format is loaded.",
+                "Got the SKU format ready.",
+            )
 
         # Retrieve relevant past corrections to steer this parse (graceful no-op
         # when disabled / no embedding key / no corrections yet). Vendor-scoped:
         # a vendor's fixes only apply to that vendor's documents.
-        examples = await retrieve_examples(db, document_text, vendor_name=detected_vendor)
+        examples = await retrieve_examples(db, document_text, vendor_name=guidance_vendor)
         if examples:
             vendor_phrase = (
-                f" for {detected_vendor}" if detected_vendor else ""
+                f" for {guidance_vendor}" if guidance_vendor else ""
             )
             await step_start(
                 "Tell the user you're checking what you've learned from their past "
@@ -483,6 +570,16 @@ async def process_job(
             "All set — your structured data is ready and valid.",
         )
 
+        if vendor_sku_samples:
+            await _conform_to_sample_format(
+                invoices if is_batch else [result_json],
+                vendor_sku_samples,
+                guidance_vendor,
+                step_start,
+                step_done,
+                job_id,
+            )
+
         # SKUs are built by Tidy itself (the model), learned per vendor from past
         # corrections — not assembled deterministically here (see design-log
         # 2026-06-25-llm-built-skus-per-vendor.md). We still resolve the vendor to
@@ -491,10 +588,8 @@ async def process_job(
         # setup UI can register them — registration is what scopes corrections to a
         # vendor and lets Tidy learn and keep that vendor's SKU format.
         vendor_needs_setup = False
-        # A vendor the user confirmed for this job (e.g. via the setup card) is
-        # preserved across re-runs; honor it so registering a vendor "sticks" even
-        # when the model doesn't emit the name and it isn't found in the raw text.
-        existing_vendor_name = (job or {}).get("vendorName")
+        # Honor the confirmed vendor so registering a vendor "sticks" even when
+        # the model doesn't emit the name and it isn't found in the raw text.
         # Default to the vendor detected from raw text (or the confirmed one) so
         # jobs without line items still record a vendor; replaced with the
         # canonical name once resolved.
