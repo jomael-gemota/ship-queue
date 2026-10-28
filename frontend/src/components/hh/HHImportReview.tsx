@@ -66,7 +66,7 @@ export function HHImportPreviewTable({
         </ul>
       )}
       {rows.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+        <div className="overflow-hidden rounded-xl border border-[var(--bg-300)]">
           <div className="max-h-44 overflow-y-auto">
             <table className="w-full border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-[var(--bg-100)] text-slate-500 dark:bg-[var(--bg-100)] dark:text-[var(--text-200)]">
@@ -112,16 +112,16 @@ export function HHImportPreviewTable({
                         />
                       </td>
                       <td
-                        className={`px-2 py-2 align-top font-mono text-[11px] break-all text-slate-800 dark:text-[var(--text-100)] ${
-                          included ? '' : 'text-slate-400 line-through dark:text-[var(--text-200)]'
+                        className={`px-2 py-2 align-top font-mono text-[11px] break-all text-[var(--text-100)] ${
+                          included ? '' : 'text-[var(--text-200)] line-through dark:text-[var(--text-200)]'
                         }`}
                       >
                         {row.po}
                       </td>
                       <td className="px-3 py-2 align-top">
                         <div
-                          className={`font-mono text-[11px] break-all text-slate-800 dark:text-[var(--text-100)] ${
-                            included ? '' : 'text-slate-400 line-through dark:text-[var(--text-200)]'
+                          className={`font-mono text-[11px] break-all text-[var(--text-100)] ${
+                            included ? '' : 'text-[var(--text-200)] line-through dark:text-[var(--text-200)]'
                           }`}
                         >
                           {row.orderId}

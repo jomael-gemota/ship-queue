@@ -138,7 +138,7 @@ function ToastCard({
         transition: 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.32s ease',
         pointerEvents: 'auto',
       }}
-      className="relative flex w-[22rem] max-w-[calc(100vw-2.5rem)] items-start gap-3 overflow-hidden rounded-xl border border-[var(--bg-300)] bg-white dark:bg-[var(--bg-100)] px-4 py-3.5 shadow-xl shadow-black/10 dark:shadow-black/40"
+      className="relative flex w-[22rem] max-w-[calc(100vw-2.5rem)] items-start gap-3 overflow-hidden rounded-xl border border-[var(--bg-300)] bg-white dark:bg-[var(--bg-200)] px-4 py-3.5 shadow-xl shadow-black/10 dark:shadow-black/40"
     >
       {/* Colored left accent bar */}
       <div className={`absolute inset-y-0 left-0 w-[3px] ${ACCENT_CLASS[item.kind]}`} />

@@ -435,7 +435,7 @@ export default function BatchItems() {
           <span className="flex-1">{notice}</span>
           <button
             onClick={() => setNotice(null)}
-            className="rounded-md p-0.5 text-slate-500/70 hover:bg-slate-200/60 hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:bg-[var(--bg-300)] transition-colors cursor-pointer"
+            className="rounded-md p-0.5 text-slate-500/70 hover:bg-slate-200/60 hover:text-[var(--text-200)] dark:hover:bg-[var(--bg-300)] transition-colors cursor-pointer"
           >
             ×
           </button>
@@ -459,22 +459,22 @@ export default function BatchItems() {
 
       <Link
         to="/create-label"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] transition-colors"
       >
         <BackIcon className="h-4 w-4" />
         Back to batches
       </Link>
 
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] overflow-hidden">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden">
         {/* Batch header */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] px-5 py-4">
           <div>
-            <h2 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+            <h2 className="inline-flex items-center gap-2 text-base font-semibold text-[var(--text-100)]">
               <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
               <span className="font-mono">{batch ? shortBatchId(batch._id) : shortBatchId(batchId)}</span>
               {batch && <BatchStatusBadge status={batch.status} />}
             </h2>
-            <p className="inline-flex flex-wrap items-center gap-x-1 text-sm text-slate-500 dark:text-[var(--text-200)]">
+            <p className="inline-flex flex-wrap items-center gap-x-1 text-sm text-[var(--text-200)]">
               {batch ? (
                 <>
                   <span>

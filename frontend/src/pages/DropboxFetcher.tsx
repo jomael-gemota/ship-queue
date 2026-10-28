@@ -242,12 +242,12 @@ export default function DropboxFetcher() {
   if (!settingsLoading && !connected) {
     return (
       <div className="max-w-3xl">
-        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+        <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-8 text-center">
           <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0061FF]/10 dark:bg-[#0061FF]/20 mb-4">
             <DropboxLogo className="h-8 w-8" />
           </span>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-[var(--text-100)]">Connect Dropbox to get started</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)] max-w-md mx-auto">
+          <h2 className="text-lg font-semibold text-[var(--text-100)]">Connect Dropbox to get started</h2>
+          <p className="mt-1 text-sm text-[var(--text-200)] max-w-md mx-auto">
             The Dropbox Fetcher lets you browse a folder, pick a file type, and pull together shareable links for every matching file.
           </p>
           <Link
@@ -264,6 +264,19 @@ export default function DropboxFetcher() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0061ff] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zm12 0l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4z"/>
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">Dropbox</h1>
+          <p className="text-sm text-[var(--text-200)]">Browse Dropbox folders and fetch CSV order files.</p>
+        </div>
+      </div>
+
       {error && (
         <div className="notice-card notice-card--error flex items-start gap-2 text-sm">
           <span className="flex-1">{error}</span>
@@ -289,13 +302,13 @@ export default function DropboxFetcher() {
         {/* Left column — setup */}
         <div className="space-y-6 lg:col-span-5">
       {/* Step 1 — choose a folder */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
         <div className="flex items-center gap-2 mb-3">
           <StepBadge n={1} />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Choose a folder</h2>
+          <h2 className="text-base font-semibold text-[var(--text-100)]">Choose a folder</h2>
         </div>
 
-        <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] overflow-hidden">
+        <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1 flex-wrap px-3 py-2 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-sm">
             <button onClick={() => goToCrumb(-1)} className="inline-flex items-center gap-1 text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">
@@ -304,24 +317,24 @@ export default function DropboxFetcher() {
             </button>
             {crumbs.map((c, i) => (
               <span key={c.path} className="flex items-center gap-1">
-                <span className="text-slate-400">/</span>
+                <span className="text-[var(--text-200)]">/</span>
                 <button onClick={() => goToCrumb(i)} className="text-[var(--accent-100)] dark:text-[var(--accent-200)] hover:underline cursor-pointer">{c.name}</button>
               </span>
             ))}
           </div>
 
           {/* Folder list */}
-          <div className="max-h-72 overflow-y-auto divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)]">
+          <div className="max-h-72 overflow-y-auto divide-y divide-[var(--bg-300)]">
             {foldersLoading ? (
-              <p className="px-3 py-3 text-sm text-slate-400">Loading folders…</p>
+              <p className="px-3 py-3 text-sm text-[var(--text-200)]">Loading folders…</p>
             ) : folders.length === 0 ? (
-              <p className="px-3 py-3 text-sm text-slate-400">No subfolders here. You can extract files directly from this folder.</p>
+              <p className="px-3 py-3 text-sm text-[var(--text-200)]">No subfolders here. You can extract files directly from this folder.</p>
             ) : (
               folders.map((f) => (
                 <button
                   key={f.path}
                   onClick={() => enterFolder(f)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
                 >
                   <svg className="h-4 w-4 text-[#0061FF] shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" /></svg>
                   <span className="truncate">{f.name}</span>
@@ -332,23 +345,23 @@ export default function DropboxFetcher() {
           </div>
 
           {/* Current selection footer */}
-          <div className="flex items-center gap-1.5 px-3 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-100)] text-sm text-slate-600 dark:text-[var(--text-200)]">
+          <div className="flex items-center gap-1.5 px-3 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-100)] text-sm text-[var(--text-200)]">
             <svg className="h-4 w-4 shrink-0 text-[#0061FF]" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" /></svg>
-            <span className="truncate">Selected folder: <span className="font-medium text-slate-800 dark:text-[var(--text-100)]">{currentName}</span></span>
+            <span className="truncate">Selected folder: <span className="font-medium text-[var(--text-100)]">{currentName}</span></span>
           </div>
         </div>
       </section>
 
       {/* Step 2 — choose file type + extract */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
         <div className="flex items-center gap-2 mb-3">
           <StepBadge n={2} />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Choose file type & extract</h2>
+          <h2 className="text-base font-semibold text-[var(--text-100)]">Choose file type & extract</h2>
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[220px]">
-            <label className="block text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-[var(--text-200)] mb-1">File type</label>
+            <label className="block text-xs font-medium uppercase tracking-wide text-[var(--text-200)] mb-1">File type</label>
             <select
               value={fileTypeId}
               onChange={(e) => {
@@ -356,7 +369,7 @@ export default function DropboxFetcher() {
                 setFileTypeId(value)
                 persistPrefs({ crumbs, fileType: value, recursive })
               }}
-              className="w-full rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm text-slate-700 dark:text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
             >
               {FILE_TYPES.map((t) => (
                 <option key={t.id} value={t.id}>{t.label}</option>
@@ -364,7 +377,7 @@ export default function DropboxFetcher() {
             </select>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-[var(--text-200)] cursor-pointer select-none pb-2">
+          <label className="flex items-center gap-2 text-sm text-[var(--text-200)] cursor-pointer select-none pb-2">
             <input
               type="checkbox"
               checked={recursive}
@@ -398,16 +411,16 @@ export default function DropboxFetcher() {
         </div>
 
         {extracting && progress && (
-          <div className="mt-4 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)]/60 dark:bg-[var(--bg-200)]/40 px-4 py-3">
+          <div className="mt-4 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-200)]/60 dark:bg-[var(--bg-200)]/40 px-4 py-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 text-slate-700 dark:text-[var(--text-100)]">
+              <span className="flex items-center gap-2 text-[var(--text-100)]">
                 <Spinner className="h-4 w-4 text-[#0061FF]" />
                 {progress.phase === 'listing'
                   ? 'Finding matching files…'
                   : `Creating links — ${progress.processed} of ${progress.total} file${progress.total === 1 ? '' : 's'}`}
               </span>
               {progress.phase === 'processing' && progress.total > 0 && (
-                <span className="font-medium tabular-nums text-slate-500 dark:text-[var(--text-200)]">
+                <span className="font-medium tabular-nums text-[var(--text-200)]">
                   {Math.round((progress.processed / progress.total) * 100)}%
                 </span>
               )}
@@ -432,17 +445,17 @@ export default function DropboxFetcher() {
         {/* Right column — results */}
         <div className="lg:col-span-7">
       {result ? (
-        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+        <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <StepBadge n={3} />
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
-              Links <span className="text-slate-400 font-normal">({result.links.length})</span>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">
+              Links <span className="text-[var(--text-200)] font-normal">({result.links.length})</span>
             </h2>
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={handleCopyAll}
                 disabled={result.links.length === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-1.5 text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 {copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : <CopyIcon className="h-4 w-4" />}
                 {copied ? 'Copied!' : 'Copy all'}
@@ -458,30 +471,30 @@ export default function DropboxFetcher() {
             </div>
           </div>
 
-          <p className="text-xs text-slate-500 dark:text-[var(--text-200)] mb-3">
+          <p className="text-xs text-[var(--text-200)] mb-3">
             Scanned {result.scanned} matching file{result.scanned === 1 ? '' : 's'}.
             {result.failures.length > 0 && (
               <span className="text-amber-600 dark:text-amber-400"> {result.failures.length} could not be linked (skipped).</span>
             )}
-            <span className="block mt-0.5 text-slate-400">Copy &amp; export use <span className="font-mono">filename,link</span> per line.</span>
+            <span className="block mt-0.5 text-[var(--text-200)]">Copy &amp; export use <span className="font-mono">filename,link</span> per line.</span>
           </p>
 
           {result.links.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] px-4 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-lg border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] px-4 py-6 text-center text-sm text-[var(--text-200)]">
               No matching files found in this folder.
             </p>
           ) : (
-            <div className="rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)] dark:divide-[var(--bg-300)] max-h-[28rem] overflow-y-auto">
+            <div className="rounded-lg border border-[var(--bg-300)] overflow-hidden divide-y divide-[var(--bg-300)] max-h-[28rem] overflow-y-auto">
               {result.links.map((link, i) => (
                 <div
                   key={link.path}
                   className={`flex items-center gap-3 px-3 py-2.5 ${i % 2 === 0 ? 'bg-[var(--bg-100)] dark:bg-[var(--bg-100)]' : 'bg-[var(--bg-200)]/50 dark:bg-[var(--bg-200)]/40'}`}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)] truncate">
+                    <p className="text-sm font-medium text-[var(--text-100)] truncate">
                       {link.name}
                       {link.size !== undefined && (
-                        <span className="ml-2 text-xs font-normal text-slate-400">{formatBytes(link.size)}</span>
+                        <span className="ml-2 text-xs font-normal text-[var(--text-200)]">{formatBytes(link.size)}</span>
                       )}
                     </p>
                     <a
@@ -500,12 +513,12 @@ export default function DropboxFetcher() {
           )}
         </section>
       ) : (
-        <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+        <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-8 text-center">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0061FF]/10 dark:bg-[#0061FF]/20 mb-3">
             <LinkIcon className="h-6 w-6 text-[#0061FF]" />
           </span>
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Extracted links will appear here</h2>
-          <p className="mt-1 max-w-xs text-sm text-slate-500 dark:text-[var(--text-200)]">
+          <h2 className="text-base font-semibold text-[var(--text-100)]">Extracted links will appear here</h2>
+          <p className="mt-1 max-w-xs text-sm text-[var(--text-200)]">
             Pick a folder and file type, then click <span className="font-medium">Extract links</span> to pull together shareable links for every matching file.
           </p>
         </section>
@@ -530,7 +543,7 @@ function CopyOneButton({ url }: { url: string }) {
         }
       }}
       title="Copy link"
-      className="shrink-0 inline-flex items-center justify-center rounded-md border border-[var(--bg-300)] dark:border-[var(--bg-300)] h-8 w-8 text-slate-500 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
+      className="shrink-0 inline-flex items-center justify-center rounded-md border border-[var(--bg-300)] h-8 w-8 text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] cursor-pointer"
     >
       {done ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : <CopyIcon className="h-4 w-4" />}
     </button>

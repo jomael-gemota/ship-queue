@@ -1,4 +1,5 @@
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { BULK_ORDER_PATH, isBulkOrderPath, isDropshipPath } from '../lib/bulkOrder'
 
@@ -139,14 +140,60 @@ const ADMIN_ITEMS = [
   },
 ]
 
-export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
-  const { user, logout } = useAuth()
+interface SidebarItem {
+  label: string
+  to: string
+  end?: boolean
+  /** Sub-path that has its own nav entry and should not light this one up. */
+  excludes?: string
+  icon: ReactNode
+}
+
+function SidebarNavItem({ item, isOpen }: { item: SidebarItem; isOpen: boolean }) {
   const { pathname } = useLocation()
 
   return (
-    <aside data-sidebar className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-[#4da08e] dark:border-[#1a4f53] bg-[#62b5a0] dark:bg-[#0b3f43] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
-      <div className="h-16 px-3 flex items-center gap-3 border-b border-[#4da08e] dark:border-[#1a4f53]">
-        <span className="h-9 w-9 shrink-0 rounded-xl bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border border-[#4da08e] dark:border-[#1a4f53] p-1 flex items-center justify-center">
+    <NavLink
+      to={item.to}
+      end={item.end}
+      title={item.label}
+      className={({ isActive }) => {
+        const active = isActive && !(item.excludes && pathname.startsWith(item.excludes))
+        return `group flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 dark:px-1.5 dark:py-1 text-sm transition-all ${
+          active
+            ? 'bg-[var(--primary-100)] text-[var(--accent-200)] font-medium shadow-sm dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] dark:shadow-none'
+            : 'text-[var(--text-200)] hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:bg-[var(--bg-200)] dark:hover:text-[var(--text-100)]'
+        }`
+      }}
+    >
+      {({ isActive }) => {
+        const active = isActive && !(item.excludes && pathname.startsWith(item.excludes))
+        return (
+          <>
+            <span
+              className={`inline-flex shrink-0 items-center justify-center dark:h-7 dark:w-7 dark:rounded-lg transition-colors ${
+                active
+                  ? 'dark:bg-[var(--accent-100)] dark:text-[var(--accent-200)]'
+                  : 'dark:bg-[var(--bg-200)] dark:group-hover:bg-[var(--bg-300)]'
+              }`}
+            >
+              {item.icon}
+            </span>
+            {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
+          </>
+        )
+      }}
+    </NavLink>
+  )
+}
+
+export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
+  const { user, logout } = useAuth()
+
+  return (
+    <aside data-sidebar className={`${isOpen ? 'w-64' : 'w-16'} shrink-0 self-start sticky top-0 h-screen z-30 border-r border-white/20 dark:border-[var(--bg-300)] bg-[#00668c] dark:bg-[var(--sidebar-bg)] backdrop-blur overflow-hidden transition-[width] duration-200 ease-in-out`}>
+      <div className="h-16 px-3 flex items-center gap-3 border-b border-white/20 dark:border-[var(--navbar-bg)]">
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-[var(--bg-100)] dark:bg-[var(--bg-200)] border border-white/20 dark:border-transparent p-1 flex items-center justify-center">
           <img src="/ship-queue-logo.svg" alt="Ship Queue logo" className="h-full w-full object-contain" />
         </span>
         <div className={`${isOpen ? 'opacity-100' : 'opacity-0'} transition-opacity duration-150 min-w-0 overflow-hidden`}>
@@ -159,107 +206,48 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
         <nav className="p-3 space-y-1.5">
           {isOpen && (
             <div className="pt-1 pb-0.5 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">ShipStation</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--primary-300)] whitespace-nowrap">ShipStation</p>
             </div>
           )}
           {MENU_ITEMS.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              end={item.end}
-              title={item.label}
-              className={({ isActive }) =>
-                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                  isActive
-                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
-                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                }`
-              }
-            >
-              {item.icon}
-              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
-            </NavLink>
+            <SidebarNavItem key={item.label} item={item} isOpen={isOpen} />
           ))}
 
           {isOpen ? (
             <div className="pt-2 pb-0.5 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Invoice Auditing</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--primary-300)] whitespace-nowrap">Invoice Auditing</p>
             </div>
           ) : (
-            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
+            <div className="border-t border-white/20 dark:border-[var(--navbar-bg)] my-1" />
           )}
           {INVOICE_AUDIT_ITEMS.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              title={item.label}
-              className={({ isActive }) =>
-                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                  isActive && !(item.excludes && pathname.startsWith(item.excludes))
-                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
-                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                }`
-              }
-            >
-              {item.icon}
-              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
-            </NavLink>
+            <SidebarNavItem key={item.label} item={item} isOpen={isOpen} />
           ))}
 
           {isOpen ? (
             <div className="pt-2 pb-0.5 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Ordering</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--primary-300)] whitespace-nowrap">Ordering</p>
             </div>
           ) : (
-            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
+            <div className="border-t border-white/20 dark:border-[var(--navbar-bg)] my-1" />
           )}
-          {ORDERING_ITEMS.map((item) => {
-            const active = item.active(pathname)
-            return (
-              <Link
-                key={item.label}
-                to={item.to}
-                title={item.label}
-                aria-current={active ? 'page' : undefined}
-                className={`flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                  active
-                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
-                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                }`}
-              >
-                {item.icon}
-                {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
-              </Link>
-            )
-          })}
+          {ORDERING_ITEMS.map((item) => (
+            <SidebarNavItem key={item.label} item={item} isOpen={isOpen} />
+          ))}
 
           {isOpen ? (
             <div className="pt-2 pb-0.5 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--text-200)] whitespace-nowrap">Admin</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)] dark:text-[var(--primary-300)] whitespace-nowrap">Admin</p>
             </div>
           ) : (
-            <div className="border-t border-[#7ecbb5] dark:border-[var(--bg-300)] my-1" />
+            <div className="border-t border-white/20 dark:border-[var(--navbar-bg)] my-1" />
           )}
           {ADMIN_ITEMS.map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              title={item.label}
-              className={({ isActive }) =>
-                `flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                  isActive
-                    ? 'bg-[var(--primary-100)] text-[var(--accent-200)] dark:bg-[var(--primary-100)] dark:text-[var(--accent-200)] font-medium shadow-sm'
-                    : 'text-[var(--text-200)] dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)]'
-                }`
-              }
-            >
-              {item.icon}
-              {isOpen && <span className="whitespace-nowrap">{item.label}</span>}
-            </NavLink>
+            <SidebarNavItem key={item.label} item={item} isOpen={isOpen} />
           ))}
         </nav>
 
-        <div className="mt-auto p-3 border-t border-[#4da08e] dark:border-[#1a4f53]">
+        <div className="mt-auto p-3 border-t border-white/20 dark:border-[var(--navbar-bg)]">
           {user && isOpen && (
             <div className="flex items-center gap-2.5 mb-2.5">
               {user.avatar ? (
@@ -270,12 +258,12 @@ export default function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <span className="w-8 h-8 shrink-0 rounded-full bg-slate-700 text-white text-xs font-semibold flex items-center justify-center select-none">
+                <span className="w-8 h-8 shrink-0 rounded-full bg-slate-700 dark:bg-[var(--primary-200)] text-white text-xs font-semibold flex items-center justify-center select-none">
                   {user.name.charAt(0).toUpperCase()}
                 </span>
               )}
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--text-100)] dark:text-[var(--text-200)] truncate whitespace-nowrap">{user.name}</p>
+                <p className="text-sm font-medium text-[var(--text-100)] dark:text-[var(--text-100)] truncate whitespace-nowrap">{user.name}</p>
                 <p className="text-xs text-[var(--text-200)] dark:text-[var(--text-200)] truncate whitespace-nowrap">{user.email}</p>
               </div>
             </div>

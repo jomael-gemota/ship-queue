@@ -384,7 +384,7 @@ function DraggableTh({
         // ── Drag source: tinted background + opacity so it's obvious what's being moved
         isDragging
           ? 'opacity-60 cursor-grabbing bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300'
-          : 'cursor-grab bg-[var(--bg-200)] text-slate-700 dark:text-[var(--text-200)]',
+          : 'cursor-grab bg-[var(--bg-200)] text-[var(--text-200)]',
         // ── Drop target: thick sky-blue left bar as an insertion indicator
         isDragTarget
           ? 'border-l-[3px] border-l-sky-400 bg-sky-50 dark:bg-sky-500/10'
@@ -418,7 +418,7 @@ function DraggableTh({
               )
               : (
                 <svg
-                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-slate-400 dark:text-[var(--text-200)]'}`}
+                  className={`h-3.5 w-3.5 shrink-0 ${isDragging ? 'text-sky-500' : 'text-[var(--text-200)]'}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
@@ -571,7 +571,7 @@ function ColumnFilterDropdown({
     <div
       ref={dropdownRef}
       style={{ position: 'fixed', top, left, width: dropdownWidth, zIndex: 9999 }}
-      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl overflow-hidden text-[10px] flex flex-col"
+      className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl overflow-hidden text-[10px] flex flex-col"
     >
       {/* Search */}
       <div className="px-2.5 py-2 border-b border-[var(--bg-300)]">
@@ -973,7 +973,7 @@ function WorkspaceEditorDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
         style={{ maxHeight: 'min(80vh, 640px)' }}
       >
         {/* Header */}
@@ -1010,7 +1010,7 @@ function WorkspaceEditorDialog({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void submit()}
               placeholder="e.g. Acme Invoices, Q3 Orders…"
-              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
           </div>
 
@@ -1466,6 +1466,9 @@ function WorkspaceSourceIcon({ emailSourceCount = 0, spsSourceCount = 0 }: { ema
   )
 }
 
+/* Steel-blue palette applied to all workspace cards in dark mode */
+const WS_COMBO = { card: 'dark:bg-[#1c2b3f]', stripe: 'dark:bg-[var(--primary-200)]', border: 'dark:hover:border-[var(--primary-200)]', title: 'dark:group-hover:text-[var(--accent-200)]' }
+
 function WorkspaceCard({
   workspace,
   onOpen,
@@ -1482,28 +1485,35 @@ function WorkspaceCard({
   isAdmin?: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const combo = WS_COMBO
 
   return (
     <div onClick={onOpen}
-      className="group flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)] overflow-hidden cursor-pointer transition-all hover:border-[var(--accent-100)] dark:hover:border-[var(--primary-200)] hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
-      {/* Body */}
-      <div className="flex-1 px-5 pt-5 pb-4">
-        <div className="mb-4">
+      className={`group flex flex-col rounded-md border border-[var(--bg-300)] bg-[var(--primary-100)] ${combo.card} overflow-hidden cursor-pointer transition-all shadow-[0_4px_14px_rgba(0,0,0,0.18)] dark:shadow-[0_6px_24px_rgba(0,0,0,0.55)] hover:shadow-[0_8px_28px_rgba(0,0,0,0.26)] dark:hover:shadow-[0_10px_36px_rgba(0,0,0,0.75)] hover:-translate-y-0.5 hover:border-[var(--accent-100)] ${combo.border}`}>
+      {/* Top accent stripe */}
+      <div className={`h-1 w-full ${combo.stripe} bg-[var(--primary-200)]`} />
+      {/* Body — logo left, name + creator right */}
+      <div className="flex-1 px-4 py-5 flex items-start gap-3 min-h-[5.5rem]">
+        <div className="shrink-0 mt-0.5">
           <WorkspaceSourceIcon
             emailSourceCount={workspace.emailSourceCount}
             spsSourceCount={workspace.spsSourceCount}
           />
         </div>
-        <h3 className="text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] dark:group-hover:text-[var(--primary-300)] transition-colors line-clamp-2">
-          {workspace.name}
-        </h3>
-        <p className="mt-2 text-[10px] text-[var(--text-200)]">
-          Open to manage rules, emails, and audit results.
-        </p>
+        <div className="min-w-0 flex-1">
+          <h3 className={`text-sm font-semibold text-[var(--text-100)] group-hover:text-[var(--accent-200)] ${combo.title} transition-colors leading-snug line-clamp-2`}>
+            {workspace.name}
+          </h3>
+          {workspace.createdByName && (
+            <p className="mt-1 text-[10px] text-[var(--text-200)] truncate">
+              by {workspace.createdByName}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] px-5 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)] px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
         <span className="text-[10px] text-[var(--text-200)]">
           Created {new Date(workspace.createdAt).toLocaleDateString()}
         </span>
@@ -1532,6 +1542,16 @@ function WorkspaceCard({
 
 /* ──────────────────────────────────────── Organization card ── */
 
+/* 3-colour combos for org row cards */
+const ORG_COMBOS = [
+  /* 0 — Violet */
+  { stripe: 'bg-violet-500 dark:bg-violet-600', icon: 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400', border: 'hover:border-violet-400 dark:hover:border-violet-500', title: 'group-hover:text-violet-600 dark:group-hover:text-violet-400', badge: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300' },
+  /* 1 — Indigo */
+  { stripe: 'bg-indigo-500 dark:bg-indigo-600', icon: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400', border: 'hover:border-indigo-400 dark:hover:border-indigo-500', title: 'group-hover:text-indigo-600 dark:group-hover:text-indigo-400', badge: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' },
+  /* 2 — Sky */
+  { stripe: 'bg-sky-500 dark:bg-sky-700', icon: 'bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400', border: 'hover:border-sky-400 dark:hover:border-sky-600', title: 'group-hover:text-sky-600 dark:group-hover:text-sky-400', badge: 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' },
+] as const
+
 function OrgCard({
   org,
   workspaceCount,
@@ -1540,6 +1560,7 @@ function OrgCard({
   onDelete,
   isAdmin = false,
   hasAccess = true,
+  colorIndex = 0,
 }: {
   org: DocTidyOrganization
   workspaceCount: number
@@ -1548,23 +1569,25 @@ function OrgCard({
   onDelete: () => void
   isAdmin?: boolean
   hasAccess?: boolean
+  colorIndex?: number
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const orgCombo = ORG_COMBOS[colorIndex % ORG_COMBOS.length]
 
   return (
     <div
       onClick={hasAccess ? onOpen : undefined}
       className={`group relative flex items-center gap-4 rounded-xl border bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden transition-all ${
         hasAccess
-          ? 'border-[var(--bg-300)] cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]'
+          ? `border-[var(--bg-300)] cursor-pointer ${orgCombo.border} hover:shadow-md dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)]`
           : 'border-[var(--bg-300)] cursor-not-allowed opacity-50 select-none'
       }`}
     >
-      {/* Left accent stripe — violet when accessible, gray when locked */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${hasAccess ? 'bg-violet-500 dark:bg-violet-600' : 'bg-[var(--bg-300)]'}`} />
+      {/* Left accent stripe — coloured when accessible, gray when locked */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${hasAccess ? orgCombo.stripe : 'bg-[var(--bg-300)]'}`} />
 
       {/* Icon */}
-      <div className={`ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${hasAccess ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400' : 'bg-[var(--bg-200)] dark:bg-[var(--bg-300)] text-[var(--text-200)]'}`}>
+      <div className={`ml-5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${hasAccess ? orgCombo.icon : 'bg-[var(--bg-200)] dark:bg-[var(--bg-300)] text-[var(--text-200)]'}`}>
         {hasAccess ? (
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
@@ -1581,7 +1604,7 @@ function OrgCard({
       {/* Main content */}
       <div className="flex-1 min-w-0 py-4 pr-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className={`text-sm font-semibold transition-colors ${hasAccess ? 'text-[var(--text-100)] group-hover:text-violet-600 dark:group-hover:text-violet-400' : 'text-[var(--text-200)]'}`}>
+          <h3 className={`text-sm font-semibold transition-colors ${hasAccess ? `text-[var(--text-100)] ${orgCombo.title}` : 'text-[var(--text-200)]'}`}>
             {org.name}
           </h3>
           {/* No-access badge */}
@@ -1597,7 +1620,7 @@ function OrgCard({
           {/* Badge pills — only shown to members/admins */}
           {hasAccess && (
             <>
-              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">
+              <span className={`inline-flex items-center gap-1 rounded-full ${orgCombo.badge} px-2 py-0.5 text-[10px] font-medium`}>
                 <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1807,7 +1830,7 @@ function OrganizationEditorDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
         style={{ maxHeight: 'min(88vh, 720px)' }}
       >
         {/* Header */}
@@ -1871,7 +1894,7 @@ function OrganizationEditorDialog({
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void submit()}
                   placeholder="e.g. Outdoor Equipped, Operations Team…"
-                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
 
@@ -2163,7 +2186,7 @@ function MoveWorkspaceDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
         style={{ maxHeight: 'min(80vh, 560px)' }}
       >
         {/* Header */}
@@ -2326,9 +2349,9 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
       {/* Column labels */}
       <div className="flex items-center border-b border-white/5 px-3.5 py-1.5 gap-2.5">
         <span className="w-5 shrink-0" />
-        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-slate-600">Date</span>
-        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Cost</span>
-        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-slate-600">Change</span>
+        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Date</span>
+        <span className="w-16 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Cost</span>
+        <span className="w-12 shrink-0 text-right text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Change</span>
       </div>
 
       {/* History rows */}
@@ -2350,7 +2373,7 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
               <span className="flex-1 min-w-0">
                 <span className="block truncate text-[10px] text-slate-300">{formatDateTime(entry.recordedAt)}</span>
                 {entry.source === 'stored' && (
-                  <span className="text-[9px] italic text-slate-600">first recorded</span>
+                  <span className="text-[9px] italic text-[var(--text-200)]">first recorded</span>
                 )}
               </span>
 
@@ -2361,7 +2384,7 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
 
               {/* Delta */}
               <span className={`w-12 shrink-0 text-right tabular-nums text-[10px] font-medium ${
-                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-slate-600'
+                delta < 0 ? 'text-emerald-400' : delta > 0 ? 'text-rose-400' : 'text-[var(--text-200)]'
               }`}>
                 {older && delta !== 0 ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)}` : '—'}
               </span>
@@ -2371,8 +2394,8 @@ function DcCogsHistoryCard({ cost, history }: { cost: string; history: DcCogsHis
       </div>
 
       <div className="border-t border-white/10 bg-white/5 px-3.5 py-2 flex items-center justify-between">
-        <span className="text-[10px] text-slate-600">Source: Data Central</span>
-        <span className="text-[10px] text-slate-600">Click away to close</span>
+        <span className="text-[10px] text-[var(--text-200)]">Source: Data Central</span>
+        <span className="text-[10px] text-[var(--text-200)]">Click away to close</span>
       </div>
     </div>
   )
@@ -2457,7 +2480,7 @@ function discrepancyCell(
       <Tooltip trigger="click" richContent={
         <div className="px-3.5 py-3 space-y-1.5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">–</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary-200)] text-[10px] text-[var(--text-200)]">–</span>
             <p className="text-[10px] font-semibold text-slate-300">No invoice matched</p>
           </div>
           <p className="text-[10px] text-slate-500 leading-relaxed">
@@ -2569,16 +2592,16 @@ function discrepancyCell(
             {hasAnyMismatch ? 'Discrepancies found' : 'All checks passed'}
           </p>
         </div>
-        <span className="text-[10px] text-slate-600">Click away to close</span>
+        <span className="text-[10px] text-[var(--text-200)]">Click away to close</span>
       </div>
 
       {/* Column labels */}
       <div className="flex items-center gap-2.5 border-b border-white/5 px-3.5 py-1.5">
         <span className="w-5 shrink-0" />
-        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600">Check</span>
-        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+        <span className="w-10 shrink-0 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">Check</span>
+        <div className="flex flex-1 items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-[var(--text-200)]">
           <span className="flex-1">Order</span>
-          <span className="text-slate-700">→</span>
+          <span className="text-[var(--text-200)]">→</span>
           <span className="flex-1">Invoice</span>
         </div>
       </div>
@@ -2621,7 +2644,7 @@ function discrepancyCell(
               {isPending ? (
                 <span className="italic text-[10px] text-amber-400">Pending DC COGS…</span>
               ) : isNoData ? (
-                <span className="italic text-[10px] text-slate-600">
+                <span className="italic text-[10px] text-[var(--text-200)]">
                   {row.key === 'cogs' ? 'No DC COGS on file' : 'Not on invoice'}
                 </span>
               ) : (
@@ -2629,7 +2652,7 @@ function discrepancyCell(
                   {/* Order value */}
                   <span className="flex-1 truncate text-slate-300">{row.orderVal}</span>
                   {/* Arrow */}
-                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-slate-600'}`}>→</span>
+                  <span className={`shrink-0 text-[10px] font-bold ${isMismatch ? 'text-rose-600' : 'text-[var(--text-200)]'}`}>→</span>
                   {/* Invoice value */}
                   <span className={`flex-1 truncate font-semibold ${isMismatch ? 'text-rose-400' : 'text-emerald-400'}`}>
                     {row.invoiceVal}
@@ -2652,7 +2675,7 @@ function discrepancyCell(
 
       {/* Footer */}
       <div className="border-t border-white/10 bg-white/3 px-3.5 py-2">
-        <p className="text-[10px] text-slate-600">
+        <p className="text-[10px] text-[var(--text-200)]">
           {hasAnyMismatch
             ? 'Review highlighted values — invoice differs from order.'
             : 'Order data matches the matched invoice.'}
@@ -2721,7 +2744,7 @@ function discrepancyCell(
     <Tooltip trigger="click" richContent={discrepancyTooltip}>
       <span className="inline-flex flex-wrap items-center gap-1">
         {badges}
-        <svg className="h-2.5 w-2.5 shrink-0 text-slate-400 dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+        <svg className="h-2.5 w-2.5 shrink-0 text-[var(--text-200)] dark:text-slate-500 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
         </svg>
       </span>
@@ -3202,7 +3225,7 @@ function ConfirmDeleteDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-2xl space-y-4"
+        className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-2xl space-y-4"
       >
         {/* Icon + title */}
         <div className="flex items-start gap-3">
@@ -5060,7 +5083,7 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const inputClass =
-    'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+    'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
   /* ── Per-row cell renderer (new v2 columns) ── */
   const auditCellFor = (
@@ -5174,7 +5197,7 @@ export default function DocTidyInvoiceAudit() {
                     <div>
                       {/* Header */}
                       <div className="border-b border-white/10 bg-white/5 px-3.5 py-2.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-200)]">
                           Discount Breakdown
                         </p>
                       </div>
@@ -5183,8 +5206,8 @@ export default function DocTidyInvoiceAudit() {
                         {inv.itemCost && (
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
-                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-400">$</span>
-                              <span className="text-[10px] text-slate-400">List price</span>
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary-200)] text-[10px] text-[var(--text-200)]">$</span>
+                              <span className="text-[10px] text-[var(--text-200)]">List price</span>
                             </div>
                             <span className="tabular-nums text-[10px] text-slate-300 line-through decoration-slate-600">
                               {inv.itemCost}
@@ -5195,7 +5218,7 @@ export default function DocTidyInvoiceAudit() {
                           <div className="flex items-center justify-between gap-6 px-2.5 py-2.5">
                             <div className="flex items-center gap-2">
                               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-400">%</span>
-                              <span className="text-[10px] text-slate-400">Discount</span>
+                              <span className="text-[10px] text-[var(--text-200)]">Discount</span>
                             </div>
                             <span className="tabular-nums text-[10px] font-semibold text-amber-400">
                               {pctDisplay} off
@@ -5348,7 +5371,7 @@ export default function DocTidyInvoiceAudit() {
             {orgLoading ? (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] overflow-hidden h-16">
+                  <div key={i} className="relative flex items-center gap-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden h-16">
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--bg-300)]" />
                     <div className="ml-5 h-11 w-11 shrink-0 animate-pulse rounded-xl bg-[var(--bg-300)]" />
                     <div className="flex-1 space-y-2 py-1">
@@ -5384,9 +5407,10 @@ export default function DocTidyInvoiceAudit() {
               </div>
             ) : (
               <div className="space-y-2">
-                {organizations.map((org) => (
+                {organizations.map((org, i) => (
                   <OrgCard
                     key={org._id}
+                    colorIndex={i}
                     org={org}
                     workspaceCount={workspaces.filter((w) => w.organizationId === org._id).length}
                     onOpen={() => enterOrg(org)}
@@ -5461,9 +5485,9 @@ export default function DocTidyInvoiceAudit() {
               </div>
 
               {wsLoading ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                    <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
                       <div className="flex-1 px-5 pt-5 pb-4">
                         <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
                         <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -5483,7 +5507,7 @@ export default function DocTidyInvoiceAudit() {
               ) : unassignedWorkspaces.length === 0 && wsSearch ? (
                 <p className="text-xs text-[var(--text-200)]">No workspaces match <span className="font-medium text-[var(--text-100)]">"{wsSearch}"</span>.</p>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {unassignedWorkspaces.map((ws) => (
                     <WorkspaceCard
                       key={ws._id}
@@ -5582,9 +5606,9 @@ export default function DocTidyInvoiceAudit() {
           )}
 
           {wsLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)]">
+                <div key={i} className="flex flex-col rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
                   <div className="flex-1 px-5 pt-5 pb-4">
                     <div className="mb-4 h-10 w-10 animate-pulse rounded-xl bg-[var(--bg-300)]" />
                     <div className="h-4 w-3/4 animate-pulse rounded bg-[var(--bg-300)]" />
@@ -5625,7 +5649,7 @@ export default function DocTidyInvoiceAudit() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {orgWorkspaces.map((ws) => (
                 <WorkspaceCard
                   key={ws._id}
@@ -5686,8 +5710,8 @@ export default function DocTidyInvoiceAudit() {
                 onClick={() => setWorkspaceTab(tab)}
                 className={`inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                   workspaceTab === tab
-                    ? 'border-[var(--accent-200)] text-[var(--accent-200)]'
-                    : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)]'
+                    ? 'border-[var(--accent-200)] text-[var(--accent-200)] dark:rounded-t-lg dark:border-[var(--primary-300)] dark:bg-[var(--primary-100)] dark:text-[var(--text-100)]'
+                    : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)] dark:rounded-t-lg dark:hover:bg-[var(--bg-200)]'
                 }`}
               >
                 <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -5703,8 +5727,8 @@ export default function DocTidyInvoiceAudit() {
               onClick={() => setWorkspaceTab('sps-commerce')}
               className={`inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                 workspaceTab === 'sps-commerce'
-                  ? 'border-[var(--accent-200)] text-[var(--accent-200)]'
-                  : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)]'
+                  ? 'border-[var(--accent-200)] text-[var(--accent-200)] dark:rounded-t-lg dark:border-[var(--primary-300)] dark:bg-[var(--primary-100)] dark:text-[var(--text-100)]'
+                  : 'border-transparent text-[var(--text-200)] hover:text-[var(--text-100)] dark:rounded-t-lg dark:hover:bg-[var(--bg-200)]'
               }`}
             >
               <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
@@ -5747,7 +5771,7 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ EMAILS TAB ══════════════ */}
           {workspaceTab === 'emails' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-md">
                 {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
                   {/* Search */}
@@ -6378,7 +6402,7 @@ export default function DocTidyInvoiceAudit() {
                 <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                     {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {emailPagination.pages > 0 && (
@@ -6403,7 +6427,7 @@ export default function DocTidyInvoiceAudit() {
           {/* ══════════════ PDF IMPORTS TAB ══════════════ */}
           {workspaceTab === 'pdf-imports' && (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-md">
 
                 {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
@@ -6863,7 +6887,7 @@ export default function DocTidyInvoiceAudit() {
                 <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                     {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {pdfImportsPagination.pages > 0 && (
@@ -6885,7 +6909,7 @@ export default function DocTidyInvoiceAudit() {
                 role="dialog"
                 aria-modal="true"
                 aria-label="Advanced Search — Emails"
-                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
@@ -6975,7 +6999,7 @@ export default function DocTidyInvoiceAudit() {
                 role="dialog"
                 aria-modal="true"
                 aria-label="Advanced Search — PDF Imports"
-                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+                className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
@@ -7064,7 +7088,7 @@ export default function DocTidyInvoiceAudit() {
                 role="dialog"
                 aria-modal="true"
                 aria-label="Import files"
-                className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+                className="relative w-full max-w-md rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
               >
                 {/* Modal header */}
                 <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-5 py-4">
@@ -7157,7 +7181,7 @@ export default function DocTidyInvoiceAudit() {
           {workspaceTab === 'audit' && (
             <div className="flex-1 min-h-0 flex flex-col gap-4">
             {/* Table card */}
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-md">
 
               {/* Toolbar */}
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--bg-200)]/60 text-[10px] text-[var(--text-200)]">
@@ -7673,7 +7697,7 @@ export default function DocTidyInvoiceAudit() {
               <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                 <span className="whitespace-nowrap">Rows per page:</span>
                 <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
-                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                   {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {orderPagination.pages > 0 && (
@@ -7768,7 +7792,7 @@ export default function DocTidyInvoiceAudit() {
           <div
             role="dialog"
             aria-modal="true"
-            className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+            className="relative flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-[var(--bg-300)] px-6 py-5">
               <div>
@@ -7941,7 +7965,7 @@ export default function DocTidyInvoiceAudit() {
       {addVendorTarget && activeWorkspace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => setAddVendorTarget(null)} />
-          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl p-5">
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-base font-semibold text-[var(--text-100)]">Register vendor</h2>

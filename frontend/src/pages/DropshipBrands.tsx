@@ -122,12 +122,12 @@ function BrandCard({ brand }: { brand: DropshipBrand }) {
     >
       <BrandMark brand={brand} framed />
       <span className="flex flex-1 flex-col px-5 pb-4 pt-4">
-        <span className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-[var(--accent-200)] dark:text-[var(--text-100)] dark:group-hover:text-[var(--primary-300)]">
+        <span className="text-sm font-semibold text-[var(--text-100)] transition-colors group-hover:text-[var(--accent-200)] dark:text-[var(--text-100)] dark:group-hover:text-[var(--primary-300)]">
           {brand.name}
         </span>
-        <span className="mt-1 text-xs text-slate-500 dark:text-[var(--text-200)]">
+        <span className="mt-1 text-xs text-[var(--text-200)]">
           {brand.supplier}
-          <span className="text-slate-400 dark:text-[var(--text-200)]"> · </span>
+          <span className="text-[var(--text-200)]"> · </span>
           {brand.catalog}
         </span>
       </span>
@@ -165,16 +165,16 @@ export function OrderingBrandList({
   const iconClass = (active: boolean) =>
     `relative z-10 inline-flex h-8 w-8 items-center justify-center transition-colors duration-200 ${
       active
-        ? 'text-slate-900 dark:text-[var(--text-100)]'
-        : 'text-slate-400 dark:text-[var(--text-200)]'
+        ? 'text-[var(--text-100)]'
+        : 'text-[var(--text-200)]'
     }`
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Brands</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+          <h2 className="text-base font-semibold text-[var(--text-100)]">Brands</h2>
+          <p className="mt-1 text-sm text-[var(--text-200)]">{description}</p>
         </div>
         <button
           type="button"
@@ -214,12 +214,12 @@ export function OrderingBrandList({
                 <BrandMark brand={brand} />
                 <span className="flex min-w-0 flex-1 items-center gap-4 px-5 py-4">
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">
+                    <span className="block text-sm font-semibold text-[var(--text-100)]">
                       {brand.name}
                     </span>
-                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-[var(--text-200)]">
+                    <span className="mt-0.5 block text-xs text-[var(--text-200)]">
                       {brand.supplier}
-                      <span className="text-slate-400 dark:text-[var(--text-200)]"> · </span>
+                      <span className="text-[var(--text-200)]"> · </span>
                       {brand.catalog}
                     </span>
                   </span>

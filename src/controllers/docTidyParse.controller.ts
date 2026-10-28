@@ -16,8 +16,10 @@ import {
 import { isAgentTable, tablesToAgentJson } from '../services/docTidyTables.service';
 import {
   addJobClient,
+  announceParseStatus,
   clearJobProgress,
   hasWorker,
+  pushToJob,
   sendToWorker,
 } from '../services/docTidyWorkerRegistry';
 import { embedText } from '../lib/embeddings';
@@ -32,6 +34,10 @@ function fail(res: Response, error: unknown, fallback: string): void {
 }
 
 /* ------------------------------------------------------------ parse jobs */
+
+/** Stored as the job's error on abort. The reasoning panel matches this exact
+ *  text to show a "stopped" notice instead of a failure. */
+const PARSE_STOPPED_MESSAGE = 'Parsing was stopped by the user.';
 
 export const getWorkerStatus = (_req: Request, res: Response): void => {
   res.json({ data: { connected: hasWorker() } });
@@ -77,7 +83,7 @@ export const abortParseJob = async (req: Request, res: Response): Promise<void> 
       {
         $set: {
           status: 'failed',
-          error: 'Parsing was stopped by the user.',
+          error: PARSE_STOPPED_MESSAGE,
           completedAt: new Date(),
         },
       },
@@ -95,6 +101,10 @@ export const abortParseJob = async (req: Request, res: Response): Promise<void> 
     // arrives after reconnection.
     sendToWorker({ type: 'cancel', jobId: id });
     clearJobProgress(id);
+    // A cancelled worker exits silently, so nothing else ends the run for an
+    // open reasoning panel or the other tables watching this job.
+    pushToJob(id, { type: 'error', message: PARSE_STOPPED_MESSAGE });
+    announceParseStatus(id, 'failed');
 
     res.json({ data: job });
   } catch (error) {

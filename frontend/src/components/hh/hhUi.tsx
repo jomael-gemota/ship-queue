@@ -64,26 +64,26 @@ export function HHBreadcrumb({
 
   return (
     <nav aria-label="Breadcrumb" className="text-sm">
-      <ol className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-[var(--text-200)]">
+      <ol className="flex flex-wrap items-center gap-1.5 text-[var(--text-200)]">
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1
           return (
             <li key={crumb.label} className="inline-flex items-center gap-1.5">
               {index > 0 && (
-                <svg className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <svg className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               )}
               {crumb.to && !isLast ? (
                 <Link
                   to={crumb.to}
-                  className="hover:text-slate-700 hover:underline dark:hover:text-[var(--text-100)]"
+                  className="hover:text-[var(--text-200)] hover:underline dark:hover:text-[var(--text-100)]"
                 >
                   {crumb.label}
                 </Link>
               ) : (
                 <span
-                  className={isLast ? 'font-medium text-slate-800 dark:text-[var(--text-100)]' : undefined}
+                  className={isLast ? 'font-medium text-[var(--text-100)]' : undefined}
                   aria-current={isLast ? 'page' : undefined}
                 >
                   {crumb.label}
@@ -101,7 +101,7 @@ export function HHBackButton({ to }: { to: string }) {
   return (
     <Link
       to={to}
-      className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
+      className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]"
     >
       <BackIcon className="h-4 w-4" />
       Back
@@ -539,7 +539,7 @@ export function HHBatchHeaderMenu({
         ? 'cursor-not-allowed text-slate-500 opacity-50 dark:text-[var(--text-200)]'
         : danger
           ? 'cursor-pointer text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40'
-          : 'cursor-pointer text-slate-700 hover:bg-[var(--primary-100)] dark:text-[var(--text-100)]'
+          : 'cursor-pointer text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:text-[var(--text-100)]'
     }`
 
   return (
@@ -569,7 +569,7 @@ export function HHBatchHeaderMenu({
               <div
                 role="menu"
                 aria-label="Batch actions"
-                className="fixed z-[60] min-w-[13.75rem] overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] py-1 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+                className="fixed z-[60] min-w-[13.75rem] overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] py-1 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]"
                 style={{ top: coords.top, right: coords.right }}
               >
                 <button
@@ -861,7 +861,7 @@ function HHHelpMark() {
 }
 
 function HHSummaryDash() {
-  return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+  return <span className="text-[var(--text-200)]">—</span>
 }
 
 function detailsTone(status: HHDetailsStatus): HHBadgeTone {
@@ -1013,7 +1013,7 @@ export function HHShipViaChip({
 
   if (!choice) {
     if (!placeholder) return null
-    return <span className="text-slate-400 dark:text-[var(--text-200)]">—</span>
+    return <span className="text-[var(--text-200)]">—</span>
   }
 
   const label = choice.kind === 'usps' ? 'USPS' : 'Default'
@@ -1029,7 +1029,7 @@ export function HHShipViaChip({
   const tone =
     choice.kind === 'usps'
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
-      : 'bg-slate-100 text-slate-600 dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
+      : 'bg-slate-100 text-[var(--text-200)] dark:bg-[var(--bg-300)] dark:text-[var(--text-200)]'
 
   if (locked) {
     return (
@@ -1067,11 +1067,11 @@ export function HHShipViaChip({
               <div
                 role="dialog"
                 aria-label="Ship Via"
-                className="fixed z-[60] w-[22rem] rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-3 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]"
+                className="fixed z-[60] w-[22rem] rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-3 shadow-xl dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]"
                 style={{ top: coords.top, left: Math.max(8, coords.left) }}
               >
-                <p className="text-xs leading-5 text-slate-600 dark:text-[var(--text-200)]">{detail}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-[var(--text-200)]">
+                <p className="text-xs leading-5 text-[var(--text-200)]">{detail}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--text-200)]">
                   This updates Ship Via on the current cart. The reference number stays the same.
                 </p>
                 {error ? <p className="mt-2 text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
@@ -1288,7 +1288,7 @@ const HH_PROGRESS_FILL: Record<HHProgressTone, string> = {
   ok: 'bg-emerald-500 dark:bg-emerald-400',
   warn: 'bg-amber-500 dark:bg-amber-400',
   error: 'bg-red-500 dark:bg-red-400',
-  muted: 'bg-slate-300 dark:bg-[var(--bg-300)]',
+  muted: 'bg-[var(--bg-300)]',
 }
 
 const HH_PROGRESS_TRACK: Record<HHProgressTone, string> = {
@@ -1302,14 +1302,14 @@ const HH_PROGRESS_TEXT: Record<HHProgressTone, string> = {
   ok: 'text-emerald-700 dark:text-emerald-300',
   warn: 'text-amber-800 dark:text-amber-200',
   error: 'text-red-700 dark:text-red-300',
-  muted: 'text-slate-400 dark:text-[var(--text-200)]',
+  muted: 'text-[var(--text-200)]',
 }
 
 const HH_PROGRESS_RAIL: Record<HHProgressTone, string> = {
   ok: 'bg-emerald-400/80 dark:bg-emerald-500/70',
   warn: 'bg-amber-400/80 dark:bg-amber-500/60',
   error: 'bg-red-400/80 dark:bg-red-500/60',
-  muted: 'bg-slate-200 dark:bg-[var(--bg-300)]',
+  muted: 'bg-[var(--bg-300)]',
 }
 
 function HHProgressRail({ children }: { children: (index: number) => ReactNode }) {
@@ -1330,7 +1330,7 @@ export function HHBatchProgressLabels() {
     <HHProgressRail>
       {(index) => (
         <span
-          className={`${HH_PROGRESS_SLOT} text-[10px] font-medium uppercase leading-none tracking-wider text-slate-400 dark:text-[var(--text-200)]`}
+          className={`${HH_PROGRESS_SLOT} text-[10px] font-medium uppercase leading-none tracking-wider text-[var(--text-200)]`}
         >
           {HH_PROGRESS_SLOTS[index]}
         </span>
@@ -1480,11 +1480,11 @@ function PlaceOrderIdList({ ids }: { ids: string[] }) {
   const shown = ids.slice(0, 8)
   const extra = ids.length - shown.length
   return (
-    <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto font-mono text-[13px] text-slate-700 dark:text-[var(--text-100)]">
+    <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto font-mono text-[13px] text-[var(--text-100)]">
       {shown.map((id) => (
         <li key={id}>{id}</li>
       ))}
-      {extra > 0 ? <li className="text-xs text-slate-500 dark:text-[var(--text-200)]">+{extra} more</li> : null}
+      {extra > 0 ? <li className="text-xs text-[var(--text-200)]">+{extra} more</li> : null}
     </ul>
   )
 }
@@ -1507,13 +1507,13 @@ function PlaceOrderPlan({
       </section>
       {skippedCount > 0 ? (
         <section>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[var(--text-200)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-200)]">
             Will skip · {skippedCount}
           </p>
           <div className="mt-1.5 space-y-2">
             {skipGroups.map((group) => (
               <div key={group.reason}>
-                <p className="text-xs text-slate-500 dark:text-[var(--text-200)]">
+                <p className="text-xs text-[var(--text-200)]">
                   {group.ids.length} {group.label}
                 </p>
                 <PlaceOrderIdList ids={group.ids} />
@@ -1563,7 +1563,7 @@ function confirmCopy(
             ) : (
               <span>
                 This will re-check the live {supplier} cart, then place order{' '}
-                <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+                <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
               </span>
             )
           ) : (
@@ -1576,7 +1576,7 @@ function confirmCopy(
               ) : (
                 <>
                   {' '}
-                  for <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+                  for <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
                 </>
               )}
             </span>
@@ -1605,13 +1605,13 @@ function confirmCopy(
       body: isGroup ? (
         <>
           This will pull Seller Central details{again ? ' again' : ''} for every order in the batch created by{' '}
-          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{createdBy}</span>
+          <span className="font-medium text-[var(--text-100)]">{createdBy}</span>
           . Placed orders are not changed.
         </>
       ) : (
         <>
           This will pull Seller Central details{again ? ' again' : ''} for order{' '}
-          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+          <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
         </>
       ),
       confirm: again ? 'Re-sync' : 'Sync',
@@ -1653,13 +1653,13 @@ function confirmCopy(
         ) : replaceCart ? (
           <>
             This will create a new {brandName} draft from synced order details for order{' '}
-            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. Ship Queue
+            <span className="font-medium text-[var(--text-100)]">{orderId}</span>. Ship Queue
             replaces the saved draft. The previous draft stays on the portal and is not submitted.
           </>
         ) : (
           <>
             This will create a {brandName} draft from synced order details for order{' '}
-            <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>. The draft is not
+            <span className="font-medium text-[var(--text-100)]">{orderId}</span>. The draft is not
             submitted.
           </>
         )
@@ -1678,13 +1678,13 @@ function confirmCopy(
       ) : replaceCart ? (
         <>
           This will create a new Helly Hansen B2B draft for order{' '}
-          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+          <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
           {' '}The existing draft will be replaced.
         </>
       ) : (
         <>
           This will create a Helly Hansen B2B draft for order{' '}
-          <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+          <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
         </>
       ),
       confirm: replaceCart ? 'Regenerate' : 'Draft',
@@ -1698,13 +1698,13 @@ function confirmCopy(
     body: isGroup ? (
       <>
         This will remove the group created by{' '}
-        <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{createdBy}</span>{' '}
+        <span className="font-medium text-[var(--text-100)]">{createdBy}</span>{' '}
         and all nested orders.
       </>
     ) : (
       <>
         This will remove order{' '}
-        <span className="font-medium text-slate-700 dark:text-[var(--text-100)]">{orderId}</span>.
+        <span className="font-medium text-[var(--text-100)]">{orderId}</span>.
       </>
     ),
     confirm: 'Delete',
@@ -1731,8 +1731,8 @@ function HHConfirmSwitch({
   return (
     <div className="flex items-start gap-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">{label}</p>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+        <p className="text-sm font-medium text-[var(--text-100)]">{label}</p>
+        <p className="mt-0.5 text-xs text-[var(--text-200)]">{description}</p>
       </div>
       <button
         type="button"
@@ -1743,7 +1743,7 @@ function HHConfirmSwitch({
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-        } ${checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+        } ${checked ? 'bg-emerald-500' : 'bg-[var(--bg-300)]'}`}
       >
         <span
           className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
@@ -1791,9 +1791,9 @@ export function HHConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className={`relative z-10 w-full space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl ${isResync || isPlace ? 'max-w-lg' : 'max-w-sm'}`}>
-        <h3 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">{copy.title}</h3>
-        <div className="text-sm text-slate-500 dark:text-[var(--text-200)]">{copy.body}</div>
+      <div className={`relative z-10 w-full space-y-4 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-xl ${isResync || isPlace ? 'max-w-lg' : 'max-w-sm'}`}>
+        <h3 className="text-base font-semibold text-[var(--text-100)]">{copy.title}</h3>
+        <div className="text-sm text-[var(--text-200)]">{copy.body}</div>
         {isResync && (
           <div className="space-y-3">
             <HHConfirmSwitch
@@ -1842,7 +1842,7 @@ export function HHConfirmModal({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="cursor-pointer rounded-lg bg-[var(--bg-200)] px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-[var(--bg-300)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-[var(--text-200)]"
+            className="cursor-pointer rounded-lg bg-[var(--bg-200)] px-3.5 py-2 text-sm font-medium text-[var(--text-200)] transition-colors hover:bg-[var(--bg-300)] disabled:cursor-not-allowed disabled:opacity-50 dark:text-[var(--text-200)]"
           >
             Cancel
           </button>
