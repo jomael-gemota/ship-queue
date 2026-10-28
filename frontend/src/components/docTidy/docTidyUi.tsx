@@ -92,7 +92,7 @@ export function PaginationArrows({
         </svg>
       </button>
 
-      <span className="px-2 py-1 text-[10px] text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
+      <span className="px-2 py-1 text-[10px] text-[var(--text-200)] whitespace-nowrap">
         Page {page} of {pages}
       </span>
 

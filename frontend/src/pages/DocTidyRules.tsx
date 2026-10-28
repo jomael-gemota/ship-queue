@@ -23,7 +23,7 @@ const ICON_DELETE =
   'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16'
 
 const filterClass =
-  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
 type StatusFilter = '' | 'enabled' | 'disabled'
 
@@ -163,7 +163,7 @@ export default function WorkspaceRulesView({ workspaceId }: { workspaceId: strin
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] px-4 py-2">
           {/* Search */}
           <div className="relative min-w-[180px] flex-1 max-w-xs">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-[var(--text-200)]">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M21 21l-4.35-4.35m1.6-5.15a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
@@ -197,7 +197,7 @@ export default function WorkspaceRulesView({ workspaceId }: { workspaceId: strin
           )}
 
           {/* Rule count + New rule */}
-          <span className="ml-auto text-[11px] text-gray-500 dark:text-[var(--text-200)]">
+          <span className="ml-auto text-[11px] text-[var(--text-200)]">
             {hasActiveFilters
               ? `${filteredRules.length} of ${rules.length} rules`
               : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}

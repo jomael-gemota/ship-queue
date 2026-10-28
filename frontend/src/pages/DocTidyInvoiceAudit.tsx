@@ -1010,7 +1010,7 @@ function WorkspaceEditorDialog({
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void submit()}
               placeholder="e.g. Acme Invoices, Q3 Orders…"
-              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
           </div>
 
@@ -1894,7 +1894,7 @@ function OrganizationEditorDialog({
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void submit()}
                   placeholder="e.g. Outdoor Equipped, Operations Team…"
-                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-gray-900 dark:text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3.5 py-2.5 text-sm text-[var(--text-100)] placeholder-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
 
@@ -5083,7 +5083,7 @@ export default function DocTidyInvoiceAudit() {
   }
 
   const inputClass =
-    'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+    'text-[10px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
   /* ── Per-row cell renderer (new v2 columns) ── */
   const auditCellFor = (
@@ -6402,7 +6402,7 @@ export default function DocTidyInvoiceAudit() {
                 <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={emailPageSize} onChange={(e) => setEmailPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                     {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {emailPagination.pages > 0 && (
@@ -6887,7 +6887,7 @@ export default function DocTidyInvoiceAudit() {
                 <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                   <span className="whitespace-nowrap">Rows per page:</span>
                   <select value={pdfPageSize} onChange={(e) => setPdfPageSize(Number(e.target.value))}
-                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                    className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                     {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {pdfImportsPagination.pages > 0 && (
@@ -7697,7 +7697,7 @@ export default function DocTidyInvoiceAudit() {
               <div className="shrink-0 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]/60 px-4 py-2 flex items-center gap-2 text-[10px] text-[var(--text-200)]">
                 <span className="whitespace-nowrap">Rows per page:</span>
                 <select value={orderPageSize} onChange={(e) => setOrderPageSize(Number(e.target.value))}
-                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
+                  className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer">
                   {AUDIT_PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {orderPagination.pages > 0 && (

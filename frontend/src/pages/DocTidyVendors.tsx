@@ -570,7 +570,7 @@ const ICON_EDIT =
   'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
 
 const filterClass =
-  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
@@ -750,7 +750,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] px-4 py-2">
           {/* Search */}
           <div className="relative min-w-[180px] flex-1 max-w-xs">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-[var(--text-200)]">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -792,7 +792,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
 
           {/* Summary stats + New vendor */}
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-[11px] text-gray-500 dark:text-[var(--text-200)]">
+            <span className="text-[11px] text-[var(--text-200)]">
               {hasActiveFilters
                 ? `${filteredVendors.length} of ${vendors.length} vendors`
                 : `${vendors.length} vendor${vendors.length !== 1 ? 's' : ''}`}

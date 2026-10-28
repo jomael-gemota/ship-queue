@@ -256,7 +256,7 @@ export default function DocTidy() {
   }
 
   const inputClass =
-    'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+    'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
   // Native `accent-color`, since this project has no forms plugin to restyle
   // checkboxes from scratch.
@@ -265,6 +265,19 @@ export default function DocTidy() {
 
   return (
     <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-200)] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">Doc Tidy</h1>
+          <p className="text-sm text-[var(--text-200)]">Parse, review, and manage invoice documents from your email inbox.</p>
+        </div>
+      </div>
+
       {/* ── Tab bar ────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between border-b border-[var(--bg-300)]">
         {/* Sync timestamps — flush with the tab baseline */}
@@ -439,7 +452,7 @@ export default function DocTidy() {
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>

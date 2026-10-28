@@ -12,7 +12,7 @@ import {
 import { RuleCriteria, Spinner, ToggleSwitch } from './docTidyUi'
 
 const inputClass =
-  'w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-2 placeholder:text-[var(--text-200)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-transparent transition-shadow'
+  'w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-3 py-2 placeholder:text-[var(--text-200)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] focus:border-transparent transition-shadow'
 
 const errorInputClass =
   'border-rose-400 dark:border-rose-500 focus:ring-rose-400 dark:focus:ring-rose-500'

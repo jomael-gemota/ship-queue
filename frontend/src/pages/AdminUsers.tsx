@@ -321,12 +321,17 @@ export default function AdminUsers() {
           saving={changingRoleId === confirmRole.user._id}
         />
       )}
-      {/* Header */}
-      <div>
-        {/* <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">User Management</h1> */}
-        <p className="mt-1 text-sm text-[var(--text-200)]">
-          Grant or revoke label creation access for employees. Admins always have full access.
-        </p>
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-200)] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zm8 0a3 3 0 11-6 0 3 3 0 016 0zM6.343 14.636A3.985 3.985 0 009 16h2a3.985 3.985 0 002.657-1.364A7.003 7.003 0 0010 13a7.003 7.003 0 00-3.657 1.636zM3 16v-1.5a4.5 4.5 0 013-4.243V10a4 4 0 10-6 3.465V16h3zm14 0v-2.535A4 4 0 0014 10v-.243a4.5 4.5 0 013 4.243V16h3z" />
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">User Management</h1>
+          <p className="text-sm text-[var(--text-200)]">Grant or revoke label creation access for employees. Admins always have full access.</p>
+        </div>
       </div>
 
       {error && (
@@ -348,24 +353,28 @@ export default function AdminUsers() {
       {!loading && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { label: 'Total users', value: users.length },
-            { label: 'Can create labels', value: permittedCount },
-            { label: 'Admins', value: adminCount },
+            { label: 'Total users',       value: users.length,   color: 'bg-[var(--accent-200)] dark:bg-[var(--primary-200)]' },
+            { label: 'Can create labels', value: permittedCount, color: 'bg-emerald-500 dark:bg-emerald-700' },
+            { label: 'Admins',            value: adminCount,     color: 'bg-violet-500 dark:bg-violet-700' },
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-4 py-3"
+              className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden shadow-sm"
             >
-              <p className="text-2xl font-semibold text-[var(--text-100)]">{s.value}</p>
-              <p className="text-xs text-[var(--text-200)] mt-0.5">{s.label}</p>
+              <div className={`h-1 w-full ${s.color} opacity-80`} />
+              <div className="px-4 py-3">
+                <p className="text-2xl font-semibold text-[var(--text-100)]">{s.value}</p>
+                <p className="text-xs text-[var(--text-200)] mt-0.5">{s.label}</p>
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {/* Table card */}
-      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden shadow-sm">
+        <div className="h-1 bg-[var(--accent-200)] dark:bg-[var(--primary-200)] opacity-70" />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[var(--bg-300)]">
           <h2 className="text-base font-semibold text-[var(--text-100)]">Employees</h2>
           <input
             type="search"
@@ -375,7 +384,7 @@ export default function AdminUsers() {
               setSearch(e.target.value)
               setPage(0)
             }}
-            className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-1.5 text-sm text-[var(--text-200)] placeholder-slate-400 dark:placeholder-[var(--primary-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] w-full sm:w-64"
+            className="rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-1.5 text-sm text-[var(--text-200)] placeholder:text-[var(--text-200)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] w-full sm:w-64"
           />
         </div>
 
@@ -391,7 +400,7 @@ export default function AdminUsers() {
                 <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-[var(--bg-300)]">
+            <tbody className="divide-y divide-[var(--bg-300)]">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-[var(--text-200)]">

@@ -355,6 +355,19 @@ export default function CreateShippingLabel() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-200)] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">Shipping Labels</h1>
+          <p className="text-sm text-[var(--text-200)]">Import a CSV, draft label batches, and print PDFs to Google Drive.</p>
+        </div>
+      </div>
+
       {confirmBatch && (
         <ConfirmDeleteBatchModal
           batchShortId={shortBatchId(confirmBatch._id)}
@@ -503,7 +516,7 @@ export default function CreateShippingLabel() {
                 <Th><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-[var(--bg-300)] text-[13px]">
+            <tbody className="divide-y divide-[var(--bg-300)] text-[13px]">
               {batchesLoading ? (
                 <tr><Td className="text-[var(--text-200)]" colSpan={6}>Loading…</Td></tr>
               ) : batches.length === 0 ? (

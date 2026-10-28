@@ -673,7 +673,7 @@ export default function Orders() {
         </svg>
       </button>
 
-      <span className="px-2.5 py-1 text-sm text-gray-700 dark:text-[var(--text-200)] whitespace-nowrap">
+      <span className="px-2.5 py-1 text-sm text-[var(--text-200)] whitespace-nowrap">
         Page {page} of {pagination.pages}
       </span>
 
@@ -714,11 +714,18 @@ export default function Orders() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          {/* <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-[var(--text-100)]">ShipStation Orders</h1> */}
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)] mt-0.5">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-200)] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M1 1.75A.75.75 0 011.75 1h1.628a1.75 1.75 0 011.734 1.51L5.43 3h13.045a.75.75 0 01.742.868l-1.03 5.788a1.75 1.75 0 01-1.724 1.454H7.525l.288 1.617A.25.25 0 008.059 13H15a.75.75 0 010 1.5H8.059a1.75 1.75 0 01-1.727-2.03l-.298-1.681-.925-5.196-.29-1.611A.25.25 0 004.625 3.5H1.75A.75.75 0 011 2.75z" />
+              <path d="M9.5 17.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm6 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+            </svg>
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">ShipStation Orders</h1>
+            <p className="text-xs sm:text-sm text-[var(--text-200)] mt-0.5">
             Last synced:{' '}
-            <span className="font-medium text-gray-700 dark:text-[var(--text-200)]">
+            <span className="font-medium text-[var(--text-200)]">
               {formatDateTime(lastSyncedAt)}
             </span>
           </p>
@@ -745,6 +752,7 @@ export default function Orders() {
                 : 'Auto-sync: off'}
             </span>
           )}
+          </div>
         </div>
         {canCreate && (
           <div className="flex items-center gap-3">
@@ -823,14 +831,14 @@ export default function Orders() {
           </div>
         )}
         {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]">
+        <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-[var(--bg-300)]">
+          <label className="text-sm font-medium text-[var(--text-200)]">
             Status
           </label>
           <select
             value={selectedStatus}
             onChange={(e) => handleStatusChange(e.target.value as OrderStatus | '')}
-            className="text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+            className="text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
           >
             <option value="">All Statuses</option>
             {ORDER_STATUSES.map((s) => (
@@ -841,7 +849,7 @@ export default function Orders() {
           </select>
 
           <div className="relative min-w-[220px] flex-1 max-w-md">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-[var(--text-200)]">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-200)]">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -856,12 +864,12 @@ export default function Orders() {
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search order #, customer, ship-to"
-              className="w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
+              className="w-full text-sm border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg pl-9 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]"
             />
             {searchInput && (
               <button
                 onClick={() => handleSearchChange('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-[var(--text-100)] cursor-pointer"
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-200)] hover:text-[var(--text-100)] cursor-pointer"
                 aria-label="Clear search"
               >
                 <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -875,7 +883,7 @@ export default function Orders() {
             )}
           </div>
 
-          <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-[var(--text-200)]">
+          <span className="ml-auto flex items-center gap-2 text-xs sm:text-sm text-[var(--text-200)]">
             {syncingActive ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 dark:bg-[var(--primary-200)] px-2.5 py-0.5 font-medium text-sky-700 dark:text-[var(--accent-200)]">
                 <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
@@ -921,13 +929,13 @@ export default function Orders() {
 
         {/* Top pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[var(--text-200)]">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2 border-b border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -952,7 +960,7 @@ export default function Orders() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <span className="text-sm font-medium text-gray-700 dark:text-[var(--text-200)]">
+                <span className="text-sm font-medium text-[var(--text-200)]">
                   {autoSyncing ? 'Auto-syncing…' : 'Syncing orders…'}
                 </span>
               </div>
@@ -972,50 +980,50 @@ export default function Orders() {
             <table className={`w-full text-[13px] border-separate border-spacing-0 transition-[filter] duration-300 ${syncingActive ? 'blur-[1.5px]' : ''}`}>
               <thead>
                 <tr className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order #"
                       iconPath="M9 12h6m-6 4h6m1-10H8m8 0V5a2 2 0 00-2-2H8a2 2 0 00-2 2v1m10 0a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Date"
                       iconPath="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Customer"
                       iconPath="M16 14a4 4 0 10-8 0m8 0a4 4 0 018 0m-8 0H8m8 0v1a3 3 0 01-3 3H11a3 3 0 01-3-3v-1m6-6a4 4 0 11-8 0 4 4 0 018 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Ship To"
                       iconPath="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Property Type"
                       iconPath="M3 10l9-7 9 7v10a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2V10z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Status"
                       iconPath="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Items"
                       iconPath="M20 13V7a2 2 0 00-2-2h-3V3H9v2H6a2 2 0 00-2 2v6m16 0l-2 7H6l-2-7m16 0H4"
                       align="right"
                     />
                   </th>
-                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] border-r border-[var(--bg-300)] dark:border-r-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
+                  <th className="sticky top-0 z-20 bg-[var(--bg-200)] dark:bg-[var(--bg-200)] border-b border-[var(--bg-300)] border-r border-[var(--bg-300)] last:border-r-0 text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-200)] whitespace-nowrap">
                     <HeaderLabel
                       label="Order Total"
                       iconPath="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5S13.657 14 12 14m0-8v2m0 6v2m9-4a9 9 0 11-18 0 9 9 0 0118 0z"
@@ -1036,7 +1044,7 @@ export default function Orders() {
                     <td colSpan={8} className="px-6 py-14 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <svg
-                          className="h-10 w-10 text-gray-300 dark:text-[var(--text-200)]"
+                          className="h-10 w-10 text-[var(--text-200)] dark:text-[var(--text-200)]"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1048,7 +1056,7 @@ export default function Orders() {
                             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                           />
                         </svg>
-                        <p className="text-gray-500 dark:text-[var(--text-200)]">
+                        <p className="text-[var(--text-200)]">
                           {selectedStatus && debouncedSearch
                             ? `No orders match "${debouncedSearch}" with status "${ORDER_STATUS_LABELS[selectedStatus as OrderStatus]}".`
                             : selectedStatus
@@ -1118,7 +1126,7 @@ export default function Orders() {
                           aria-controls={`order-items-${order._id}`}
                         >
                           <td
-                            className={`px-3 py-2.5 font-medium text-gray-900 dark:text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0 ${expandedAccent}`}
+                            className={`px-3 py-2.5 font-medium text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] last:border-r-0 ${expandedAccent}`}
                             title={orderNumberText}
                           >
                             <div className="inline-flex items-center gap-1.5">
@@ -1128,7 +1136,7 @@ export default function Orders() {
                                   e.stopPropagation()
                                   toggleOrderItems(order._id)
                                 }}
-                                className="inline-flex items-center justify-center text-gray-700 dark:text-[var(--text-200)] hover:text-[var(--accent-100)] dark:hover:text-[var(--accent-200)] cursor-pointer"
+                                className="inline-flex items-center justify-center text-[var(--text-200)] hover:text-[var(--accent-100)] dark:hover:text-[var(--accent-200)] cursor-pointer"
                                 aria-expanded={isExpanded}
                                 aria-controls={`order-items-${order._id}`}
                                 aria-label={`${isExpanded ? 'Hide' : 'Show'} items for order ${order.orderNumber}`}
@@ -1152,18 +1160,18 @@ export default function Orders() {
                             </div>
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 text-[var(--text-200)] whitespace-nowrap border-r border-[var(--bg-300)] last:border-r-0"
                             title={orderDateText}
                           >
                             {orderDateText}
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] max-w-[170px] border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 text-[var(--text-200)] max-w-[170px] border-r border-[var(--bg-300)] last:border-r-0"
                             title={customerName}
                           >
                             <span className="flex items-center gap-1.5 min-w-0">
                               <svg
-                                className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-[var(--text-200)]"
+                                className="h-3.5 w-3.5 shrink-0 text-[var(--text-200)]"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -1179,17 +1187,17 @@ export default function Orders() {
                             </span>
                           </td>
                           <td
-                            className="px-3 py-2.5 text-gray-600 dark:text-[var(--text-200)] max-w-[240px] truncate border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 text-[var(--text-200)] max-w-[240px] truncate border-r border-[var(--bg-300)] last:border-r-0"
                             title={shipToText}
                           >
                             {shipToText}
                           </td>
                           <td
-                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] last:border-r-0"
                             title={propertyTypeText}
                           >
                             {order.shipTo?.residential == null ? (
-                              <span className="text-gray-400 dark:text-[var(--text-200)]">—</span>
+                              <span className="text-[var(--text-200)]">—</span>
                             ) : order.shipTo.residential ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
                                 <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1217,19 +1225,19 @@ export default function Orders() {
                             )}
                           </td>
                           <td
-                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 whitespace-nowrap border-r border-[var(--bg-300)] last:border-r-0"
                             title={statusText}
                           >
                             <StatusBadge status={order.orderStatus} />
                           </td>
                           <td
-                            className="px-3 py-2.5 text-right whitespace-nowrap text-gray-600 dark:text-[var(--text-200)] border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 text-right whitespace-nowrap text-[var(--text-200)] border-r border-[var(--bg-300)] last:border-r-0"
                             title={itemCountText}
                           >
                             {itemCount}
                           </td>
                           <td
-                            className="px-3 py-2.5 text-right font-medium text-gray-900 dark:text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] dark:border-[var(--bg-300)] last:border-r-0"
+                            className="px-3 py-2.5 text-right font-medium text-[var(--text-100)] whitespace-nowrap border-r border-[var(--bg-300)] last:border-r-0"
                             title={orderTotalText}
                           >
                             {orderTotalText}
@@ -1243,7 +1251,7 @@ export default function Orders() {
                           >
                             <td colSpan={8} className={`px-4 py-3 ${expandedAccent}`}>
                               {isItemsLoading ? (
-                                <div className="flex items-center gap-2 px-1 py-2 text-sm text-gray-500 dark:text-[var(--text-200)]">
+                                <div className="flex items-center gap-2 px-1 py-2 text-sm text-[var(--text-200)]">
                                   <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                                     <circle
                                       className="opacity-25"
@@ -1276,51 +1284,51 @@ export default function Orders() {
                                   <table className="w-full text-[10px] leading-tight whitespace-nowrap">
                                     <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)]">
                                       <tr>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Img"
                                             iconPath="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-8-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Title"
                                             iconPath="M4 6h16M4 10h16M4 14h10"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 pl-20 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-left px-1.5 pl-20 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="SKU"
                                             iconPath="M20 7l-8 4-8-4m16 0l-8-4-8 4m16 0v10l-8 4m-8-4V7m8 4v10"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="UPC"
                                             iconPath="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"
                                           />
                                         </th>
-                                        <th className="text-right pl-1.5 pr-20 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-right pl-1.5 pr-20 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Qty"
                                             iconPath="M7 8h10M7 12h10M7 16h10"
                                             align="right"
                                           />
                                         </th>
-                                        <th className="text-left px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-left px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Weight"
                                             iconPath="M7 4h10l3 6v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8l3-6zm5 3v3"
                                           />
                                         </th>
-                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-right px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Unit"
                                             iconPath="M12 8c-1.657 0-3 .448-3 1s1.343 1 3 1 3 .448 3 1-1.343 1-3 1-3 .448-3 1 1.343 1 3 1m0-8V6m0 9v1m8-4a8 8 0 11-16 0 8 8 0 0116 0z"
                                             align="right"
                                           />
                                         </th>
-                                        <th className="text-right px-1.5 py-1 font-semibold text-gray-600 dark:text-[var(--text-200)]">
+                                        <th className="text-right px-1.5 py-1 font-semibold text-[var(--text-200)]">
                                           <HeaderLabel
                                             label="Tax"
                                             iconPath="M9 14l2 2 4-4m1-8H8a2 2 0 00-2 2v12l4-2 4 2 4-2 4 2V6a2 2 0 00-2-2h-4"
@@ -1380,7 +1388,7 @@ export default function Orders() {
                                               item.lineItemKey ??
                                               `${item.sku}-${item.name}-${index}`
                                             }
-                                            className="border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] first:border-t-0"
+                                            className="border-t border-[var(--bg-300)] first:border-t-0"
                                           >
                                             <td className="px-1.5 py-1 align-top">
                                               <div className="w-8 h-8 rounded border border-gray-200 dark:border-[var(--bg-300)] bg-gray-100 dark:bg-[var(--bg-200)] overflow-hidden">
@@ -1392,34 +1400,34 @@ export default function Orders() {
                                                     loading="lazy"
                                                   />
                                                 ) : (
-                                                  <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400 dark:text-[var(--text-200)]">
+                                                  <div className="w-full h-full flex items-center justify-center text-[8px] text-[var(--text-200)]">
                                                     —
                                                   </div>
                                                 )}
                                               </div>
                                             </td>
                                             <td
-                                              className="px-1.5 py-1 align-top text-gray-900 dark:text-[var(--text-100)] max-w-[12rem] truncate"
+                                              className="px-1.5 py-1 align-top text-[var(--text-100)] max-w-[12rem] truncate"
                                               title={title}
                                             >
                                               {title}
                                             </td>
-                                            <td className="px-1.5 pl-20 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="px-1.5 pl-20 py-1 align-top text-[var(--text-200)]">
                                               {sku}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="px-1.5 py-1 align-top text-[var(--text-200)]">
                                               {upc}
                                             </td>
-                                            <td className="pl-1.5 pr-20 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="pl-1.5 pr-20 py-1 align-top text-right text-[var(--text-200)]">
                                               {quantity != null ? quantity.toLocaleString() : '—'}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="px-1.5 py-1 align-top text-[var(--text-200)]">
                                               {weightDetails}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="px-1.5 py-1 align-top text-right text-[var(--text-200)]">
                                               {formatCurrency(unitPrice)}
                                             </td>
-                                            <td className="px-1.5 py-1 align-top text-right text-gray-700 dark:text-[var(--text-200)]">
+                                            <td className="px-1.5 py-1 align-top text-right text-[var(--text-200)]">
                                               {formatCurrency(taxAmount)}
                                             </td>
                                           </tr>
@@ -1429,7 +1437,7 @@ export default function Orders() {
                                   </table>
                                 </div>
                               ) : (
-                                <p className="text-sm text-gray-500 dark:text-[var(--text-200)]">
+                                <p className="text-sm text-[var(--text-200)]">
                                   No items found for this order.
                                 </p>
                               )}
@@ -1447,13 +1455,13 @@ export default function Orders() {
 
         {/* Pagination */}
         {!initialLoading && !error && pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[var(--text-200)]">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-2.5 border-t border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {PAGE_SIZE_OPTIONS.map((s) => (
                   <option key={s} value={s}>
