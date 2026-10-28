@@ -404,7 +404,7 @@ function CompareModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="hh-compare-title"
-        className={`relative z-10 flex max-h-[min(90vh,44rem)] w-full flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl ${
+        className={`relative z-10 flex max-h-[min(90vh,44rem)] w-full flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl ${
           wide ? 'max-w-3xl' : 'max-w-lg'
         }`}
       >

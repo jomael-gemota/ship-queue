@@ -312,7 +312,7 @@ export default function DocTidy() {
       )}
 
       {/* Table card */}
-      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-md">
+      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-md">
 
         {/* ── Filter bar ──────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--bg-300)] bg-[var(--bg-200)]/40">

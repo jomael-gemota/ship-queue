@@ -141,7 +141,7 @@ export default function CookieJarSection({
   }
 
   return (
-    <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+    <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
       <div className="flex items-start gap-3 mb-4">
         <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)]">
           <CookieJarMark className="h-6 w-6 text-amber-700 dark:text-amber-400" />

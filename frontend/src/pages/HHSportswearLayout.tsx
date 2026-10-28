@@ -87,7 +87,7 @@ function HHSportswearShell() {
           </Link>
         </div>
       ) : null}
-      <section className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-100)]">
+      <section className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]">
         {isConfig ? null : <HHFilterBar />}
         <div className={leaving ? 'hh-drilldown-viewport is-animating' : 'hh-drilldown-viewport'}>
           {leaving && (

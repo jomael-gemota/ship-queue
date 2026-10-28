@@ -158,7 +158,7 @@ export default function WorkspaceRulesView({ workspaceId }: { workspaceId: strin
         </Banner>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm">
         {/* ── Toolbar ── */}
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] px-4 py-2">
           {/* Search */}
@@ -350,7 +350,7 @@ export default function WorkspaceRulesView({ workspaceId }: { workspaceId: strin
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => setConfirmDelete(null)} />
           <div role="dialog" aria-modal="true"
-            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl">
+            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl">
             <div className="flex items-center gap-3 border-b border-[var(--bg-300)] px-5 py-4">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

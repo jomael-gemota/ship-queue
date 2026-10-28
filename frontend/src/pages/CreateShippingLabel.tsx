@@ -472,7 +472,7 @@ export default function CreateShippingLabel() {
       </section>}
 
       {/* Batches table */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] overflow-hidden">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
           <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
             <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />

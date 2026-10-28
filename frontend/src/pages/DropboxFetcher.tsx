@@ -242,7 +242,7 @@ export default function DropboxFetcher() {
   if (!settingsLoading && !connected) {
     return (
       <div className="max-w-3xl">
-        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-8 text-center">
           <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0061FF]/10 dark:bg-[#0061FF]/20 mb-4">
             <DropboxLogo className="h-8 w-8" />
           </span>
@@ -289,7 +289,7 @@ export default function DropboxFetcher() {
         {/* Left column — setup */}
         <div className="space-y-6 lg:col-span-5">
       {/* Step 1 — choose a folder */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
         <div className="flex items-center gap-2 mb-3">
           <StepBadge n={1} />
           <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Choose a folder</h2>
@@ -340,7 +340,7 @@ export default function DropboxFetcher() {
       </section>
 
       {/* Step 2 — choose file type + extract */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
         <div className="flex items-center gap-2 mb-3">
           <StepBadge n={2} />
           <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Choose file type & extract</h2>
@@ -432,7 +432,7 @@ export default function DropboxFetcher() {
         {/* Right column — results */}
         <div className="lg:col-span-7">
       {result ? (
-        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-5">
+        <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-5">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <StepBadge n={3} />
             <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
@@ -500,7 +500,7 @@ export default function DropboxFetcher() {
           )}
         </section>
       ) : (
-        <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] p-8 text-center">
+        <section className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-8 text-center">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0061FF]/10 dark:bg-[#0061FF]/20 mb-3">
             <LinkIcon className="h-6 w-6 text-[#0061FF]" />
           </span>

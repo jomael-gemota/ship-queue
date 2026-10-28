@@ -178,7 +178,7 @@ export default function ParseJobPanel({
         role="dialog"
         aria-modal="true"
         aria-label="Agent parsing details"
-        className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl"
+        className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl"
       >
         <header className="flex items-start justify-between gap-3 border-b border-[var(--bg-300)] px-5 py-3">
           <div className="min-w-0">
