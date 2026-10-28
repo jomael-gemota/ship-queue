@@ -78,21 +78,54 @@ import {
  */
 const SSE_REFETCH_DEBOUNCE_MS = 400
 
-/** Trailing-edge debounce that always calls the latest `run`. */
-function useDebouncedRefetch(run: () => void, delay = SSE_REFETCH_DEBOUNCE_MS): () => void {
+/**
+ * Longest an SSE-triggered refetch can be postponed. Without it, a batch whose
+ * events never pause for the debounce window would never refetch at all.
+ */
+const SSE_REFETCH_MAX_WAIT_MS = 2_000
+
+/**
+ * While any visible row is still parsing, refetch on this interval too. Events
+ * are best-effort, so this is what catches a completion the stream dropped.
+ */
+const RUNNING_ROWS_RESYNC_MS = 15_000
+
+/** Trailing-edge debounce, capped at `maxWait`, that always calls the latest `run`. */
+function useDebouncedRefetch(
+  run: () => void,
+  delay = SSE_REFETCH_DEBOUNCE_MS,
+  maxWait = SSE_REFETCH_MAX_WAIT_MS
+): () => void {
   const runRef = useRef(run)
   useEffect(() => { runRef.current = run })
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const firstCallAt = useRef<number | null>(null)
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
   return useCallback(() => {
+    const now = Date.now()
+    firstCallAt.current ??= now
     if (timer.current) clearTimeout(timer.current)
+    const wait = Math.max(0, Math.min(delay, firstCallAt.current + maxWait - now))
     timer.current = setTimeout(() => {
       timer.current = null
+      firstCallAt.current = null
       runRef.current()
-    }, delay)
-  }, [delay])
+    }, wait)
+  }, [delay, maxWait])
+}
+
+/** Calls the latest `run` every `intervalMs` for as long as `active` is true. */
+function useResyncWhile(active: boolean, run: () => void, intervalMs = RUNNING_ROWS_RESYNC_MS): void {
+  const runRef = useRef(run)
+  useEffect(() => { runRef.current = run })
+
+  useEffect(() => {
+    if (!active) return
+    const timer = setInterval(() => runRef.current(), intervalMs)
+    return () => clearInterval(timer)
+  }, [active, intervalMs])
 }
 
 /** Sentinel used in column filter sets to represent empty / blank cells. */
@@ -3566,10 +3599,10 @@ export default function DocTidyInvoiceAudit() {
   /** Generation counter — incremented on every fetch so stale responses are discarded. */
   const pdfFetchGenRef = useRef(0)
 
-  const fetchPdfImports = useCallback(async () => {
+  const fetchPdfImports = useCallback(async (silent = false) => {
     if (!activeWorkspace) return
     const gen = ++pdfFetchGenRef.current
-    setPdfImportsLoading(true)
+    if (!silent) setPdfImportsLoading(true)
     try {
       const params = new URLSearchParams({
         workspaceId: activeWorkspace._id,
@@ -4137,7 +4170,9 @@ export default function DocTidyInvoiceAudit() {
       if (gen !== emailFetchGenRef.current) return
       addToast(err instanceof Error ? err.message : 'Failed to load messages', 'error')
     } finally {
-      if (gen === emailFetchGenRef.current && !silent) setEmailLoading(false)
+      // Cleared even for a silent fetch: it supersedes any loud one in flight,
+      // whose own `finally` will then skip this.
+      if (gen === emailFetchGenRef.current) setEmailLoading(false)
     }
   }, [activeWorkspace, emailPage, emailPageSize, emailDebouncedSearch, emailDateFrom, emailDateTo, emailAdvDebounced])
 
@@ -4156,7 +4191,9 @@ export default function DocTidyInvoiceAudit() {
     if (workspaceTab !== 'emails' || !activeWorkspace) return
     return subscribeDocTidyEvents(
       (event) => {
-        if (event.type === 'imported') {
+        // `connected` also fires on every reconnect; whatever completed while
+        // the stream was down only shows up by refetching.
+        if (event.type === 'imported' || event.type === 'connected') {
           refetchEmailsSoon()
         }
         if (event.type === 'parse_status' &&
@@ -4207,7 +4244,10 @@ export default function DocTidyInvoiceAudit() {
     if (workspaceTab !== 'audit' || !activeWorkspace) return
     return subscribeDocTidyEvents(
       (event) => {
-        if (event.type === 'parse_status' && event.parseStatus === 'completed') {
+        if (
+          event.type === 'connected' ||
+          (event.type === 'parse_status' && event.parseStatus === 'completed')
+        ) {
           refetchAllJobsSoon()
         }
         if (event.type === 'dc_cogs' && event.workspaceId === activeWorkspace?._id) {
@@ -4240,17 +4280,28 @@ export default function DocTidyInvoiceAudit() {
   /* SSE — refresh PDF imports when a parse job status changes */
   const fetchPdfImportsRef = useRef(fetchPdfImports)
   useEffect(() => { fetchPdfImportsRef.current = fetchPdfImports }, [fetchPdfImports])
-  const refetchPdfImportsSoon = useDebouncedRefetch(() => { void fetchPdfImportsRef.current() })
+  const refetchPdfImportsSoon = useDebouncedRefetch(() => { void fetchPdfImportsRef.current(true) })
   useEffect(() => {
     if (workspaceTab !== 'pdf-imports' || !activeWorkspace) return
     return subscribeDocTidyEvents(
       (event) => {
-        if (event.type === 'parse_status') refetchPdfImportsSoon()
+        if (event.type === 'parse_status' || event.type === 'connected') refetchPdfImportsSoon()
         if (event.type === 'worker_status') setWorkerOnline(event.workerOnline ?? false)
       },
       () => {}
     )
   }, [workspaceTab, activeWorkspace, refetchPdfImportsSoon])
+
+  const emailRowsRunning = useMemo(
+    () => emailMessages.some((m) => m.parseJobs?.some((j) => isParseRunning(j.status))),
+    [emailMessages]
+  )
+  const pdfRowsRunning = useMemo(
+    () => pdfImports.some((imp) => isParseRunning(imp.parseJob?.status)),
+    [pdfImports]
+  )
+  useResyncWhile(workspaceTab === 'emails' && emailRowsRunning, () => { void fetchEmailsRef.current(true) })
+  useResyncWhile(workspaceTab === 'pdf-imports' && pdfRowsRunning, () => { void fetchPdfImportsRef.current(true) })
 
   /* Fetch initial worker status whenever a workspace is active */
   useEffect(() => {
