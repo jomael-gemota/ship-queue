@@ -143,7 +143,7 @@ function VendorEditor({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-2xl"
+        className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-2xl"
       >
         {/* Header */}
         <header className="flex items-start justify-between gap-4 border-b border-[var(--bg-300)] px-6 py-4">
@@ -570,7 +570,7 @@ const ICON_EDIT =
   'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
 
 const filterClass =
-  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-gray-900 dark:text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
+  'text-[11px] border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] text-[var(--text-100)] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
@@ -744,13 +744,13 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
       )}
 
       {/* ── Vendor list ───────────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm">
 
         {/* ── Toolbar ── */}
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--bg-300)] px-4 py-2">
           {/* Search */}
           <div className="relative min-w-[180px] flex-1 max-w-xs">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-[var(--text-200)]">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -792,7 +792,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
 
           {/* Summary stats + New vendor */}
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-[11px] text-gray-500 dark:text-[var(--text-200)]">
+            <span className="text-[11px] text-[var(--text-200)]">
               {hasActiveFilters
                 ? `${filteredVendors.length} of ${vendors.length} vendors`
                 : `${vendors.length} vendor${vendors.length !== 1 ? 's' : ''}`}
@@ -1056,7 +1056,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
 
       {/* ── Corrections that reached no vendor ────────────────────── */}
       {!loading && unassigned.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-amber-300/60 bg-[var(--bg-100)] shadow-sm dark:border-amber-500/30">
+        <div className="overflow-hidden rounded-xl border border-amber-300/60 bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-sm dark:border-amber-500/30">
           <button
             type="button"
             onClick={() => setShowUnassigned((prev) => !prev)}
@@ -1152,7 +1152,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
           <div
             role="dialog"
             aria-modal="true"
-            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl"
+            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl"
           >
             <div className="flex items-center gap-3 border-b border-[var(--bg-300)] px-5 py-4">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">
@@ -1204,7 +1204,7 @@ export default function WorkspaceVendorsView({ workspaceId }: { workspaceId: str
           <div
             role="dialog"
             aria-modal="true"
-            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] shadow-xl"
+            className="relative z-10 w-full max-w-sm overflow-hidden rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] shadow-xl"
           >
             <div className="flex items-center gap-3 border-b border-[var(--bg-300)] px-5 py-4">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">

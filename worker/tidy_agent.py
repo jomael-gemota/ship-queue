@@ -111,12 +111,13 @@ Line items (only when the document contains a product / order / invoice line-ite
 - Build the full "sku" string for each line item yourself. SKU formats are
   vendor-specific and sometimes complex (varying components, order, separators,
   prefixes/initials, and value transformations — e.g. a size of "7 1/2" written as
-  "7.5"). When REFERENCE CORRECTIONS for this vendor are provided below, reproduce
-  that vendor's SKU format EXACTLY as shown — same components, order, separators,
-  initial, and transformations. When no reference is available (a new vendor),
-  assemble a reasonable SKU from the fields above as your best effort; the user will
-  correct it once, and you must follow that corrected format for the vendor from
-  then on.
+  "7.5"). When a VENDOR SKU FORMAT or REFERENCE CORRECTIONS for this vendor are
+  provided below, reproduce that vendor's SKU format EXACTLY as shown — same
+  components, order, separators, prefix/initial, and transformations — even when the
+  document prints the item number without them. Only when neither is provided (a new
+  vendor), assemble a reasonable SKU from the fields above as your best effort; the
+  user will correct it once, and you must follow that corrected format for the vendor
+  from then on.
 - Preserve any other meaningful per-row fields (e.g. description, unitPrice) too.
 
 Invoice / billing document — pricing and discount fields (CRITICAL):
@@ -180,6 +181,17 @@ Rules:
 - Every row must have exactly as many cells as there are columns; pad with "" if needed.
 - All cell values must be strings, numbers, booleans, or null — never nested objects or arrays.
 - Output only the JSON object. No markdown fencing, no commentary, no <thinking> tags.
+"""
+
+SKU_CONFORM_SYSTEM_PROMPT = """You are Tidy's SKU checker.
+
+You are given line items already extracted from one vendor's document, and that
+vendor's SKU format. Rewrite each row's "sku" so it follows the format, built from
+that row's own values. Keep any SKU that already follows the format unchanged.
+
+Return a single valid JSON object of the form {"skus": ["<sku>", ...]} with exactly
+one string per input row, in input order. Output only the JSON object. No markdown
+fencing, no commentary, no <thinking> tags.
 """
 
 
@@ -277,6 +289,31 @@ def _build_correction_rules(examples) -> str:
     )
 
 
+def _clean_samples(sku_samples) -> list[str]:
+    """Trimmed, deduped sample SKUs in their original order."""
+    if isinstance(sku_samples, str):
+        sku_samples = [sku_samples]
+    samples = [s.strip() for s in (sku_samples or []) if isinstance(s, str) and s.strip()]
+    return list(dict.fromkeys(samples))
+
+
+def _build_vendor_format_reminder(sku_samples) -> str:
+    """Restates the sample format next to the document, where the model heeds it.
+
+    The anchor alone sits in an earlier system message, and a model that reads
+    the item-number column literally drops the vendor's prefix about half the time.
+    """
+    samples = _clean_samples(sku_samples)
+    if not samples:
+        return ""
+    listed = ", ".join(samples)
+    return (
+        f"Build every line item's \"sku\" in this vendor's SKU format, like: {listed} "
+        "— keep its prefix and separators even where the document prints only the "
+        "item number.\n\n"
+    )
+
+
 def _build_vendor_format_anchor(sku_samples) -> str:
     """Promote a vendor's setup-time sample SKU(s) into a hard formatting rule.
 
@@ -288,11 +325,7 @@ def _build_vendor_format_anchor(sku_samples) -> str:
     corrections (when present) still take precedence as the higher-fidelity,
     row-level signal; this only shapes the format.
     """
-    if isinstance(sku_samples, str):
-        sku_samples = [sku_samples]
-    samples = [s.strip() for s in (sku_samples or []) if s and s.strip()]
-    # Dedupe while preserving order.
-    samples = list(dict.fromkeys(samples))
+    samples = _clean_samples(sku_samples)
     if not samples:
         return ""
 
@@ -440,8 +473,12 @@ async def stream_tidy(
         if invoice_count
         else ""
     )
+    format_hint = _build_vendor_format_reminder(vendor_sku_samples)
     messages.append(
-        {"role": "user", "content": f"{apply_hint}{batch_hint}Document text:\n\n{document_text}"}
+        {
+            "role": "user",
+            "content": f"{apply_hint}{format_hint}{batch_hint}Document text:\n\n{document_text}",
+        }
     )
 
     # ── Retry loop: recover from 429 "too many concurrent runs" ──────────────
@@ -660,13 +697,67 @@ async def generate_table_data(json_data: dict) -> dict:
 
     Retries automatically on 429 rate-limit errors (same backoff as stream_tidy).
     """
-    client, model = _make_hermes_client()
-
     payload = json.dumps(json_data, ensure_ascii=False, indent=2)
     if len(payload) > MAX_DOCUMENT_CHARS:
         payload = payload[:MAX_DOCUMENT_CHARS] + "\n\n[... truncated ...]"
 
-    logger.info("Requesting tabular formatting from Hermes model '%s'", model)
+    parsed = await _complete_json(
+        purpose="table",
+        label="table pass",
+        messages=[
+            {"role": "system", "content": TABLE_SYSTEM_PROMPT},
+            {"role": "user", "content": f"JSON to tabulate:\n\n{payload}"},
+        ],
+    )
+
+    tables = parsed.get("tables") if isinstance(parsed, dict) else None
+    if not isinstance(tables, list):
+        raise ValueError("Hermes table output missing a 'tables' array")
+
+    return {"tables": tables}
+
+
+_SKU_CONFORM_FIELDS = ("styleNumber", "colorCode", "size", "width", "sku")
+
+
+async def conform_skus(line_items: list[dict], sku_samples) -> list[str]:
+    """Rewrite line-item SKUs to the vendor's sample format in one small call.
+
+    Only the ordered list of SKUs comes back, so no other extracted field can
+    change. Raises when the answer doesn't hold exactly one string per row; the
+    worker treats that as non-fatal and keeps the original SKUs.
+    """
+    anchor = _build_vendor_format_anchor(sku_samples).strip()
+    rows = [{k: item.get(k) for k in _SKU_CONFORM_FIELDS} for item in line_items]
+    payload = json.dumps(rows, ensure_ascii=False, indent=2)
+
+    parsed = await _complete_json(
+        purpose="extraction",
+        label="SKU conform pass",
+        messages=[
+            {"role": "system", "content": SKU_CONFORM_SYSTEM_PROMPT},
+            {"role": "system", "content": anchor},
+            {"role": "user", "content": f"Line items ({len(rows)} rows):\n\n{payload}"},
+        ],
+    )
+
+    skus = parsed.get("skus") if isinstance(parsed, dict) else None
+    if (
+        not isinstance(skus, list)
+        or len(skus) != len(rows)
+        or not all(isinstance(s, str) and s.strip() for s in skus)
+    ):
+        raise ValueError("SKU conform output did not hold one SKU per row")
+    return [s.strip() for s in skus]
+
+
+async def _complete_json(*, purpose: str, label: str, messages: list[dict]) -> dict:
+    """One non-streamed Hermes call whose answer is a JSON object.
+
+    Retries automatically on 429 rate-limit errors (same backoff as stream_tidy).
+    """
+    client, model = _make_hermes_client()
+    logger.info("Requesting %s from Hermes model '%s'", label, model)
 
     last_rate_exc: openai.RateLimitError | None = None
 
@@ -674,15 +765,12 @@ async def generate_table_data(json_data: dict) -> dict:
         try:
             response = await client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": TABLE_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"JSON to tabulate:\n\n{payload}"},
-                ],
+                messages=messages,
                 stream=False,
                 max_tokens=MAX_TOKENS,
             )
             await report_usage(
-                purpose="table",
+                purpose=purpose,
                 provider=hermes_provider(),
                 model=getattr(response, "model", None) or model,
                 usage=getattr(response, "usage", None),
@@ -690,26 +778,22 @@ async def generate_table_data(json_data: dict) -> dict:
             )
 
             content = (response.choices[0].message.content or "") if response.choices else ""
-            parsed = extract_json(content)
-
-            tables = parsed.get("tables") if isinstance(parsed, dict) else None
-            if not isinstance(tables, list):
-                raise ValueError("Hermes table output missing a 'tables' array")
-
-            return {"tables": tables}
+            return extract_json(content)
 
         except openai.RateLimitError as exc:
             last_rate_exc = exc
             if attempt >= RETRY_MAX_ATTEMPTS:
                 logger.error(
-                    "Rate limit retry exhausted on table pass after %d attempts: %s",
+                    "Rate limit retry exhausted on %s after %d attempts: %s",
+                    label,
                     RETRY_MAX_ATTEMPTS,
                     exc,
                 )
                 break
             delay = RETRY_BASE_DELAY * (1.5 ** (attempt - 1))
             logger.warning(
-                "Rate limited on table pass (attempt %d/%d); retrying in %.0f s — %s",
+                "Rate limited on %s (attempt %d/%d); retrying in %.0f s — %s",
+                label,
                 attempt,
                 RETRY_MAX_ATTEMPTS,
                 delay,

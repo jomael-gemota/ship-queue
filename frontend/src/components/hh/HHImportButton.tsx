@@ -41,8 +41,8 @@ function ImportSwitch({
   return (
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-800 dark:text-[var(--text-100)]">{label}</p>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-[var(--text-200)]">{description}</p>
+        <p className="text-sm font-medium text-[var(--text-100)]">{label}</p>
+        <p className="mt-0.5 text-xs text-[var(--text-200)]">{description}</p>
       </div>
       <button
         type="button"
@@ -53,7 +53,7 @@ function ImportSwitch({
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-        } ${checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-[var(--bg-300)]'}`}
+        } ${checked ? 'bg-emerald-500' : 'bg-[var(--bg-300)]'}`}
       >
         <span
           className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
@@ -337,8 +337,8 @@ export function HHImportButton() {
   const tabClass = (id: ImportTab) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
       tab === id
-        ? 'bg-[var(--bg-100)] text-slate-900 shadow-sm dark:bg-[var(--bg-100)] dark:text-[var(--text-100)]'
-        : 'text-slate-500 hover:text-slate-700 dark:text-[var(--text-200)] dark:hover:text-[var(--text-100)]'
+        ? 'bg-[var(--bg-100)] text-[var(--text-100)] shadow-sm dark:bg-[var(--bg-100)] dark:text-[var(--text-100)]'
+        : 'text-slate-500 hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)]'
     }`
 
   return (
@@ -372,17 +372,17 @@ export function HHImportButton() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="hh-import-title"
-            className="relative z-10 max-h-[calc(100vh-2rem)] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] p-6 shadow-xl"
+            className="relative z-10 max-h-[calc(100vh-2rem)] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-xl"
           >
             <div className="flex items-start justify-between gap-3">
-              <h3 id="hh-import-title" className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              <h3 id="hh-import-title" className="text-base font-semibold text-[var(--text-100)]">
                 Import orders
               </h3>
               <button
                 type="button"
                 onClick={close}
                 disabled={importBusy}
-                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-[var(--bg-200)] hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-[var(--text-100)]"
+                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[var(--text-200)] transition-colors hover:bg-[var(--bg-200)] hover:text-[var(--text-200)] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-[var(--text-100)]"
                 aria-label="Close"
               >
                 <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -459,10 +459,10 @@ export function HHImportButton() {
                 )}
               </span>
 
-              <span className="max-w-full truncate px-2 text-sm font-semibold text-slate-900 dark:text-[var(--text-100)]">
+              <span className="max-w-full truncate px-2 text-sm font-semibold text-[var(--text-100)]">
                 {dropTitle}
               </span>
-              <span className="mt-1 max-w-[18rem] text-xs text-slate-500 dark:text-[var(--text-200)]">{dropHint}</span>
+              <span className="mt-1 max-w-[18rem] text-xs text-[var(--text-200)]">{dropHint}</span>
 
               {!importBusy && (
                 <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-200)] px-3.5 py-2 text-sm font-medium text-white dark:bg-[var(--accent-100)] dark:text-[var(--text-100)]">
@@ -477,7 +477,7 @@ export function HHImportButton() {
                   {selectedFile ? 'Change file' : 'Browse files'}
                 </span>
               )}
-              <span className="mt-3 text-[11px] text-slate-400 dark:text-[var(--text-200)]">
+              <span className="mt-3 text-[11px] text-[var(--text-200)]">
                 .xlsx or .csv, up to 5 MB
               </span>
             </label>
@@ -498,9 +498,9 @@ export function HHImportButton() {
                     setPaste(event.target.value)
                     setImportError(null)
                   }}
-                  className="w-full resize-none overflow-y-auto rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 font-mono text-xs leading-5 text-slate-800 outline-none placeholder:text-slate-400 focus:border-[var(--accent-200)] focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40 dark:text-[var(--text-100)] dark:placeholder:text-[var(--text-200)]"
+                  className="w-full resize-none overflow-y-auto rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-3.5 py-3 font-mono text-xs leading-5 text-[var(--text-100)] outline-none placeholder:text-[var(--text-200)] focus:border-[var(--accent-200)] focus:ring-2 focus:ring-[var(--accent-200)] disabled:opacity-60 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40 dark:text-[var(--text-100)] dark:placeholder:text-[var(--text-200)]"
                 />
-                <p className="mt-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
+                <p className="mt-2 text-xs text-[var(--text-200)]">
                   {pasteRows === 0
                     ? 'Paste from Excel or a text list. Tabs, commas, or spaces are fine.'
                     : checking
@@ -524,33 +524,33 @@ export function HHImportButton() {
 
             {!readyReview && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--text-200)]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-200)]">
                 Columns
               </p>
-              <ul className="mt-2 space-y-1.5 text-sm text-slate-700 dark:text-[var(--text-100)]">
+              <ul className="mt-2 space-y-1.5 text-sm text-[var(--text-100)]">
                 <li className="flex items-baseline gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-200)]" aria-hidden="true" />
                   <span>
                     <span className="font-medium">Order ID</span>
-                    <span className="text-slate-500 dark:text-[var(--text-200)]"> — required</span>
+                    <span className="text-[var(--text-200)]"> — required</span>
                   </span>
                 </li>
                 <li className="flex items-baseline gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-200)]" aria-hidden="true" />
                   <span>
                     <span className="font-medium">PO Number</span>
-                    <span className="text-slate-500 dark:text-[var(--text-200)]"> — required</span>
+                    <span className="text-[var(--text-200)]"> — required</span>
                   </span>
                 </li>
               </ul>
-              <p className="mt-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
+              <p className="mt-2 text-xs text-[var(--text-200)]">
                 Columns can be in either order. Headers are optional if one column is an Amazon Order ID. Rows are checked before the batch is created.
               </p>
             </div>
             )}
 
             <div className="space-y-3 rounded-xl border border-[var(--bg-300)] bg-[var(--bg-200)]/40 px-4 py-3 dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]/40">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--text-200)]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-200)]">
                 After import
               </p>
               <ImportSwitch
@@ -592,7 +592,7 @@ export function HHImportButton() {
 
             <div className="flex flex-col gap-2">
               {readyReview && includedCount === 0 && (
-                <p className="text-center text-xs text-slate-500 dark:text-[var(--text-200)]">
+                <p className="text-center text-xs text-[var(--text-200)]">
                   Select at least one order.
                 </p>
               )}

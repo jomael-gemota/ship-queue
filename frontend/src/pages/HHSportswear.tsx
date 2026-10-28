@@ -24,7 +24,7 @@ import {
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 const paginationButtonClass =
-  'p-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-slate-900 dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
+  'p-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] hover:text-[var(--text-100)] dark:hover:text-[var(--text-100)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors'
 
 function FileSourceIcon({ className = '' }: { className?: string }) {
   return (
@@ -126,7 +126,7 @@ export default function HHSportswear() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
       </button>
-      <span className="whitespace-nowrap px-2.5 py-1 text-sm text-gray-700 dark:text-[var(--text-200)]">
+      <span className="whitespace-nowrap px-2.5 py-1 text-sm text-[var(--text-200)]">
         Page {safePage} of {pageCount}
       </span>
       <button
@@ -156,12 +156,12 @@ export default function HHSportswear() {
 
   const rowsPerPageBar = (
     <div className="flex flex-col gap-3 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[var(--text-200)]">
+      <div className="flex items-center gap-2 text-sm text-[var(--text-200)]">
         <span>Rows per page:</span>
         <select
           value={pageSize}
           onChange={(event) => handlePageSizeChange(Number(event.target.value))}
-          className="cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)] dark:text-[var(--text-100)]"
+          className="cursor-pointer rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] px-2 py-1 text-sm text-[var(--text-100)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-200)]  dark:text-[var(--text-100)]"
         >
           {PAGE_SIZE_OPTIONS.map((size) => (
             <option key={size} value={size}>
@@ -180,14 +180,14 @@ export default function HHSportswear() {
   return (
     <>
       {listTotal > 0 && (
-        <div className="border-b border-[var(--bg-300)] bg-[var(--bg-200)] dark:border-[var(--bg-300)] dark:bg-[var(--bg-200)]">
+        <div className="border-b border-[var(--bg-300)] bg-[var(--bg-200)] ">
           {rowsPerPageBar}
         </div>
       )}
 
       <div className="hh-table-scroll">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 dark:bg-[var(--bg-200)] dark:text-[var(--text-200)]">
+          <thead className="bg-[var(--bg-200)] text-xs uppercase tracking-wide text-slate-500 ">
             <tr className="text-left">
               <Th>
                 <HeaderLabel icon={<IdIcon className="h-3.5 w-3.5" />} text="Batch ID" />
@@ -213,16 +213,16 @@ export default function HHSportswear() {
               <HHRowActionsHeader />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 text-[13px] dark:divide-[var(--bg-300)]">
+          <tbody className="divide-y divide-[var(--bg-300)] text-[13px]">
             {loadState === 'loading' ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-[var(--text-200)]">
                   Loading groups…
                 </Td>
               </tr>
             ) : loadState === 'error' ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-sm text-slate-500 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-sm text-[var(--text-200)]">
                   <p>{loadError || 'Failed to load groups.'}</p>
                   <button
                     type="button"
@@ -235,7 +235,7 @@ export default function HHSportswear() {
               </tr>
             ) : paginated.length === 0 ? (
               <tr>
-                <Td colSpan={7} className="py-10 text-center text-slate-400 dark:text-[var(--text-200)]">
+                <Td colSpan={7} className="py-10 text-center text-[var(--text-200)]">
                   {selectedDetailsStatus || selectedCartStatus
                     ? searchInput.trim()
                       ? `No groups match "${searchInput.trim()}" with ${hhFilterSummary(selectedDetailsStatus, selectedCartStatus)}.`
@@ -260,7 +260,7 @@ export default function HHSportswear() {
                     exiting={exitingId === group.id}
                     onExitEnd={() => finishExit(group.id)}
                   >
-                    <Td compact className="font-medium text-slate-800 dark:text-[var(--text-100)]">
+                    <Td compact className="font-medium text-[var(--text-100)]">
                       <span className="inline-flex items-center gap-1.5">
                         <BatchSourceMark sourceFileName={group.sourceFileName} />
                         <span className="font-mono whitespace-nowrap" title={group.id}>
@@ -269,7 +269,7 @@ export default function HHSportswear() {
                         <HHCopyIdButton value={group.id} title="Copy batch ID" />
                       </span>
                     </Td>
-                    <Td compact className="whitespace-nowrap text-slate-600 dark:text-[var(--text-100)]">
+                    <Td compact className="whitespace-nowrap text-[var(--text-200)] dark:text-[var(--text-100)]">
                       {formatCreatedAt(group.createdAt)}
                     </Td>
                     <Td compact className="max-w-[260px]">
@@ -281,10 +281,10 @@ export default function HHSportswear() {
                           size="md"
                         />
                         <span className="min-w-0">
-                          <p className="truncate font-medium text-slate-800 dark:text-[var(--text-100)]">
+                          <p className="truncate font-medium text-[var(--text-100)]">
                             {group.createdByName}
                           </p>
-                          <p className="truncate text-xs text-slate-500 dark:text-[var(--text-200)]" title={group.createdByEmail}>
+                          <p className="truncate text-xs text-[var(--text-200)]" title={group.createdByEmail}>
                             {group.createdByEmail}
                           </p>
                         </span>

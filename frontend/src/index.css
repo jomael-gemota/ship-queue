@@ -3,44 +3,70 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* ── Soft Seafoam light palette ─────────────────────────────────────────── */
-  --primary-100: #c5f0e4;   /* hover / active background — light seafoam */
-  --primary-200: #a2e6d2;   /* elevated interactive, active pill */
-  --primary-300: #4a8a72;   /* muted mid-tone (disabled, placeholder) */
-  --accent-100:  #6dc4a8;   /* subtle icon accents, row handles */
-  --accent-200:  #1e7a5e;   /* buttons, active nav text — deep teal */
-  --text-100:    #0f2e24;   /* primary text — near-black teal */
-  --text-200:    #3d6b5a;   /* secondary / muted text — dark teal-green */
-  --bg-100:      #f0fdfb;   /* main background — near-white seafoam */
-  --bg-200:      #e8faf5;   /* secondary background */
-  --bg-300:      #a2e6d2;   /* borders / dividers — medium seafoam */
+  /* ── Sky-and-cream light palette ────────────────────────────────────────── */
+  --primary-100: #d4eaf7;   /* hover / active background — light sky blue */
+  --primary-200: #b6ccd8;   /* elevated interactive, theme-toggle active pill */
+  --primary-300: #3b3c3d;   /* muted mid-tone (disabled, placeholder) */
+  --accent-100:  #71c4ef;   /* subtle icon accents, row handles — sky blue */
+  --accent-200:  #00668c;   /* buttons, active nav text — deep ocean blue */
+  --text-100:    #1d1c1c;   /* primary text — near-black */
+  --text-200:    #313d44;   /* secondary / muted text — blue-gray */
+  --bg-100:      #fffefb;   /* main background — near-white cream */
+  --bg-200:      #f5f4f1;   /* secondary background — warm light gray */
+  --bg-300:      #cccbc8;   /* borders / dividers — warm gray */
 }
 
 .dark {
-  /* ── Teal-on-black palette ─────────────────────────────────────────────── */
-  --primary-100: #0d5060;   /* hover / active background */
-  --primary-200: #12768a;   /* theme-toggle active pill, interactive elevations */
-  --primary-300: #515c5c;   /* muted / disabled — Bovine */
-  --accent-100:  #12768a;   /* row handles, icon accents — Alpine Landing */
-  --accent-200:  #cedadb;   /* active nav text, row-hover accent border */
-  --text-100:    #cedadb;   /* primary text — Light Detroit */
-  --text-200:    #6dadbe;   /* secondary / muted text — Water Music */
-  --bg-100:      #030a0a;   /* main background — Eight Ball */
-  --bg-200:      #0e2527;   /* elevated: alt rows, table headers */
-  --bg-300:      #515c5c;   /* borders / dividers — Bovine */
+  /* ── Midnight navy palette ─────────────────────────────────────────────── */
+  /* Chrome hierarchy (dedicated — not propagated elsewhere via var) */
+  --sidebar-bg:  #060d1a;   /* sidebar — darkest chrome */
+  --navbar-bg:   #0b1626;   /* top navbar — mid chrome */
+
+  --primary-100: #1f3a5f;   /* hover / active background, active nav tile */
+  --primary-200: #4d648d;   /* pills, theme-toggle active pill */
+  --primary-300: #acc2ef;   /* highlight text — soft periwinkle */
+  --accent-100:  #3d5a80;   /* primary buttons, row handles */
+  --accent-200:  #cee8ff;   /* active nav icon, row-hover accent border, links */
+  --text-100:    #ffffff;   /* primary text */
+  --text-200:    #e0e0e0;   /* secondary / muted text */
+  --bg-100:      #0f1c2e;   /* page, navbar and sidebar background */
+  --bg-200:      #1f2b3e;   /* cards, table headers, alt rows */
+  --bg-300:      #374357;   /* borders / dividers */
 }
 
 /* ── Sidebar token overrides (light mode only) ──────────────────────────────
-   The light-mode sidebar bg (#62b5a0) is dark enough that the global dark-teal
-   text tokens have poor contrast. Scope lighter values here so every child
-   element picks them up automatically without touching individual class strings.
+   The light-mode sidebar bg (#00668c ocean blue) is dark enough that the
+   global light-palette text tokens have poor contrast. Scope lighter values
+   here so every child element picks them up automatically.
    The html:not(.dark) selector keeps dark mode completely unaffected.        */
 html:not(.dark) [data-sidebar] {
-  --text-100:    #ffffff;               /* primary text — pure white */
-  --text-200:    rgba(255,255,255,0.78);/* secondary / section headers */
-  --accent-200:  #ffffff;               /* active nav text */
-  --primary-100: rgba(255,255,255,0.20);/* hover / active bg tint */
-  --bg-300:      rgba(255,255,255,0.22);/* collapsed divider lines */
+  --text-100:    #ffffff;                /* primary text — pure white */
+  --text-200:    rgba(255,255,255,0.75); /* secondary / section headers */
+  --accent-200:  #ffffff;                /* active nav text */
+  --primary-100: rgba(255,255,255,0.22); /* hover / active bg tint */
+  --bg-300:      rgba(255,255,255,0.22); /* collapsed divider lines */
+}
+
+/* ── Light-mode element roles ───────────────────────────────────────────────
+   Mirrors the .dark block so the palette is consistently applied in both
+   modes without per-component overrides.                                     */
+:root {
+  color-scheme: light;
+  scrollbar-color: var(--bg-300) var(--bg-200);
+}
+
+::selection {
+  background-color: var(--primary-100);
+  color: var(--text-100);
+}
+
+:is(input, select, textarea):focus {
+  border-color: var(--accent-200);
+  outline: none;
+}
+
+:is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--accent-200);
 }
 
 html,
@@ -61,6 +87,50 @@ body {
 .dark body {
   background-color: var(--bg-100);
   color: var(--text-100);
+}
+
+/* ── Dark-mode element roles ────────────────────────────────────────────────
+   Unlayered, so these beat the Tailwind utilities on the elements themselves;
+   that keeps the palette consistent across every table and form without
+   touching each class string. Light mode is untouched.                      */
+.dark {
+  color-scheme: dark;
+  scrollbar-color: var(--bg-300) var(--bg-100);
+}
+
+.dark ::selection {
+  background-color: var(--accent-100);
+  color: var(--text-100);
+}
+
+.dark thead th,
+.dark .hh-table-scroll thead th {
+  background-color: var(--primary-100);
+  color: var(--accent-200);
+}
+
+.dark thead th svg {
+  color: var(--primary-300);
+}
+
+/* Bordered fields sit inset (page colour) inside the raised card surfaces.
+   Fields styled transparent for inline editing are left alone. */
+.dark :is(input, select, textarea)[class*="bg-[var(--bg-"] {
+  background-color: var(--bg-100);
+  border-color: var(--bg-300);
+}
+
+.dark :is(input, select, textarea):focus {
+  border-color: var(--primary-300);
+}
+
+.dark option {
+  background-color: var(--bg-200);
+  color: var(--text-100);
+}
+
+.dark :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--primary-300);
 }
 
 @keyframes toast-drain {

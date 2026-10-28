@@ -52,7 +52,7 @@ export default function Navbar({
   )
 
   return (
-    <header className="sticky top-0 z-40 h-16 bg-[var(--bg-100)] dark:bg-[var(--bg-100)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] backdrop-blur">
+    <header className="sticky top-0 z-40 h-16 bg-[var(--bg-100)] dark:bg-[var(--navbar-bg)] border-b border-[var(--bg-300)] dark:border-[var(--bg-300)] backdrop-blur">
       <div className="h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {/* Sidebar burger toggle */}
@@ -69,7 +69,7 @@ export default function Navbar({
           </button>
 
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--text-200)]">
+            <p className="text-xs uppercase tracking-wide text-[var(--text-200)] dark:text-[var(--primary-300)]">
               {platformLabel}
             </p>
             <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-100)] dark:text-[var(--text-100)] truncate">
@@ -79,7 +79,7 @@ export default function Navbar({
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-1.5 px-1 text-[var(--text-200)] dark:text-[var(--text-200)]">
-            <svg className="h-4 w-4 text-[var(--primary-200)] dark:text-[var(--text-200)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-4 w-4 text-[var(--primary-200)] dark:text-[var(--primary-300)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

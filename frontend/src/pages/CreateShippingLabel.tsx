@@ -355,6 +355,19 @@ export default function CreateShippingLabel() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex items-center gap-4 pb-2 border-b border-[var(--bg-300)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-200)] dark:bg-[var(--primary-200)] text-white dark:text-[var(--accent-200)] shadow-sm">
+          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" />
+          </svg>
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-100)] tracking-tight">Shipping Labels</h1>
+          <p className="text-sm text-[var(--text-200)]">Import a CSV, draft label batches, and print PDFs to Google Drive.</p>
+        </div>
+      </div>
+
       {confirmBatch && (
         <ConfirmDeleteBatchModal
           batchShortId={shortBatchId(confirmBatch._id)}
@@ -416,21 +429,21 @@ export default function CreateShippingLabel() {
       )}
 
       {/* Step 1 — Import & draft (only shown to users with label creation permission) */}
-      {canCreate && <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--primary-100)] p-5">
+      {canCreate && <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--primary-100)] dark:bg-[var(--primary-100)] p-5">
         <div className="flex items-center justify-between gap-3 mb-1">
           <div className="flex items-center gap-2">
             <StepBadge n={1} />
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">Import &amp; Draft</h2>
+            <h2 className="text-base font-semibold text-[var(--text-100)]">Import &amp; Draft</h2>
           </div>
           <button
             onClick={downloadTemplate}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-slate-700 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-3 py-2 text-sm font-medium text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] transition-colors cursor-pointer"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
             Download template
           </button>
         </div>
-        <p className="text-sm text-slate-500 dark:text-[var(--text-200)] mb-4">
+        <p className="text-sm text-[var(--text-200)] mb-4">
           Upload a CSV with <span className="font-medium">PO#</span> and <span className="font-medium">Order#</span> columns, then draft the batch for review. Labels are only created when you choose to create &amp; print.
         </p>
 
@@ -443,13 +456,13 @@ export default function CreateShippingLabel() {
               const f = e.target.files?.[0]
               if (f) handleFile(f)
             }}
-            className="block text-sm text-slate-600 dark:text-[var(--text-200)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--accent-200)] dark:file:bg-[var(--accent-100)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:opacity-90 file:cursor-pointer cursor-pointer"
+            className="block text-sm text-[var(--text-200)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--accent-200)] dark:file:bg-[var(--accent-100)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:opacity-90 file:cursor-pointer cursor-pointer"
           />
 
           {importRows.length > 0 && (
             <>
-              <span className="text-sm text-slate-500 dark:text-[var(--text-200)]">
-                <span className="font-medium text-slate-700 dark:text-[var(--text-200)]">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
+              <span className="text-sm text-[var(--text-200)]">
+                <span className="font-medium text-[var(--text-200)]">{fileName}</span> — {importRows.length} row{importRows.length === 1 ? '' : 's'}
               </span>
               <button
                 onClick={handleDraft}
@@ -462,7 +475,7 @@ export default function CreateShippingLabel() {
               </button>
               <button
                 onClick={handleReset}
-                className="text-sm text-slate-500 dark:text-[var(--text-200)] hover:text-slate-700 dark:hover:text-[var(--text-100)] cursor-pointer"
+                className="text-sm text-[var(--text-200)] hover:text-[var(--text-200)] dark:hover:text-[var(--text-100)] cursor-pointer"
               >
                 Cancel
               </button>
@@ -472,9 +485,9 @@ export default function CreateShippingLabel() {
       </section>}
 
       {/* Batches table */}
-      <section className="rounded-xl border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-100)] overflow-hidden">
+      <section className="rounded-xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--bg-300)] dark:border-[var(--bg-300)]">
-          <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-[var(--text-100)]">
+          <h3 className="inline-flex items-center gap-2 text-base font-semibold text-[var(--text-100)]">
             <LabelsTableIcon className="h-4 w-4 text-[var(--accent-100)] dark:text-[var(--accent-200)]" />
             <span>Label Batches</span>
           </h3>
@@ -493,7 +506,7 @@ export default function CreateShippingLabel() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-slate-500 dark:text-[var(--text-200)]">
+            <thead className="bg-[var(--bg-200)] dark:bg-[var(--bg-200)] text-[var(--text-200)]">
               <tr className="text-left">
                 <Th><HeaderLabel icon={<IdIcon className="h-3.5 w-3.5" />} text="Batch ID" /></Th>
                 <Th><HeaderLabel icon={<ClockIcon className="h-3.5 w-3.5" />} text="Created" /></Th>
@@ -503,11 +516,11 @@ export default function CreateShippingLabel() {
                 <Th><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-[var(--bg-300)] text-[13px]">
+            <tbody className="divide-y divide-[var(--bg-300)] text-[13px]">
               {batchesLoading ? (
-                <tr><Td className="text-slate-400" colSpan={6}>Loading…</Td></tr>
+                <tr><Td className="text-[var(--text-200)]" colSpan={6}>Loading…</Td></tr>
               ) : batches.length === 0 ? (
-                <tr><Td className="text-slate-400" colSpan={6}>No batches yet. Upload a file and draft it for review.</Td></tr>
+                <tr><Td className="text-[var(--text-200)]" colSpan={6}>No batches yet. Upload a file and draft it for review.</Td></tr>
               ) : (
                 batches.slice(batchPage * batchPageSize, (batchPage + 1) * batchPageSize).map((b, idx) => {
                   const zebra = idx % 2 === 1
@@ -517,12 +530,12 @@ export default function CreateShippingLabel() {
                   const canDelete = !!(user && b.createdBy === user.email)
                   return (
                   <tr key={b._id} className={rowBg}>
-                    <Td compact className="font-medium text-slate-800 dark:text-[var(--text-100)]">
+                    <Td compact className="font-medium text-[var(--text-100)]">
                       <span className="inline-flex items-center gap-1.5">
                         <LayersIcon className="h-3.5 w-3.5 shrink-0 text-[var(--accent-200)] dark:text-[var(--accent-200)]" />
                         <span className="font-mono whitespace-nowrap">{shortBatchId(b._id)}</span>
                         {b.fileName && (
-                          <span className="inline-flex min-w-0 items-center gap-1 text-xs text-slate-400 dark:text-[var(--text-200)]">
+                          <span className="inline-flex min-w-0 items-center gap-1 text-xs text-[var(--text-200)]">
                             <span>·</span>
                             <FolderIcon className="h-3.5 w-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
                             <span className="truncate max-w-[220px]" title={b.fileName}>{b.fileName}</span>
@@ -530,8 +543,8 @@ export default function CreateShippingLabel() {
                         )}
                       </span>
                     </Td>
-                    <Td compact className="text-slate-500 dark:text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
-                    <Td compact className="text-slate-600 dark:text-[var(--text-200)] max-w-[260px]">
+                    <Td compact className="text-[var(--text-200)] whitespace-nowrap">{formatDateTime(b.createdAt)}</Td>
+                    <Td compact className="text-[var(--text-200)] max-w-[260px]">
                       {b.createdBy ? (
                         <span className="flex min-w-0 items-center gap-2">
                           <UploaderAvatar email={b.createdBy} name={b.createdByName} avatar={b.createdByAvatar} />
@@ -598,17 +611,17 @@ export default function CreateShippingLabel() {
         {/* Pagination bar */}
         {!batchesLoading && batches.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-200)] dark:bg-transparent px-5 py-3">
-            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[var(--text-200)]">
+            <div className="flex items-center gap-2 text-xs text-[var(--text-200)]">
               <span>Rows per page:</span>
               <select
                 value={batchPageSize}
                 onChange={(e) => { setBatchPageSize(Number(e.target.value)); setBatchPage(0) }}
-                className="rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1 text-xs text-slate-700 dark:text-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] cursor-pointer"
+                className="rounded border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] px-2 py-1 text-xs text-[var(--text-200)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-200)] cursor-pointer"
               >
                 {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-[var(--text-200)]">
+            <div className="flex items-center gap-3 text-xs text-[var(--text-200)]">
               <span>
                 {batchPage * batchPageSize + 1}–{Math.min((batchPage + 1) * batchPageSize, batches.length)} of {batches.length}
               </span>
@@ -616,7 +629,7 @@ export default function CreateShippingLabel() {
                 <button
                   onClick={() => setBatchPage((p) => Math.max(0, p - 1))}
                   disabled={batchPage === 0}
-                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   aria-label="Previous page"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -624,7 +637,7 @@ export default function CreateShippingLabel() {
                 <button
                   onClick={() => setBatchPage((p) => p + 1)}
                   disabled={(batchPage + 1) * batchPageSize >= batches.length}
-                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] dark:border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-slate-600 dark:text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center rounded border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-1 text-[var(--text-200)] hover:bg-[var(--primary-100)] dark:hover:bg-[var(--primary-100)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   aria-label="Next page"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
