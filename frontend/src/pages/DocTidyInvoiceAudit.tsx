@@ -20,6 +20,7 @@ import VendorSetup from '../components/docTidy/VendorSetup'
 import WorkspaceRulesView from './DocTidyRules'
 import WorkspaceVendorsView from './DocTidyVendors'
 import SpsCommerceTab from '../components/docTidy/SpsCommerceTab'
+import AutoParseSwitch from '../components/docTidy/AutoParseSwitch'
 import { formatDate, formatDateTime } from '../lib/format'
 import { Tooltip } from '../components/Tooltip'
 import { subscribeDocTidyEvents } from '../lib/docTidyStore'
@@ -3270,6 +3271,90 @@ function ConfirmDeleteDialog({
   )
 }
 
+/* ─────────────────────────── Confirm Auto-parse Dialog ── */
+
+function ConfirmAutoParseDialog({
+  field,
+  next,
+  saving,
+  onConfirm,
+  onCancel,
+}: {
+  field: 'autoParseEmails' | 'autoParseImports'
+  next: boolean
+  saving: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, saving])
+
+  const what = field === 'autoParseEmails' ? 'email attachments' : 'uploaded files'
+  const tab = field === 'autoParseEmails' ? 'Emails' : 'CSV/PDF Imports'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => { if (!saving) onCancel() }} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm rounded-2xl border border-[var(--bg-300)] bg-[var(--bg-100)] dark:bg-[var(--bg-200)] p-6 shadow-2xl space-y-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+            next ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-rose-50 dark:bg-rose-900/20'
+          }`}>
+            <svg className={`h-5 w-5 ${next ? 'text-emerald-500' : 'text-rose-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text-100)]">
+              Turn {next ? 'on' : 'off'} auto-parse for {tab}?
+            </h3>
+            <p className="mt-1 text-xs text-[var(--text-200)] leading-relaxed">
+              {next
+                ? `New PDF, CSV and Excel ${what} will be sent to Tidy Agent automatically as soon as they arrive. Each parse uses tokens. Files that are already unparsed are not affected.`
+                : `New ${what} will no longer be parsed automatically — they will wait for someone to send them to Tidy Agent. Parses already queued or running will continue.`}
+            </p>
+            <p className="mt-2 text-[11px] text-[var(--text-200)]">This applies to everyone in this workspace.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="cursor-pointer rounded-lg border border-[var(--bg-300)] px-4 py-2 text-sm text-[var(--text-100)] transition-colors hover:bg-[var(--bg-200)] disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-60 ${
+              next ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+            }`}
+          >
+            {saving && (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            Turn {next ? 'on' : 'off'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ──────────────────────────────────────────────── Page ── */
 
 const AUDIT_PAGE_SIZES = [500, 1000, 2000, 5000]
@@ -4664,6 +4749,31 @@ export default function DocTidyInvoiceAudit() {
     setMoveTarget(null)
   }
 
+  const [autoParseSaving, setAutoParseSaving] = useState<'autoParseEmails' | 'autoParseImports' | null>(null)
+  const [confirmAutoParse, setConfirmAutoParse] = useState<{ field: 'autoParseEmails' | 'autoParseImports'; next: boolean } | null>(null)
+
+  const handleToggleAutoParse = async (field: 'autoParseEmails' | 'autoParseImports', next: boolean) => {
+    if (!activeWorkspace) return
+    setAutoParseSaving(field)
+    try {
+      const res = await authApi.put<{ data: DocTidyWorkspace }>(`/doc-tidy/workspaces/${activeWorkspace._id}`, { [field]: next })
+      setWorkspaces((prev) => prev.map((w) => (w._id === res.data._id ? { ...w, ...res.data } : w)))
+      setActiveWorkspace((cur) => (cur?._id === res.data._id ? { ...cur, ...res.data } : cur))
+      const what = field === 'autoParseEmails' ? 'email attachments' : 'uploaded files'
+      addToast(
+        next
+          ? `Auto-parse on — new ${what} will be sent to Tidy Agent automatically.`
+          : `Auto-parse off — new ${what} will wait for you to send them.`,
+        'success'
+      )
+      setConfirmAutoParse(null)
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update auto-parse', 'error')
+    } finally {
+      setAutoParseSaving(null)
+    }
+  }
+
   const handleOrgSaved = (saved: DocTidyOrganization) => {
     setOrganizations((prev) => {
       const idx = prev.findIndex((o) => o._id === saved._id)
@@ -5839,6 +5949,14 @@ export default function DocTidyInvoiceAudit() {
                       </svg>
                     )}
                   </button>
+                  <AutoParseSwitch
+                    checked={Boolean(activeWorkspace.autoParseEmails)}
+                    busy={autoParseSaving === 'autoParseEmails'}
+                    onChange={(next) => setConfirmAutoParse({ field: 'autoParseEmails', next })}
+                    title={activeWorkspace.autoParseEmails
+                      ? 'Auto-parse is ON — PDF, CSV and Excel attachments on new emails are sent to Tidy Agent as soon as they arrive. Click to turn off.'
+                      : 'Auto-parse is OFF — new emails wait for you to send them to Tidy Agent. Click to turn on (existing unparsed emails are not affected).'}
+                  />
                   {/* Fetch status chips */}
                   {pollerRunning && (
                     <span
@@ -6494,6 +6612,14 @@ export default function DocTidyInvoiceAudit() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </button>
+                  <AutoParseSwitch
+                    checked={Boolean(activeWorkspace.autoParseImports)}
+                    busy={autoParseSaving === 'autoParseImports'}
+                    onChange={(next) => setConfirmAutoParse({ field: 'autoParseImports', next })}
+                    title={activeWorkspace.autoParseImports
+                      ? 'Auto-parse is ON — uploaded PDF, CSV and Excel files are sent to Tidy Agent immediately. Click to turn off.'
+                      : 'Auto-parse is OFF — uploaded files wait for you to send them to Tidy Agent. Click to turn on (existing unparsed files are not affected).'}
+                  />
                   {/* Stats — right side of row 1 */}
                   {pdfImportsPagination.total > 0 && (
                     <span className="ml-auto text-[10px] text-[var(--text-200)] whitespace-nowrap">
@@ -8051,6 +8177,16 @@ export default function DocTidyInvoiceAudit() {
       )}
 
       {/* ── Confirm bulk delete: emails ── */}
+      {confirmAutoParse && (
+        <ConfirmAutoParseDialog
+          field={confirmAutoParse.field}
+          next={confirmAutoParse.next}
+          saving={autoParseSaving !== null}
+          onConfirm={() => void handleToggleAutoParse(confirmAutoParse.field, confirmAutoParse.next)}
+          onCancel={() => setConfirmAutoParse(null)}
+        />
+      )}
+
       {confirmBulkDeleteEmails && (
         <ConfirmDeleteDialog
           title={`Delete ${selectedMsgIdsForDelete.size} selected message${selectedMsgIdsForDelete.size !== 1 ? 's' : ''}?`}
