@@ -1,6 +1,7 @@
 import DocTidyRule from '../models/DocTidyRule';
 import { getDocTidyConfigDoc } from '../models/DocTidyConfig';
 import { isExtractionRunning, runEnabledRules, getExtractionStatus } from './docTidy.service';
+import { sweepAutoParse } from './docTidyAutoParse.service';
 
 /**
  * Polls the connected mailbox so matching mail is captured without anyone
@@ -32,6 +33,10 @@ function intervalMs(): number {
  * connecting the mailbox or enabling a rule takes effect without a restart.
  */
 async function tick(): Promise<void> {
+  // Runs ahead of the mailbox checks below: upload catch-up must not depend on
+  // Gmail being connected.
+  void sweepAutoParse();
+
   if (isExtractionRunning()) return;
 
   try {

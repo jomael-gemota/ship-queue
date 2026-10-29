@@ -456,6 +456,10 @@ export interface DocTidyWorkspace {
    * `header-only`    — only PO # is required; PO-level matching; line-item columns hidden.
    */
   importMode?: 'full' | 'header-only'
+  /** New email attachments are sent to the Tidy Agent as soon as they are imported. */
+  autoParseEmails?: boolean
+  /** New CSV/PDF/Excel uploads are sent to the Tidy Agent as soon as they are uploaded. */
+  autoParseImports?: boolean
   /** Per-workspace Gmail sources. Populated on demand by fetching /email-sources. */
   emailSources?: DocTidyEmailSource[]
   /** Per-workspace SPS Commerce sources. Populated on demand by fetching /sps-sources. */

@@ -135,3 +135,28 @@ Because parsing costs time and money per document, and most captured mail never
 needs to be read — a rule with a wide lookback window would send hundreds of
 files to the agent the first time it ran. Pressing Parse is what says "I actually
 want this one".
+
+## Auto-parse
+
+When a workspace's paperwork is worth reading every time, turn on the red
+**OFF** / green **ON** switch in the toolbar of the **Emails** or **CSV/PDF
+Imports** tab. Each tab has its own switch, and the setting is shared by
+everyone in the workspace.
+
+While it's **ON**:
+
+- **Emails** — PDF, CSV and Excel attachments on newly fetched emails go to the
+  agent as soon as they are imported, even if nobody has Doc Tidy open.
+- **CSV/PDF Imports** — uploaded files go to the agent straight away; they
+  appear as **Queued** rather than waiting for **Send to Agent**.
+
+A few things it deliberately doesn't do:
+
+- **No backfill.** Switching it on only affects files that arrive from then on.
+  Anything already unparsed stays that way — select those rows and use
+  **Send to Agent**.
+- **No retry of failures.** A **Failed** document is left for you to read and
+  re-run, so a file the agent can't handle doesn't burn tokens over and over.
+- **Agent offline?** Files that arrive while the agent is disconnected are
+  picked up automatically once it's back (anything up to a week old), a few at
+  a time.

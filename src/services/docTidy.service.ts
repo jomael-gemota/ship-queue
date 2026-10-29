@@ -1,3 +1,4 @@
+import type { Types } from 'mongoose';
 import DocTidyMessage from '../models/DocTidyMessage';
 import type { IDocTidyAttachment } from '../models/DocTidyMessage';
 import DocTidyRule, { type IDocTidyRule } from '../models/DocTidyRule';
@@ -26,6 +27,7 @@ import {
   type ParsedGmailMessage,
 } from './gmail.service';
 import { uploadBufferToDrive } from './googleDrive.service';
+import { autoParseNewMessage } from './docTidyAutoParse.service';
 
 export interface RunRuleResult {
   matched: number;
@@ -206,6 +208,8 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
     query,
   };
 
+  const newMessageIds: Types.ObjectId[] = [];
+
   // One indexed lookup for the whole batch, rather than a round trip per id.
   let ids = allIds;
   if (options.skipKnown && allIds.length) {
@@ -296,7 +300,7 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
       }
     }
 
-    await DocTidyMessage.updateOne(
+    const write = await DocTidyMessage.updateOne(
       { gmailMessageId: msg.gmailMessageId },
       {
         $set: {
@@ -323,6 +327,15 @@ export async function runRule(rule: IDocTidyRule, options: RunRuleOptions = {}):
 
     if (existing) result.updated += 1;
     else result.imported += 1;
+    if (write.upsertedId) newMessageIds.push(write.upsertedId as Types.ObjectId);
+  }
+
+  // Not awaited: parsing downloads from Drive per attachment and must not hold
+  // up the extraction run (or the poller's overlap guard).
+  if (newMessageIds.length) {
+    void (async () => {
+      for (const id of newMessageIds) await autoParseNewMessage(id, rule.workspaceId);
+    })().catch((err) => console.error('[DocTidy] Auto-parse failed:', (err as Error).message));
   }
 
   return result;

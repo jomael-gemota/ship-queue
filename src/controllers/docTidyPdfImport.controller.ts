@@ -13,6 +13,7 @@ import {
   mimeTypeForParseable,
 } from '../lib/parseableFiles';
 import { findJobsByContent } from '../services/parsedContentSearch.service';
+import { autoParseNewImports } from '../services/docTidyAutoParse.service';
 
 /* ── multer — memory storage; bytes go straight into GridFS ── */
 export const pdfUpload = multer({
@@ -192,6 +193,12 @@ export const uploadPdfImports = async (req: Request, res: Response): Promise<voi
           uploadedByName: req.user?.name,
         });
       })
+    );
+
+    // Cheap enough to await (the bytes are already in GridFS), so the response
+    // carries the new parseJobIds and the rows render as "Queued" straight away.
+    await autoParseNewImports(workspaceId, created).catch((err) =>
+      console.error('[DocTidy] Auto-parse of uploads failed:', (err as Error).message)
     );
 
     res.status(201).json({ data: created });
