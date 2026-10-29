@@ -5,9 +5,9 @@ import { Schema, model, Document, Types } from 'mongoose';
  * outside the email-capture flow.
  *
  * The PDF bytes are stored in the `doctidy_pdfs` GridFS bucket immediately on
- * upload. Parsing does not start automatically — the user explicitly triggers it
- * via the "Send to Tidy Agent" action, at which point a `DocTidyParseJob` is
- * created and `parseJobId` is populated.
+ * upload. Parsing starts when the user triggers the "Send to Tidy Agent" action,
+ * or immediately when the workspace has `autoParseImports` on; either way a
+ * `DocTidyParseJob` is created and `parseJobId` is populated.
  */
 export interface IDocTidyPdfImport extends Document {
   workspaceId: Types.ObjectId;
@@ -25,7 +25,7 @@ export interface IDocTidyPdfImport extends Document {
   /** Drive web-view link for the mirrored file, if available. */
   driveWebViewLink?: string;
 
-  /** Populated after the user sends this import to the Tidy Agent. */
+  /** Populated once this import is sent to the Tidy Agent. */
   parseJobId?: Types.ObjectId | null;
 
   uploadedByUserId?: string;

@@ -129,10 +129,12 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { name, organizationId, importMode } = req.body as {
+    const { name, organizationId, importMode, autoParseEmails, autoParseImports } = req.body as {
       name?: unknown;
       organizationId?: unknown;
       importMode?: unknown;
+      autoParseEmails?: unknown;
+      autoParseImports?: unknown;
     };
     const update: Record<string, unknown> = {};
 
@@ -160,6 +162,21 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
         return;
       }
       update.importMode = importMode;
+    }
+
+    for (const [field, value] of [
+      ['autoParseEmails', autoParseEmails],
+      ['autoParseImports', autoParseImports],
+    ] as const) {
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') {
+        res.status(400).json({ message: `${field} must be a boolean` });
+        return;
+      }
+      update[field] = value;
+      // Restarting the window on every switch-on keeps rows that arrived while
+      // it was off from being picked up by the catch-up sweep.
+      update[`${field}Since`] = value ? new Date() : null;
     }
 
     const workspace = await DocTidyWorkspace.findByIdAndUpdate(

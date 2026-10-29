@@ -44,6 +44,17 @@ export interface IDocTidyWorkspace extends Document {
    */
   importMode?: 'full' | 'header-only';
 
+  /**
+   * When on, parseable attachments on newly imported emails / newly uploaded
+   * files are sent to the Tidy Agent without anyone clicking "Send to Agent".
+   * Only items created after the matching `*Since` timestamp are auto-parsed,
+   * so switching on never backfills old rows.
+   */
+  autoParseEmails?: boolean;
+  autoParseEmailsSince?: Date | null;
+  autoParseImports?: boolean;
+  autoParseImportsSince?: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,6 +74,10 @@ const DocTidyWorkspaceSchema = new Schema<IDocTidyWorkspace>(
       enum: ['full', 'header-only'],
       default: 'full',
     },
+    autoParseEmails: { type: Boolean, default: false },
+    autoParseEmailsSince: { type: Date, default: null },
+    autoParseImports: { type: Boolean, default: false },
+    autoParseImportsSince: { type: Date, default: null },
   },
   { timestamps: true }
 );
